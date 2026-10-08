@@ -6,7 +6,7 @@ tells [topos](https://github.com/MasterTemple/topos-bible) the translation's nam
 verse counts, so references like `John 3:16 KJV` are checked against that translation. `bx` is the
 command line.
 
-What works (steps 1 and 2 of the plan, `doc/biblix.md` in topos):
+What works (steps 1 to 4 of the plan, `doc/biblix.md` in topos):
 
 - `biblix.toml` for packages and vaults (a manifest without `[package]`): formats, Cargo-style
   features (including `dep:` and `name/feature`), and dependencies (`git =` with `version`,
