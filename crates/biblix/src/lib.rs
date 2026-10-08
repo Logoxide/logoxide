@@ -10,6 +10,7 @@ The plan, with what comes next (the library, `bx`, git sources, summaries, and v
 `doc/biblix.md` in topos.
 */
 
+pub mod archive;
 pub mod cache;
 pub mod error;
 pub mod git;

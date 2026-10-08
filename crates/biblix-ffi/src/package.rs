@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use biblix_core::{
     Cache, CachedPackage, Features, MemoryStorage, Package, Storage,
-    manifest::{Direction, PackageKind as CoreKind},
+    manifest::{self, Direction, PackageKind as CoreKind},
     topos_bible::data::{books::BookId, translations::Translations},
 };
 use boltffi::*;
@@ -63,6 +63,27 @@ pub struct PackageInfo {
     pub upstream: Option<String>,
     /// `own` (the text's verse markers say), or a named system like `KJV`
     pub versification: String,
+}
+
+impl From<&manifest::Package> for PackageInfo {
+    fn from(info: &manifest::Package) -> Self {
+        PackageInfo {
+            id: info.id.clone(),
+            name: info.name.clone(),
+            abbreviation: info.abbreviation.clone(),
+            aliases: info.aliases.clone(),
+            version: info.version.to_string(),
+            kind: info.kind.into(),
+            language: info.language.clone(),
+            right_to_left: info.direction == Direction::Rtl,
+            license: info.license.clone(),
+            license_file: info.license_file.clone(),
+            publisher: info.publisher.clone(),
+            homepage: info.homepage.clone(),
+            upstream: info.upstream.clone(),
+            versification: info.versification.clone(),
+        }
+    }
 }
 
 /// A memory storage that remembers what was written to it, so the host can save it
@@ -184,23 +205,7 @@ impl BiblixPackage {
 #[export]
 impl BiblixPackage {
     pub fn info(&self) -> PackageInfo {
-        let info = self.cached.package().info();
-        PackageInfo {
-            id: info.id.clone(),
-            name: info.name.clone(),
-            abbreviation: info.abbreviation.clone(),
-            aliases: info.aliases.clone(),
-            version: info.version.to_string(),
-            kind: info.kind.into(),
-            language: info.language.clone(),
-            right_to_left: info.direction == Direction::Rtl,
-            license: info.license.clone(),
-            license_file: info.license_file.clone(),
-            publisher: info.publisher.clone(),
-            homepage: info.homepage.clone(),
-            upstream: info.upstream.clone(),
-            versification: info.versification.clone(),
-        }
+        PackageInfo::from(self.cached.package().info())
     }
 
     /// A hash of every file (`sha256:` and hex), to compare with the lock file's

@@ -18,6 +18,10 @@ use crate::{
 };
 use topos_bible::data::translations::Translations;
 
+/// A new project's `biblix.toml`
+const NEW_MANIFEST: &str = "# The Bibles this uses: `bx add --git URL`\n[dependencies]\n";
+
+#[derive(Clone)]
 pub struct Project {
     dir: PathBuf,
     doc: DocumentMut,
@@ -53,6 +57,30 @@ impl Project {
         })
     }
 
+    /// A project from its files' text, for hosts that read them (an empty manifest if it has
+    /// none yet); its path packages are relative to `dir`, and nothing is written
+    pub fn from_text(
+        dir: impl Into<PathBuf>,
+        manifest: Option<&str>,
+        lock: Option<&str>,
+    ) -> Result<Project> {
+        let text = manifest.unwrap_or(NEW_MANIFEST);
+        let doc: DocumentMut = text
+            .parse()
+            .map_err(|e: toml_edit::TomlError| BiblixError::Manifest(e.to_string()))?;
+        Ok(Project {
+            dir: dir.into(),
+            doc,
+            manifest: Manifest::parse(text)?,
+            lock: lock.map(Lockfile::parse).transpose()?,
+        })
+    }
+
+    /// `biblix.toml`'s text, with any dependencies added or removed
+    pub fn manifest_text(&self) -> String {
+        self.doc.to_string()
+    }
+
     /// Starts a project in `dir`: an empty `biblix.toml` (an error if it has one)
     pub fn init(dir: impl Into<PathBuf>) -> Result<Project> {
         let dir = dir.into();
@@ -65,7 +93,7 @@ impl Project {
         }
         let project = Project {
             dir,
-            doc: "# The Bibles this uses: `bx add --git URL`\n[dependencies]\n"
+            doc: NEW_MANIFEST
                 .parse()
                 .map_err(|e: toml_edit::TomlError| BiblixError::Manifest(e.to_string()))?,
             manifest: Manifest::default(),
@@ -160,13 +188,14 @@ impl Project {
         fetcher: &dyn Fetcher,
         update: Update,
     ) -> Result<&Lockfile> {
+        let packages = library.packages(&self.dir);
         let resolver = Resolver {
-            library,
+            packages: &packages,
             fetcher,
             previous: self.lock.as_ref(),
             update,
         };
-        let lock = resolver.resolve(&self.manifest, &self.dir)?;
+        let lock = resolver.resolve(&self.manifest)?;
         let path = self.dir.join(LOCKFILE);
         std::fs::write(&path, lock.to_toml()?)
             .map_err(|e| BiblixError::io(&path.display().to_string(), e))?;

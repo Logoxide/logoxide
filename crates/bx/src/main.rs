@@ -3,7 +3,7 @@
 use std::{path::PathBuf, process::ExitCode, sync::Arc, time::Instant};
 
 use biblix::{
-    Cache, Features, FsStorage, Library, Package, Project, Storage, bible_data,
+    Cache, Features, FsStorage, Library, MemoryStorage, Package, Project, Storage, bible_data,
     git::GitCli,
     manifest::{Dependency, DetailedDependency, MANIFEST},
     resolve::Update,
@@ -350,22 +350,16 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     let id = match (&args.git, &args.path) {
         (Some(url), _) => {
             let fetcher = cli.fetcher(&library);
-            let staging = library
-                .git_dir()
-                .join(format!("probe-{}", std::process::id()));
             let reference = match (&args.tag, &args.branch, &args.rev) {
                 (Some(t), _, _) => biblix::git::GitRef::Tag(t.clone()),
                 (_, Some(b), _) => biblix::git::GitRef::Branch(b.clone()),
                 (_, _, Some(r)) => biblix::git::GitRef::Rev(r.clone()),
                 _ => biblix::git::GitRef::Head,
             };
-            let fetched = biblix::git::Fetcher::fetch(&fetcher, url, &reference, &staging)
-                .and_then(|_| {
-                    let storage = FsStorage::new(&staging);
-                    biblix::Manifest::parse(&storage.read_string(MANIFEST)?)
-                });
-            let _ = std::fs::remove_dir_all(&staging);
-            let manifest = fetched?;
+            // Only its manifest, where the host allows that
+            let probe = MemoryStorage::new();
+            biblix::git::Fetcher::fetch_files(&fetcher, url, &reference, &[MANIFEST], &probe)?;
+            let manifest = biblix::Manifest::parse(&probe.read_string(MANIFEST)?)?;
             let info = manifest
                 .package
                 .ok_or_else(|| biblix::BiblixError::Manifest(format!("{url}: no [package]")))?;
@@ -539,19 +533,11 @@ fn show_remote(cli: &Cli, url: &str, tag: Option<&str>) -> biblix::Result<()> {
                 .ok_or_else(|| biblix::BiblixError::Resolve(format!("{url} has no releases")))?
         }
     };
-    let dir = library
-        .git_dir()
-        .join(format!("show-{}", std::process::id()));
     let paths = [MANIFEST, biblix::summary::SUMMARY, biblix::summary::VERSES];
-    let fetched = fetcher.fetch_files(url, &biblix::git::GitRef::Tag(tag.clone()), &paths, &dir);
-    let read = fetched.and_then(|_| {
-        let storage = FsStorage::new(&dir);
-        let manifest = biblix::Manifest::parse(&storage.read_string(MANIFEST)?)?;
-        let summary = biblix::summary::Summary::read(&storage).map(|(s, _)| s);
-        Ok((manifest, summary))
-    });
-    let _ = std::fs::remove_dir_all(&dir);
-    let (manifest, summary) = read?;
+    let files = MemoryStorage::new();
+    fetcher.fetch_files(url, &biblix::git::GitRef::Tag(tag.clone()), &paths, &files)?;
+    let manifest = biblix::Manifest::parse(&files.read_string(MANIFEST)?)?;
+    let summary = biblix::summary::Summary::read(&files).map(|(s, _)| s);
     if let Some(info) = &manifest.package {
         println!(
             "{} ({}), {}",
@@ -577,12 +563,7 @@ fn release(
 ) -> biblix::Result<()> {
     let library = cli.library();
     let git = cli.fetcher(&library);
-    let scratch = library.git_dir();
-    std::fs::create_dir_all(&scratch).map_err(|e| biblix::BiblixError::Io {
-        path: scratch.display().to_string(),
-        message: e.to_string(),
-    })?;
-    let mut plan = biblix::release::plan(path, &git, &scratch)?;
+    let mut plan = biblix::release::plan(path, &git)?;
     if let Some((old, d)) = &plan.previous {
         println!(
             "since {old}: {} ({:?} change)",
@@ -625,7 +606,7 @@ fn release(
         plan.summary.version = minimum;
         // The manifest changed: summarize again (its checksum covers biblix.toml)
         if !dry_run {
-            plan = biblix::release::plan(path, &git, &scratch)?;
+            plan = biblix::release::plan(path, &git)?;
         }
     }
     biblix::release::check(&plan)?;
@@ -645,11 +626,6 @@ fn release(
 fn diff(cli: &Cli, path: &std::path::Path, from: &str, to: Option<&str>) -> biblix::Result<()> {
     let library = cli.library();
     let git = cli.fetcher(&library);
-    let scratch = library.git_dir();
-    std::fs::create_dir_all(&scratch).map_err(|e| biblix::BiblixError::Io {
-        path: scratch.display().to_string(),
-        message: e.to_string(),
-    })?;
     let url = path
         .canonicalize()
         .map_err(|e| biblix::BiblixError::Io {
@@ -658,9 +634,9 @@ fn diff(cli: &Cli, path: &std::path::Path, from: &str, to: Option<&str>) -> bibl
         })?
         .display()
         .to_string();
-    let (_, old) = biblix::release::summary_at(&git, &url, from, &scratch)?;
+    let (_, old) = biblix::release::summary_at(&git, &url, from)?;
     let new = match to {
-        Some(tag) => biblix::release::summary_at(&git, &url, tag, &scratch)?.1,
+        Some(tag) => biblix::release::summary_at(&git, &url, tag)?.1,
         None => {
             let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(path));
             biblix::summary::summarize(&Package::open(storage, Features::default())?)?.1

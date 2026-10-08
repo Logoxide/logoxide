@@ -22,15 +22,23 @@ before changing the design.
     `CachedPackage::add_to` gives topos's `Translations` the name, aliases, and counts
   - `lock.rs`: `biblix.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for)
-  - `git.rs`: `Fetcher` (a repository's tags; its files at a commit). `GitCli` runs `git`; an
-    archive fetcher over the host's HTTP comes with biblix-ffi (WebAssembly has no `git`)
+  - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).
+    `GitCli` runs `git`
+  - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
+    ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
+    archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
+    and GitHub's own archives)
   - `library.rs`: installed versions in `packages/<id>/<version>` (or `<version>+g<commit>` when
-    not from its release tag), without `.git`; path packages stay where they are
-  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes. A lock entry is kept
+    not from its release tag), without `.git`; path packages stay where they are.
+    `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
+    beside its folder, then renamed into place)
+  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes, through `Packages`
+    (where installed versions and path packages are) and a `Fetcher`. A lock entry is kept
     while the manifest still allows it (unless updating); fetched text is checked against the
     locked checksum; a tag's version must match its `biblix.toml`; git packages can't have path
     dependencies
-  - `project.rs`: a folder with `biblix.toml` (edited with toml_edit, keeping comments) and its
+  - `project.rs`: a folder with `biblix.toml` (edited with toml_edit, keeping comments; or
+    `from_text` and `manifest_text` for hosts that do the reading and writing) and its
     lock; `translations()` gives topos the Bibles it asks for
   - `summary.rs`: `biblix.summary.toml` (verse counts in book order, sizes, element counts
     without structural markers) and `biblix.verses.bin` (`BXV1`, 12 bytes a verse: book,
@@ -59,8 +67,12 @@ before changing the design.
   native only. Opening goes through the `Biblix` object because BoltFFI's WebAssembly
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry biblix's books and counts
-  across. Build with `npm install && npm run pack:wasm` or `npm run pack:python`; the examples
-  open the real packages
+  across. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
+  given; whatever is missing (refs, an archive, an installed package's files) stops the round and
+  is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
+  (`src/tests.rs`): an rlib would collide with the core's `libbiblix.rlib`. Build with
+  `npm install && npm run pack:wasm` or `npm run pack:python`; the examples open and install the
+  real packages (`examples/node/install.ts`, whose lock and library `bx install` accepts)
 
 ## Decisions
 

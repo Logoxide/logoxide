@@ -9,9 +9,13 @@ and the cache files it writes are handed back ([`BiblixPackage::cache_writes`]).
 `biblix.toml` and `biblix.lock` ask for, and where each one's files are.
 */
 
+mod installer;
 mod package;
 mod project;
+#[cfg(test)]
+mod tests;
 
+pub use installer::*;
 pub use package::*;
 pub use project::*;
 pub use topos_bible::*;
@@ -119,12 +123,18 @@ impl Biblix {
         BiblixPackage::open_dir(dir, features, cache_dir)
     }
 
-    /// A project from its `biblix.toml`'s text and its `biblix.lock`'s, if it has one
+    /// A project from its `biblix.toml`'s text (a new, empty one without it) and its
+    /// `biblix.lock`'s, if it has one
     pub fn parse_project(
         &self,
-        manifest: String,
+        manifest: Option<String>,
         lock: Option<String>,
     ) -> Result<BiblixProject, BiblixError> {
         BiblixProject::parse(manifest, lock)
+    }
+
+    /// Installs packages and inspects repositories, with the host downloading
+    pub fn installer(&self) -> BiblixInstaller {
+        BiblixInstaller::new()
     }
 }

@@ -1,19 +1,30 @@
-//! A vault's (or any project's) `biblix.toml` and `biblix.lock`: the packages it asks for, and
-//! where each one's files are.
+//! A vault's (or any project's) `biblix.toml` and `biblix.lock`: the packages it asks for, where
+//! each one's files are, and adding or removing them (keeping the manifest's comments).
 
-use biblix_core::{LockedPackage, Lockfile, Manifest};
+use biblix_core::{LockedPackage, Project, library::library_dir, manifest::DetailedDependency};
 use boltffi::*;
 
 use crate::{BiblixError, PackageFeatures};
 
-/// Where a locked package's files are
+/// Where a package's files are
 #[data]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PackageLocation {
     /// In the library, under its folder: `packages/<id>/<version>`
     Library { dir: String },
     /// A path package, used where it is: relative to the project's folder
     Path { dir: String },
+}
+
+impl PackageLocation {
+    pub(crate) fn of(locked: &LockedPackage) -> Self {
+        match &locked.path {
+            Some(dir) => PackageLocation::Path { dir: dir.clone() },
+            None => PackageLocation::Library {
+                dir: library_dir(locked),
+            },
+        }
+    }
 }
 
 /// One package the project asks for, exactly as its lock file has it
@@ -36,16 +47,10 @@ pub struct LockedEntry {
 
 impl From<&LockedPackage> for LockedEntry {
     fn from(locked: &LockedPackage) -> Self {
-        let location = match &locked.path {
-            Some(dir) => PackageLocation::Path { dir: dir.clone() },
-            None => PackageLocation::Library {
-                dir: format!("packages/{}/{}", locked.id, locked.key()),
-            },
-        };
         Self {
             id: locked.id.clone(),
             version: locked.version.to_string(),
-            location,
+            location: PackageLocation::of(locked),
             features: PackageFeatures {
                 features: locked.features.clone(),
                 default_features: locked.default_features,
@@ -57,55 +62,106 @@ impl From<&LockedPackage> for LockedEntry {
     }
 }
 
+/// A dependency to add, as `biblix.toml` writes it: `git` (with at most one of `version`, `tag`,
+/// `branch`, or `rev`) or `path`
+#[data]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Dependency {
+    pub git: Option<String>,
+    pub path: Option<String>,
+    /// A version requirement, like Cargo's: `1.2` allows 1.2.0 up to 2.0.0
+    pub version: Option<String>,
+    pub tag: Option<String>,
+    pub branch: Option<String>,
+    pub rev: Option<String>,
+    pub features: Vec<String>,
+    pub default_features: bool,
+}
+
+impl TryFrom<Dependency> for DetailedDependency {
+    type Error = BiblixError;
+
+    fn try_from(d: Dependency) -> Result<Self, BiblixError> {
+        let version = (d.version.as_deref())
+            .map(semver::VersionReq::parse)
+            .transpose()
+            .map_err(|e| BiblixError::Manifest {
+                message: format!("version: {e}"),
+            })?;
+        Ok(DetailedDependency {
+            git: d.git,
+            path: d.path,
+            version,
+            tag: d.tag,
+            branch: d.branch,
+            rev: d.rev,
+            features: d.features,
+            default_features: d.default_features,
+            ..DetailedDependency::default()
+        })
+    }
+}
+
 /**
 A project's `biblix.toml` and `biblix.lock` (a vault's manifest has no `[package]`), from
-`Biblix::parse_project`
+`Biblix::parse_project`. Adding or removing a dependency gives a new project: save its
+`manifestText()`, then install it (`BiblixInstaller`) for its lock file
 
 ```ts
-const project = biblix.parseProject(await read("biblix.toml"), await readOrNull("biblix.lock"));
+const project = biblix.parseProject(await readOrNull("biblix.toml"), await readOrNull("biblix.lock"));
 for (const entry of project.packages()) {
   // entry.location: { tag: "Library", dir: "packages/bsb/1.0.1" } or a path package's folder
 }
-project.defaultBible(); // "bsb", from [settings]
+const added = project.addDependency("kjv", { git: url, version: "1.0.1", defaultFeatures: true, ... });
+await write("biblix.toml", added.manifestText());
 ```
 */
+#[derive(Clone)]
 pub struct BiblixProject {
-    manifest: Manifest,
-    lock: Option<Lockfile>,
+    pub(crate) project: Project,
 }
 
 impl BiblixProject {
-    /// A project from its manifest's text and its lock file's, if it has one
-    pub(crate) fn parse(manifest: String, lock: Option<String>) -> Result<Self, BiblixError> {
-        let manifest = Manifest::parse(&manifest)?;
-        let lock = lock.as_deref().map(Lockfile::parse).transpose()?;
-        Ok(Self { manifest, lock })
+    /// A project from its manifest's text (a new one without it) and its lock file's
+    pub(crate) fn parse(
+        manifest: Option<String>,
+        lock: Option<String>,
+    ) -> Result<Self, BiblixError> {
+        let project = Project::from_text("", manifest.as_deref(), lock.as_deref())?;
+        Ok(Self { project })
     }
 }
 
 #[export]
 impl BiblixProject {
+    /// `biblix.toml`'s text, with any dependencies added or removed (comments kept)
+    pub fn manifest_text(&self) -> String {
+        self.project.manifest_text()
+    }
+
     /// The dependencies the manifest names, in order
     pub fn dependencies(&self) -> Vec<String> {
-        self.manifest.dependencies.keys().cloned().collect()
+        (self.project.manifest().dependencies.keys())
+            .cloned()
+            .collect()
     }
 
     /// The packages the manifest asks for, as the lock file has them (not their dependencies);
     /// empty without a lock file
     pub fn packages(&self) -> Vec<LockedEntry> {
-        let Some(lock) = &self.lock else {
+        let Some(lock) = self.project.lock() else {
             return Vec::new();
         };
         lock.roots().map(LockedEntry::from).collect()
     }
 
-    /// Dependencies the lock file doesn't have yet (added since it was written: run `bx install`)
+    /// Dependencies the lock file doesn't have yet (added since it was written: install them)
     pub fn unlocked(&self) -> Vec<String> {
-        let locked: Vec<&str> = (self.lock.iter())
+        let locked: Vec<&str> = (self.project.lock().iter())
             .flat_map(|lock| lock.roots())
             .map(|p| p.id.as_str())
             .collect();
-        (self.manifest.dependencies.keys())
+        (self.project.manifest().dependencies.keys())
             .filter(|name| !locked.contains(&name.as_str()))
             .cloned()
             .collect()
@@ -113,13 +169,31 @@ impl BiblixProject {
 
     /// The Bible references use when they name none (`[settings] default`)
     pub fn default_bible(&self) -> Option<String> {
-        (self.manifest.settings.as_ref()).and_then(|s| s.default.clone())
+        (self.project.manifest().settings.as_ref()).and_then(|s| s.default.clone())
     }
 
     /// Bibles shown after the named one (`[settings] compare`)
     pub fn compare(&self) -> Vec<String> {
-        (self.manifest.settings.as_ref())
+        (self.project.manifest().settings.as_ref())
             .map(|s| s.compare.clone())
             .unwrap_or_default()
+    }
+
+    /// This project with a dependency added (or replaced); `name` is the package's id
+    pub fn add_dependency(
+        &self,
+        name: String,
+        dependency: Dependency,
+    ) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        project.add(&name, &dependency.try_into()?)?;
+        Ok(Self { project })
+    }
+
+    /// This project without a dependency (the same if it hasn't one)
+    pub fn remove_dependency(&self, name: String) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        project.remove(&name)?;
+        Ok(Self { project })
     }
 }

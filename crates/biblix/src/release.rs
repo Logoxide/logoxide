@@ -10,7 +10,7 @@ use crate::{
     error::{BiblixError, Result},
     git::{Fetcher, GitCli, GitRef},
     package::{Features, Package},
-    storage::{FsStorage, Storage},
+    storage::{FsStorage, MemoryStorage, Storage},
     summary::{
         Change, Diff, SUMMARY, Summary, VERSES, VerseHash, diff, next_version, summarize,
         version_change,
@@ -23,23 +23,16 @@ pub fn summary_at(
     fetcher: &dyn Fetcher,
     url: &str,
     tag: &str,
-    scratch: &Path,
 ) -> Result<(Summary, Vec<VerseHash>)> {
-    let dir = scratch.join(format!("summary-{}-{tag}", std::process::id()));
-    let result = (|| {
-        let reference = GitRef::Tag(tag.to_string());
-        fetcher.fetch_files(url, &reference, &[SUMMARY, VERSES], &dir)?;
-        let storage = FsStorage::new(&dir);
-        if let Ok(published) = Summary::read(&storage) {
-            return Ok(published);
-        }
-        let _ = std::fs::remove_dir_all(&dir);
-        fetcher.fetch(url, &reference, &dir)?;
-        let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir));
-        summarize(&Package::open(storage, Features::default())?)
-    })();
-    let _ = std::fs::remove_dir_all(&dir);
-    result
+    let reference = GitRef::Tag(tag.to_string());
+    let published = MemoryStorage::new();
+    fetcher.fetch_files(url, &reference, &[SUMMARY, VERSES], &published)?;
+    if let Ok(published) = Summary::read(&published) {
+        return Ok(published);
+    }
+    let text = Arc::new(MemoryStorage::new());
+    fetcher.fetch(url, &reference, text.as_ref())?;
+    summarize(&Package::open(text, Features::default())?)
 }
 
 /// What a release would be
@@ -61,7 +54,7 @@ impl Plan {
 }
 
 /// Summarizes the package in `repo` and compares it with the newest earlier release
-pub fn plan(repo: &Path, git: &GitCli, scratch: &Path) -> Result<Plan> {
+pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
     let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(repo));
     let package = Package::open(storage, Features::default())?;
     let (summary, verses) = summarize(&package)?;
@@ -81,7 +74,7 @@ pub fn plan(repo: &Path, git: &GitCli, scratch: &Path) -> Result<Plan> {
         .map_err(|e| BiblixError::io(&repo.display().to_string(), e))?
         .display()
         .to_string();
-    let (_, old_verses) = summary_at(git, &url, &tag, scratch)?;
+    let (_, old_verses) = summary_at(git, &url, &tag)?;
     let d = diff(&old_verses, &verses);
     let minimum = Some(next_version(&old_version, d.change()));
     Ok(Plan {

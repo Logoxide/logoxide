@@ -3,8 +3,8 @@ Fetching packages from git repositories. [`Fetcher`] is what resolving and insta
 repository's tags, and its files at a commit); [`GitCli`] does it with the `git` command, which
 reads any URL git does (`https://`, `ssh://`, `file://`, a local path).
 
-WebAssembly and phones have no `git`: a fetcher there downloads a tag's archive (GitHub, GitLab,
-and Gitea serve one per tag) through the host's HTTP. That fetcher comes with biblix-ffi.
+WebAssembly and phones have no `git`: there, biblix-ffi's fetcher reads what the host downloads
+over HTTP (a repository's refs, and archives of its commits; see [`crate::archive`]).
 */
 
 use std::{
@@ -12,7 +12,10 @@ use std::{
     process::Command,
 };
 
-use crate::error::{BiblixError, Result};
+use crate::{
+    error::{BiblixError, Result},
+    storage::{MemoryStorage, Storage},
+};
 
 /// Which commit of a repository: a tag, a branch, a revision, or its default branch
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,9 +30,9 @@ pub trait Fetcher {
     /// Each tag and the commit it names
     fn tags(&self, url: &str) -> Result<Vec<(String, String)>>;
 
-    /// The repository's files at `reference` into `dest` (a new folder, without `.git`), and the
-    /// commit they're from
-    fn fetch(&self, url: &str, reference: &GitRef, dest: &Path) -> Result<String>;
+    /// The repository's files at `reference` into `dest` (without `.git`), and the commit
+    /// they're from
+    fn fetch(&self, url: &str, reference: &GitRef, dest: &dyn Storage) -> Result<String>;
 
     /// Only these files (by path) at `reference`, into `dest`, without downloading the rest when
     /// the host allows (a summary without its text). Missing files are left out
@@ -38,20 +41,15 @@ pub trait Fetcher {
         url: &str,
         reference: &GitRef,
         paths: &[&str],
-        dest: &Path,
+        dest: &dyn Storage,
     ) -> Result<String> {
-        let all = dest.with_extension("all");
+        let all = MemoryStorage::new();
         let commit = self.fetch(url, reference, &all)?;
         for path in paths {
-            let (from, to) = (all.join(path), dest.join(path));
-            if from.is_file() {
-                if let Some(parent) = to.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| BiblixError::io(path, e))?;
-                }
-                std::fs::copy(&from, &to).map_err(|e| BiblixError::io(path, e))?;
+            if let Ok(bytes) = all.read(path) {
+                dest.write(path, &bytes)?;
             }
         }
-        let _ = std::fs::remove_dir_all(&all);
         Ok(commit)
     }
 }
@@ -106,7 +104,7 @@ impl Fetcher for GitCli {
         url: &str,
         reference: &GitRef,
         paths: &[&str],
-        dest: &Path,
+        dest: &dyn Storage,
     ) -> Result<String> {
         let work = self.scratch_dir("files");
         let io = |e: std::io::Error| BiblixError::io(&work.display().to_string(), e);
@@ -143,11 +141,8 @@ impl Fetcher for GitCli {
             for path in paths {
                 let from = work.join(path);
                 if from.is_file() {
-                    let to = dest.join(path);
-                    if let Some(parent) = to.parent() {
-                        std::fs::create_dir_all(parent).map_err(|e| BiblixError::io(path, e))?;
-                    }
-                    std::fs::copy(&from, &to).map_err(|e| BiblixError::io(path, e))?;
+                    let bytes = std::fs::read(&from).map_err(|e| BiblixError::io(path, e))?;
+                    dest.write(path, &bytes)?;
                 }
             }
             Ok(commit)
@@ -179,7 +174,7 @@ impl Fetcher for GitCli {
         Ok(tags)
     }
 
-    fn fetch(&self, url: &str, reference: &GitRef, dest: &Path) -> Result<String> {
+    fn fetch(&self, url: &str, reference: &GitRef, dest: &dyn Storage) -> Result<String> {
         let work = self.scratch_dir("fetch");
         let io = |e: std::io::Error| BiblixError::io(&work.display().to_string(), e);
         std::fs::create_dir_all(&work).map_err(io)?;
@@ -200,7 +195,7 @@ impl Fetcher for GitCli {
             let commit = git(&["rev-parse", "HEAD"], Some(&work), url)?
                 .trim()
                 .to_string();
-            copy_tree(&work, dest)?;
+            copy_into(&work, "", dest)?;
             Ok(commit)
         })();
         let _ = std::fs::remove_dir_all(&work);
@@ -238,21 +233,22 @@ fn unique() -> u128 {
         .map_or(0, |d| d.as_nanos())
 }
 
-/// Copies a folder's files, leaving out `.git`
-pub(crate) fn copy_tree(from: &Path, to: &Path) -> Result<()> {
+/// Copies a folder's files into `to` under `prefix`, leaving out `.git`
+fn copy_into(from: &Path, prefix: &str, to: &dyn Storage) -> Result<()> {
     let io = |path: &Path, e: std::io::Error| BiblixError::io(&path.display().to_string(), e);
-    std::fs::create_dir_all(to).map_err(|e| io(to, e))?;
     for entry in std::fs::read_dir(from).map_err(|e| io(from, e))? {
         let entry = entry.map_err(|e| io(from, e))?;
-        let name = entry.file_name();
+        let Some(name) = entry.file_name().to_str().map(String::from) else {
+            continue;
+        };
         if name == ".git" {
             continue;
         }
-        let (source, target) = (entry.path(), to.join(&name));
+        let (source, path) = (entry.path(), crate::storage::join(prefix, &name));
         if entry.file_type().map_err(|e| io(&source, e))?.is_dir() {
-            copy_tree(&source, &target)?;
+            copy_into(&source, &path, to)?;
         } else {
-            std::fs::copy(&source, &target).map_err(|e| io(&source, e))?;
+            to.write(&path, &std::fs::read(&source).map_err(|e| io(&source, e))?)?;
         }
     }
     Ok(())

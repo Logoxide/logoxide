@@ -32,10 +32,11 @@ What works (steps 1 to 4 of the plan, and the start of 5, `doc/biblix.md` in top
 
 - `biblix-ffi`: bindings for TypeScript/WebAssembly and Python (npm and PyPI `biblix`), with
   topos's whole API in the same package: packages opened from the bytes the host reads, their
-  cache handed back to save, a vault's manifest and lock; see `crates/biblix-ffi/README.md`
+  cache handed back to save, a vault's manifest and lock (adding and removing dependencies), and
+  installing without `git`, the host downloading refs and archives over HTTP; see
+  `crates/biblix-ffi/README.md`
 
-Next: an archive fetcher over the host's HTTP (installing in WebAssembly), then the Obsidian
-plugin moves to biblix-ffi.
+Next: the Obsidian plugin moves to biblix-ffi.
 
 ## Using it
 

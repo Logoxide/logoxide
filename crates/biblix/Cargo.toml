@@ -19,3 +19,6 @@ thiserror = "2"
 usfm3 = "0.2"
 toml_edit = "0.23"
 indexmap = { version = "2", features = ["serde"] }
+# Reading repository archives the host downloads (pure Rust, so WebAssembly too)
+flate2 = "1"
+tar = { version = "0.4", default-features = false }

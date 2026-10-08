@@ -56,8 +56,6 @@ fn releases_follow_what_changed() {
     let _ = std::fs::remove_dir_all(&root);
     let repo = root.join("tb");
     std::fs::create_dir_all(&repo).unwrap();
-    let scratch = root.join("scratch");
-    std::fs::create_dir_all(&scratch).unwrap();
     let cli = GitCli::default();
 
     write(
@@ -67,7 +65,7 @@ fn releases_follow_what_changed() {
     );
     git(&repo, &["init", "-q", "-b", "main"]);
     // The first release: nothing to compare with
-    let first = plan(&repo, &cli, &scratch).unwrap();
+    let first = plan(&repo, &cli).unwrap();
     assert!(first.previous.is_none());
     release(&repo, &first, &cli).unwrap();
     assert!(repo.join(SUMMARY).is_file() && repo.join(VERSES).is_file());
@@ -83,7 +81,7 @@ fn releases_follow_what_changed() {
         text.replace("a note", "another note"),
     )
     .unwrap();
-    let p = plan(&repo, &cli, &scratch).unwrap();
+    let p = plan(&repo, &cli).unwrap();
     assert_eq!(p.change(), Change::Patch);
     assert!(
         check(&p)
@@ -98,7 +96,7 @@ fn releases_follow_what_changed() {
         "1.0.1",
         &[(16, "For God so loved the world"), (17, "For God sent")],
     );
-    let p = plan(&repo, &cli, &scratch).unwrap();
+    let p = plan(&repo, &cli).unwrap();
     assert_eq!(p.change(), Change::Minor);
     assert!(
         check(&p)
@@ -111,17 +109,17 @@ fn releases_follow_what_changed() {
         "1.1.0",
         &[(16, "For God so loved the world"), (17, "For God sent")],
     );
-    release(&repo, &plan(&repo, &cli, &scratch).unwrap(), &cli).unwrap();
+    release(&repo, &plan(&repo, &cli).unwrap(), &cli).unwrap();
 
     // A verse removed: major
     write(&repo, "1.2.0", &[(16, "For God so loved the world")]);
-    let p = plan(&repo, &cli, &scratch).unwrap();
+    let p = plan(&repo, &cli).unwrap();
     assert_eq!(
         (p.change(), p.minimum.clone().unwrap().to_string()),
         (Change::Major, "2.0.0".to_string())
     );
     write(&repo, "2.0.0", &[(16, "For God so loved the world")]);
-    release(&repo, &plan(&repo, &cli, &scratch).unwrap(), &cli).unwrap();
+    release(&repo, &plan(&repo, &cli).unwrap(), &cli).unwrap();
 
     // The published summary matches the text
     let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(&repo));
@@ -138,7 +136,7 @@ fn releases_follow_what_changed() {
         &url,
         &GitRef::Tag("v1.1.0".into()),
         &[SUMMARY, VERSES],
-        &dest,
+        &FsStorage::new(&dest),
     )
     .unwrap();
     assert!(!dest.join("usx").exists());

@@ -24,6 +24,7 @@ use crate::{
     lock::LockedPackage,
     manifest::MANIFEST,
     package::{Features, Package},
+    resolve::Packages,
     storage::{FsStorage, Storage},
 };
 
@@ -123,15 +124,15 @@ impl Library {
                 locked.name()
             )));
         }
-        let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(dir));
-        let features: Vec<&str> = locked.features.iter().map(String::as_str).collect();
-        Package::open(
-            storage,
-            Features {
-                features: &features,
-                default: locked.default_features,
-            },
-        )
+        open_locked(Arc::new(FsStorage::new(dir)), locked)
+    }
+
+    /// The library seen from a project in `base` (where its path packages are), for resolving
+    pub fn packages<'a>(&'a self, base: &'a Path) -> LibraryPackages<'a> {
+        LibraryPackages {
+            library: self,
+            base,
+        }
     }
 
     /// The cache of parsed books
@@ -142,5 +143,62 @@ impl Library {
     /// Scratch space for fetching
     pub fn git_dir(&self) -> PathBuf {
         self.cache.join("git")
+    }
+}
+
+/// A locked version's files, opened with its locked features
+pub fn open_locked(storage: Arc<dyn Storage>, locked: &LockedPackage) -> Result<Package> {
+    let features: Vec<&str> = locked.features.iter().map(String::as_str).collect();
+    Package::open(
+        storage,
+        Features {
+            features: &features,
+            default: locked.default_features,
+        },
+    )
+}
+
+/// The folder in the library a locked version goes in (`packages/<id>/<key>`)
+pub fn library_dir(locked: &LockedPackage) -> String {
+    format!("packages/{}/{}", locked.id, locked.key())
+}
+
+/// A [`Library`] from a project's folder: what [`Packages`] needs to resolve
+pub struct LibraryPackages<'a> {
+    library: &'a Library,
+    base: &'a Path,
+}
+
+impl Packages for LibraryPackages<'_> {
+    fn installed(&self, locked: &LockedPackage) -> Result<Option<Arc<dyn Storage>>> {
+        Ok(self
+            .library
+            .is_installed(locked, self.base)
+            .then(|| -> Arc<dyn Storage> {
+                Arc::new(FsStorage::new(self.library.package_dir(locked, self.base)))
+            }))
+    }
+
+    fn path_package(&self, relative: &str) -> Result<Arc<dyn Storage>> {
+        Ok(Arc::new(FsStorage::new(self.base.join(relative))))
+    }
+
+    /// Written beside its folder, then moved into place, so a half-written version is never
+    /// taken for an installed one
+    fn install(&self, locked: &LockedPackage, files: &dyn Storage) -> Result<()> {
+        let dir = self.library.package_dir(locked, self.base);
+        let staging =
+            dir.with_file_name(format!(".{}.staging-{}", locked.key(), std::process::id()));
+        let _ = std::fs::remove_dir_all(&staging);
+        let result = (|| {
+            let to = FsStorage::new(&staging);
+            for path in files.walk("")? {
+                to.write(&path, &files.read(&path)?)?;
+            }
+            std::fs::rename(&staging, &dir)
+                .map_err(|e| BiblixError::io(&dir.display().to_string(), e))
+        })();
+        let _ = std::fs::remove_dir_all(&staging);
+        result
     }
 }

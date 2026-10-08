@@ -53,7 +53,10 @@ for folder in map(pathlib.Path, sys.argv[1:]):
 # at verse 14, like the KJV's)
 for reference in ["John 3:16 KJV", "3 John 1:14 BSB", "3 John 1:15 BSB"]:
     found = topos.parse_with_translation(reference, OffsetUnit.CHAR, translations, BookStyle.NAME)
-    print(f"{reference}: {found.passage.reference + ' in ' + found.translation.name if found else 'no such verse'}")
+    if found is None:
+        print(f"{reference}: no such verse")
+    else:
+        print(f"{reference}: {found.passage.reference} in {found.translation.name if found.translation else 'no translation opened here'}")
 
 # Passages as text, from each package's own book
 john = topos.parse("John 3:16", BookStyle.NAME)

@@ -10,11 +10,16 @@ publish = false
 [lib]
 # Matches the published package name (biblix), which BoltFFI uses for artifacts
 name = "biblix"
-crate-type = ["lib", "staticlib", "cdylib"]
+crate-type = ["staticlib", "cdylib"]
 
 [dependencies]
 # Named biblix_core here: this crate's own library is biblix (the package name BoltFFI uses)
 biblix_core = { package = "biblix", path = "../biblix" }
 boltffi = "0.31.0"
+semver = "1"
 # topos's whole API, re-exported (its library is named topos_bible, like its packages)
 topos-ffi = { path = "../../../topos/crates/topos-ffi" }
+
+[dev-dependencies]
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
