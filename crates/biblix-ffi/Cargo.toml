@@ -1,0 +1,20 @@
+[package]
+name = "biblix-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bindings for TypeScript/WASM, Python, Swift, and Kotlin (via BoltFFI): biblix's packages with topos's API"
+publish = false
+
+[lib]
+# Matches the published package name (biblix), which BoltFFI uses for artifacts
+name = "biblix"
+crate-type = ["lib", "staticlib", "cdylib"]
+
+[dependencies]
+# Named biblix_core here: this crate's own library is biblix (the package name BoltFFI uses)
+biblix_core = { package = "biblix", path = "../biblix" }
+boltffi = "0.31.0"
+# topos's whole API, re-exported (its library is named topos_bible, like its packages)
+topos-ffi = { path = "../../../topos/crates/topos-ffi" }

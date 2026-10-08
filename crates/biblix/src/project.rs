@@ -188,7 +188,7 @@ impl Project {
             if package.info().kind != PackageKind::Bible {
                 continue;
             }
-            translations = cache.open(&package)?.add_to(translations);
+            translations = cache.open(package)?.add_to(translations);
         }
         Ok(translations)
     }

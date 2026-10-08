@@ -6,7 +6,7 @@ tells [topos](https://github.com/MasterTemple/topos-bible) the translation's nam
 verse counts, so references like `John 3:16 KJV` are checked against that translation. `bx` is the
 command line.
 
-What works (steps 1 to 4 of the plan, `doc/biblix.md` in topos):
+What works (steps 1 to 4 of the plan, and the start of 5, `doc/biblix.md` in topos):
 
 - `biblix.toml` for packages and vaults (a manifest without `[package]`): formats, Cargo-style
   features (including `dep:` and `name/feature`), and dependencies (`git =` with `version`,
@@ -30,8 +30,12 @@ What works (steps 1 to 4 of the plan, `doc/biblix.md` in topos):
   October 2026). Its Bibles are packages from the workspace's `biblix.toml` (a vault), else the
   library's own, or folders (`bible`, `bibles`); see `crates/biblix-lsp/README.md`
 
-Next: biblix-ffi (with topos's API) and an archive fetcher for WebAssembly, for the Obsidian
-plugin.
+- `biblix-ffi`: bindings for TypeScript/WebAssembly and Python (npm and PyPI `biblix`), with
+  topos's whole API in the same package: packages opened from the bytes the host reads, their
+  cache handed back to save, a vault's manifest and lock; see `crates/biblix-ffi/README.md`
+
+Next: an archive fetcher over the host's HTTP (installing in WebAssembly), then the Obsidian
+plugin moves to biblix-ffi.
 
 ## Using it
 

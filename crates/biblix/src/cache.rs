@@ -51,7 +51,7 @@ impl Cache {
 
     /// A package's cache: read if it was built from this exact text, else built now (verse
     /// counts only; books are cached as they're read)
-    pub fn open<'p>(&self, package: &'p Package) -> Result<CachedPackage<'p>> {
+    pub fn open(&self, package: Package) -> Result<CachedPackage> {
         let info = package.info();
         let checksum = package.checksum()?;
         let short = checksum
@@ -99,17 +99,17 @@ impl Cache {
 }
 
 /// A package with its cache: verse counts at hand, and books parsed once
-pub struct CachedPackage<'p> {
+pub struct CachedPackage {
     storage: Arc<dyn Storage>,
-    package: &'p Package,
+    package: Package,
     dir: String,
     manifest: CachedManifest,
     books: Mutex<HashMap<BookId, Arc<Book>>>,
 }
 
-impl CachedPackage<'_> {
+impl CachedPackage {
     pub fn package(&self) -> &Package {
-        self.package
+        &self.package
     }
 
     pub fn manifest(&self) -> &CachedManifest {

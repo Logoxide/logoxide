@@ -50,13 +50,24 @@ before changing the design.
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
+- `crates/biblix-ffi`: BoltFFI 0.31 bindings (npm and PyPI `biblix`), re-exporting topos-ffi
+  (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
+  package. Its library is `biblix` (BoltFFI names artifacts after the package), so it depends on
+  the core as `biblix_core`; nothing else may depend on topos-bible there (both libraries are
+  `topos_bible`). The host does all I/O: `Biblix.openPackage(files, features, cache)` takes
+  bytes and `BiblixPackage.cacheWrites()` hands back what the cache wrote; `openPackageDir` is
+  native only. Opening goes through the `Biblix` object because BoltFFI's WebAssembly
+  constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
+  `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry biblix's books and counts
+  across. Build with `npm install && npm run pack:wasm` or `npm run pack:python`; the examples
+  open the real packages
 
 ## Decisions
 
 - Its own repository; depends on topos (`../topos`, path dependencies until topos 0.6) and, later,
   sword-modules (`../sword-modules`) for SWORD. topos never depends on biblix
 - Licenses are shown, never enforced. No default registry (the owner can't host mirrors)
-- One package for apps later: biblix-ffi includes topos's API
+- One package for apps: biblix-ffi includes topos's API
 - Summaries with verse hashes are published for every package (not only Bibles); the parsed cache
   is never distributed
 - Audio and video are referenced, never stored: a package lists each file's URL, size, and

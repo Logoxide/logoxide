@@ -297,8 +297,8 @@ fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
     match cache {
         Some(dir) => {
             let cache = Cache::new(Arc::new(FsStorage::new(dir)));
-            let cached = cache.open(&package)?;
-            for id in package.books() {
+            let cached = cache.open(package)?;
+            for id in cached.package().books() {
                 let book = cached.book(id)?;
                 verses += book.spans.len();
                 books += 1;

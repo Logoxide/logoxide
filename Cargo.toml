@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/biblix", "crates/bx", "crates/biblix-lsp"]
+members = ["crates/biblix", "crates/bx", "crates/biblix-lsp", "crates/biblix-ffi"]
 resolver = "3"
 
 [workspace.package]
