@@ -6,7 +6,7 @@ tells [topos](https://github.com/MasterTemple/topos-bible) the translation's nam
 verse counts, so references like `John 3:16 KJV` are checked against that translation. `bx` is the
 command line.
 
-What works (steps 1 to 4 of the plan, and the start of 5, `doc/biblix.md` in topos):
+What works (steps 1 to 5 of the plan, and eBible.org's importer from 7, `doc/biblix.md` in topos):
 
 - `biblix.toml` for packages and vaults (a manifest without `[package]`): formats, Cargo-style
   features (including `dep:` and `name/feature`), and dependencies (`git =` with `version`,
@@ -36,7 +36,14 @@ What works (steps 1 to 4 of the plan, and the start of 5, `doc/biblix.md` in top
   installing without `git`, the host downloading refs and archives over HTTP; see
   `crates/biblix-ffi/README.md`
 
-Next: the Obsidian plugin moves to biblix-ffi.
+- Catalogs and imports: `bx search` finds packages by name, abbreviation, or language in
+  catalogs (a `catalog.toml` of git packages anyone can host, or eBible.org's list of 1,000+
+  translations, the default), and `bx import ebible:<id>` makes eBible.org's USFM download into
+  a package the project uses in `imports/<id>/`. `bx catalog entry <git URL>` writes a catalog's
+  entry for a package
+
+The Obsidian plugin (`obsidian-topos-bible`) uses biblix-ffi: Bibles in its vault's `Biblix/`
+folder, added from its settings by searching the catalogs or by git URL.
 
 ## Using it
 
