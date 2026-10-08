@@ -7,6 +7,8 @@ can host one (a file in a git repository is enough). Two kinds are read:
   `biblix.toml` describes it (`bx catalog entry <url>` writes an entry)
 - **eBible.org's list** (`translations.csv`, [`EBIBLE_CATALOG`]): about 1,500 translations it
   publishes as USFM, imported into packages when installed ([`crate::import`])
+- **fetch.bible's manifest** (`manifest.json`, [`FETCH_BIBLE_CATALOG`]): about 1,400 translations
+  it publishes as USX, a file per book, imported the same way
 
 ```toml
 # catalog.toml
@@ -22,7 +24,7 @@ git = "https://github.com/someone/bsb"
 ```
 
 A vault names its catalogs in `[settings] catalogs` (URLs or paths; a `.csv` is eBible.org's
-form); without any, eBible.org's list is the one searched.
+form, a `.json` fetch.bible's); without any, eBible.org's and fetch.bible's lists are searched.
 */
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +37,12 @@ use crate::{
 /// eBible.org's list of the translations it publishes
 pub const EBIBLE_CATALOG: &str = "https://ebible.org/Scriptures/translations.csv";
 
+/// fetch.bible's list of the translations it publishes
+pub const FETCH_BIBLE_CATALOG: &str = "https://v1.fetch.bible/manifest.json";
+
+/// The catalogs searched when a vault names none
+pub const DEFAULT_CATALOGS: [&str; 2] = [EBIBLE_CATALOG, FETCH_BIBLE_CATALOG];
+
 /// Where a listed package comes from
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -43,6 +51,9 @@ pub enum CatalogSource {
     Git { url: String },
     /// A translation eBible.org publishes as USFM: `id`'s zip, imported into a package
     Ebible { id: String },
+    /// A translation fetch.bible publishes as USX: each of `books` (lowercase USFM codes),
+    /// imported into a package
+    FetchBible { id: String, books: Vec<String> },
 }
 
 /// One package a catalog lists
@@ -110,15 +121,111 @@ pub struct Catalog {
 }
 
 impl Catalog {
-    /// A catalog from a file's text: eBible.org's CSV when `name` ends in `.csv`, else a
-    /// `catalog.toml`
+    /// A catalog from a file's text: eBible.org's CSV when `name` ends in `.csv`, fetch.bible's
+    /// manifest when it ends in `.json`, else a `catalog.toml`
     pub fn parse(name: &str, text: &str) -> Result<Catalog> {
-        let path = name.split(['?', '#']).next().unwrap_or(name);
-        if path.to_ascii_lowercase().ends_with(".csv") {
+        let path = name
+            .split(['?', '#'])
+            .next()
+            .unwrap_or(name)
+            .to_ascii_lowercase();
+        if path.ends_with(".csv") {
             Catalog::parse_ebible(text)
+        } else if path.ends_with(".json") {
+            Catalog::parse_fetch_bible(text)
         } else {
             Catalog::parse_toml(text)
         }
+    }
+
+    /// fetch.bible's `manifest.json`: its translations, with their books and licenses
+    pub fn parse_fetch_bible(text: &str) -> Result<Catalog> {
+        use serde_json::Value;
+        let bad = |message: &str| BiblixError::Catalog(format!("manifest.json: {message}"));
+        let json: Value = serde_json::from_str(text).map_err(|e| bad(&e.to_string()))?;
+        let bibles = json
+            .get("bibles")
+            .and_then(Value::as_object)
+            .ok_or_else(|| bad("no bibles"))?;
+        let ordered: Vec<String> = (json.get("books_ordered").and_then(Value::as_array))
+            .map(|books| {
+                books
+                    .iter()
+                    .filter_map(|b| Some(b.as_str()?.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        // The first 39 are the Old Testament's
+        let (ot, nt) = ordered.split_at(ordered.len().min(39));
+        let languages = json.get("languages");
+        let text_of = |v: Option<&Value>| {
+            v.and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(String::from)
+        };
+        let books_of = |v: Option<&Value>, all: &[String]| match v {
+            Some(Value::Bool(true)) => all.to_vec(),
+            Some(Value::Array(list)) => list
+                .iter()
+                .filter_map(|b| Some(b.as_str()?.to_ascii_lowercase()))
+                .collect(),
+            _ => vec![],
+        };
+        let mut entries = vec![];
+        for (id, bible) in bibles {
+            let mut books = books_of(bible.get("books_ot"), ot);
+            books.extend(books_of(bible.get("books_nt"), nt));
+            if books.is_empty() {
+                continue;
+            }
+            let names = bible.get("name");
+            let name_of = |key: &str| text_of(names.and_then(|n| n.get(key)));
+            let code = id.split('_').next().unwrap_or(id).to_string();
+            let language = languages.and_then(|l| l.get(&code));
+            let copyright = bible.get("copyright");
+            let license = (copyright.and_then(|c| c.get("licenses")))
+                .and_then(Value::as_array)
+                .and_then(|l| l.first())
+                .map(|l| fetch_bible_license(l.get("license"), text_of(l.get("url"))));
+            let abbreviation = name_of("english_abbrev")
+                .or_else(|| name_of("local_abbrev"))
+                .unwrap_or_else(|| id.to_uppercase());
+            let english = name_of("english");
+            let local = name_of("local");
+            entries.push(CatalogEntry {
+                id: package_id(id),
+                name: english
+                    .clone()
+                    .or_else(|| local.clone())
+                    .unwrap_or_else(|| id.clone()),
+                aliases: local
+                    .filter(|l| Some(l) != english.as_ref())
+                    .into_iter()
+                    .collect(),
+                abbreviation,
+                language_name: text_of(language.and_then(|l| l.get("english"))),
+                language: code,
+                description: None,
+                license,
+                copyright: text_of(copyright.and_then(|c| c.get("attribution"))),
+                version: (bible.get("year").and_then(Value::as_u64)).map(|y| format!("{y}.0.0")),
+                kind: PackageKind::Bible,
+                direction: match bible.get("direction").and_then(Value::as_str) {
+                    Some("rtl") => Direction::Rtl,
+                    _ => Direction::Ltr,
+                },
+                source: CatalogSource::FetchBible {
+                    id: id.clone(),
+                    books,
+                },
+            });
+        }
+        entries.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(Catalog {
+            name: String::from("fetch.bible"),
+            entries,
+        })
     }
 
     pub fn parse_toml(text: &str) -> Result<Catalog> {
@@ -305,6 +412,23 @@ impl Catalog {
     }
 }
 
+/// A fetch.bible license as SPDX: `cc-by-sa` with its URL's version is `CC-BY-SA-4.0`, `public`
+/// is public domain, and its own terms (an object of restrictions) are `LicenseRef-fetch.bible`
+fn fetch_bible_license(license: Option<&serde_json::Value>, url: Option<String>) -> String {
+    match license.and_then(serde_json::Value::as_str) {
+        Some("public") => String::from("LicenseRef-PublicDomain"),
+        Some(cc) if cc.starts_with("cc-") => {
+            let version = (url.as_deref())
+                .and_then(|u| u.trim_end_matches('/').rsplit('/').next())
+                .filter(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
+                .unwrap_or("4.0")
+                .to_string();
+            format!("{}-{version}", cc.to_uppercase())
+        }
+        _ => String::from("LicenseRef-fetch.bible"),
+    }
+}
+
 /// A version from a date (`2026-10-08` is `2026.10.8`), so newer downloads have newer versions
 fn date_version(date: &str) -> Option<String> {
     let mut parts = date.split('-').map(|p| p.parse::<u32>().ok());
@@ -484,6 +608,53 @@ git = "https://example.org/bsb"
         assert!(ids("nothing like this").is_empty());
         assert_eq!(ids("").len(), 3);
         assert!(Catalog::parse_toml("[[package]]\nid = 1").is_err());
+    }
+
+    #[test]
+    fn reads_fetch_bibles_manifest() {
+        let json = r#"{"bibles": {
+            "eng_bsb": {"name": {"local": "Berean Standard Bible", "local_abbrev": "BSB", "english": "Berean Standard Bible", "english_abbrev": "BSB"},
+                "year": 2024, "direction": "ltr", "copyright": {"licenses": [{"license": "public", "url": ""}], "attribution": "BSB Publishing, LLC"},
+                "books_ot": true, "books_nt": true},
+            "spa_x": {"name": {"local": "Biblia", "local_abbrev": "", "english": "A Bible", "english_abbrev": "AB"},
+                "year": 2020, "direction": "ltr", "copyright": {"licenses": [{"license": "cc-by-sa", "url": "https://creativecommons.org/licenses/by-sa/3.0/"}], "attribution": "Someone"},
+                "books_ot": [], "books_nt": ["jhn", "rom"]},
+            "heb_y": {"name": {"local": "", "local_abbrev": "", "english": "Restricted", "english_abbrev": "R"},
+                "year": 2020, "direction": "rtl", "copyright": {"licenses": [{"license": {"forbid_commercial": true}, "url": ""}], "attribution": ""},
+                "books_ot": ["gen"], "books_nt": false},
+            "none_z": {"name": {"english": "Nothing"}, "books_ot": [], "books_nt": false}
+        },
+        "languages": {"eng": {"english": "English"}, "spa": {"english": "Spanish"}},
+        "books_ordered": ["gen","exo","lev","num","deu","jos","jdg","rut","1sa","2sa","1ki","2ki","1ch","2ch","ezr","neh","est","job","psa","pro","ecc","sng","isa","jer","lam","ezk","dan","hos","jol","amo","oba","jon","mic","nam","hab","zep","hag","zec","mal","mat","mrk","luk","jhn","act","rom","1co","2co","gal","eph","php","col","1th","2th","1ti","2ti","tit","phm","heb","jas","1pe","2pe","1jn","2jn","3jn","jud","rev"]}"#;
+        let catalog = Catalog::parse(FETCH_BIBLE_CATALOG, json).unwrap();
+        assert_eq!(
+            catalog.entries.len(),
+            3,
+            "a translation without books is left out"
+        );
+        let bsb = &catalog.entries[0];
+        assert_eq!(
+            (
+                bsb.id.as_str(),
+                bsb.abbreviation.as_str(),
+                bsb.language.as_str()
+            ),
+            ("eng_bsb", "BSB", "eng")
+        );
+        assert_eq!(bsb.license.as_deref(), Some("LicenseRef-PublicDomain"));
+        let CatalogSource::FetchBible { books, .. } = &bsb.source else {
+            panic!()
+        };
+        assert_eq!((books.len(), books[42].as_str()), (66, "jhn"));
+        let x = catalog.entries.iter().find(|e| e.id == "spa_x").unwrap();
+        assert_eq!(x.license.as_deref(), Some("CC-BY-SA-3.0"));
+        assert_eq!(x.aliases, ["Biblia"]);
+        assert_eq!(x.language_name.as_deref(), Some("Spanish"));
+        let y = catalog.entries.iter().find(|e| e.id == "heb_y").unwrap();
+        assert_eq!(
+            (y.license.as_deref(), y.direction),
+            (Some("LicenseRef-fetch.bible"), Direction::Rtl)
+        );
     }
 
     #[test]

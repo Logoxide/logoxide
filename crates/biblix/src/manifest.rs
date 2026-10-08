@@ -205,17 +205,17 @@ pub struct Settings {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub compare: Vec<String>,
     /// Catalogs to search for packages (URLs or paths; see [`crate::catalog`]). Without any,
-    /// eBible.org's list
+    /// eBible.org's and fetch.bible's lists
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub catalogs: Option<Vec<String>>,
 }
 
 impl Manifest {
-    /// The catalogs to search: `[settings] catalogs`, else eBible.org's list
+    /// The catalogs to search: `[settings] catalogs`, else eBible.org's and fetch.bible's lists
     pub fn catalogs(&self) -> Vec<String> {
         (self.settings.as_ref())
             .and_then(|s| s.catalogs.clone())
-            .unwrap_or_else(|| vec![String::from(crate::catalog::EBIBLE_CATALOG)])
+            .unwrap_or_else(|| crate::catalog::DEFAULT_CATALOGS.map(String::from).to_vec())
     }
 }
 

@@ -138,9 +138,9 @@ enum Command {
         limit: usize,
     },
     /// Makes a package from another publisher's download, puts it in the project's `imports/`,
-    /// and adds it as a path package: `ebible:<id>` (an id `bx search` shows)
+    /// and adds it as a path package: `ebible:<id>` or `fetch:<id>` (as `bx search` shows)
     Import {
-        /// `ebible:eng-asv`
+        /// `ebible:eng-asv`, `fetch:eng_bsb`
         source: String,
     },
     /// Catalogs: lists of packages anyone can host
@@ -776,6 +776,9 @@ fn search(cli: &Cli, query: &str, catalogs: &[String], limit: usize) -> biblix::
         let source = match &entry.source {
             biblix::catalog::CatalogSource::Git { url } => format!("bx add --git {url}"),
             biblix::catalog::CatalogSource::Ebible { id } => format!("bx import ebible:{id}"),
+            biblix::catalog::CatalogSource::FetchBible { id, .. } => {
+                format!("bx import fetch:{id}")
+            }
         };
         println!(
             "{} ({}): {}, {language}, {}\n    {source}",
@@ -800,17 +803,23 @@ fn search(cli: &Cli, query: &str, catalogs: &[String], limit: usize) -> biblix::
 }
 
 fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
-    let Some(id) = source.strip_prefix("ebible:") else {
-        return Err(biblix::BiblixError::Import(format!(
-            "{source}: give ebible:<id> (see bx search)"
-        )));
+    use biblix::catalog::{CatalogSource, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
+    let (catalog, id) = match source.split_once(':') {
+        Some(("ebible", id)) => (EBIBLE_CATALOG, id),
+        Some(("fetch", id)) => (FETCH_BIBLE_CATALOG, id),
+        _ => {
+            return Err(biblix::BiblixError::Import(format!(
+                "{source}: give ebible:<id> or fetch:<id> (see bx search)"
+            )));
+        }
     };
-    let catalog = load_catalog(biblix::catalog::EBIBLE_CATALOG)?;
+    let catalog = load_catalog(catalog)?;
     let entry = (catalog.entries.iter())
-        .find(|e| matches!(&e.source, biblix::catalog::CatalogSource::Ebible { id: i } if i == id))
-        .ok_or_else(|| {
-            biblix::BiblixError::Import(format!("eBible.org lists no downloadable {id}"))
-        })?;
+        .find(|e| match &e.source {
+            CatalogSource::Ebible { id: i } | CatalogSource::FetchBible { id: i, .. } => i == id,
+            CatalogSource::Git { .. } => false,
+        })
+        .ok_or_else(|| biblix::BiblixError::Import(format!("{source}: not in its catalog")))?;
     let library = cli.library();
     let mut project = cli.project(&library)?;
     let relative = format!("imports/{}", entry.id);
@@ -821,8 +830,24 @@ fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
             dir.display()
         )));
     }
-    let zip = get(&biblix::import::ebible_zip_url(id))?;
-    biblix::import::ebible(entry, &zip, &FsStorage::new(&dir))?;
+    let dest = FsStorage::new(&dir);
+    match &entry.source {
+        CatalogSource::Ebible { id } => {
+            let zip = get(&biblix::import::ebible_zip_url(id))?;
+            biblix::import::ebible(entry, &zip, &dest)?;
+        }
+        CatalogSource::FetchBible { id, books } => {
+            let mut files = vec![];
+            for code in books {
+                files.push((
+                    code.clone(),
+                    get(&biblix::import::fetch_bible_book_url(id, code))?,
+                ));
+            }
+            biblix::import::fetch_bible(entry, &files, &dest)?;
+        }
+        CatalogSource::Git { .. } => unreachable!("only imports are found"),
+    }
     let dependency = DetailedDependency {
         path: Some(relative),
         default_features: true,

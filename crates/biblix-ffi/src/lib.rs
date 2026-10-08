@@ -146,7 +146,8 @@ impl Biblix {
         Ok(biblix_core::source::usfm_to_usx(&usfm)?)
     }
 
-    /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`)
+    /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`; a
+    /// project's `catalogs()` has it and fetch.bible's unless it names others)
     pub fn ebible_catalog_url(&self) -> String {
         biblix_core::catalog::EBIBLE_CATALOG.to_string()
     }
@@ -173,6 +174,26 @@ impl Biblix {
     ) -> Result<Vec<PackageFile>, BiblixError> {
         let files = biblix_core::MemoryStorage::new();
         biblix_core::import::ebible(&entry.into(), &zip, &files)?;
+        let mut out = vec![];
+        for path in biblix_core::Storage::walk(&files, "")? {
+            out.push(PackageFile {
+                bytes: biblix_core::Storage::read(&files, &path)?,
+                path,
+            });
+        }
+        Ok(out)
+    }
+
+    /// A package made from fetch.bible's books (each `FetchBook`'s bytes, its `code` as the
+    /// path): its files, relative to the folder to write them in, like `import_ebible`
+    pub fn import_fetch_bible(
+        &self,
+        entry: CatalogEntry,
+        books: Vec<PackageFile>,
+    ) -> Result<Vec<PackageFile>, BiblixError> {
+        let books: Vec<(String, Vec<u8>)> = books.into_iter().map(|b| (b.path, b.bytes)).collect();
+        let files = biblix_core::MemoryStorage::new();
+        biblix_core::import::fetch_bible(&entry.into(), &books, &files)?;
         let mut out = vec![];
         for path in biblix_core::Storage::walk(&files, "")? {
             out.push(PackageFile {

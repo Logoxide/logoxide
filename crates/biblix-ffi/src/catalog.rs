@@ -2,7 +2,7 @@
 
 use biblix_core::{
     catalog::{Catalog, CatalogEntry as CoreEntry, CatalogSource as CoreSource},
-    import::ebible_zip_url,
+    import::{ebible_zip_url, fetch_bible_book_url},
     manifest::{Direction, PackageKind as CoreKind},
 };
 use boltffi::*;
@@ -17,6 +17,18 @@ pub enum CatalogSource {
     Git { url: String },
     /// A translation eBible.org publishes: download `zip_url`, then `Biblix::import_ebible`
     Ebible { id: String, zip_url: String },
+    /// A translation fetch.bible publishes: download each of `books`, then
+    /// `Biblix::import_fetch_bible`
+    FetchBible { id: String, books: Vec<FetchBook> },
+}
+
+/// A book fetch.bible publishes, and where
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FetchBook {
+    /// Its USFM code as fetch.bible writes it (`jhn`)
+    pub code: String,
+    pub url: String,
 }
 
 /// One package a catalog lists
@@ -62,6 +74,15 @@ impl From<&CoreEntry> for CatalogEntry {
                     id: id.clone(),
                     zip_url: ebible_zip_url(id),
                 },
+                CoreSource::FetchBible { id, books } => CatalogSource::FetchBible {
+                    id: id.clone(),
+                    books: (books.iter())
+                        .map(|code| FetchBook {
+                            code: code.clone(),
+                            url: fetch_bible_book_url(id, code),
+                        })
+                        .collect(),
+                },
             },
         }
     }
@@ -95,6 +116,10 @@ impl From<CatalogEntry> for CoreEntry {
             source: match e.source {
                 CatalogSource::Git { url } => CoreSource::Git { url },
                 CatalogSource::Ebible { id, .. } => CoreSource::Ebible { id },
+                CatalogSource::FetchBible { id, books } => CoreSource::FetchBible {
+                    id,
+                    books: books.into_iter().map(|b| b.code).collect(),
+                },
             },
         }
     }

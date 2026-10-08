@@ -473,5 +473,6 @@ fn catalogs_and_ebible_imports() {
     );
 
     let project = biblix.parse_project(None, None).unwrap();
-    assert_eq!(project.catalogs(), [biblix.ebible_catalog_url()]);
+    assert_eq!(project.catalogs()[0], biblix.ebible_catalog_url());
+    assert_eq!(project.catalogs().len(), 2);
 }
