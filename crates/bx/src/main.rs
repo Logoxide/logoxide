@@ -14,7 +14,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(
     name = "bx",
     version,
-    about = "Bible translations as versioned packages"
+    about = "Bibles, commentaries, lexicons, books, and media as versioned packages"
 )]
 struct Cli {
     #[command(subcommand)]

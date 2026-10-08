@@ -1,5 +1,5 @@
 /*!
-biblix: Bible translations as versioned packages.
+biblix: Bibles, commentaries, lexicons, books, and media as versioned packages.
 
 A package is a git repository with a `biblix.toml` ([`manifest`]) and its text in one or more
 formats ([`source`]: USX, USFM). [`Package::open`] reads one from any [`Storage`] (a folder,

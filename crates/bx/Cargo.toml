@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "biblix's command line: Bible translations as versioned packages"
+description = "biblix's command line: Bibles, commentaries, lexicons, books, and media as versioned packages"
 publish = false
 
 [dependencies]

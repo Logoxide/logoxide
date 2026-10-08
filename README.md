@@ -1,9 +1,9 @@
 # biblix
 
-Bible translations as versioned packages. A package is a git repository with a `biblix.toml` and
-its text in one or more formats; biblix reads it, caches it, and tells
-[topos](https://github.com/MasterTemple/topos-bible) the translation's name, aliases, and verse
-counts, so references like `John 3:16 KJV` are checked against that translation. `bx` is the
+Bibles, commentaries, lexicons, books, and media as versioned packages. A package is a git
+repository with a `biblix.toml` and its text in one or more formats; biblix reads it, caches it, and
+tells [topos](https://github.com/MasterTemple/topos-bible) the translation's name, aliases, and
+verse counts, so references like `John 3:16 KJV` are checked against that translation. `bx` is the
 command line.
 
 What works (steps 1 and 2 of the plan, `doc/biblix.md` in topos):

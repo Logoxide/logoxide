@@ -1,9 +1,9 @@
 # biblix
 
-Bible translations as versioned packages (git repositories with a `biblix.toml`), read from many
-formats, cached, shared, and (later) installed; `bx` is the CLI. The plan and the owner's
-decisions are in topos's `doc/biblix.md` (`../topos/doc/biblix.md`): read it before changing the
-design.
+Bibles, commentaries, lexicons, books, and media as versioned packages (git repositories with a
+`biblix.toml`), read from many formats, cached, shared, and (later) installed; `bx` is the CLI. The
+plan and the owner's decisions are in topos's `doc/biblix.md` (`../topos/doc/biblix.md`): read it
+before changing the design.
 
 ## Layout
 
@@ -59,6 +59,8 @@ design.
 - One package for apps later: biblix-ffi includes topos's API
 - Summaries with verse hashes are published for every package (not only Bibles); the parsed cache
   is never distributed
+- Audio and video are referenced, never stored: a package lists each file's URL, size, and
+  SHA-256, with its transcript and verse timings; releases are judged by those
 - Hand-made test packages (BSB from a DBL bundle as USX, KJV from fetch.bible as USFM) are git
   repositories in `~/Development/biblix-packages/`, tagged `v1.0.0`
 

@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Bible translations as versioned packages: read from USX, USFM, and more, cached, and shared"
+description = "Bibles, commentaries, lexicons, books, and media as versioned packages: read from USX, USFM, and more, cached, and shared"
 publish = false
 
 [dependencies]
