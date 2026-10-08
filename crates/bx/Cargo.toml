@@ -1,0 +1,13 @@
+[package]
+name = "bx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "biblix's command line: Bible translations as versioned packages"
+publish = false
+
+[dependencies]
+biblix = { path = "../biblix" }
+topos-bible.workspace = true
+clap = { version = "4", features = ["derive"] }

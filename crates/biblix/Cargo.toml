@@ -1,0 +1,19 @@
+[package]
+name = "biblix"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bible translations as versioned packages: read from USX, USFM, and more, cached, and shared"
+publish = false
+
+[dependencies]
+topos-bible.workspace = true
+topos-bible-markup.workspace = true
+serde.workspace = true
+toml = "0.9"
+semver = { version = "1", features = ["serde"] }
+sha2 = "0.10"
+postcard = { version = "1", features = ["use-std"] }
+thiserror = "2"
+usfm3 = "0.2"
