@@ -1,23 +1,24 @@
 [package]
-name = "topos-lsp"
-version = "0.5.0"
-publish = false
-edition = "2024"
+name = "biblix-lsp"
+version.workspace = true
+edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "A language server for Bible references: completion, hover, symbols, and diagnostics"
+description = "A language server for Bible references and text: completion, hover, symbols, diagnostics, and passages from biblix packages"
+publish = false
 
 [[bin]]
-name = "topos-lsp"
+name = "biblix-lsp"
 path = "src/main.rs"
 
 [dependencies]
+biblix = { path = "../biblix" }
 ignore = "0.4.23"
 lsp-server = "0.10.0"
 lsp-types = "0.97.0"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = "1.1"
-topos-bible = { path = "../topos-lib" }
-topos-bible-markup = { path = "../topos-markup" }
-topos-bible-index = { path = "../topos-index", default-features = false, features = ["files"] }
+topos-bible = { workspace = true }
+topos-bible-markup = { workspace = true }
+topos-bible-index = { workspace = true }

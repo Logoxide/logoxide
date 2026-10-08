@@ -1350,7 +1350,7 @@ mod tests {
     /// The shared completion cases (topos-lib's tests/cases/complete.txt), as an editor asks
     #[test]
     fn completion_cases() {
-        let cases = include_str!("../../topos-lib/tests/cases/complete.txt");
+        let cases = include_str!("../../../../topos/crates/topos-lib/tests/cases/complete.txt");
         let mut failures = vec![];
         for line in cases
             .lines()
@@ -1406,7 +1406,7 @@ mod tests {
     /// The shared `apply:` completion cases (`|` is the cursor), as an editor asks
     #[test]
     fn applied_completion_cases() {
-        let cases = include_str!("../../topos-lib/tests/cases/complete.txt");
+        let cases = include_str!("../../../../topos/crates/topos-lib/tests/cases/complete.txt");
         let mut failures = vec![];
         for case in cases.lines().filter_map(|l| l.strip_prefix("apply: ")) {
             let (input, expected) = case.split_once(" => ").unwrap();
