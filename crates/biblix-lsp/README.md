@@ -1,6 +1,8 @@
-# τόπος Bible language server
+# biblix language server
 
-`topos-lsp` speaks the Language Server Protocol over stdin and stdout:
+`biblix-lsp` speaks the Language Server Protocol over stdin and stdout. It was topos's `topos-lsp`
+until October 2026; it moved here so its Bible text can come from biblix packages, while topos
+stays references only:
 
 - **Completion**: book names (`1 Co` → `1 Corinthians`), then chapters and verses from the
   book's versification; each completion rewrites the whole reference (`jn 3:1` → `John 3:16`).
@@ -36,7 +38,7 @@ as they are in the editor, including unsaved changes.
 Install with:
 
 ```sh
-cargo install --git https://github.com/MasterTemple/topos-bible topos-lsp
+cargo install --path crates/biblix-lsp     # in a biblix checkout, next to a topos checkout
 ```
 
 ## Settings
@@ -53,15 +55,17 @@ so one file configures both. It uses these keys and ignores the others:
 | `inlay-hints` | `"changed"` (default), `"always"`, `"osis"`, or `"never"` |
 | `reference-diagnostics` | The diagnostic on each reference: `"info"` (default), `"hint"`, or `"never"` |
 | `hover` | What a hover shows below the reference, in order (a list or `"osis,book"`; `[]` for none): `text` (the passage, from `bible`), `written`, `name`, `abbreviation`, `osis`, `book`, `testament`, `genres`, `verses`, `bcv`, `location`. The default is every one but `written` and `bcv`. `name` and `abbreviation` are left out when the reference is already written that way |
-| `bible` | A folder of USX files, one book each (`JHN.usx`, `44JHNBSB.usx`, or any name with a `<book code>` inside), as Paratext, the Digital Bible Library, and eBible.org publish them, named after the folder. Its USX files are left out of workspace searches |
-| `bibles` | More Bibles by name: `{ KJV = "~/Bibles/KJV" }` or `{ KJV = { path = "~/Bibles/KJV", aliases = ["AV"] } }` (see [Translations](#translations)) |
+| `bible` | A Bible's folder: a biblix package (with a `biblix.toml`; USX or USFM, named by its abbreviation), or a folder of USX files, one book each (`JHN.usx`, `44JHNBSB.usx`, or any name with a `<book code>` inside), as Paratext, the Digital Bible Library, and eBible.org publish them, named after the folder. Its files are left out of workspace searches |
+| `bibles` | More Bibles: package ids from the project's `biblix.lock` (`["bsb", "kjv"]`), or folders by name: `{ KJV = "~/Bibles/KJV" }` or `{ KJV = { path = "~/Bibles/KJV", aliases = ["AV"] } }` (see [Translations](#translations)). Without `bible` or `bibles`, the project's Bibles are used |
+| `project` | The folder whose `biblix.toml` and `biblix.lock` name the Bibles: by default a workspace folder that has one (a vault), else the library's own (`bx add` without a project) |
+| `library` | The biblix library the packages are installed in (`BIBLIX_HOME`, else `$XDG_DATA_HOME/biblix`) |
 | `default-bible` | The Bible for references that name none (a name or alias): `bible`'s by default, else the first of `bibles` by name |
 | `hover-bibles` | Bibles whose text hover also shows, after the one the reference names (`["BSB", "KJV"]`) |
 | `markup` | How Bible text is written (see below) |
 | `insertions` | Code actions that insert a passage's text (see below) |
 
-The CLI skips `inlay-hints`, `reference-diagnostics`, `hover`, `bible`, `bibles`, `default-bible`,
-`hover-bibles`, `markup`, and `insertions`, so they can go in the shared `config.toml`.
+The CLI skips `inlay-hints`, `reference-diagnostics`, `hover`, `bible`, `bibles`, `project`,
+`library`, `default-bible`, `hover-bibles`, `markup`, and `insertions`, so they can go in the shared `config.toml`.
 
 `markup` has a table for each kind of element, with `show` and `display` (the defaults are
 shown; other keys, like an editor's `color`, are ignored):
@@ -171,7 +175,7 @@ Without the plugin (Neovim 0.11+):
 
 ```lua
 vim.lsp.config('topos', {
-  cmd = { 'topos-lsp' },
+  cmd = { 'biblix-lsp' },
   filetypes = { 'markdown', 'text' },
   root_markers = { '.git', '.obsidian' },
   init_options = { ['psg-fmt'] = { join_adjacent = true }, ['inlay-hints'] = 'always' },

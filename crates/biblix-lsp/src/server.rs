@@ -172,6 +172,8 @@ pub struct Server {
     bibles: Bibles,
     /// The Bibles whose text hover shows, after the one a reference names
     hover_bibles: Vec<String>,
+    /// This machine's biblix library, where projects' packages are installed (none in tests)
+    library: Option<PathBuf>,
     /// Ways to insert a passage's text (code actions)
     insertions: Vec<Insertion>,
 }
@@ -191,12 +193,18 @@ impl Server {
             cache: workspace::Cache::default(),
             bibles: Bibles::default(),
             hover_bibles: vec![],
+            library: None,
             insertions: vec![],
         }
     }
 
     pub fn set_roots(&mut self, roots: Vec<PathBuf>) {
         self.roots = roots;
+    }
+
+    /// This machine's biblix library (`bx`'s), for projects and the `bibles` setting's package ids
+    pub fn set_library(&mut self, library: PathBuf) {
+        self.library = Some(library);
     }
 
     /**
@@ -217,7 +225,7 @@ impl Server {
             bibles,
             hover_bibles,
             insertions,
-        } = settings::settings(config, &editor)?.configure()?;
+        } = settings::settings(config, &editor)?.configure(&self.roots, self.library.as_deref())?;
         self.bibles = bibles;
         self.hover_bibles = hover_bibles;
         self.insertions = insertions;
@@ -1524,7 +1532,7 @@ mod tests {
     /// A workspace folder with notes on disk, plus one open document (`name` keeps tests that
     /// run at once apart)
     fn workspace(open: &str, name: &str) -> (Server, Uri, PathBuf) {
-        let dir = std::env::temp_dir().join(format!("topos-lsp-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("biblix-lsp-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("My Notes")).unwrap();
         std::fs::write(
@@ -2464,6 +2472,83 @@ to condemn.</char> <verse eid="JHN 3:17"/></para>
         assert!(kjv < bsb, "{both}");
         settings.insert("hover-bibles".into(), json!(["NIV"]));
         assert!(server.configure(Value::Object(settings)).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Bibles from a biblix project in the workspace: without `bible` or `bibles`, its packages;
+    /// with `bibles = ["id"]`, those
+    #[test]
+    fn bibles_from_a_project() {
+        let (mut server, uri, dir) = workspace("See John 3:16 TB here", "project");
+        // A USFM package, used in place (a path dependency)
+        let package = dir.join("Bibles/TB");
+        std::fs::create_dir_all(package.join("usfm")).unwrap();
+        std::fs::write(
+            package.join("biblix.toml"),
+            "[package]\nid = \"tb\"\nname = \"Test\"\nabbreviation = \"TB\"\naliases = [\"Testing\"]\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusfm = { path = \"usfm/\" }\n",
+        )
+        .unwrap();
+        std::fs::write(
+            package.join("usfm/43JHNTB.usfm"),
+            "\\id JHN\n\\c 3\n\\p\n\\v 16 \\w For|strong=\"G1063\"\\w* \\w God|strong=\"G2316\"\\w* so loved the world.\n\\v 17 For God sent not.\n",
+        )
+        .unwrap();
+        let mut project = biblix::Project::init(&dir).unwrap();
+        let dependency = biblix::manifest::DetailedDependency {
+            path: Some("Bibles/TB".into()),
+            default_features: true,
+            ..Default::default()
+        };
+        project.add("tb", &dependency).unwrap();
+        project.save_manifest().unwrap();
+        let library = biblix::Library::new(dir.join("library"), dir.join("cache"));
+        project
+            .install(
+                &library,
+                &biblix::git::GitCli::default(),
+                biblix::resolve::Update::Nothing,
+            )
+            .unwrap();
+
+        // No Bible settings: the project's
+        server.configure(json!({ "no-config": true })).unwrap();
+        let names: Vec<String> = server.bibles().bibles.into_iter().map(|b| b.name).collect();
+        assert_eq!(names, ["TB"]);
+        let hover = server
+            .hover(HoverParams {
+                text_document_position_params: at(&uri, 0, 6),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .unwrap();
+        let HoverContents::Markup(markup) = hover.contents else {
+            panic!("no markup");
+        };
+        // The package's own name, and its USFM text (with the spaces between Strong's-tagged words)
+        assert!(
+            markup.value.starts_with("**John 3:16** (TB)"),
+            "{}",
+            markup.value
+        );
+        assert!(
+            markup.value.contains("For God so loved the world."),
+            "{}",
+            markup.value
+        );
+
+        // By id, and an id the project doesn't have
+        server
+            .configure(json!({ "no-config": true, "bibles": ["tb"] }))
+            .unwrap();
+        assert_eq!(server.bibles().bibles[0].aliases, ["Testing"]);
+        let error = server
+            .configure(json!({ "no-config": true, "bibles": ["nope"] }))
+            .unwrap_err();
+        assert!(error.contains("`nope` isn't in"), "{error}");
+        // The package's folder as a `bible` folder works too
+        server
+            .configure(json!({ "no-config": true, "bible": package.to_str().unwrap() }))
+            .unwrap();
+        assert_eq!(server.bibles().bibles[0].name, "TB");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

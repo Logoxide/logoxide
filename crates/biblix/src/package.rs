@@ -92,6 +92,11 @@ impl Package {
         self.source.as_ref()
     }
 
+    /// The format being read, keeping nothing else (for apps that hold a source for a session)
+    pub fn into_source(self) -> Box<dyn Source> {
+        self.source
+    }
+
     pub fn storage(&self) -> &Arc<dyn Storage> {
         &self.storage
     }

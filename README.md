@@ -26,7 +26,12 @@ What works (steps 1 and 2 of the plan, `doc/biblix.md` in topos):
 - `bx init`, `add`, `remove`, `install`, `update`, `list`, `show`, `check`, `release`, `diff`,
   `verify`
 
-Next: topos's LSP using the library, then biblix-ffi with an archive fetcher for WebAssembly.
+- `biblix-lsp`: the language server for Bible references and text (topos's `topos-lsp` until
+  October 2026). Its Bibles are packages from the workspace's `biblix.toml` (a vault), else the
+  library's own, or folders (`bible`, `bibles`); see `crates/biblix-lsp/README.md`
+
+Next: biblix-ffi (with topos's API) and an archive fetcher for WebAssembly, for the Obsidian
+plugin.
 
 ## Using it
 

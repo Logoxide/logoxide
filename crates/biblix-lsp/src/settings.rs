@@ -23,6 +23,11 @@ use topos_bible::{
 
 use topos_bible_markup::Kind;
 
+use biblix::{
+    Library, Project,
+    manifest::{MANIFEST, PackageKind},
+};
+
 use crate::bible::{Bible, Bibles};
 
 /// What inlay hints show after each reference
@@ -230,9 +235,33 @@ impl Default for Insertion {
 }
 
 /**
-A Bible in the `bibles` setting: its folder, or the folder and other ways to write its name
-(`bibles = { BSB = "~/Bibles/BSB", KJV = { path = "~/Bibles/KJV", aliases = ["AV"] } }`)
+The `bibles` setting: packages from the project's `biblix.lock` by id (`bibles = ["bsb", "kjv"]`),
+or folders by name (`bibles = { BSB = "~/Bibles/BSB", KJV = { path = "~/Bibles/KJV", aliases =
+["AV"] } }`)
 */
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum BiblesSetting {
+    Packages(Vec<String>),
+    Folders(BTreeMap<String, BibleSetting>),
+}
+
+impl Default for BiblesSetting {
+    fn default() -> Self {
+        BiblesSetting::Folders(BTreeMap::new())
+    }
+}
+
+impl BiblesSetting {
+    fn is_empty(&self) -> bool {
+        match self {
+            BiblesSetting::Packages(ids) => ids.is_empty(),
+            BiblesSetting::Folders(folders) => folders.is_empty(),
+        }
+    }
+}
+
+/// A folder in the `bibles` setting: its path, or its path and other ways to write its name
 #[derive(Clone, Debug, Deserialize)]
 #[serde(untagged)]
 pub enum BibleSetting {
@@ -312,12 +341,18 @@ pub struct Settings {
     pub reference_diagnostics: ReferenceDiagnostics,
     /// What the hover shows below the reference (`"osis,book"` or a list; `[]` for none)
     pub hover: Option<OneOrMany>,
-    /// A folder of USX files (one book each), for passage text in hover and go-to-definition
-    /// (named after the folder)
+    /// A Bible's folder (a biblix package, or USX files, one book each), for passage text in
+    /// hover and go-to-definition
     pub bible: Option<String>,
-    /// More Bibles by name (translations): a reference followed by a name or alias
-    /// (`John 3:16 KJV`) shows that Bible's text
-    pub bibles: BTreeMap<String, BibleSetting>,
+    /// More Bibles (translations): package ids from the project's lock, or folders by name. A
+    /// reference followed by a name or alias (`John 3:16 KJV`) shows that Bible's text. Without
+    /// `bible` or `bibles`, the project's Bibles are used
+    pub bibles: BiblesSetting,
+    /// The biblix library (else `BIBLIX_HOME`, else `$XDG_DATA_HOME/biblix`)
+    pub library: Option<String>,
+    /// The folder with the `biblix.toml` and `biblix.lock` naming the Bibles (else a workspace
+    /// folder that has one, else the library's own)
+    pub project: Option<String>,
     /// The Bible for references that name none: `bible`'s, else the first of `bibles`
     pub default_bible: Option<String>,
     /// The Bibles whose text hover shows, after the one the reference names (`["BSB", "KJV"]`);
@@ -448,7 +483,17 @@ impl Settings {
 
     /// `data` (or the defaults), then each `merge-data`, then each `remove-data`, and the book
     /// context (like the CLI)
-    pub fn configure(&self) -> Result<Configured, String> {
+    /**
+    Builds what the server uses
+    - `roots` are the workspace folders, where a project (`biblix.toml`) may be
+    - `machine` is this machine's library (the server's; tests have none), which the `library`
+      setting overrides
+    */
+    pub fn configure(
+        &self,
+        roots: &[PathBuf],
+        machine: Option<&Path>,
+    ) -> Result<Configured, String> {
         fn read<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T, String> {
             let text =
                 std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -483,7 +528,7 @@ impl Settings {
             ),
             (None, None) => None,
         };
-        let bibles = self.bibles(&data)?;
+        let bibles = self.bibles(&data, roots, machine)?;
         let matcher = BibleFilter::new(data).create_matcher();
         let extensions = self
             .ext
@@ -533,8 +578,16 @@ impl Settings {
         })
     }
 
-    /// `bible`, then each of `bibles`, with `default-bible` (or `bible`) first
-    fn bibles(&self, data: &BibleData) -> Result<Bibles, String> {
+    /**
+    `bible`, then each of `bibles`, with `default-bible` (or `bible`) first; without either, the
+    project's Bibles (if there's a project)
+    */
+    fn bibles(
+        &self,
+        data: &BibleData,
+        roots: &[PathBuf],
+        machine: Option<&Path>,
+    ) -> Result<Bibles, String> {
         let mut list = vec![];
         if let Some(folder) = &self.bible {
             list.push(Bible::load(
@@ -544,13 +597,42 @@ impl Settings {
                 self.markup.clone(),
             )?);
         }
-        for (name, setting) in &self.bibles {
-            let path = expand_home(setting.path());
-            let mut bible = Bible::load(&path, Some(name), data.clone(), self.markup.clone())
-                .map_err(|e| format!("bibles.{name}: {e}"))?;
-            bible.aliases = setting.aliases().to_vec();
+        let add = |bible: Bible, list: &mut Vec<Bible>| {
             list.retain(|b: &Bible| b.name != bible.name);
             list.push(bible);
+        };
+        match &self.bibles {
+            BiblesSetting::Folders(folders) => {
+                for (name, setting) in folders {
+                    let path = expand_home(setting.path());
+                    let mut bible =
+                        Bible::load(&path, Some(name), data.clone(), self.markup.clone())
+                            .map_err(|e| format!("bibles.{name}: {e}"))?;
+                    if !setting.aliases().is_empty() {
+                        bible.aliases = setting.aliases().to_vec();
+                    }
+                    add(bible, &mut list);
+                }
+            }
+            BiblesSetting::Packages(ids) => {
+                let (project, library) = self.project(roots, machine)?
+                    .ok_or("bibles: no biblix.toml names packages (run `bx add` in the workspace or the library)")?;
+                for id in ids {
+                    add(self.package_bible(&project, &library, id, data)?, &mut list);
+                }
+            }
+        }
+        if self.bible.is_none()
+            && self.bibles.is_empty()
+            && let Some((project, library)) = self.project(roots, machine)?
+        {
+            let ids: Vec<String> = project
+                .lock()
+                .map(|l| l.roots().map(|p| p.id.clone()).collect())
+                .unwrap_or_default();
+            for id in ids.iter().filter(|id| bible_kind(&project, &library, id)) {
+                add(self.package_bible(&project, &library, id, data)?, &mut list);
+            }
         }
         if let Some(default) = &self.default_bible {
             let at = (list.iter())
@@ -561,6 +643,84 @@ impl Settings {
         }
         Ok(Bibles::new(list))
     }
+}
+
+impl Settings {
+    /// The project naming the Bibles (the `project` setting, else a workspace folder with a
+    /// `biblix.toml`, else the library's own) and the library they're installed in
+    fn project(
+        &self,
+        roots: &[PathBuf],
+        machine: Option<&Path>,
+    ) -> Result<Option<(Project, Library)>, String> {
+        let library_root = match (&self.library, machine) {
+            (Some(path), _) => Some(expand_home(path)),
+            (None, Some(machine)) => Some(machine.to_path_buf()),
+            (None, None) => None,
+        };
+        let dir = match &self.project {
+            Some(path) => Some(expand_home(path)),
+            None => roots
+                .iter()
+                .find(|root| root.join(MANIFEST).is_file())
+                .cloned()
+                .or_else(|| {
+                    library_root
+                        .clone()
+                        .filter(|root| root.join(MANIFEST).is_file())
+                }),
+        };
+        let Some(dir) = dir else {
+            return Ok(None);
+        };
+        let project = Project::open(&dir).map_err(|e| format!("project {}: {e}", dir.display()))?;
+        let library = Library::new(
+            library_root.unwrap_or_else(Library::default_root),
+            Library::default_cache(),
+        );
+        Ok(Some((project, library)))
+    }
+
+    /// A package from the project's lock file, as a Bible named by its abbreviation
+    fn package_bible(
+        &self,
+        project: &Project,
+        library: &Library,
+        id: &str,
+        data: &BibleData,
+    ) -> Result<Bible, String> {
+        let lock = project.lock().ok_or_else(|| {
+            format!(
+                "bibles: {} has no biblix.lock (run `bx install` there)",
+                project.dir().display()
+            )
+        })?;
+        let locked = lock.roots().find(|p| p.id == id).ok_or_else(|| {
+            format!(
+                "bibles: `{id}` isn't in {} (run `bx add`)",
+                project.dir().join(MANIFEST).display()
+            )
+        })?;
+        if !library.is_installed(locked, project.dir()) {
+            return Err(format!(
+                "bibles: {} isn't installed (run `bx install`)",
+                locked.name()
+            ));
+        }
+        let dir = library.package_dir(locked, project.dir());
+        Bible::load(&dir, None, data.clone(), self.markup.clone())
+            .map_err(|e| format!("bibles: {id}: {e}"))
+    }
+}
+
+/// Whether a project's package is a Bible (not a lexicon or cross references)
+fn bible_kind(project: &Project, library: &Library, id: &str) -> bool {
+    let locked = project
+        .lock()
+        .and_then(|l| l.roots().find(|p| p.id == id).cloned());
+    locked
+        .and_then(|locked| library.open(&locked, project.dir()).ok())
+        .is_some_and(|package| package.info().kind == PackageKind::Bible)
 }
 
 #[cfg(test)]
@@ -605,7 +765,10 @@ mod tests {
     #[test]
     fn extensions_and_bad_values() {
         let settings = parse("ext = \"md, .TXT\"", json!({}));
-        assert_eq!(settings.configure().unwrap().extensions, ["md", "txt"]);
+        assert_eq!(
+            settings.configure(&[], None).unwrap().extensions,
+            ["md", "txt"]
+        );
         let table: toml::Table = "inlay-hints = \"sometimes\"".parse().unwrap();
         let config = normalize(serde_json::to_value(table).unwrap());
         assert!(super::settings(config, &Map::new()).is_err());
@@ -613,15 +776,17 @@ mod tests {
 
     #[test]
     fn hover_fields() {
-        let default = parse("", json!({})).configure().unwrap().hover;
+        let default = parse("", json!({})).configure(&[], None).unwrap().hover;
         assert_eq!(default, HoverField::DEFAULT);
         let listed = parse("hover = \"OSIS, bcv\"", json!({}))
-            .configure()
+            .configure(&[], None)
             .unwrap();
         assert_eq!(listed.hover, [HoverField::Osis, HoverField::Bcv]);
-        let none = parse("", json!({ "hover": [] })).configure().unwrap();
+        let none = parse("", json!({ "hover": [] }))
+            .configure(&[], None)
+            .unwrap();
         assert!(none.hover.is_empty());
-        let unknown = parse("hover = [\"chapter\"]", json!({})).configure();
+        let unknown = parse("hover = [\"chapter\"]", json!({})).configure(&[], None);
         assert_eq!(unknown.err().unwrap(), "hover: unknown field `chapter`");
     }
 }

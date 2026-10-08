@@ -39,6 +39,13 @@ design.
     `Change` (patch/minor/major; before 1.0 the minor counts as major, like Cargo)
   - `release.rs`: summarize, compare with the newest release tag's summary (or its text, for
     releases before summaries), check the version, write, commit, tag `v{version}`
+- `crates/biblix-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
+  its history so topos never depends on biblix). `bible.rs`'s `Bible` reads a package or a plain
+  USX folder through biblix sources; `settings.rs` finds the project (the `project` setting, a
+  workspace folder with a `biblix.toml`, else the library's own; the server's machine library is
+  set by `main.rs`, and tests have none) and loads `bibles = ["id"]` or, with no Bible settings,
+  the project's Bibles. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
+  `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
 - `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`. The project

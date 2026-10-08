@@ -1,4 +1,4 @@
-//! `topos-lsp` speaks the Language Server Protocol over stdin and stdout.
+//! `biblix-lsp` speaks the Language Server Protocol over stdin and stdout.
 
 use std::error::Error;
 
@@ -90,7 +90,7 @@ fn run(connection: &Connection) -> Result<(), AnyError> {
         id,
         serde_json::json!({
             "capabilities": capabilities,
-            "serverInfo": { "name": "topos-lsp", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": "biblix-lsp", "version": env!("CARGO_PKG_VERSION") },
         }),
     )?;
     let mut server = Server::new(BibleMatcher::default());
@@ -102,6 +102,7 @@ fn run(connection: &Connection) -> Result<(), AnyError> {
         None => init.root_uri.iter().cloned().collect::<Vec<_>>(),
     };
     server.set_roots(roots.iter().filter_map(workspace::uri_to_path).collect());
+    server.set_library(biblix::Library::default_root());
     let options = init.initialization_options.unwrap_or_default();
     if let Err(err) = server.configure(options) {
         warn(connection, err)?;

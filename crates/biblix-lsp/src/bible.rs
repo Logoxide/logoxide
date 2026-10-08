@@ -1,6 +1,6 @@
 /*!
-A Bible's text: a folder of USX files (one book each, like `JHN.usx`), the same as the Obsidian
-plugin reads. Passages render as plain text for hover, and whole books as read-only documents
+A Bible's text: a biblix package (a folder with a `biblix.toml`: USX, USFM), or a folder of USX
+files (one book each, like `JHN.usx`), the same as the Obsidian plugin reads. Passages render as plain text for hover, and whole books as read-only documents
 (`topos-bible://BSB/JHN`) that go-to-definition opens.
 
 Several Bibles ([`Bibles`], from the `bible` and `bibles` settings) are translations: a reference
@@ -20,6 +20,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use biblix::{
+    Features, FsStorage, Package, Storage,
+    manifest::MANIFEST,
+    source::{Book, Source, UsxSource},
+};
 use topos_bible::{
     data::{
         bible_data::BibleData,
@@ -30,10 +35,9 @@ use topos_bible::{
     segments::Passage,
 };
 use topos_bible_markup::{
-    Filter, Flat, Flattener, Kind, Markup, Node, NodePath, TextOptions,
+    Filter, Flat, Flattener, Kind, NodePath, TextOptions,
     flatten::flatten,
-    parse,
-    verses::{VerseSpan, passage_ranges, slice, usx_chapter_verses, verses},
+    verses::{VerseSpan, passage_ranges, slice},
 };
 
 use crate::settings::{MarkupElement, MarkupSettings};
@@ -257,99 +261,65 @@ impl Rendered {
     }
 }
 
-/// A book's parsed USX and where its verses are
-struct Book {
-    nodes: Vec<Node>,
-    spans: Vec<VerseSpan>,
-}
-
-/// A folder of USX files, read as needed
+/// A Bible: a biblix package (a folder with a `biblix.toml`, in any format biblix reads) or a
+/// plain folder of USX files, read a book at a time
 pub struct Bible {
-    /// Its name in URIs and after references: the `bibles` setting's key, or the folder's name
-    /// (`BSB`)
+    /// Its name in URIs and after references: the `bibles` setting's key, the package's
+    /// abbreviation, or the folder's name (`BSB`)
     pub name: String,
     /// Other ways to write its name after a reference (`AV` for `KJV`)
     pub aliases: Vec<String>,
-    /// The folder (canonical), whose USX files workspace searches leave out
+    /// The folder (canonical), whose files workspace searches leave out
     pub folder: PathBuf,
-    /// Each book's file
-    files: HashMap<BookId, PathBuf>,
+    source: Box<dyn Source>,
     data: BibleData,
     pub markup: MarkupSettings,
     books: Mutex<HashMap<BookId, Arc<Book>>>,
     rendered: Mutex<HashMap<BookId, Arc<Rendered>>>,
 }
 
-/// A book's USFM code from its file name: `JHN.usx`, `jhn.usx`, `44JHNBSB.usx` (Paratext's), or a
-/// name with the code as a separate word (`B04___01_John_JHN.usx`)
-fn code_from_name(stem: &str, data: &BibleData) -> Option<BookId> {
-    let name = stem.to_ascii_uppercase();
-    let books = data.books();
-    books
-        .search_usfm(&name)
-        .or_else(|| {
-            let digits = name.get(..2)?.bytes().all(|b| b.is_ascii_digit());
-            digits.then(|| books.search_usfm(name.get(2..5)?)).flatten()
-        })
-        .or_else(|| {
-            name.split(|c: char| !c.is_ascii_alphanumeric())
-                .find_map(|word| books.search_usfm(word))
-        })
-}
-
-/// The code a USX file declares near its start: `<book code="JHN" ...>`
-fn code_from_usx(path: &Path, data: &BibleData) -> Option<BookId> {
-    use std::io::Read;
-    let mut head = vec![0; 4096];
-    let read = std::fs::File::open(path).ok()?.read(&mut head).ok()?;
-    let head = String::from_utf8_lossy(&head[..read]);
-    let start = head.find("<book")?;
-    let rest = &head[start..];
-    let code = rest.split("code=\"").nth(1)?.split('"').next()?;
-    data.books().search_usfm(&code.to_ascii_uppercase())
-}
-
 impl Bible {
-    /// The USX files in a folder (not its subfolders), named `name` (else after the folder)
+    /**
+    The Bible in a folder, named `name` (else the package's abbreviation, else the folder's name)
+    - With a `biblix.toml`: the package, in the format its default features turn on (USX, USFM)
+    - Without: its USX files (not its subfolders'), named for their books or by their `<book code>`
+    */
     pub fn load(
         folder: &Path,
         name: Option<&str>,
         data: BibleData,
         markup: MarkupSettings,
     ) -> Result<Bible, String> {
-        let entries =
-            std::fs::read_dir(folder).map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-        let mut files = HashMap::new();
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let is_usx = path
-                .extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("usx"));
-            if !is_usx {
-                continue;
-            }
-            let stem = path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or_default();
-            if let Some(id) = code_from_name(stem, &data).or_else(|| code_from_usx(&path, &data)) {
-                files.entry(id).or_insert(path);
-            }
+        if !folder.is_dir() {
+            return Err(format!("bible: {}: not a folder", folder.display()));
         }
-        if files.is_empty() {
-            return Err(format!("bible: no USX books in {}", folder.display()));
+        let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(folder));
+        let folder_name = folder
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Bible");
+        let (source, default_name, aliases): (Box<dyn Source>, String, Vec<String>) =
+            if folder.join(MANIFEST).is_file() {
+                let package = Package::open(storage, Features::default())
+                    .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+                let info = package.info();
+                let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
+                (package.into_source(), abbreviation, aliases)
+            } else {
+                let source = UsxSource::open(storage, "")
+                    .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+                (Box::new(source), folder_name.to_string(), vec![])
+            };
+        if source.books().is_empty() {
+            return Err(format!("bible: no books in {}", folder.display()));
         }
-        let name = name
-            .or_else(|| folder.file_name().and_then(|n| n.to_str()))
-            .unwrap_or("Bible")
-            .to_string();
         Ok(Bible {
-            name,
-            aliases: vec![],
+            name: name.map_or(default_name, String::from),
+            aliases,
             folder: folder
                 .canonicalize()
                 .unwrap_or_else(|_| folder.to_path_buf()),
-            files,
+            source,
             data,
             markup,
             books: Mutex::default(),
@@ -357,14 +327,14 @@ impl Bible {
         })
     }
 
-    /// Each book's verse counts, from its USX markers (only the markers are read, so a whole
-    /// Bible takes milliseconds)
+    /// Each book's verse counts, from its verse markers (USX is scanned without being parsed, so
+    /// a whole Bible takes milliseconds)
     fn chapter_verses(&self) -> Vec<(BookId, ChapterVerses)> {
-        self.files
-            .iter()
-            .filter_map(|(&id, path)| {
-                let text = std::fs::read_to_string(path).ok()?;
-                let counts = usx_chapter_verses(&text);
+        self.source
+            .books()
+            .into_iter()
+            .filter_map(|id| {
+                let counts = self.source.chapter_verses(id).ok()?;
                 (!counts.is_empty()).then(|| (id, ChapterVerses::new(counts)))
             })
             .collect()
@@ -373,9 +343,7 @@ impl Bible {
     /// The books it has, in order, as USFM codes (`JHN`)
     pub fn book_codes(&self) -> Vec<String> {
         let books = self.data.books();
-        let mut ids: Vec<BookId> = self.files.keys().copied().collect();
-        ids.sort();
-        ids.into_iter()
+        (self.source.books().into_iter())
             .filter_map(|id| books.get_usfm(id).cloned())
             .collect()
     }
@@ -384,10 +352,7 @@ impl Bible {
         if let Some(book) = self.books.lock().ok()?.get(&id) {
             return Some(book.clone());
         }
-        let text = std::fs::read_to_string(self.files.get(&id)?).ok()?;
-        let nodes = parse(Markup::Usx, text.trim_start_matches('\u{feff}'));
-        let spans = verses(&nodes);
-        let book = Arc::new(Book { nodes, spans });
+        let book = Arc::new(self.source.book(id).ok()?);
         self.books.lock().ok()?.insert(id, book.clone());
         Some(book)
     }
