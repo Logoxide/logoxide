@@ -86,6 +86,15 @@ impl From<&manifest::Package> for PackageInfo {
     }
 }
 
+/// A book and its file in a package
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BookFile {
+    pub book_id: u8,
+    /// Relative to the package's folder: `usx/JHN.usx`
+    pub path: String,
+}
+
 /// A memory storage that remembers what was written to it, so the host can save it
 struct Recording {
     files: MemoryStorage,
@@ -223,6 +232,18 @@ impl BiblixPackage {
     pub fn books(&self) -> Vec<u8> {
         let books = &self.cached.manifest().books;
         books.iter().map(|(id, _)| id.0).collect()
+    }
+
+    /// Each book's file, relative to the package's folder (`usx/JHN.usx`), for hosts that open
+    /// book files themselves
+    pub fn book_files(&self) -> Vec<BookFile> {
+        let files = self.cached.package().source().files();
+        (files.iter())
+            .map(|(id, path)| BookFile {
+                book_id: id.0,
+                path: path.clone(),
+            })
+            .collect()
     }
 
     /// A book's verse counts, one per chapter (empty if the package doesn't have it)

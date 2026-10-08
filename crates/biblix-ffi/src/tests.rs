@@ -64,6 +64,17 @@ fn a_package_from_its_files() {
     assert_eq!(info.license.as_deref(), Some("CC0-1.0"));
     assert_eq!(package.format(), "usx");
     assert_eq!(package.books(), [43]);
+    assert_eq!(
+        package.book_files(),
+        [crate::BookFile {
+            book_id: 43,
+            path: "usx/JHN.usx".into()
+        }]
+    );
+    let usx = Biblix::new()
+        .usfm_to_usx("\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n".into())
+        .unwrap();
+    assert!(usx.contains("<verse number=\"16\""), "{usx}");
     assert_eq!(package.chapter_verses(43), [0, 0, 18]);
     assert!(package.chapter_verses(1).is_empty());
     assert!(package.checksum().unwrap().starts_with("sha256:"));

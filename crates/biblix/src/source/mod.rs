@@ -15,7 +15,7 @@ use topos_bible_markup::{
     verses::{VerseSpan, chapter_verses},
 };
 
-pub use usfm::UsfmSource;
+pub use usfm::{UsfmSource, usfm_to_usx};
 pub use usx::UsxSource;
 
 use crate::{error::Result, manifest::Format};

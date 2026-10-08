@@ -40,14 +40,24 @@ impl UsfmSource {
             .files
             .get(&id)
             .ok_or_else(|| BiblixError::NotFound(format!("book {}", id.0)))?;
-        let text = self.storage.read_string(path)?;
-        usfm3::parse(&text, usfm3::ParseOptions::default())
-            .to_usx()
-            .map_err(|e| BiblixError::Book {
+        usfm_to_usx(&self.storage.read_string(path)?).map_err(|e| match e {
+            BiblixError::Book { message, .. } => BiblixError::Book {
                 book: path.clone(),
-                message: format!("{e:?}"),
-            })
+                message,
+            },
+            e => e,
+        })
     }
+}
+
+/// A USFM book as USX (through usfm3), for readers that take USX
+pub fn usfm_to_usx(usfm: &str) -> Result<String> {
+    usfm3::parse(usfm, usfm3::ParseOptions::default())
+        .to_usx()
+        .map_err(|e| BiblixError::Book {
+            book: String::from("USFM"),
+            message: format!("{e:?}"),
+        })
 }
 
 impl Source for UsfmSource {

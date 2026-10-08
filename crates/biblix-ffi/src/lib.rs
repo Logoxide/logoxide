@@ -133,6 +133,11 @@ impl Biblix {
         BiblixProject::parse(manifest, lock)
     }
 
+    /// A USFM book as USX, for `ToposBook.parse(topos, "usx", ...)` (a reader of book files)
+    pub fn usfm_to_usx(&self, usfm: String) -> Result<String, BiblixError> {
+        Ok(biblix_core::source::usfm_to_usx(&usfm)?)
+    }
+
     /// Installs packages and inspects repositories, with the host downloading
     pub fn installer(&self) -> BiblixInstaller {
         BiblixInstaller::new()
