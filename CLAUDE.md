@@ -32,7 +32,16 @@ design.
     dependencies
   - `project.rs`: a folder with `biblix.toml` (edited with toml_edit, keeping comments) and its
     lock; `translations()` gives topos the Bibles it asks for
-- `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show`, `check`. The project
+  - `summary.rs`: `biblix.summary.toml` (verse counts in book order, sizes, element counts
+    without structural markers) and `biblix.verses.bin` (`BXV1`, 12 bytes a verse: book,
+    chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
+    `diff` (removed, renumbered: old text at another number, bridged, reworded, added) and
+    `Change` (patch/minor/major; before 1.0 the minor counts as major, like Cargo)
+  - `release.rs`: summarize, compare with the newest release tag's summary (or its text, for
+    releases before summaries), check the version, write, commit, tag `v{version}`
+- `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
+  release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
+  `verify`. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 
 ## Decisions

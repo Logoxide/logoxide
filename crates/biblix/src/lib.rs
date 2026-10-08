@@ -18,9 +18,11 @@ pub mod lock;
 pub mod manifest;
 pub mod package;
 pub mod project;
+pub mod release;
 pub mod resolve;
 pub mod source;
 pub mod storage;
+pub mod summary;
 
 use std::sync::LazyLock;
 

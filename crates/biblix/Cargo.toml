@@ -11,10 +11,11 @@ publish = false
 topos-bible.workspace = true
 topos-bible-markup.workspace = true
 serde.workspace = true
-toml = "0.9"
+toml = { version = "0.9", features = ["preserve_order"] }
 semver = { version = "1", features = ["serde"] }
 sha2 = "0.10"
 postcard = { version = "1", features = ["use-std"] }
 thiserror = "2"
 usfm3 = "0.2"
 toml_edit = "0.23"
+indexmap = { version = "2", features = ["serde"] }

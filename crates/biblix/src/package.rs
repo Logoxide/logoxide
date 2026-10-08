@@ -112,6 +112,11 @@ caches, lock files, and checking downloads
 - Each file's path and length go in before its bytes, so moving bytes between files changes it
 */
 pub fn checksum(storage: &dyn Storage) -> Result<String> {
+    checksum_without(storage, |_| false)
+}
+
+/// [`checksum`], leaving out the files `skip` names
+pub fn checksum_without(storage: &dyn Storage, skip: impl Fn(&str) -> bool) -> Result<String> {
     let mut paths = vec![];
     for name in storage.list("")? {
         match name.strip_suffix('/') {
@@ -121,7 +126,7 @@ pub fn checksum(storage: &dyn Storage) -> Result<String> {
         }
     }
     let mut hasher = Sha256::new();
-    for path in paths {
+    for path in paths.into_iter().filter(|p| !skip(p)) {
         let bytes = storage.read(&path)?;
         hasher.update(path.as_bytes());
         hasher.update([0]);

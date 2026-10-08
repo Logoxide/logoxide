@@ -18,10 +18,15 @@ What works (steps 1 and 2 of the plan, `doc/biblix.md` in topos):
 - The library: installed versions side by side, as plain files; a project's `biblix.lock` pins
   each package's commit and checksum, so another device installs the same text, and a changed
   file is caught
-- `bx init`, `add`, `remove`, `install`, `update`, `list`, `show`, `check`
+- Summaries: `bx release` writes `biblix.summary.toml` (verse counts, sizes, what the text holds)
+  and `biblix.verses.bin` (a hash of every verse's text), checks the version against what changed
+  since the last release (patch: notes and markup; minor: wording or additions; major: verses
+  removed or renumbered), then commits and tags it. `bx diff`, `bx verify`, and
+  `bx show --git URL` (a release's summary, without downloading its text)
+- `bx init`, `add`, `remove`, `install`, `update`, `list`, `show`, `check`, `release`, `diff`,
+  `verify`
 
-Next: summaries (`biblix.summary.toml` and per-verse hashes), topos's LSP using the library, then
-biblix-ffi with an archive fetcher for WebAssembly.
+Next: topos's LSP using the library, then biblix-ffi with an archive fetcher for WebAssembly.
 
 ## Using it
 
@@ -33,6 +38,10 @@ bx add --path "Bibles/My Translation"      # used in place
 bx install                                 # what biblix.lock says, on a new device
 bx update [id]                             # newer versions the requirements allow
 bx list
+
+bx release --set-version                   # in a package's repository: summary, version check, tag
+bx diff v1.0.0                             # what changed since a release
+bx show --git https://example.org/bsb      # a release's summary, without its text
 ```
 
 The library is `BIBLIX_HOME` (else `$XDG_DATA_HOME/biblix`), or `--library DIR`: any folder,

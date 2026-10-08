@@ -12,3 +12,4 @@ biblix = { path = "../biblix" }
 topos-bible.workspace = true
 clap = { version = "4", features = ["derive"] }
 semver = "1"
+toml_edit = "0.23"

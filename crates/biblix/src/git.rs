@@ -30,6 +30,30 @@ pub trait Fetcher {
     /// The repository's files at `reference` into `dest` (a new folder, without `.git`), and the
     /// commit they're from
     fn fetch(&self, url: &str, reference: &GitRef, dest: &Path) -> Result<String>;
+
+    /// Only these files (by path) at `reference`, into `dest`, without downloading the rest when
+    /// the host allows (a summary without its text). Missing files are left out
+    fn fetch_files(
+        &self,
+        url: &str,
+        reference: &GitRef,
+        paths: &[&str],
+        dest: &Path,
+    ) -> Result<String> {
+        let all = dest.with_extension("all");
+        let commit = self.fetch(url, reference, &all)?;
+        for path in paths {
+            let (from, to) = (all.join(path), dest.join(path));
+            if from.is_file() {
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| BiblixError::io(path, e))?;
+                }
+                std::fs::copy(&from, &to).map_err(|e| BiblixError::io(path, e))?;
+            }
+        }
+        let _ = std::fs::remove_dir_all(&all);
+        Ok(commit)
+    }
 }
 
 /// Fetching with the `git` command
@@ -58,7 +82,80 @@ fn git(args: &[&str], dir: Option<&Path>, url: &str) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+impl GitCli {
+    fn scratch_dir(&self, what: &str) -> PathBuf {
+        let scratch = self.scratch.clone().unwrap_or_else(std::env::temp_dir);
+        scratch.join(format!("biblix-{what}-{}-{}", std::process::id(), unique()))
+    }
+}
+
+fn wanted(reference: &GitRef) -> String {
+    match reference {
+        GitRef::Tag(tag) => format!("refs/tags/{tag}"),
+        GitRef::Branch(branch) => format!("refs/heads/{branch}"),
+        GitRef::Rev(rev) => rev.clone(),
+        GitRef::Head => String::from("HEAD"),
+    }
+}
+
 impl Fetcher for GitCli {
+    /// A partial clone (no file contents) with only these files checked out, so only they are
+    /// downloaded from hosts that allow it (GitHub, GitLab, Gitea; a local repository sends all)
+    fn fetch_files(
+        &self,
+        url: &str,
+        reference: &GitRef,
+        paths: &[&str],
+        dest: &Path,
+    ) -> Result<String> {
+        let work = self.scratch_dir("files");
+        let io = |e: std::io::Error| BiblixError::io(&work.display().to_string(), e);
+        std::fs::create_dir_all(&work).map_err(io)?;
+        let result = (|| {
+            let w = Some(work.as_path());
+            git(&["init", "-q"], w, url)?;
+            git(&["remote", "add", "origin", url], w, url)?;
+            git(&["config", "remote.origin.promisor", "true"], w, url)?;
+            git(
+                &["config", "remote.origin.partialclonefilter", "blob:none"],
+                w,
+                url,
+            )?;
+            git(
+                &[
+                    "fetch",
+                    "-q",
+                    "--depth",
+                    "1",
+                    "--filter=blob:none",
+                    "origin",
+                    &wanted(reference),
+                ],
+                w,
+                url,
+            )?;
+            let mut sparse = vec!["sparse-checkout", "set", "--no-cone"];
+            let patterns: Vec<String> = paths.iter().map(|p| format!("/{p}")).collect();
+            sparse.extend(patterns.iter().map(String::as_str));
+            git(&sparse, w, url)?;
+            git(&["checkout", "-q", "FETCH_HEAD"], w, url)?;
+            let commit = git(&["rev-parse", "HEAD"], w, url)?.trim().to_string();
+            for path in paths {
+                let from = work.join(path);
+                if from.is_file() {
+                    let to = dest.join(path);
+                    if let Some(parent) = to.parent() {
+                        std::fs::create_dir_all(parent).map_err(|e| BiblixError::io(path, e))?;
+                    }
+                    std::fs::copy(&from, &to).map_err(|e| BiblixError::io(path, e))?;
+                }
+            }
+            Ok(commit)
+        })();
+        let _ = std::fs::remove_dir_all(&work);
+        result
+    }
+
     fn tags(&self, url: &str) -> Result<Vec<(String, String)>> {
         let out = git(&["ls-remote", "--tags", url], None, url)?;
         let mut tags: Vec<(String, String)> = vec![];
@@ -83,8 +180,7 @@ impl Fetcher for GitCli {
     }
 
     fn fetch(&self, url: &str, reference: &GitRef, dest: &Path) -> Result<String> {
-        let scratch = self.scratch.clone().unwrap_or_else(std::env::temp_dir);
-        let work = scratch.join(format!("biblix-fetch-{}-{}", std::process::id(), unique()));
+        let work = self.scratch_dir("fetch");
         let io = |e: std::io::Error| BiblixError::io(&work.display().to_string(), e);
         std::fs::create_dir_all(&work).map_err(io)?;
         let result = (|| {
@@ -109,6 +205,30 @@ impl Fetcher for GitCli {
         })();
         let _ = std::fs::remove_dir_all(&work);
         result
+    }
+}
+
+impl GitCli {
+    /// A local repository's tags that are versions (`v1.2.0`), newest last
+    pub fn local_versions(&self, repo: &Path) -> Result<Vec<(semver::Version, String)>> {
+        let out = git(&["tag", "--list"], Some(repo), &repo.display().to_string())?;
+        let mut versions: Vec<(semver::Version, String)> = out
+            .lines()
+            .filter_map(|tag| Some((crate::resolve::tag_version(tag)?, tag.to_string())))
+            .collect();
+        versions.sort();
+        Ok(versions)
+    }
+
+    /// Commits everything in a local repository and tags it
+    pub fn commit_and_tag(&self, repo: &Path, message: &str, tag: &str) -> Result<String> {
+        let at = repo.display().to_string();
+        git(&["add", "-A"], Some(repo), &at)?;
+        git(&["commit", "-q", "-m", message], Some(repo), &at)?;
+        git(&["tag", tag], Some(repo), &at)?;
+        Ok(git(&["rev-parse", "HEAD"], Some(repo), &at)?
+            .trim()
+            .to_string())
     }
 }
 

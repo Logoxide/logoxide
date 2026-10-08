@@ -58,8 +58,43 @@ impl Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// What a package is: its manifest, the format read, its books, and its checksum
-    Show(PackageArgs),
+    /// What a package is: its manifest, the format read, its books, and its checksum; with --git, a
+    /// release's summary, without downloading its text
+    Show {
+        #[command(flatten)]
+        package: PackageArgs,
+        /// A package's repository: show a release's published summary
+        #[arg(long)]
+        git: Option<String>,
+        /// The release (the newest by default)
+        #[arg(long, requires = "git")]
+        tag: Option<String>,
+    },
+    /// Writes the package's summary, checks its version against what changed since the last
+    /// release, then commits and tags it
+    Release {
+        /// The package's repository
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        /// Set the version to the smallest one the change allows, instead of failing
+        #[arg(long)]
+        set_version: bool,
+        /// Only say what the release would be
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// What changed between two releases (or a release and the working files)
+    Diff {
+        /// The package's repository
+        #[arg(long, default_value = ".")]
+        path: PathBuf,
+        /// A release's tag (`v1.0.0`)
+        from: String,
+        /// Another release's tag (the working files by default)
+        to: Option<String>,
+    },
+    /// Builds the package's summary again and compares it with the published one
+    Verify(PackageArgs),
     /// Reads every book of a package, and says what it found
     Check {
         #[command(flatten)]
@@ -145,7 +180,21 @@ impl PackageArgs {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match &cli.command {
-        Command::Show(args) => show(args),
+        Command::Show {
+            package, git: None, ..
+        } => show(package),
+        Command::Show {
+            git: Some(url),
+            tag,
+            ..
+        } => show_remote(&cli, url, tag.as_deref()),
+        Command::Release {
+            path,
+            set_version,
+            dry_run,
+        } => release(&cli, path, *set_version, *dry_run),
+        Command::Diff { path, from, to } => diff(&cli, path, from, to.as_deref()),
+        Command::Verify(args) => verify(args),
         Command::Check { package, cache } => check(package, cache.clone()),
         Command::Init { dir } => biblix::Project::init(dir)
             .map(|p| println!("created {}", p.dir().join(MANIFEST).display())),
@@ -449,4 +498,223 @@ fn list(cli: &Cli) -> biblix::Result<()> {
         );
     }
     Ok(())
+}
+
+fn print_summary(summary: &biblix::summary::Summary) {
+    println!(
+        "{} {}: {} books, {} verses",
+        summary.id,
+        summary.version,
+        summary.books.len(),
+        summary.verses
+    );
+    let codes: Vec<&str> = summary.books.keys().map(String::as_str).collect();
+    println!("books: {}", codes.join(" "));
+    for (format, size) in &summary.sizes {
+        println!("{format}: {:.1} MB", *size as f64 / 1_000_000.0);
+    }
+    let contents: Vec<String> = summary
+        .contents
+        .iter()
+        .map(|(k, n)| format!("{k} {n}"))
+        .collect();
+    println!("contents: {}", contents.join(", "));
+    println!("text checksum: {}", summary.text_checksum);
+}
+
+fn show_remote(cli: &Cli, url: &str, tag: Option<&str>) -> biblix::Result<()> {
+    use biblix::git::Fetcher;
+    let library = cli.library();
+    let fetcher = cli.fetcher(&library);
+    let tag = match tag {
+        Some(tag) => tag.to_string(),
+        None => {
+            let tags = fetcher.tags(url)?;
+            let newest = tags
+                .into_iter()
+                .filter_map(|(t, _)| Some((biblix::resolve::tag_version(&t)?, t)))
+                .max();
+            newest
+                .map(|(_, t)| t)
+                .ok_or_else(|| biblix::BiblixError::Resolve(format!("{url} has no releases")))?
+        }
+    };
+    let dir = library
+        .git_dir()
+        .join(format!("show-{}", std::process::id()));
+    let paths = [MANIFEST, biblix::summary::SUMMARY, biblix::summary::VERSES];
+    let fetched = fetcher.fetch_files(url, &biblix::git::GitRef::Tag(tag.clone()), &paths, &dir);
+    let read = fetched.and_then(|_| {
+        let storage = FsStorage::new(&dir);
+        let manifest = biblix::Manifest::parse(&storage.read_string(MANIFEST)?)?;
+        let summary = biblix::summary::Summary::read(&storage).map(|(s, _)| s);
+        Ok((manifest, summary))
+    });
+    let _ = std::fs::remove_dir_all(&dir);
+    let (manifest, summary) = read?;
+    if let Some(info) = &manifest.package {
+        println!(
+            "{} ({}), {}",
+            info.abbreviation,
+            info.name,
+            info.license.as_deref().unwrap_or("no license given")
+        );
+    }
+    match summary {
+        Ok(summary) => print_summary(&summary),
+        Err(_) => println!(
+            "{tag} has no summary (released before `bx release`): install it to see what it holds"
+        ),
+    }
+    Ok(())
+}
+
+fn release(
+    cli: &Cli,
+    path: &std::path::Path,
+    set_version: bool,
+    dry_run: bool,
+) -> biblix::Result<()> {
+    let library = cli.library();
+    let git = cli.fetcher(&library);
+    let scratch = library.git_dir();
+    std::fs::create_dir_all(&scratch).map_err(|e| biblix::BiblixError::Io {
+        path: scratch.display().to_string(),
+        message: e.to_string(),
+    })?;
+    let mut plan = biblix::release::plan(path, &git, &scratch)?;
+    if let Some((old, d)) = &plan.previous {
+        println!(
+            "since {old}: {} ({:?} change)",
+            biblix::release::describe(d),
+            d.change()
+        );
+        for v in d.changed.iter().take(10) {
+            println!("  reworded {}", v.reference());
+        }
+        for (from, to) in d.moved.iter().take(10) {
+            println!("  {} is now {}", from.reference(), to.reference());
+        }
+        for v in d.removed.iter().take(10) {
+            println!("  removed {}", v.reference());
+        }
+    }
+    if biblix::release::check(&plan).is_err()
+        && set_version
+        && let Some(minimum) = plan.minimum.clone()
+    {
+        let manifest_path = path.join(MANIFEST);
+        let text =
+            std::fs::read_to_string(&manifest_path).map_err(|e| biblix::BiblixError::Io {
+                path: manifest_path.display().to_string(),
+                message: e.to_string(),
+            })?;
+        let mut doc: toml_edit::DocumentMut = text
+            .parse()
+            .map_err(|e: toml_edit::TomlError| biblix::BiblixError::Manifest(e.to_string()))?;
+        doc["package"]["version"] = toml_edit::value(minimum.to_string());
+        if !dry_run {
+            std::fs::write(&manifest_path, doc.to_string()).map_err(|e| {
+                biblix::BiblixError::Io {
+                    path: manifest_path.display().to_string(),
+                    message: e.to_string(),
+                }
+            })?;
+        }
+        println!("version set to {minimum}");
+        plan.summary.version = minimum;
+        // The manifest changed: summarize again (its checksum covers biblix.toml)
+        if !dry_run {
+            plan = biblix::release::plan(path, &git, &scratch)?;
+        }
+    }
+    biblix::release::check(&plan)?;
+    if dry_run {
+        println!("would release v{}", plan.summary.version);
+        return Ok(());
+    }
+    let commit = biblix::release::release(path, &plan, &git)?;
+    println!(
+        "released v{} ({})",
+        plan.summary.version,
+        &commit[..commit.len().min(12)]
+    );
+    Ok(())
+}
+
+fn diff(cli: &Cli, path: &std::path::Path, from: &str, to: Option<&str>) -> biblix::Result<()> {
+    let library = cli.library();
+    let git = cli.fetcher(&library);
+    let scratch = library.git_dir();
+    std::fs::create_dir_all(&scratch).map_err(|e| biblix::BiblixError::Io {
+        path: scratch.display().to_string(),
+        message: e.to_string(),
+    })?;
+    let url = path
+        .canonicalize()
+        .map_err(|e| biblix::BiblixError::Io {
+            path: path.display().to_string(),
+            message: e.to_string(),
+        })?
+        .display()
+        .to_string();
+    let (_, old) = biblix::release::summary_at(&git, &url, from, &scratch)?;
+    let new = match to {
+        Some(tag) => biblix::release::summary_at(&git, &url, tag, &scratch)?.1,
+        None => {
+            let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(path));
+            biblix::summary::summarize(&Package::open(storage, Features::default())?)?.1
+        }
+    };
+    let d = biblix::summary::diff(&old, &new);
+    println!(
+        "{}: a {:?} change",
+        biblix::release::describe(&d),
+        d.change()
+    );
+    for v in &d.changed {
+        println!("reworded {}", v.reference());
+    }
+    for (from, to) in &d.moved {
+        println!("{} is now {}", from.reference(), to.reference());
+    }
+    for v in &d.removed {
+        println!("removed {}", v.reference());
+    }
+    for v in &d.added {
+        println!("added {}", v.reference());
+    }
+    for v in &d.bridged {
+        println!("bridged differently {}", v.reference());
+    }
+    Ok(())
+}
+
+fn verify(args: &PackageArgs) -> biblix::Result<()> {
+    let package = args.open()?;
+    let (built, verses) = biblix::summary::summarize(&package)?;
+    let (published, published_verses) = biblix::summary::Summary::read(package.storage().as_ref())
+        .map_err(|e| {
+            biblix::BiblixError::Manifest(format!("no published summary ({e}): run `bx release`"))
+        })?;
+    let mut problems = vec![];
+    if built != published {
+        problems.push(String::from("biblix.summary.toml doesn't match the text"));
+    }
+    if verses != published_verses {
+        let d = biblix::summary::diff(&published_verses, &verses);
+        problems.push(format!(
+            "biblix.verses.bin doesn't match the text: {}",
+            biblix::release::describe(&d)
+        ));
+    }
+    if problems.is_empty() {
+        println!(
+            "{} {}: the summary matches its text",
+            built.id, built.version
+        );
+        Ok(())
+    } else {
+        Err(biblix::BiblixError::Manifest(problems.join("; ")))
+    }
 }
