@@ -1,0 +1,432 @@
+/*!
+Resolving a manifest's dependencies into a lock file, and installing what it names: each git
+dependency's version (the newest tag matching its requirement, or the tag, branch, or revision it
+names), its files in the library, and its own dependencies, with the features asked for.
+
+What the previous lock file says is kept unless it's being updated or the manifest asks for
+something else, so installing on another device gets the same commits, checked by checksum.
+*/
+
+use std::{
+    collections::{BTreeSet, VecDeque},
+    path::{Path, PathBuf},
+    sync::Arc,
+};
+
+use crate::{
+    error::{BiblixError, Result},
+    git::{Fetcher, GitRef},
+    library::Library,
+    lock::{LockedPackage, Lockfile},
+    manifest::{Dependency, DetailedDependency, Manifest},
+    package::{Features, Package},
+    storage::{FsStorage, Storage},
+};
+
+/// Which locked packages may move to newer versions
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Update {
+    /// None: keep what the lock file says where the manifest still allows it
+    #[default]
+    Nothing,
+    All,
+    Only(BTreeSet<String>),
+}
+
+impl Update {
+    fn allows(&self, id: &str) -> bool {
+        match self {
+            Update::Nothing => false,
+            Update::All => true,
+            Update::Only(ids) => ids.contains(id),
+        }
+    }
+}
+
+pub struct Resolver<'a> {
+    pub library: &'a Library,
+    pub fetcher: &'a dyn Fetcher,
+    /// The lock file before this resolve, if any
+    pub previous: Option<&'a Lockfile>,
+    pub update: Update,
+}
+
+/// A dependency to resolve, and where it was named
+struct Want {
+    name: String,
+    dependency: DetailedDependency,
+    /// The folder of the package that named it, relative to the manifest's (`""` for the manifest)
+    within: String,
+    /// Named by a git package (which can't have path dependencies)
+    from_git: bool,
+    /// The index (in the lock file) of the package that named it, if not the manifest
+    parent: Option<usize>,
+}
+
+/// A tag's version: `v1.2.0` or `1.2.0`
+pub fn tag_version(tag: &str) -> Option<semver::Version> {
+    tag.strip_prefix('v').unwrap_or(tag).parse().ok()
+}
+
+fn relative_join(within: &str, path: &str) -> String {
+    let mut parts: Vec<&str> = within.split('/').filter(|p| !p.is_empty()).collect();
+    for part in path.split('/').filter(|p| !p.is_empty() && *p != ".") {
+        if part == ".." && parts.last().is_some_and(|p| *p != "..") {
+            parts.pop();
+        } else {
+            parts.push(part);
+        }
+    }
+    parts.join("/")
+}
+
+impl Resolver<'_> {
+    /// The lock file for `manifest` (in `base`), with every package it names installed
+    pub fn resolve(&self, manifest: &Manifest, base: &Path) -> Result<Lockfile> {
+        let mut lock = Lockfile::default();
+        let mut todo: VecDeque<Want> = VecDeque::new();
+        for (name, dependency) in &manifest.dependencies {
+            let dependency = match dependency {
+                Dependency::Detailed(d) => d.clone(),
+                Dependency::Version(req) => {
+                    return Err(BiblixError::Resolve(format!(
+                        "{name} = \"{req}\": there's no default registry; give `git` or `path`"
+                    )));
+                }
+            };
+            todo.push_back(Want {
+                name: name.clone(),
+                dependency,
+                within: String::new(),
+                from_git: false,
+                parent: None,
+            });
+        }
+        while let Some(want) = todo.pop_front() {
+            let locked = self.resolve_one(&want, base)?;
+            let name = locked.name();
+            let (index, changed) = match lock
+                .packages
+                .iter()
+                .position(|p| p.id == locked.id && p.key() == locked.key())
+            {
+                Some(index) => {
+                    // Asked for again, maybe with more features: one install with all of them
+                    let existing = &mut lock.packages[index];
+                    let before = (existing.features.clone(), existing.default_features);
+                    let mut features: BTreeSet<String> =
+                        existing.features.iter().cloned().collect();
+                    features.extend(locked.features.iter().cloned());
+                    existing.features = features.into_iter().collect();
+                    existing.default_features |= locked.default_features;
+                    (
+                        index,
+                        before != (existing.features.clone(), existing.default_features),
+                    )
+                }
+                None => {
+                    lock.packages.push(locked);
+                    (lock.packages.len() - 1, true)
+                }
+            };
+            let named_by = match want.parent {
+                Some(parent) => &mut lock.packages[parent].dependencies,
+                None => &mut lock.dependencies,
+            };
+            if !named_by.contains(&name) {
+                named_by.push(name);
+            }
+            if !changed {
+                continue;
+            }
+            // Its own dependencies, with the features it now has
+            let locked = lock.packages[index].clone();
+            let package = self.library.open(&locked, base)?;
+            let enabled = package.enabled().clone();
+            let within = match &locked.path {
+                Some(path) => path.clone(),
+                None => String::new(),
+            };
+            for (dep_name, dependency) in &package.manifest().dependencies {
+                let Dependency::Detailed(dependency) = dependency else {
+                    return Err(BiblixError::Resolve(format!(
+                        "{}: dependency `{dep_name}` has no `git` or `path`",
+                        locked.name()
+                    )));
+                };
+                if dependency.optional && !enabled.dependencies.contains(dep_name) {
+                    continue;
+                }
+                let mut dependency = dependency.clone();
+                if let Some(features) = enabled.dependency_features.get(dep_name) {
+                    dependency.features.extend(features.iter().cloned());
+                }
+                todo.push_back(Want {
+                    name: dep_name.clone(),
+                    dependency,
+                    within: within.clone(),
+                    from_git: locked.git.is_some(),
+                    parent: Some(index),
+                });
+            }
+        }
+        lock.packages
+            .sort_by(|a, b| (&a.id, &a.version).cmp(&(&b.id, &b.version)));
+        // Indexes changed with the sort; dependencies are named, so they still hold
+        Ok(lock)
+    }
+
+    fn resolve_one(&self, want: &Want, base: &Path) -> Result<LockedPackage> {
+        let d = &want.dependency;
+        let mut features: Vec<String> = d.features.clone();
+        features.sort();
+        features.dedup();
+        if let Some(path) = &d.path {
+            if want.from_git {
+                return Err(BiblixError::Resolve(format!(
+                    "`{}`: a git package can't have path dependencies",
+                    want.name
+                )));
+            }
+            let relative = relative_join(&want.within, path);
+            let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(base.join(&relative)));
+            let names: Vec<&str> = features.iter().map(String::as_str).collect();
+            let package = Package::open(
+                storage,
+                Features {
+                    features: &names,
+                    default: d.default_features,
+                },
+            )
+            .map_err(|e| BiblixError::Resolve(format!("{} ({relative}): {e}", want.name)))?;
+            let info = package.info();
+            self.check_id(&want.name, &info.id)?;
+            return Ok(LockedPackage {
+                id: info.id.clone(),
+                version: info.version.clone(),
+                git: None,
+                tag: None,
+                branch: None,
+                rev: None,
+                commit: None,
+                path: Some(relative),
+                checksum: None,
+                features,
+                default_features: d.default_features,
+                dependencies: vec![],
+            });
+        }
+        let url = d.git.as_deref().ok_or_else(|| {
+            BiblixError::Resolve(format!("`{}`: give `git` or `path`", want.name))
+        })?;
+        // What the previous lock file has, if the manifest still allows it and it isn't updating
+        let kept = self
+            .previous
+            .filter(|_| !self.update.allows(&want.name))
+            .and_then(|previous| {
+                previous.packages.iter().find(|p| {
+                    // Still what the manifest asks for: the same tag, branch, or revision, or (for a
+                    // version requirement, whose tag was chosen) a version it allows
+                    let same = match (&d.tag, &d.branch, &d.rev) {
+                        (Some(tag), _, _) => p.tag.as_ref() == Some(tag),
+                        (_, Some(branch), _) => p.branch.as_ref() == Some(branch),
+                        (_, _, Some(rev)) => p.rev.as_ref() == Some(rev),
+                        _ => {
+                            p.branch.is_none()
+                                && p.rev.is_none()
+                                && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+                        }
+                    };
+                    p.id == want.name && p.git.as_deref() == Some(url) && p.commit.is_some() && same
+                })
+            });
+        let (reference, tag) = match kept {
+            Some(kept) => (
+                GitRef::Rev(kept.commit.clone().unwrap_or_default()),
+                kept.tag.clone(),
+            ),
+            None => self.reference(&want.name, url, d)?,
+        };
+        let mut locked = self.install(&want.name, url, &reference, kept)?;
+        locked.tag = tag;
+        locked.branch = d.branch.clone();
+        locked.rev = d.rev.clone();
+        locked.features = features;
+        locked.default_features = d.default_features;
+        Ok(locked)
+    }
+
+    /// The commit a dependency asks for, and the tag it's from (for version requirements)
+    fn reference(
+        &self,
+        name: &str,
+        url: &str,
+        d: &DetailedDependency,
+    ) -> Result<(GitRef, Option<String>)> {
+        if let Some(tag) = &d.tag {
+            return Ok((GitRef::Tag(tag.clone()), Some(tag.clone())));
+        }
+        if let Some(branch) = &d.branch {
+            return Ok((GitRef::Branch(branch.clone()), None));
+        }
+        if let Some(rev) = &d.rev {
+            return Ok((GitRef::Rev(rev.clone()), None));
+        }
+        let tags = self.fetcher.tags(url)?;
+        let newest = tags
+            .iter()
+            .filter_map(|(tag, _)| Some((tag_version(tag)?, tag)))
+            .filter(|(version, _)| match &d.version {
+                Some(req) => req.matches(version),
+                // Without a requirement, the newest release (not a pre-release)
+                None => version.pre.is_empty(),
+            })
+            .max_by(|a, b| a.0.cmp(&b.0));
+        match (newest, &d.version) {
+            (Some((_, tag)), _) => Ok((GitRef::Tag(tag.clone()), Some(tag.clone()))),
+            (None, Some(req)) => Err(BiblixError::Resolve(format!(
+                "`{name}`: no tag of {url} matches {req}"
+            ))),
+            (None, None) => Ok((GitRef::Head, None)),
+        }
+    }
+
+    /// Fetches a version into the library (unless it's there), checking it's the package asked for
+    fn install(
+        &self,
+        name: &str,
+        url: &str,
+        reference: &GitRef,
+        kept: Option<&LockedPackage>,
+    ) -> Result<LockedPackage> {
+        // Already installed from the lock file: check it's still the same text
+        if let Some(kept) = kept {
+            let dir = self.library.package_dir(kept, Path::new(""));
+            if self.library.is_installed(kept, Path::new("")) {
+                let package = self.library.open(kept, Path::new(""))?;
+                let checksum = package.checksum()?;
+                if kept.checksum.as_ref().is_some_and(|c| *c != checksum) {
+                    return Err(BiblixError::Checksum {
+                        id: kept.name(),
+                        expected: kept.checksum.clone().unwrap_or_default(),
+                        actual: format!("{checksum} in {}", dir.display()),
+                    });
+                }
+                return Ok(kept.clone());
+            }
+        }
+        let staging_root = self.library.git_dir();
+        let staging: PathBuf =
+            staging_root.join(format!("staging-{}-{}", std::process::id(), nanos()));
+        let result = (|| {
+            let commit = self.fetcher.fetch(url, reference, &staging)?;
+            let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(&staging));
+            // Opened only to read what it is; no format needs to be enabled for that
+            let manifest =
+                crate::manifest::Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?;
+            let info = manifest.package.clone().ok_or_else(|| {
+                BiblixError::Resolve(format!(
+                    "`{name}`: {url} has a biblix.toml without [package]"
+                ))
+            })?;
+            self.check_id(name, &info.id)?;
+            if let GitRef::Tag(tag) = reference
+                && let Some(version) = tag_version(tag)
+                && version != info.version
+            {
+                return Err(BiblixError::Resolve(format!(
+                    "`{name}`: tag {tag} has version {} in its biblix.toml",
+                    info.version
+                )));
+            }
+            let checksum = crate::package::checksum(storage.as_ref())?;
+            if let Some(kept) = kept
+                && kept.checksum.as_ref().is_some_and(|c| *c != checksum)
+            {
+                return Err(BiblixError::Checksum {
+                    id: kept.name(),
+                    expected: kept.checksum.clone().unwrap_or_default(),
+                    actual: checksum,
+                });
+            }
+            let locked = LockedPackage {
+                id: info.id.clone(),
+                version: info.version.clone(),
+                git: Some(url.to_string()),
+                tag: match reference {
+                    GitRef::Tag(tag) => Some(tag.clone()),
+                    _ => None,
+                },
+                branch: match reference {
+                    GitRef::Branch(branch) => Some(branch.clone()),
+                    _ => None,
+                },
+                rev: None,
+                commit: Some(commit),
+                path: None,
+                checksum: Some(checksum),
+                features: vec![],
+                default_features: true,
+                dependencies: vec![],
+            };
+            // Fetched by commit from the lock file: still the release (or branch) it was locked from
+            let mut locked = locked;
+            if let Some(kept) = kept {
+                locked.tag = kept.tag.clone();
+                locked.branch = kept.branch.clone();
+                locked.rev = kept.rev.clone();
+            }
+            let dir = self.library.package_dir(&locked, Path::new(""));
+            if dir.join(crate::manifest::MANIFEST).is_file() {
+                // The same version from another request: it must be the same text
+                let installed = crate::package::checksum(&FsStorage::new(&dir))?;
+                if Some(&installed) != locked.checksum.as_ref() {
+                    return Err(BiblixError::Checksum {
+                        id: locked.name(),
+                        expected: installed,
+                        actual: locked.checksum.clone().unwrap_or_default(),
+                    });
+                }
+            } else {
+                if let Some(parent) = dir.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| BiblixError::io(&parent.display().to_string(), e))?;
+                }
+                std::fs::rename(&staging, &dir)
+                    .map_err(|e| BiblixError::io(&dir.display().to_string(), e))?;
+            }
+            Ok(locked)
+        })();
+        let _ = std::fs::remove_dir_all(&staging);
+        result
+    }
+
+    fn check_id(&self, name: &str, id: &str) -> Result<()> {
+        if name != id {
+            return Err(BiblixError::Resolve(format!(
+                "dependency `{name}` is the package `{id}`: name it `{id}`"
+            )));
+        }
+        Ok(())
+    }
+}
+
+fn nanos() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tags_and_paths() {
+        assert_eq!(tag_version("v1.2.0"), Some("1.2.0".parse().unwrap()));
+        assert_eq!(tag_version("1.2.0-beta.1").unwrap().pre.as_str(), "beta.1");
+        assert_eq!(tag_version("release"), None);
+        assert_eq!(relative_join("", "Bibles/Mine"), "Bibles/Mine");
+        assert_eq!(relative_join("Bibles/Mine", "../Lexicon"), "Bibles/Lexicon");
+    }
+}

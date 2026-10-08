@@ -100,30 +100,38 @@ impl Package {
         self.source.books()
     }
 
-    /**
-    A hash of every file in the package (`sha256:` and hex), except git's: it names this exact
-    text, for caches, lock files, and checking downloads
-    - Each file's path and length go in before its bytes, so moving bytes between files changes it
-    */
+    /// The checksum of every file in the package (see [`checksum`])
     pub fn checksum(&self) -> Result<String> {
-        let mut hasher = Sha256::new();
-        let mut paths = vec![];
-        for name in self.storage.list("")? {
-            match name.strip_suffix('/') {
-                Some(".git") => {}
-                Some(dir) => paths.extend(self.storage.walk(dir)?),
-                None => paths.push(name),
-            }
-        }
-        for path in paths {
-            let bytes = self.storage.read(&path)?;
-            hasher.update(path.as_bytes());
-            hasher.update([0]);
-            hasher.update((bytes.len() as u64).to_le_bytes());
-            hasher.update(&bytes);
-        }
-        let hash = hasher.finalize();
-        let hex: String = hash.iter().map(|b| format!("{b:02x}")).collect();
-        Ok(format!("sha256:{hex}"))
+        checksum(self.storage.as_ref())
     }
+}
+
+/**
+A hash of every file in a package (`sha256:` and hex), except git's: it names this exact text, for
+caches, lock files, and checking downloads
+- Each file's path and length go in before its bytes, so moving bytes between files changes it
+*/
+pub fn checksum(storage: &dyn Storage) -> Result<String> {
+    let mut paths = vec![];
+    for name in storage.list("")? {
+        match name.strip_suffix('/') {
+            Some(".git") => {}
+            Some(dir) => paths.extend(storage.walk(dir)?),
+            None => paths.push(name),
+        }
+    }
+    let mut hasher = Sha256::new();
+    for path in paths {
+        let bytes = storage.read(&path)?;
+        hasher.update(path.as_bytes());
+        hasher.update([0]);
+        hasher.update((bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    let hex: String = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    Ok(format!("sha256:{hex}"))
 }

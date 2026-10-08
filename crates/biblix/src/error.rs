@@ -28,6 +28,22 @@ pub enum BiblixError {
     /// A cached file is damaged or from another version
     #[error("cache: {0}")]
     Cache(String),
+    /// `biblix.lock` can't be read
+    #[error("biblix.lock: {0}")]
+    Lock(String),
+    /// Fetching a package failed
+    #[error("{url}: {message}")]
+    Fetch { url: String, message: String },
+    /// No version satisfies a requirement, or two requirements conflict
+    #[error("{0}")]
+    Resolve(String),
+    /// What was installed isn't what the lock file says
+    #[error("{id}: expected {expected}, got {actual} (the source changed since it was locked)")]
+    Checksum {
+        id: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 impl BiblixError {

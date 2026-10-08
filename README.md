@@ -6,20 +6,38 @@ its text in one or more formats; biblix reads it, caches it, and tells
 counts, so references like `John 3:16 KJV` are checked against that translation. `bx` is the
 command line.
 
-Status: the first step of the plan (`doc/biblix.md` in topos). What works:
+What works (steps 1 and 2 of the plan, `doc/biblix.md` in topos):
 
-- `biblix.toml`: packages and vaults (a manifest without `[package]`), with formats, features
-  (Cargo-style, including `dep:` and `name/feature`), and dependencies (`git =` with `version`,
-  `tag`, `rev`, or `branch`; or `path =`)
+- `biblix.toml` for packages and vaults (a manifest without `[package]`): formats, Cargo-style
+  features (including `dep:` and `name/feature`), and dependencies (`git =` with `version`,
+  `tag`, `rev`, or `branch`; or `path =`). There's no default registry
 - Sources: a folder of USX books, and a folder of USFM books (read through
-  [`usfm3`](https://crates.io/crates/usfm3) into USX). Book files are found by name (`JHN.usx`,
-  `44JHNBSB.usx`, `43-JHN.usfm`) or by the code inside them
+  [`usfm3`](https://crates.io/crates/usfm3) into USX)
 - `Storage`: a folder, memory, or (later) a host's files, so the same code runs in WebAssembly
 - A cache of verse counts and parsed books, per package version and checksum
-- `bx show` and `bx check`
+- The library: installed versions side by side, as plain files; a project's `biblix.lock` pins
+  each package's commit and checksum, so another device installs the same text, and a changed
+  file is caught
+- `bx init`, `add`, `remove`, `install`, `update`, `list`, `show`, `check`
 
-Next: the library (installed versions side by side), `bx add`/`install` with git sources and a
-lock file, summaries (`biblix.summary.toml` and per-verse hashes), then biblix-ffi.
+Next: summaries (`biblix.summary.toml` and per-verse hashes), topos's LSP using the library, then
+biblix-ffi with an archive fetcher for WebAssembly.
+
+## Using it
+
+```sh
+bx init                                    # a biblix.toml here (a vault); without one, bx uses the library's
+bx add --git https://example.org/bsb       # the newest release; --version 1, --tag, --branch, --rev
+bx add --git https://example.org/kjv -F strongs
+bx add --path "Bibles/My Translation"      # used in place
+bx install                                 # what biblix.lock says, on a new device
+bx update [id]                             # newer versions the requirements allow
+bx list
+```
+
+The library is `BIBLIX_HOME` (else `$XDG_DATA_HOME/biblix`), or `--library DIR`: any folder,
+including inside a vault's `.obsidian/` so it syncs. The cache is per device: `BIBLIX_CACHE`, else
+`$XDG_CACHE_HOME/biblix`. Fetching uses the `git` command for now.
 
 ## A package
 

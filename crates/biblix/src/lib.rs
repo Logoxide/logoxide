@@ -12,8 +12,13 @@ The plan, with what comes next (the library, `bx`, git sources, summaries, and v
 
 pub mod cache;
 pub mod error;
+pub mod git;
+pub mod library;
+pub mod lock;
 pub mod manifest;
 pub mod package;
+pub mod project;
+pub mod resolve;
 pub mod source;
 pub mod storage;
 
@@ -21,8 +26,11 @@ use std::sync::LazyLock;
 
 pub use cache::{Cache, CachedPackage};
 pub use error::{BiblixError, Result};
+pub use library::Library;
+pub use lock::{LockedPackage, Lockfile};
 pub use manifest::Manifest;
 pub use package::{Features, Package};
+pub use project::Project;
 pub use storage::{FsStorage, MemoryStorage, Storage};
 pub use topos_bible;
 pub use topos_bible_markup as markup;

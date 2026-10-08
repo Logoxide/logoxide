@@ -17,3 +17,4 @@ sha2 = "0.10"
 postcard = { version = "1", features = ["use-std"] }
 thiserror = "2"
 usfm3 = "0.2"
+toml_edit = "0.23"

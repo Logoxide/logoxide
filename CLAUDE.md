@@ -20,7 +20,20 @@ design.
     `checksum()` hashes every file but `.git`
   - `cache.rs`: verse counts and parsed books (postcard) per `<id>/<version>-<checksum>`;
     `CachedPackage::add_to` gives topos's `Translations` the name, aliases, and counts
-- `crates/bx`: `bx show`, `bx check`
+  - `lock.rs`: `biblix.lock` (each package's version, commit, checksum, features, and
+    dependencies; `dependencies` at the top are what the manifest asks for)
+  - `git.rs`: `Fetcher` (a repository's tags; its files at a commit). `GitCli` runs `git`; an
+    archive fetcher over the host's HTTP comes with biblix-ffi (WebAssembly has no `git`)
+  - `library.rs`: installed versions in `packages/<id>/<version>` (or `<version>+g<commit>` when
+    not from its release tag), without `.git`; path packages stay where they are
+  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes. A lock entry is kept
+    while the manifest still allows it (unless updating); fetched text is checked against the
+    locked checksum; a tag's version must match its `biblix.toml`; git packages can't have path
+    dependencies
+  - `project.rs`: a folder with `biblix.toml` (edited with toml_edit, keeping comments) and its
+    lock; `translations()` gives topos the Bibles it asks for
+- `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show`, `check`. The project
+  is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 
 ## Decisions
 
