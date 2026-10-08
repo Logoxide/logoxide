@@ -421,3 +421,57 @@ fn files_under(files: &[PackageFile], dir: &str) -> Vec<PackageFile> {
         })
         .collect()
 }
+
+#[test]
+fn catalogs_and_ebible_imports() {
+    use std::io::Write;
+
+    let biblix = Biblix::new();
+    let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n\"eng\",\"eng-asv\",\"English\",\"American Standard Version (1901)\",\"\",\"True\",\"public domain\",\"2026-10-08\",\"ltr\",\"True\",\"ASV\"\n";
+    let ebible = biblix
+        .parse_catalog(biblix.ebible_catalog_url(), csv.into())
+        .unwrap();
+    let mine = biblix
+        .parse_catalog(
+            "catalog.toml".into(),
+            "[[package]]\nid = \"bsb\"\nname = \"Berean Standard Bible\"\nabbreviation = \"BSB\"\nlanguage = \"en\"\ngit = \"https://example.org/bsb\"\n".into(),
+        )
+        .unwrap();
+    let all = mine.merge(&ebible);
+    assert_eq!(all.count(), 2);
+    let found = all.search("american".into(), 0);
+    assert_eq!(found.len(), 1);
+    let entry = found[0].clone();
+    assert_eq!(
+        entry.source,
+        crate::CatalogSource::Ebible {
+            id: "eng-asv".into(),
+            zip_url: "https://ebible.org/Scriptures/eng-asv_usfm.zip".into()
+        }
+    );
+    assert!(matches!(
+        &all.search("BSB".into(), 1)[0].source,
+        crate::CatalogSource::Git { .. }
+    ));
+
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer
+        .start_file(
+            "73-JHNeng-asv.usfm",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+    writer
+        .write_all(b"\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n")
+        .unwrap();
+    let zip = writer.finish().unwrap().into_inner();
+    let files = biblix.import_ebible(entry, zip).unwrap();
+    let package = biblix.open_package(files, defaults(), vec![]).unwrap();
+    assert_eq!(
+        (package.info().abbreviation.as_str(), package.books()),
+        ("ASV", vec![43])
+    );
+
+    let project = biblix.parse_project(None, None).unwrap();
+    assert_eq!(project.catalogs(), [biblix.ebible_catalog_url()]);
+}

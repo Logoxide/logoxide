@@ -54,7 +54,7 @@ pub trait Source: Send + Sync {
 }
 
 /// A book's USFM code from its file name, as publishers name them: `JHN.usx`, `jhn.usfm`,
-/// `44JHNBSB.usx` (Paratext's), `43-JHN.usfm`, or a name with the code as a separate word
+/// `44JHNBSB.usx` (Paratext's), `43-JHN.usfm` and `73-JHNeng-asv.usfm` (eBible.org's), or a name with the code as a separate word
 /// (`B04___01_John_JHN.usx`)
 pub(crate) fn code_from_name(stem: &str) -> Option<BookId> {
     let books = crate::bible_data().books();
@@ -62,8 +62,11 @@ pub(crate) fn code_from_name(stem: &str) -> Option<BookId> {
     books
         .search_usfm(&name)
         .or_else(|| {
+            // `44JHNBSB` (Paratext's), `73-JHNeng-asv` (eBible.org's)
             let digits = name.get(..2)?.bytes().all(|b| b.is_ascii_digit());
-            digits.then(|| books.search_usfm(name.get(2..5)?)).flatten()
+            let rest = name.get(2..)?;
+            let rest = rest.strip_prefix('-').unwrap_or(rest);
+            digits.then(|| books.search_usfm(rest.get(..3)?)).flatten()
         })
         .or_else(|| {
             name.split(|c: char| !c.is_ascii_alphanumeric())

@@ -179,6 +179,12 @@ impl BiblixProject {
             .unwrap_or_default()
     }
 
+    /// The catalogs to search (`[settings] catalogs`, else eBible.org's list): URLs or paths
+    /// relative to the project, for `Biblix::parse_catalog`
+    pub fn catalogs(&self) -> Vec<String> {
+        self.project.manifest().catalogs()
+    }
+
     /// This project with a dependency added (or replaced); `name` is the package's id
     pub fn add_dependency(
         &self,

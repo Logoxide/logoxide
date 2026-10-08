@@ -22,3 +22,5 @@ indexmap = { version = "2", features = ["serde"] }
 # Reading repository archives the host downloads (pure Rust, so WebAssembly too)
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
+# Reading downloads publishers serve as .zip (eBible.org)
+zip = { version = "2", default-features = false, features = ["deflate"] }

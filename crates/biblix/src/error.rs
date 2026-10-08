@@ -31,6 +31,12 @@ pub enum BiblixError {
     /// `biblix.lock` can't be read
     #[error("biblix.lock: {0}")]
     Lock(String),
+    /// A catalog can't be read
+    #[error("catalog: {0}")]
+    Catalog(String),
+    /// A download can't be made into a package
+    #[error("import: {0}")]
+    Import(String),
     /// Fetching a package failed
     #[error("{url}: {message}")]
     Fetch { url: String, message: String },

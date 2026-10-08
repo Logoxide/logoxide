@@ -13,3 +13,5 @@ topos-bible.workspace = true
 clap = { version = "4", features = ["derive"] }
 semver = "1"
 toml_edit = "0.23"
+# Catalogs and imports over HTTPS (packages themselves come through git)
+ureq = "3"

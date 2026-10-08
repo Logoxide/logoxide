@@ -204,6 +204,19 @@ pub struct Settings {
     /// Bibles shown after the named one
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub compare: Vec<String>,
+    /// Catalogs to search for packages (URLs or paths; see [`crate::catalog`]). Without any,
+    /// eBible.org's list
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalogs: Option<Vec<String>>,
+}
+
+impl Manifest {
+    /// The catalogs to search: `[settings] catalogs`, else eBible.org's list
+    pub fn catalogs(&self) -> Vec<String> {
+        (self.settings.as_ref())
+            .and_then(|s| s.catalogs.clone())
+            .unwrap_or_else(|| vec![String::from(crate::catalog::EBIBLE_CATALOG)])
+    }
 }
 
 /// What a feature selection turns on

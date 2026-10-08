@@ -9,12 +9,14 @@ and the cache files it writes are handed back ([`BiblixPackage::cache_writes`]).
 `biblix.toml` and `biblix.lock` ask for, and where each one's files are.
 */
 
+mod catalog;
 mod installer;
 mod package;
 mod project;
 #[cfg(test)]
 mod tests;
 
+pub use catalog::*;
 pub use installer::*;
 pub use package::*;
 pub use project::*;
@@ -37,6 +39,10 @@ pub enum BiblixError {
     Files { message: String },
     /// A cached file is damaged or from another version
     Cache { message: String },
+    /// A catalog can't be read
+    Catalog { message: String },
+    /// A download can't be made into a package
+    Import { message: String },
 }
 
 impl From<biblix_core::BiblixError> for BiblixError {
@@ -49,6 +55,8 @@ impl From<biblix_core::BiblixError> for BiblixError {
             E::Lock(_) => BiblixError::Lock { message },
             E::NoReadableFormat(_) | E::Book { .. } => BiblixError::Text { message },
             E::Cache(_) => BiblixError::Cache { message },
+            E::Catalog(_) => BiblixError::Catalog { message },
+            E::Import(_) => BiblixError::Import { message },
             E::Io { .. }
             | E::BadPath(_)
             | E::ReadOnly
@@ -136,6 +144,43 @@ impl Biblix {
     /// A USFM book as USX, for `ToposBook.parse(topos, "usx", ...)` (a reader of book files)
     pub fn usfm_to_usx(&self, usfm: String) -> Result<String, BiblixError> {
         Ok(biblix_core::source::usfm_to_usx(&usfm)?)
+    }
+
+    /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`)
+    pub fn ebible_catalog_url(&self) -> String {
+        biblix_core::catalog::EBIBLE_CATALOG.to_string()
+    }
+
+    /// A catalog from its file's text: eBible.org's CSV when `location` ends in `.csv`, else a
+    /// `catalog.toml`
+    pub fn parse_catalog(
+        &self,
+        location: String,
+        text: String,
+    ) -> Result<BiblixCatalog, BiblixError> {
+        Ok(BiblixCatalog {
+            catalog: biblix_core::catalog::Catalog::parse(&location, &text)?,
+        })
+    }
+
+    /// A package made from eBible.org's download of a catalog entry (`zipUrl`'s bytes): its
+    /// files, relative to the folder to write them in (`imports/<id>/` beside the vault's
+    /// `biblix.toml`, then `addDependency(id, { path: "imports/<id>" })`)
+    pub fn import_ebible(
+        &self,
+        entry: CatalogEntry,
+        zip: Vec<u8>,
+    ) -> Result<Vec<PackageFile>, BiblixError> {
+        let files = biblix_core::MemoryStorage::new();
+        biblix_core::import::ebible(&entry.into(), &zip, &files)?;
+        let mut out = vec![];
+        for path in biblix_core::Storage::walk(&files, "")? {
+            out.push(PackageFile {
+                bytes: biblix_core::Storage::read(&files, &path)?,
+                path,
+            });
+        }
+        Ok(out)
     }
 
     /// Installs packages and inspects repositories, with the host downloading

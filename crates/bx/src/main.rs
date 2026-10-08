@@ -124,6 +124,37 @@ enum Command {
     },
     /// The packages biblix.toml asks for, as locked
     List,
+    /// Finds packages in catalogs by name, abbreviation, or language (the project's catalogs,
+    /// else eBible.org's list)
+    Search {
+        /// Words to find (every one must match)
+        query: Vec<String>,
+        /// A catalog to search (a URL or a path; a `.csv` is eBible.org's list), instead of the
+        /// project's
+        #[arg(long)]
+        catalog: Vec<String>,
+        /// How many to show
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
+    /// Makes a package from another publisher's download, puts it in the project's `imports/`,
+    /// and adds it as a path package: `ebible:<id>` (an id `bx search` shows)
+    Import {
+        /// `ebible:eng-asv`
+        source: String,
+    },
+    /// Catalogs: lists of packages anyone can host
+    #[command(subcommand)]
+    Catalog(CatalogCommand),
+}
+
+#[derive(Subcommand)]
+enum CatalogCommand {
+    /// A catalog.toml entry for a package's repository (its newest release's biblix.toml)
+    Entry {
+        /// The package's git URL
+        git: String,
+    },
 }
 
 #[derive(Args)]
@@ -209,6 +240,13 @@ fn main() -> ExitCode {
             },
         ),
         Command::List => list(&cli),
+        Command::Search {
+            query,
+            catalog,
+            limit,
+        } => search(&cli, &query.join(" "), catalog, *limit),
+        Command::Import { source } => import(&cli, source),
+        Command::Catalog(CatalogCommand::Entry { git }) => catalog_entry(&cli, git),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -693,4 +731,134 @@ fn verify(args: &PackageArgs) -> biblix::Result<()> {
     } else {
         Err(biblix::BiblixError::Manifest(problems.join("; ")))
     }
+}
+
+/// A URL's body (catalogs and imports; packages come through git)
+fn get(url: &str) -> biblix::Result<Vec<u8>> {
+    let fail = |e: ureq::Error| biblix::BiblixError::Fetch {
+        url: url.to_string(),
+        message: e.to_string(),
+    };
+    let mut response = ureq::get(url).call().map_err(fail)?;
+    response
+        .body_mut()
+        .with_config()
+        .limit(1 << 30)
+        .read_to_vec()
+        .map_err(fail)
+}
+
+/// A catalog from a URL or a path
+fn load_catalog(location: &str) -> biblix::Result<biblix::catalog::Catalog> {
+    let bytes = if location.starts_with("https://") || location.starts_with("http://") {
+        get(location)?
+    } else {
+        std::fs::read(location).map_err(|e| biblix::BiblixError::Io {
+            path: location.to_string(),
+            message: e.to_string(),
+        })?
+    };
+    biblix::catalog::Catalog::parse(location, &String::from_utf8_lossy(&bytes))
+}
+
+fn search(cli: &Cli, query: &str, catalogs: &[String], limit: usize) -> biblix::Result<()> {
+    let catalogs = match catalogs.is_empty() {
+        true => cli.project(&cli.library())?.manifest().catalogs(),
+        false => catalogs.to_vec(),
+    };
+    let mut all = biblix::catalog::Catalog::default();
+    for location in &catalogs {
+        all = all.merge(load_catalog(location)?);
+    }
+    let found = all.search(query);
+    for entry in found.iter().take(limit) {
+        let language = entry.language_name.as_deref().unwrap_or(&entry.language);
+        let source = match &entry.source {
+            biblix::catalog::CatalogSource::Git { url } => format!("bx add --git {url}"),
+            biblix::catalog::CatalogSource::Ebible { id } => format!("bx import ebible:{id}"),
+        };
+        println!(
+            "{} ({}): {}, {language}, {}\n    {source}",
+            entry.abbreviation,
+            entry.id,
+            entry.name,
+            entry.license.as_deref().unwrap_or("no license given"),
+        );
+    }
+    let more = found.len().saturating_sub(limit);
+    println!(
+        "{} found in {} catalog(s){}",
+        found.len(),
+        catalogs.len(),
+        if more > 0 {
+            format!(" ({more} more: --limit)")
+        } else {
+            String::new()
+        }
+    );
+    Ok(())
+}
+
+fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
+    let Some(id) = source.strip_prefix("ebible:") else {
+        return Err(biblix::BiblixError::Import(format!(
+            "{source}: give ebible:<id> (see bx search)"
+        )));
+    };
+    let catalog = load_catalog(biblix::catalog::EBIBLE_CATALOG)?;
+    let entry = (catalog.entries.iter())
+        .find(|e| matches!(&e.source, biblix::catalog::CatalogSource::Ebible { id: i } if i == id))
+        .ok_or_else(|| {
+            biblix::BiblixError::Import(format!("eBible.org lists no downloadable {id}"))
+        })?;
+    let library = cli.library();
+    let mut project = cli.project(&library)?;
+    let relative = format!("imports/{}", entry.id);
+    let dir = project.dir().join(&relative);
+    if dir.exists() {
+        return Err(biblix::BiblixError::Import(format!(
+            "{} already exists",
+            dir.display()
+        )));
+    }
+    let zip = get(&biblix::import::ebible_zip_url(id))?;
+    biblix::import::ebible(entry, &zip, &FsStorage::new(&dir))?;
+    let dependency = DetailedDependency {
+        path: Some(relative),
+        default_features: true,
+        ..DetailedDependency::default()
+    };
+    project.add(&entry.id, &dependency)?;
+    project.save_manifest()?;
+    project.install(&library, &cli.fetcher(&library), Update::Nothing)?;
+    println!(
+        "imported {} ({}) into {}",
+        entry.id,
+        entry.name,
+        dir.display()
+    );
+    Ok(())
+}
+
+fn catalog_entry(cli: &Cli, url: &str) -> biblix::Result<()> {
+    use biblix::git::Fetcher;
+    let library = cli.library();
+    let fetcher = cli.fetcher(&library);
+    let tags = fetcher.tags(url)?;
+    let newest = (tags.into_iter())
+        .filter_map(|(t, _)| Some((biblix::resolve::tag_version(&t)?, t)))
+        .filter(|(v, _)| v.pre.is_empty())
+        .max();
+    let reference = match newest {
+        Some((_, tag)) => biblix::git::GitRef::Tag(tag),
+        None => biblix::git::GitRef::Head,
+    };
+    let files = MemoryStorage::new();
+    fetcher.fetch_files(url, &reference, &[MANIFEST], &files)?;
+    let manifest = biblix::Manifest::parse(&files.read_string(MANIFEST)?)?;
+    let info = manifest
+        .package
+        .ok_or_else(|| biblix::BiblixError::Manifest(format!("{url}: no [package]")))?;
+    print!("{}", biblix::catalog::Catalog::toml_entry(&info, url));
+    Ok(())
 }

@@ -28,6 +28,12 @@ before changing the design.
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
     and GitHub's own archives)
+  - `catalog.rs`: catalogs to search (`Catalog::parse`: a `catalog.toml` of git packages, or
+    eBible.org's `translations.csv`, only its downloadable, redistributable rows); `search` ranks
+    exact abbreviations and ids first; a vault's `[settings] catalogs`, else eBible.org's list
+  - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
+    `biblix.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
+    date (`2026.10.8`); a vault uses it as a path package in `imports/<id>/`
   - `library.rs`: installed versions in `packages/<id>/<version>` (or `<version>+g<commit>` when
     not from its release tag), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
@@ -56,7 +62,8 @@ before changing the design.
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
 - `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`. The project
+  `verify`, `search` (catalogs), `import ebible:<id>`, `catalog entry <git URL>`. Catalogs and
+  imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 - `crates/biblix-ffi`: BoltFFI 0.31 bindings (npm and PyPI `biblix`), re-exporting topos-ffi
   (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
@@ -67,7 +74,8 @@ before changing the design.
   native only. Opening goes through the `Biblix` object because BoltFFI's WebAssembly
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry biblix's books and counts
-  across. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
+  across. `BiblixCatalog` (`catalog.rs`) searches catalogs, and `Biblix.importEbible` makes an
+  eBible.org download into a package's files. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given; whatever is missing (refs, an archive, an installed package's files) stops the round and
   is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `libbiblix.rlib`. Build with
