@@ -25,6 +25,17 @@ git = "https://github.com/someone/bsb"
 
 A vault names its catalogs in `[settings] catalogs` (URLs or paths; a `.csv` is eBible.org's
 form, a `.json` fetch.bible's); without any, eBible.org's and fetch.bible's lists are searched.
+
+**Registries** are catalogs with a name (`[settings.registries]`), so a package can be named
+through one: `dorean-local:dorean-collection` by its id, or `dorean-local:books/romans` by its
+path there. A registry is a catalog, or a folder of package repositories: each git repository
+with a `biblix.toml` in it, at any depth, is a package ([`Catalog::from_packages`]), named by
+its path in the folder and found at its `file://` URL.
+
+```toml
+[settings.registries]
+dorean-local = "~/Documents/biblix-dorean-repos"
+```
 */
 
 use serde::{Deserialize, Serialize};
@@ -106,6 +117,8 @@ pub struct CatalogEntry {
     pub kind: PackageKind,
     pub direction: Direction,
     pub source: CatalogSource,
+    /// Its path in a registry folder (`books/romans`), which names it there as its id does
+    pub path: Option<String>,
 }
 
 /// The `[[package]]` tables of a `catalog.toml`
@@ -247,6 +260,7 @@ impl Catalog {
                     id: id.clone(),
                     books,
                 },
+                path: None,
             });
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
@@ -277,6 +291,7 @@ impl Catalog {
                 source: CatalogSource::Git {
                     url: crate::git::expand_url(&e.git),
                 },
+                path: None,
             })
             .collect();
         Ok(Catalog {
@@ -380,6 +395,7 @@ impl Catalog {
                     _ => Direction::Ltr,
                 },
                 source: CatalogSource::Ebible { id: ebible_id },
+                path: None,
             });
         }
         Ok(Catalog {
@@ -404,6 +420,74 @@ impl Catalog {
     /// names, if this catalog lists it
     pub fn find_import(&self, name: &str) -> Option<&CatalogEntry> {
         (self.entries.iter()).find(|e| e.source.import_name().as_deref() == Some(name))
+    }
+
+    /**
+    A registry folder's packages: each `(path, manifest)` is a repository at that path in the
+    folder (`books/romans`, `/`-separated) and its `biblix.toml`, at `<base_url>/<path>`. A
+    manifest without `[package]` (a vault's) isn't a package
+    */
+    pub fn from_packages(
+        name: &str,
+        base_url: &str,
+        packages: Vec<(String, crate::manifest::Manifest)>,
+    ) -> Catalog {
+        let base = base_url.trim_end_matches('/');
+        let mut entries: Vec<CatalogEntry> = (packages.into_iter())
+            .filter_map(|(path, manifest)| {
+                let info = manifest.package?;
+                Some(CatalogEntry {
+                    id: info.id,
+                    name: info.name,
+                    abbreviation: info.abbreviation,
+                    aliases: info.aliases,
+                    language: info.language,
+                    language_name: None,
+                    description: info.description,
+                    license: info.license,
+                    copyright: None,
+                    version: Some(info.version.to_string()),
+                    kind: info.kind,
+                    direction: info.direction,
+                    source: CatalogSource::Git {
+                        url: format!("{base}/{path}"),
+                    },
+                    path: Some(path),
+                })
+            })
+            .collect();
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+        Catalog {
+            name: name.to_string(),
+            entries,
+        }
+    }
+
+    /**
+    The entry `name` names in this registry: the one at that path (`books/romans`), else the
+    one with that id. An id two entries share names neither: give the path
+    */
+    pub fn find(&self, name: &str) -> Result<Option<&CatalogEntry>> {
+        let name = name.trim_matches('/');
+        if let Some(entry) = (self.entries.iter()).find(|e| e.path.as_deref() == Some(name)) {
+            return Ok(Some(entry));
+        }
+        let found: Vec<&CatalogEntry> = (self.entries.iter()).filter(|e| e.id == name).collect();
+        match found.as_slice() {
+            [] => Ok(None),
+            [entry] => Ok(Some(entry)),
+            many => {
+                let paths: Vec<&str> = (many.iter())
+                    .map(|e| e.path.as_deref().unwrap_or("?"))
+                    .collect();
+                Err(BiblixError::Catalog(format!(
+                    "{} packages are `{name}` in {}: name one by its path ({})",
+                    many.len(),
+                    self.name,
+                    paths.join(", ")
+                )))
+            }
+        }
     }
 
     /// This catalog with another's entries after its own (an id listed twice keeps the first)
@@ -447,6 +531,38 @@ impl Catalog {
         doc.insert("package", toml_edit::Item::ArrayOfTables(packages));
         doc.to_string()
     }
+}
+
+/// Names a registry can't have: what URLs and other names already start with
+pub const RESERVED_REGISTRY_NAMES: [&str; 10] = [
+    "github", "gitlab", "codeberg", "ebible", "fetch", "http", "https", "file", "ssh", "git",
+];
+
+/// Whether `name` can name a registry: lowercase letters, digits, `-`, and `_`, not reserved
+pub fn check_registry_name(name: &str) -> Result<()> {
+    let valid = !name.is_empty()
+        && (name.chars()).all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || "-_".contains(c));
+    if !valid {
+        return Err(BiblixError::Catalog(format!(
+            "registry name `{name}`: use lowercase letters, digits, `-`, and `_`"
+        )));
+    }
+    if RESERVED_REGISTRY_NAMES.contains(&name) {
+        return Err(BiblixError::Catalog(format!(
+            "registry name `{name}` is taken (it starts URLs or other names)"
+        )));
+    }
+    Ok(())
+}
+
+/// A name through a registry, `dorean-local:books/romans`, split into the registry (one of
+/// `registries`) and the package's name there
+pub fn split_registry_name<'a>(
+    text: &'a str,
+    registries: &std::collections::BTreeMap<String, String>,
+) -> Option<(&'a str, &'a str)> {
+    let (registry, name) = text.split_once(':')?;
+    (registries.contains_key(registry) && !name.is_empty()).then_some((registry, name))
 }
 
 /// A fetch.bible license as SPDX: `cc-by-sa` with its URL's version is `CC-BY-SA-4.0`, `public`
@@ -740,5 +856,58 @@ git = "https://example.org/bsb"
                 url: "https://example.org/bsb".into()
             }
         );
+    }
+
+    #[test]
+    fn a_registry_folder_names_packages_by_path_or_id() {
+        let package = |id: &str| {
+            crate::manifest::Manifest::parse(&format!(
+                "[package]\nid = \"{id}\"\nname = \"{id}\"\nabbreviation = \"X\"\n\
+                 version = \"1.0.0\"\nlanguage = \"en\"\n\
+                 [formats]\nusx = {{ path = \"usx/\" }}\n"
+            ))
+            .unwrap()
+        };
+        let vault = crate::manifest::Manifest::parse("[dependencies]\n").unwrap();
+        let catalog = Catalog::from_packages(
+            "local",
+            "file:///packages/",
+            vec![
+                (String::from("kjv"), package("kjv")),
+                (String::from("books/romans"), package("romans")),
+                (String::from("forks/romans"), package("romans")),
+                (String::from("vault"), vault),
+            ],
+        );
+        assert_eq!(catalog.entries.len(), 3);
+        let url = |name: &str| match &catalog.find(name).unwrap().unwrap().source {
+            CatalogSource::Git { url } => url.clone(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(url("kjv"), "file:///packages/kjv");
+        assert_eq!(url("books/romans"), "file:///packages/books/romans");
+        assert_eq!(url("/forks/romans/"), "file:///packages/forks/romans");
+        // Two packages are `romans`: the path has to say which
+        let error = catalog.find("romans").unwrap_err().to_string();
+        assert!(error.contains("books/romans, forks/romans"), "{error}");
+        assert!(catalog.find("asv").unwrap().is_none());
+    }
+
+    #[test]
+    fn registry_names_are_checked_and_split() {
+        assert!(check_registry_name("dorean-local").is_ok());
+        assert!(check_registry_name("github").is_err());
+        assert!(check_registry_name("Dorean").is_err());
+        assert!(check_registry_name("").is_err());
+        let registries = std::collections::BTreeMap::from([(
+            String::from("dorean-local"),
+            String::from("~/repos"),
+        )]);
+        assert_eq!(
+            split_registry_name("dorean-local:books/romans", &registries),
+            Some(("dorean-local", "books/romans"))
+        );
+        assert_eq!(split_registry_name("github:a/b", &registries), None);
+        assert_eq!(split_registry_name("dorean-local:", &registries), None);
     }
 }

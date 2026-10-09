@@ -174,6 +174,9 @@ enum Command {
         /// project's
         #[arg(long)]
         catalog: Vec<String>,
+        /// Search only this registry (bx catalog list); with no words, list its packages
+        #[arg(long, conflicts_with = "catalog")]
+        registry: Option<String>,
         /// How many to show
         #[arg(long, default_value_t = 20)]
         limit: usize,
@@ -230,10 +233,17 @@ enum CatalogCommand {
     /// The catalogs `bx search` looks through: the project's, then eBible.org's and fetch.bible's
     List,
     /// Searches a catalog too (a URL, or a path relative to the project): a catalog.toml,
-    /// eBible.org's translations.csv, or fetch.bible's manifest.json. It's read first, to check it
-    Add { location: String },
-    /// Stops searching a catalog. Removing eBible.org's or fetch.bible's turns the defaults off
-    /// (`default-catalogs = false`), keeping the other one
+    /// eBible.org's translations.csv, or fetch.bible's manifest.json. It's read first, to check it.
+    /// With --name, a registry: a catalog or a folder of package repositories, whose packages
+    /// `<name>:<id>` or `<name>:<path in the folder>` then name (`bx add dorean-local:kjv`)
+    Add {
+        location: String,
+        /// Name it as a registry
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Stops searching a catalog, or a registry (by its name). Removing eBible.org's or
+    /// fetch.bible's turns the defaults off (`default-catalogs = false`), keeping the other one
     Remove { location: String },
     /// A catalog.toml entry for a package's repository (its newest release's biblix.toml)
     Entry {
@@ -244,7 +254,8 @@ enum CatalogCommand {
 
 #[derive(Args)]
 struct AddArgs {
-    /// A git repository: `github:owner/repo` (also `gitlab:`, `codeberg:`), or its URL
+    /// A git repository: `github:owner/repo` (also `gitlab:`, `codeberg:`), its URL, or a
+    /// package in a registry (`dorean-local:dorean-collection`, by its id or its path there)
     #[arg(conflicts_with_all = ["git", "path"])]
     repository: Option<String>,
     /// A git repository's URL (or a local repository's path), or `github:owner/repo`
@@ -367,12 +378,14 @@ fn main() -> ExitCode {
             references,
             format,
             ..
-        } => show_remote(
-            &cli,
-            &biblix::git::expand_url(url),
-            tag.as_deref(),
-            references.then_some(format.as_str()),
-        ),
+        } => package_url(&cli, url).and_then(|url| {
+            show_remote(
+                &cli,
+                &url,
+                tag.as_deref(),
+                references.then_some(format.as_str()),
+            )
+        }),
         Command::Release {
             path,
             set_version,
@@ -401,15 +414,25 @@ fn main() -> ExitCode {
         Command::Search {
             query,
             catalog,
+            registry,
             limit,
             json,
-        } => search(&cli, &query.join(" "), catalog, *limit, *json),
+        } => search(
+            &cli,
+            &query.join(" "),
+            catalog,
+            registry.as_deref(),
+            *limit,
+            *json,
+        ),
         Command::Import { source } => import(&cli, source),
         Command::Catalog(CatalogCommand::Entry { git }) => {
             catalog_entry(&cli, &biblix::git::expand_url(git))
         }
         Command::Catalog(CatalogCommand::List) => catalog_list(&cli),
-        Command::Catalog(CatalogCommand::Add { location }) => catalog_add(&cli, location),
+        Command::Catalog(CatalogCommand::Add { location, name }) => {
+            catalog_add(&cli, location, name.as_deref())
+        }
         Command::Catalog(CatalogCommand::Remove { location }) => catalog_remove(&cli, location),
         Command::Media(MediaCommand::Add {
             file,
@@ -679,8 +702,9 @@ fn version_req(text: &str) -> biblix::Result<semver::VersionReq> {
 fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
-    let git =
-        (args.repository.as_ref().or(args.git.as_ref())).map(|url| biblix::git::expand_url(url));
+    let git = (args.repository.as_ref().or(args.git.as_ref()))
+        .map(|url| registry_url(&project, url))
+        .transpose()?;
     let mut dependency = DetailedDependency {
         git: git.clone(),
         path: args.path.clone(),
@@ -1299,8 +1323,111 @@ fn load_catalog(location: &str, base: &Path) -> biblix::Result<biblix::catalog::
     biblix::catalog::Catalog::parse(location, &String::from_utf8_lossy(&bytes))
 }
 
+/**
+A package's git URL from what's typed: a name through one of the project's registries
+(`dorean-local:books/romans`), `github:owner/repo`, or a URL
+*/
+fn registry_url(project: &biblix::Project, text: &str) -> biblix::Result<String> {
+    let registries = project.manifest().registries();
+    let Some((registry, name)) = biblix::catalog::split_registry_name(text, &registries) else {
+        return Ok(biblix::git::expand_url(text));
+    };
+    let catalog = load_registry(registry, &registries[registry], project.dir())?;
+    let entry = catalog.find(name)?.ok_or_else(|| {
+        biblix::BiblixError::Catalog(format!(
+            "{registry} has no package `{name}` (bx search --registry {registry})"
+        ))
+    })?;
+    match &entry.source {
+        biblix::catalog::CatalogSource::Git { url } => Ok(url.clone()),
+        other => Err(biblix::BiblixError::Catalog(format!(
+            "{text} is imported, not added: bx import {}",
+            other.import_name().unwrap_or_default()
+        ))),
+    }
+}
+
+/// [`registry_url`] in the project `cli` names (`bx show --git dorean-local:kjv`)
+fn package_url(cli: &Cli, text: &str) -> biblix::Result<String> {
+    if !text.contains(':') || text.contains("://") {
+        return Ok(biblix::git::expand_url(text));
+    }
+    registry_url(&cli.project(&cli.library())?, text)
+}
+
+/// A registry's location as a path: `~/` is the home folder, a relative one the project's
+fn registry_path(location: &str, base: &Path) -> PathBuf {
+    match (location.strip_prefix("~/"), std::env::var_os("HOME")) {
+        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
+        _ => base.join(location),
+    }
+}
+
+/**
+A registry's packages: a folder's repositories (every git repository with a `biblix.toml`, at any
+depth, named by its path there), else a catalog at that URL or path
+*/
+fn load_registry(
+    name: &str,
+    location: &str,
+    base: &Path,
+) -> biblix::Result<biblix::catalog::Catalog> {
+    let is_url = location.contains("://");
+    let folder = registry_path(location, base);
+    if is_url || !folder.is_dir() {
+        let mut catalog = match is_url {
+            true => load_catalog(location, base)?,
+            false => load_catalog(&folder.display().to_string(), Path::new("/"))?,
+        };
+        catalog.name = name.to_string();
+        return Ok(catalog);
+    }
+    let folder = folder.canonicalize().map_err(|e| biblix::BiblixError::Io {
+        path: folder.display().to_string(),
+        message: e.to_string(),
+    })?;
+    let mut packages = vec![];
+    let mut pending = vec![folder.clone()];
+    while let Some(dir) = pending.pop() {
+        let manifest = dir.join(MANIFEST);
+        if dir.join(".git").exists() && manifest.is_file() {
+            let text = std::fs::read_to_string(&manifest).map_err(|e| biblix::BiblixError::Io {
+                path: manifest.display().to_string(),
+                message: e.to_string(),
+            })?;
+            let path = dir.strip_prefix(&folder).unwrap_or(&dir);
+            let path: Vec<String> = (path.components())
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect();
+            match biblix::Manifest::parse(&text) {
+                Ok(parsed) => packages.push((path.join("/"), parsed)),
+                Err(e) => eprintln!("warning: {}: {e}", manifest.display()),
+            }
+            // A package's own folders aren't searched
+            continue;
+        }
+        let entries = std::fs::read_dir(&dir).map_err(|e| biblix::BiblixError::Io {
+            path: dir.display().to_string(),
+            message: e.to_string(),
+        })?;
+        for entry in entries.flatten() {
+            let hidden = entry.file_name().to_string_lossy().starts_with('.');
+            if !hidden && entry.file_type().is_ok_and(|t| t.is_dir()) {
+                pending.push(entry.path());
+            }
+        }
+    }
+    let url = format!("file://{}", folder.display());
+    Ok(biblix::catalog::Catalog::from_packages(
+        name, &url, packages,
+    ))
+}
+
 fn catalog_list(cli: &Cli) -> biblix::Result<()> {
     let project = cli.project(&cli.library())?;
+    for (name, location) in project.manifest().registries() {
+        println!("{name}: {location} (registry)");
+    }
     let defaults = biblix::catalog::DEFAULT_CATALOGS;
     for location in project.manifest().catalogs() {
         let note = match defaults.contains(&location.as_str()) {
@@ -1312,8 +1439,29 @@ fn catalog_list(cli: &Cli) -> biblix::Result<()> {
     Ok(())
 }
 
-fn catalog_add(cli: &Cli, location: &str) -> biblix::Result<()> {
+fn catalog_add(cli: &Cli, location: &str, name: Option<&str>) -> biblix::Result<()> {
     let mut project = cli.project(&cli.library())?;
+    if let Some(name) = name {
+        biblix::catalog::check_registry_name(name)?;
+        let catalog = load_registry(name, location, project.dir())?;
+        if !project.add_registry(name, location)? {
+            println!("{name} is already {location}");
+            return Ok(());
+        }
+        project.save_manifest()?;
+        let count = catalog.entries.len();
+        let plural = if count == 1 { "" } else { "s" };
+        println!("Added the registry {name} ({location}): {count} package{plural}");
+        for entry in &catalog.entries {
+            let path = entry.path.as_deref().unwrap_or(&entry.id);
+            println!(
+                "    {name}:{path}  {} {}",
+                entry.id,
+                entry.version.as_deref().unwrap_or("")
+            );
+        }
+        return Ok(());
+    }
     let catalog = load_catalog(location, project.dir())?;
     if !project.add_catalog(location)? {
         println!("{location} is already searched");
@@ -1328,6 +1476,11 @@ fn catalog_add(cli: &Cli, location: &str) -> biblix::Result<()> {
 
 fn catalog_remove(cli: &Cli, location: &str) -> biblix::Result<()> {
     let mut project = cli.project(&cli.library())?;
+    if project.remove_registry(location)? {
+        project.save_manifest()?;
+        println!("Removed the registry {location}");
+        return Ok(());
+    }
     if !project.remove_catalog(location)? {
         return Err(biblix::BiblixError::Catalog(format!(
             "{location} isn't searched (bx catalog list)"
@@ -1342,27 +1495,69 @@ fn search(
     cli: &Cli,
     query: &str,
     catalogs: &[String],
+    registry: Option<&str>,
     limit: usize,
     json: bool,
 ) -> biblix::Result<()> {
+    // The project's registries come first, then its catalogs
+    let mut registries = vec![];
     let (catalogs, base) = match catalogs.is_empty() {
         true => {
             let project = cli.project(&cli.library())?;
-            (project.manifest().catalogs(), project.dir().to_path_buf())
+            let named = project.manifest().registries();
+            if let Some(name) = registry
+                && !named.contains_key(name)
+            {
+                return Err(biblix::BiblixError::Catalog(format!(
+                    "no registry `{name}` (bx catalog list)"
+                )));
+            }
+            for (name, location) in &named {
+                if registry.is_some_and(|r| r != name) {
+                    continue;
+                }
+                match load_registry(name, location, project.dir()) {
+                    Ok(catalog) => registries.push(catalog),
+                    Err(e) => eprintln!("warning: {name}: {e}"),
+                }
+            }
+            let catalogs = match registry {
+                Some(_) => vec![],
+                None => project.manifest().catalogs(),
+            };
+            (catalogs, project.dir().to_path_buf())
         }
         false => (catalogs.to_vec(), PathBuf::from(".")),
     };
-    let all = (load_catalogs(&catalogs, &base)?.into_iter())
-        .fold(biblix::catalog::Catalog::default(), |all, c| all.merge(c));
+    // What names each registry's packages: `<registry>:<path>`, by their URLs
+    let mut through: std::collections::HashMap<String, String> = Default::default();
+    for catalog in &registries {
+        for entry in &catalog.entries {
+            if let biblix::catalog::CatalogSource::Git { url } = &entry.source {
+                let path = entry.path.as_deref().unwrap_or(&entry.id);
+                through.insert(url.clone(), format!("{}:{path}", catalog.name));
+            }
+        }
+    }
+    let searched = registries.len() + catalogs.len();
+    // Every registry package is listed, even two with one id (they differ by path)
+    let mut all = biblix::catalog::Catalog {
+        name: String::new(),
+        entries: registries.into_iter().flat_map(|c| c.entries).collect(),
+    };
+    if !catalogs.is_empty() {
+        all = (load_catalogs(&catalogs, &base)?.into_iter()).fold(all, |all, c| all.merge(c));
+    }
     let found = all.search(query);
     if json {
         let entries: Vec<serde_json::Value> = (found.iter().take(limit))
             .map(|e| {
                 let install = match (&e.source, e.source.import_name()) {
                     (_, Some(name)) => vec![String::from("import"), name],
-                    (biblix::catalog::CatalogSource::Git { url }, None) => {
-                        vec![String::from("add"), String::from("--git"), url.clone()]
-                    }
+                    (biblix::catalog::CatalogSource::Git { url }, None) => match through.get(url) {
+                        Some(name) => vec![String::from("add"), name.clone()],
+                        None => vec![String::from("add"), String::from("--git"), url.clone()],
+                    },
                     (_, None) => vec![],
                 };
                 serde_json::json!({
@@ -1382,7 +1577,10 @@ fn search(
         let language = entry.language_name.as_deref().unwrap_or(&entry.language);
         let source = match (&entry.source, entry.source.import_name()) {
             (_, Some(name)) => format!("bx import {name}"),
-            (biblix::catalog::CatalogSource::Git { url }, None) => format!("bx add --git {url}"),
+            (biblix::catalog::CatalogSource::Git { url }, None) => match through.get(url) {
+                Some(name) => format!("bx add {name}"),
+                None => format!("bx add --git {url}"),
+            },
             (_, None) => String::new(),
         };
         println!(
@@ -1397,7 +1595,7 @@ fn search(
     println!(
         "{} found in {} catalog(s){}",
         found.len(),
-        catalogs.len(),
+        searched,
         if more > 0 {
             format!(" ({more} more: --limit)")
         } else {

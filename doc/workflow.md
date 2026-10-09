@@ -205,6 +205,23 @@ bx catalog add https://example.org/bibles/catalog.toml
 bx search kjv
 ```
 
+### A registry of your own
+
+A registry is a catalog with a name, so its packages can be named through it. A folder of
+package repositories is one: every git repository with a `biblix.toml` in it, at any depth.
+
+```sh
+bx catalog add ~/Documents/biblix-dorean-repos --name dorean-local
+bx search --registry dorean-local         # every package in it, and how to add each
+bx add dorean-local:dorean-collection     # by its id
+bx add dorean-local:books/romans          # by its path in the folder
+```
+
+An id two packages share (a fork beside the original) has to be named by its path. The
+manifest keeps the package's full `file://` URL, so the name is only for typing. A registry can
+also be a `catalog.toml` (`--name mine https://example.org/catalog.toml`), whose packages are
+named by id. Registries are in `[settings.registries]`, searched before the catalogs.
+
 ### Audio
 
 Recordings are listed, never stored: each file's URL, size, and SHA-256, and a WebVTT file of

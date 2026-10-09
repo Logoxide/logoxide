@@ -49,7 +49,10 @@ before changing the design.
     `default-catalogs = false`. Each imported kind names its prefix (`CatalogSource::prefix`:
     `ebible`, `fetch`), and `Catalog::find_import` finds `ebible:<id>` in a catalog; `bx import`
     looks through the project's catalogs in order. `Project::add_catalog`/`remove_catalog` edit them (removing a
-    default turns the defaults off and names the other; naming both again turns them back on)
+    default turns the defaults off and names the other; naming both again turns them back on). Registries (`[settings.registries]`, `Project::add_registry`) are named catalogs: a folder
+    of package repositories (`Catalog::from_packages`; bx scans it) or a catalog, so
+    `dorean-local:<id>` or `dorean-local:<path in the folder>` names a package (`Catalog::find`,
+    `split_registry_name`); a shared id needs the path
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
     `biblix.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
     date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
@@ -108,7 +111,7 @@ before changing the design.
   names it, like `cargo new`; then `bx release`), `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry`, `media add <file> --url`
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry` (`add <folder or catalog> --name <registry>`), `media add <file> --url`
   (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Catalogs and
   imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own

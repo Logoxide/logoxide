@@ -279,6 +279,11 @@ pub struct Settings {
     /// Whether eBible.org's and fetch.bible's lists are searched too
     #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
     pub default_catalogs: bool,
+    /// Registries by name: `dorean-local = "~/biblix-packages"` lets `dorean-local:kjv` (or
+    /// `dorean-local:books/kjv`, its folder there) name a package. Each is a folder of package
+    /// repositories, or a catalog (see [`crate::catalog`]); they're searched first
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub registries: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -288,11 +293,19 @@ impl Default for Settings {
             compare: Vec::new(),
             catalogs: Vec::new(),
             default_catalogs: true,
+            registries: BTreeMap::new(),
         }
     }
 }
 
 impl Manifest {
+    /// The registries by name (`[settings.registries]`)
+    pub fn registries(&self) -> BTreeMap<String, String> {
+        (self.settings.as_ref())
+            .map(|s| s.registries.clone())
+            .unwrap_or_default()
+    }
+
     /// The catalogs to search: `[settings] catalogs`, then eBible.org's and fetch.bible's lists
     /// (unless `default-catalogs = false`)
     pub fn catalogs(&self) -> Vec<String> {

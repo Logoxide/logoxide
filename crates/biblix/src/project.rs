@@ -249,6 +249,48 @@ impl Project {
     }
 
     /// Drops `[settings]` once nothing is left in it
+    /**
+    Names a registry (`[settings.registries]`): a folder of package repositories or a catalog,
+    so `name:<id or path>` names its packages. Replaces one of that name; whether it changed
+    */
+    pub fn add_registry(&mut self, name: &str, location: &str) -> Result<bool> {
+        crate::catalog::check_registry_name(name)?;
+        if self.manifest.registries().get(name).map(String::as_str) == Some(location) {
+            return Ok(false);
+        }
+        let settings = self.settings_table()?;
+        let registries = settings
+            .entry("registries")
+            .or_insert(Item::Table(Table::new()))
+            .as_table_like_mut()
+            .ok_or_else(|| BiblixError::Manifest(String::from("registries isn't a table")))?;
+        registries.insert(name, value(location));
+        // `[settings.registries]` alone needs no `[settings]` header
+        settings.set_implicit(true);
+        self.reparse()?;
+        Ok(true)
+    }
+
+    /// Stops naming a registry; whether there was one of that name
+    pub fn remove_registry(&mut self, name: &str) -> Result<bool> {
+        if !self.manifest.registries().contains_key(name) {
+            return Ok(false);
+        }
+        let settings = self.settings_table()?;
+        if let Some(registries) = settings
+            .get_mut("registries")
+            .and_then(Item::as_table_like_mut)
+        {
+            registries.remove(name);
+            if registries.is_empty() {
+                settings.remove("registries");
+            }
+        }
+        self.drop_empty_settings();
+        self.reparse()?;
+        Ok(true)
+    }
+
     fn drop_empty_settings(&mut self) {
         if (self.doc.get("settings").and_then(Item::as_table)).is_some_and(Table::is_empty) {
             self.doc.remove("settings");
@@ -369,6 +411,23 @@ impl Project {
 mod tests {
     use super::*;
     use crate::catalog::{DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
+
+    #[test]
+    fn registries_are_named_and_removed() {
+        let mut project = Project::from_text("", Some("# mine\n[dependencies]\n"), None).unwrap();
+        assert!(project.add_registry("dorean-local", "~/repos").unwrap());
+        assert!(!project.add_registry("dorean-local", "~/repos").unwrap());
+        assert!(project.add_registry("github", "~/repos").is_err());
+        let text = project.manifest_text();
+        assert!(
+            text.contains("[settings.registries]\ndorean-local = \"~/repos\""),
+            "{text}"
+        );
+        assert_eq!(project.manifest().registries()["dorean-local"], "~/repos");
+        assert!(project.remove_registry("dorean-local").unwrap());
+        assert!(!project.remove_registry("dorean-local").unwrap());
+        assert_eq!(project.manifest_text(), "# mine\n[dependencies]\n");
+    }
 
     #[test]
     fn catalogs_are_added_and_removed_keeping_comments() {

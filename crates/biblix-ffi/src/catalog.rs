@@ -51,6 +51,8 @@ pub struct CatalogEntry {
     pub kind: PackageKind,
     pub right_to_left: bool,
     pub source: CatalogSource,
+    /// Its path in a registry folder (`books/romans`), which names it there as its id does
+    pub path: Option<String>,
 }
 
 impl From<&CoreEntry> for CatalogEntry {
@@ -84,6 +86,7 @@ impl From<&CoreEntry> for CatalogEntry {
                         .collect(),
                 },
             },
+            path: e.path.clone(),
         }
     }
 }
@@ -114,6 +117,7 @@ impl From<CatalogEntry> for CoreEntry {
                     books: books.into_iter().map(|b| b.code).collect(),
                 },
             },
+            path: e.path,
         }
     }
 }
