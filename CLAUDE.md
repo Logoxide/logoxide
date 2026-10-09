@@ -111,8 +111,11 @@ before changing the design.
   names it, like `cargo new`; then `bx release`), `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry` (`add <folder or catalog> --name <registry>`), `media add <file> --url`
-  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Catalogs and
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `media add <file> --url`
+  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Completion
+  (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash bx)`) gives registries'
+  packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `bx add`
+  installs and locks what it adds. Catalogs and
   imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 - `crates/biblix-ffi`: BoltFFI 0.31 bindings (npm and PyPI `biblix`), re-exporting topos-ffi

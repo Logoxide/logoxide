@@ -16,3 +16,4 @@ toml_edit = "0.23"
 # Catalogs and imports over HTTPS (packages themselves come through git)
 ureq = "3"
 serde_json.workspace = true
+clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }

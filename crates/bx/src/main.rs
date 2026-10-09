@@ -13,7 +13,10 @@ use biblix::{
     manifest::{Dependency, DetailedDependency, MANIFEST},
     resolve::Update,
 };
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
+use clap_complete::engine::ArgValueCompleter;
+
+mod complete;
 
 #[derive(Parser)]
 #[command(
@@ -69,7 +72,7 @@ enum Command {
         #[command(flatten)]
         package: PackageArgs,
         /// A package's repository (or `github:owner/repo`): show a release's published summary
-        #[arg(long)]
+        #[arg(long, add = ArgValueCompleter::new(complete::package))]
         git: Option<String>,
         /// The release (the newest by default)
         #[arg(long, requires = "git")]
@@ -133,6 +136,7 @@ enum Command {
     /// Removes a package from biblix.toml (its files stay in the library)
     Remove {
         /// The package's id
+        #[arg(add = ArgValueCompleter::new(complete::dependency))]
         id: String,
     },
     /// Installs what biblix.lock says (resolving what it doesn't have yet)
@@ -145,6 +149,7 @@ enum Command {
     /// Moves packages to the newest versions their requirements allow
     Update {
         /// Only these packages (all by default)
+        #[arg(add = ArgValueCompleter::new(complete::dependency))]
         ids: Vec<String>,
     },
     /// The packages biblix.toml asks for, as locked
@@ -153,6 +158,7 @@ enum Command {
     /// are still the ones locked
     Info {
         /// The package's id
+        #[arg(add = ArgValueCompleter::new(complete::dependency))]
         id: String,
     },
     /// The library's versions no lock file here uses: the library's own and the project's, and
@@ -175,7 +181,7 @@ enum Command {
         #[arg(long)]
         catalog: Vec<String>,
         /// Search only this registry (bx catalog list); with no words, list its packages
-        #[arg(long, conflicts_with = "catalog")]
+        #[arg(long, conflicts_with = "catalog", add = ArgValueCompleter::new(complete::registry))]
         registry: Option<String>,
         /// How many to show
         #[arg(long, default_value_t = 20)]
@@ -244,11 +250,36 @@ enum CatalogCommand {
     },
     /// Stops searching a catalog, or a registry (by its name). Removing eBible.org's or
     /// fetch.bible's turns the defaults off (`default-catalogs = false`), keeping the other one
-    Remove { location: String },
+    Remove {
+        #[arg(add = ArgValueCompleter::new(complete::searched))]
+        location: String,
+    },
     /// A catalog.toml entry for a package's repository (its newest release's biblix.toml)
     Entry {
         /// The package's git URL (or `github:owner/repo`)
         git: String,
+    },
+    /// Writes a catalog.toml of every package repository in a folder (and its folders), from each
+    /// one's newest release, so the folder can be a registry anywhere (hosted, or on a phone).
+    /// Entries keep their path in the folder, which names them as their ids do. A package whose
+    /// newest release hasn't changed keeps its entry
+    Build {
+        /// The folder of repositories
+        #[arg(default_value = ".")]
+        dir: PathBuf,
+        /// Where to write it (catalog.toml in the folder by default)
+        #[arg(long)]
+        output: Option<PathBuf>,
+        /// Each package's git URL, `{path}` being its path in the folder and `{name}` its
+        /// folder's name: `https://github.com/someone/{name}` (its `file://` URL by default)
+        #[arg(long)]
+        url: Option<String>,
+        /// The catalog's name (the folder's by default)
+        #[arg(long)]
+        name: Option<String>,
+        /// Read every package's release again, even unchanged ones
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -256,13 +287,13 @@ enum CatalogCommand {
 struct AddArgs {
     /// A git repository: `github:owner/repo` (also `gitlab:`, `codeberg:`), its URL, or a
     /// package in a registry (`dorean-local:dorean-collection`, by its id or its path there)
-    #[arg(conflicts_with_all = ["git", "path"])]
+    #[arg(conflicts_with_all = ["git", "path"], add = ArgValueCompleter::new(complete::package))]
     repository: Option<String>,
     /// A git repository's URL (or a local repository's path), or `github:owner/repo`
-    #[arg(long, conflicts_with = "path")]
+    #[arg(long, conflicts_with = "path", add = ArgValueCompleter::new(complete::package))]
     git: Option<String>,
     /// A package's folder, used in place
-    #[arg(long)]
+    #[arg(long, value_hint = clap::ValueHint::DirPath)]
     path: Option<String>,
     /// A version requirement (`1`, `^1.2`); the newest matching tag is used
     #[arg(long, conflicts_with_all = ["tag", "branch", "rev"])]
@@ -362,6 +393,8 @@ impl PackageArgs {
 }
 
 fn main() -> ExitCode {
+    // `COMPLETE=bash bx` writes the shell's completion script; the shell then runs bx to complete
+    clap_complete::CompleteEnv::with_factory(Cli::command).complete();
     let cli = Cli::parse();
     let result = match &cli.command {
         Command::Show {
@@ -430,6 +463,19 @@ fn main() -> ExitCode {
             catalog_entry(&cli, &biblix::git::expand_url(git))
         }
         Command::Catalog(CatalogCommand::List) => catalog_list(&cli),
+        Command::Catalog(CatalogCommand::Build {
+            dir,
+            output,
+            url,
+            name,
+            force,
+        }) => catalog_build(
+            dir,
+            output.as_deref(),
+            url.as_deref(),
+            name.as_deref(),
+            *force,
+        ),
         Command::Catalog(CatalogCommand::Add { location, name }) => {
             catalog_add(&cli, location, name.as_deref())
         }
@@ -822,8 +868,9 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     let lock = project.install(&library, &fetcher, Update::Only([name.clone()].into()))?;
     let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
     println!(
-        "added {locked} to {}",
-        project.dir().join(MANIFEST).display()
+        "added {locked} to {}: installed, and locked in {}",
+        project.dir().join(MANIFEST).display(),
+        biblix::lock::LOCKFILE
     );
     Ok(())
 }
@@ -1332,7 +1379,7 @@ fn registry_url(project: &biblix::Project, text: &str) -> biblix::Result<String>
     let Some((registry, name)) = biblix::catalog::split_registry_name(text, &registries) else {
         return Ok(biblix::git::expand_url(text));
     };
-    let catalog = load_registry(registry, &registries[registry], project.dir())?;
+    let catalog = load_registry(registry, &registries[registry], project.dir(), true)?;
     let entry = catalog.find(name)?.ok_or_else(|| {
         biblix::BiblixError::Catalog(format!(
             "{registry} has no package `{name}` (bx search --registry {registry})"
@@ -1371,39 +1418,60 @@ fn load_registry(
     name: &str,
     location: &str,
     base: &Path,
+    warn: bool,
 ) -> biblix::Result<biblix::catalog::Catalog> {
     let is_url = location.contains("://");
     let folder = registry_path(location, base);
     if is_url || !folder.is_dir() {
         let mut catalog = match is_url {
             true => load_catalog(location, base)?,
-            false => load_catalog(&folder.display().to_string(), Path::new("/"))?,
+            false => load_catalog(&folder.display().to_string(), Path::new(""))?,
         };
         catalog.name = name.to_string();
         return Ok(catalog);
     }
-    let folder = folder.canonicalize().map_err(|e| biblix::BiblixError::Io {
-        path: folder.display().to_string(),
-        message: e.to_string(),
-    })?;
+    let folder = canonical(&folder)?;
     let mut packages = vec![];
-    let mut pending = vec![folder.clone()];
+    for (path, dir) in package_repositories(&folder)? {
+        match newest_release(&dir) {
+            Ok(Some(release)) => match biblix::Manifest::parse(&release.manifest) {
+                Ok(parsed) => packages.push((path, parsed)),
+                Err(e) if warn => eprintln!("warning: {path} {}: {e}", release.tag),
+                Err(_) => {}
+            },
+            Ok(None) => {}
+            Err(e) if warn => eprintln!("warning: {path}: {e}"),
+            Err(_) => {}
+        }
+    }
+    let url = format!("file://{}", folder.display());
+    Ok(biblix::catalog::Catalog::from_packages(
+        name, &url, packages,
+    ))
+}
+
+fn canonical(path: &Path) -> biblix::Result<PathBuf> {
+    path.canonicalize().map_err(|e| biblix::BiblixError::Io {
+        path: path.display().to_string(),
+        message: e.to_string(),
+    })
+}
+
+/**
+Every package repository in a folder, at any depth (a git repository with a `biblix.toml`), with
+its path there (`books/romans`), in path order. A repository's own folders and hidden folders
+aren't looked in
+*/
+fn package_repositories(folder: &Path) -> biblix::Result<Vec<(String, PathBuf)>> {
+    let mut found = vec![];
+    let mut pending = vec![folder.to_path_buf()];
     while let Some(dir) = pending.pop() {
-        let manifest = dir.join(MANIFEST);
-        if dir.join(".git").exists() && manifest.is_file() {
-            let text = std::fs::read_to_string(&manifest).map_err(|e| biblix::BiblixError::Io {
-                path: manifest.display().to_string(),
-                message: e.to_string(),
-            })?;
-            let path = dir.strip_prefix(&folder).unwrap_or(&dir);
+        if dir.join(".git").exists() && dir.join(MANIFEST).is_file() {
+            let path = dir.strip_prefix(folder).unwrap_or(&dir);
             let path: Vec<String> = (path.components())
                 .map(|c| c.as_os_str().to_string_lossy().into_owned())
                 .collect();
-            match biblix::Manifest::parse(&text) {
-                Ok(parsed) => packages.push((path.join("/"), parsed)),
-                Err(e) => eprintln!("warning: {}: {e}", manifest.display()),
-            }
-            // A package's own folders aren't searched
+            found.push((path.join("/"), dir));
             continue;
         }
         let entries = std::fs::read_dir(&dir).map_err(|e| biblix::BiblixError::Io {
@@ -1417,10 +1485,177 @@ fn load_registry(
             }
         }
     }
-    let url = format!("file://{}", folder.display());
-    Ok(biblix::catalog::Catalog::from_packages(
-        name, &url, packages,
-    ))
+    found.sort();
+    Ok(found)
+}
+
+/// A local repository's newest release
+struct Release {
+    tag: String,
+    commit: String,
+    /// Its `biblix.toml` at that tag
+    manifest: String,
+}
+
+/// Runs git in a repository; what it printed
+fn git_in(repo: &Path, args: &[&str]) -> biblix::Result<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .args(args)
+        .output()
+        .map_err(|e| biblix::BiblixError::Io {
+            path: repo.display().to_string(),
+            message: format!("git: {e}"),
+        })?;
+    if !output.status.success() {
+        return Err(biblix::BiblixError::Io {
+            path: repo.display().to_string(),
+            message: format!(
+                "git {}: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        });
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/**
+A local repository's newest release (its highest `v1.2.3` tag, not a prerelease) and its
+`biblix.toml` there, read from git without checking anything out; none before its first release
+*/
+fn newest_release(repo: &Path) -> biblix::Result<Option<Release>> {
+    let refs = git_in(
+        repo,
+        &[
+            "for-each-ref",
+            "--format=%(refname:strip=2) %(objectname) %(*objectname)",
+            "refs/tags",
+        ],
+    )?;
+    let newest = (refs.lines())
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let tag = parts.next()?;
+            let object = parts.next()?;
+            // An annotated tag names its commit after the tag object
+            let commit = parts.next().unwrap_or(object);
+            let version = biblix::resolve::tag_version(tag).filter(|v| v.pre.is_empty())?;
+            Some((version, tag.to_string(), commit.to_string()))
+        })
+        .max_by(|a, b| a.0.cmp(&b.0));
+    let Some((_, tag, commit)) = newest else {
+        return Ok(None);
+    };
+    let manifest = git_in(repo, &["show", &format!("{commit}:{MANIFEST}")])?;
+    Ok(Some(Release {
+        tag,
+        commit,
+        manifest,
+    }))
+}
+
+/**
+`bx catalog build`: a catalog.toml of a folder's package repositories, each from its newest
+release, with its path and commit; an entry whose path, commit, and URL are unchanged is kept as
+it was (unless `force`)
+*/
+fn catalog_build(
+    dir: &Path,
+    output: Option<&Path>,
+    url: Option<&str>,
+    name: Option<&str>,
+    force: bool,
+) -> biblix::Result<()> {
+    let folder = canonical(dir)?;
+    let output = output.map_or_else(|| folder.join("catalog.toml"), Path::to_path_buf);
+    let name = name.map(String::from).unwrap_or_else(|| {
+        (folder.file_name())
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    });
+    // The entries written last time, by path
+    let mut previous: std::collections::HashMap<String, toml_edit::Table> = Default::default();
+    if !force && let Ok(text) = std::fs::read_to_string(&output) {
+        let doc: toml_edit::DocumentMut = text
+            .parse()
+            .map_err(|e| biblix::BiblixError::Catalog(format!("{}: {e}", output.display())))?;
+        if let Some(packages) = doc.get("package").and_then(|p| p.as_array_of_tables()) {
+            for table in packages.iter() {
+                if let Some(path) = table.get("path").and_then(|p| p.as_str()) {
+                    previous.insert(path.to_string(), table.clone());
+                }
+            }
+        }
+    }
+    let (mut tables, mut read, mut kept, mut skipped) = (vec![], 0, 0, vec![]);
+    for (path, repo) in package_repositories(&folder)? {
+        let folder_name = path.rsplit('/').next().unwrap_or(&path);
+        let git = match url {
+            Some(template) => template
+                .replace("{path}", &path)
+                .replace("{name}", folder_name),
+            None => format!("file://{}", repo.display()),
+        };
+        let release = match newest_release(&repo) {
+            Ok(Some(release)) => release,
+            Ok(None) => {
+                skipped.push(format!("{path} (no release yet: bx release)"));
+                continue;
+            }
+            Err(e) => {
+                skipped.push(format!("{path} ({e})"));
+                continue;
+            }
+        };
+        let unchanged = previous.remove(&path).filter(|t| {
+            t.get("commit").and_then(|c| c.as_str()) == Some(release.commit.as_str())
+                && t.get("git").and_then(|g| g.as_str()) == Some(git.as_str())
+        });
+        if let Some(table) = unchanged {
+            tables.push(table);
+            kept += 1;
+            continue;
+        }
+        let info = match biblix::Manifest::parse(&release.manifest) {
+            Ok(manifest) => match manifest.package {
+                Some(info) => info,
+                None => {
+                    skipped.push(format!("{path} (a vault, not a package)"));
+                    continue;
+                }
+            },
+            Err(e) => {
+                skipped.push(format!("{path} {} ({e})", release.tag));
+                continue;
+            }
+        };
+        let mut table = biblix::catalog::Catalog::entry_table(&info, &git);
+        table.insert("path", toml_edit::value(&path));
+        table.insert("commit", toml_edit::value(&release.commit));
+        tables.push(table);
+        read += 1;
+    }
+    let count = tables.len();
+    let text = format!(
+        "# Written by bx catalog build: the newest release of each package in {}\n{}",
+        folder.display(),
+        biblix::catalog::Catalog::toml_document(Some(&name), tables)
+    );
+    std::fs::write(&output, text).map_err(|e| biblix::BiblixError::Io {
+        path: output.display().to_string(),
+        message: e.to_string(),
+    })?;
+    let plural = if count == 1 { "" } else { "s" };
+    println!(
+        "Wrote {}: {count} package{plural} ({read} read, {kept} unchanged)",
+        output.display()
+    );
+    for skip in skipped {
+        println!("    skipped {skip}");
+    }
+    Ok(())
 }
 
 fn catalog_list(cli: &Cli) -> biblix::Result<()> {
@@ -1443,7 +1678,7 @@ fn catalog_add(cli: &Cli, location: &str, name: Option<&str>) -> biblix::Result<
     let mut project = cli.project(&cli.library())?;
     if let Some(name) = name {
         biblix::catalog::check_registry_name(name)?;
-        let catalog = load_registry(name, location, project.dir())?;
+        let catalog = load_registry(name, location, project.dir(), true)?;
         if !project.add_registry(name, location)? {
             println!("{name} is already {location}");
             return Ok(());
@@ -1516,7 +1751,7 @@ fn search(
                 if registry.is_some_and(|r| r != name) {
                     continue;
                 }
-                match load_registry(name, location, project.dir()) {
+                match load_registry(name, location, project.dir(), true) {
                     Ok(catalog) => registries.push(catalog),
                     Err(e) => eprintln!("warning: {name}: {e}"),
                 }

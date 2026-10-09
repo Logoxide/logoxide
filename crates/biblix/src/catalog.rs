@@ -144,6 +144,10 @@ struct TomlEntry {
     #[serde(default)]
     version: Option<String>,
     git: String,
+    /// Its path in the folder the catalog was built from (`bx catalog build`), which names it
+    /// as its id does
+    #[serde(default)]
+    path: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -291,7 +295,7 @@ impl Catalog {
                 source: CatalogSource::Git {
                     url: crate::git::expand_url(&e.git),
                 },
-                path: None,
+                path: e.path,
             })
             .collect();
         Ok(Catalog {
@@ -502,6 +506,26 @@ impl Catalog {
 
     /// A `[[package]]` table for a `catalog.toml`, from a package's manifest and its repository
     pub fn toml_entry(info: &crate::manifest::Package, git: &str) -> String {
+        Catalog::toml_document(None, vec![Catalog::entry_table(info, git)])
+    }
+
+    /// A `catalog.toml`: its name, if given, and these `[[package]]` tables
+    /// ([`Catalog::entry_table`]), in order
+    pub fn toml_document(name: Option<&str>, tables: Vec<toml_edit::Table>) -> String {
+        let mut doc = toml_edit::DocumentMut::new();
+        if let Some(name) = name {
+            doc.insert("name", toml_edit::value(name));
+        }
+        let mut packages = toml_edit::ArrayOfTables::new();
+        for table in tables {
+            packages.push(table);
+        }
+        doc.insert("package", toml_edit::Item::ArrayOfTables(packages));
+        doc.to_string()
+    }
+
+    /// A package's `[[package]]` table, from its manifest (a release's) and its repository
+    pub fn entry_table(info: &crate::manifest::Package, git: &str) -> toml_edit::Table {
         let mut table = toml_edit::Table::new();
         table.insert("id", toml_edit::value(&info.id));
         table.insert("name", toml_edit::value(&info.name));
@@ -511,6 +535,10 @@ impl Catalog {
             table.insert("aliases", toml_edit::value(aliases));
         }
         table.insert("language", toml_edit::value(&info.language));
+        if let Some(description) = &info.description {
+            table.insert("description", toml_edit::value(description));
+        }
+        table.insert("version", toml_edit::value(info.version.to_string()));
         if let Some(license) = &info.license {
             table.insert("license", toml_edit::value(license));
         }
@@ -525,11 +553,7 @@ impl Catalog {
             table.insert("direction", toml_edit::value("rtl"));
         }
         table.insert("git", toml_edit::value(git));
-        let mut doc = toml_edit::DocumentMut::new();
-        let mut packages = toml_edit::ArrayOfTables::new();
-        packages.push(table);
-        doc.insert("package", toml_edit::Item::ArrayOfTables(packages));
-        doc.to_string()
+        table
     }
 }
 
@@ -909,5 +933,27 @@ git = "https://example.org/bsb"
         );
         assert_eq!(split_registry_name("github:a/b", &registries), None);
         assert_eq!(split_registry_name("dorean-local:", &registries), None);
+    }
+
+    #[test]
+    fn a_built_catalog_names_its_packages_by_path() {
+        let manifest = crate::manifest::Manifest::parse(
+            "[package]\nid = \"romans\"\nname = \"Romans\"\nabbreviation = \"ROM\"\n\
+             version = \"1.2.0\"\nlanguage = \"en\"\nkind = \"book\"\n\
+             [formats]\nepub = { path = \"epub/\" }\n",
+        )
+        .unwrap();
+        let info = manifest.package.unwrap();
+        let mut table = Catalog::entry_table(&info, "file:///repos/books/romans");
+        table.insert("path", toml_edit::value("books/romans"));
+        table.insert("commit", toml_edit::value("3f9c2a1b"));
+        let text = Catalog::toml_document(Some("mine"), vec![table]);
+        let catalog = Catalog::parse("catalog.toml", &text).unwrap();
+        assert_eq!(catalog.name, "mine");
+        let entry = catalog.find("books/romans").unwrap().unwrap();
+        assert_eq!(entry.id, "romans");
+        assert_eq!(entry.version.as_deref(), Some("1.2.0"));
+        assert_eq!(entry.kind, PackageKind::Book);
+        assert_eq!(catalog.find("romans").unwrap(), Some(entry));
     }
 }

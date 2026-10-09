@@ -5,6 +5,21 @@ An example of how biblix is meant to be used, from both sides: someone reading B
 except those under "Commentaries and other formats", which are a sketch. The URLs are
 examples, since no package is hosted yet (see the end).
 
+## Completion
+
+`bx` completes its own arguments, so it knows the project's registries and packages:
+`bx add dorean-local:<Tab>` lists that registry's packages (by path, and by id when no other
+package there has it), and `bx remove <Tab>` the project's dependencies. In `~/.bashrc`:
+
+```sh
+source <(COMPLETE=bash bx)
+# Bash splits words at `:`; without this, `dorean-local:<Tab>` can't complete
+COMP_WORDBREAKS=${COMP_WORDBREAKS//:/}
+```
+
+(zsh: `source <(COMPLETE=zsh bx)`; fish: `COMPLETE=fish bx | source`.) Registries on the web
+aren't downloaded to complete.
+
 ## Reading: a vault with a few Bibles
 
 A vault is any folder of notes. Its `biblix.toml` says which Bibles it uses, like `Cargo.toml`, and
@@ -217,6 +232,17 @@ bx add dorean-local:dorean-collection     # by its id
 bx add dorean-local:books/romans          # by its path in the folder
 ```
 
+To host a registry, or use one on a phone, build its folder into a `catalog.toml`: each
+package's newest release (the `v1.2.3` tag, not its working files), with its path and commit, so
+a package whose release hasn't changed keeps its entry next time (`--force` reads them all):
+
+```sh
+bx catalog build ~/Documents/biblix-dorean-repos     # writes catalog.toml there
+bx catalog build . --url 'https://github.com/someone/{name}' --output hosted.toml
+bx catalog add ~/Documents/biblix-dorean-repos/catalog.toml --name dorean-local
+```
+
+A folder registry reads each package's newest release too; one not released yet is left out.
 An id two packages share (a fork beside the original) has to be named by its path. The
 manifest keeps the package's full `file://` URL, so the name is only for typing. A registry can
 also be a `catalog.toml` (`--name mine https://example.org/catalog.toml`), whose packages are
