@@ -124,6 +124,22 @@ enum Command {
     },
     /// The packages biblix.toml asks for, as locked
     List,
+    /// A locked package: what it is, where, its size, its books and verses, and whether its files
+    /// are still the ones locked
+    Info {
+        /// The package's id
+        id: String,
+    },
+    /// The library's versions no lock file here uses: the library's own and the project's, and
+    /// any other projects named (--keep). Says which; --remove deletes them
+    Clean {
+        /// Delete them (and their parsed cache)
+        #[arg(long)]
+        remove: bool,
+        /// Other projects whose lock files' versions stay (vaults elsewhere)
+        #[arg(long)]
+        keep: Vec<PathBuf>,
+    },
     /// Finds packages in catalogs by name, abbreviation, or language (the project's catalogs,
     /// else eBible.org's list)
     Search {
@@ -240,6 +256,8 @@ fn main() -> ExitCode {
             },
         ),
         Command::List => list(&cli),
+        Command::Info { id } => info(&cli, id),
+        Command::Clean { remove, keep } => clean(&cli, *remove, keep),
         Command::Search {
             query,
             catalog,
@@ -885,5 +903,113 @@ fn catalog_entry(cli: &Cli, url: &str) -> biblix::Result<()> {
         .package
         .ok_or_else(|| biblix::BiblixError::Manifest(format!("{url}: no [package]")))?;
     print!("{}", biblix::catalog::Catalog::toml_entry(&info, url));
+    Ok(())
+}
+
+fn info(cli: &Cli, id: &str) -> biblix::Result<()> {
+    let library = cli.library();
+    let project = cli.project(&library)?;
+    let locked = (project.lock())
+        .and_then(|lock| lock.get(id))
+        .cloned()
+        .ok_or_else(|| {
+            biblix::BiblixError::NotFound(format!("{id} isn't in the lock file (bx install)"))
+        })?;
+    let dir = library.package_dir(&locked, project.dir());
+    let package = library.open(&locked, project.dir())?;
+    let i = package.info();
+    println!("{} {} ({}), {}", i.id, i.version, i.abbreviation, i.name);
+    println!(
+        "kind: {:?}, language: {}, license: {}",
+        i.kind,
+        i.language,
+        (i.license.as_deref())
+            .or(i.license_file.as_deref())
+            .unwrap_or("none given")
+    );
+    let from = match (&locked.git, &locked.path) {
+        (Some(git), _) => format!("{git} at {}", locked.commit.as_deref().unwrap_or("?")),
+        (_, Some(path)) => format!("path {path}"),
+        _ => String::from("?"),
+    };
+    println!("from: {from}");
+    let storage = FsStorage::new(&dir);
+    let files = storage.walk("")?;
+    let size: u64 = (files.iter())
+        .filter_map(|f| std::fs::metadata(dir.join(f)).ok())
+        .map(|m| m.len())
+        .sum();
+    println!(
+        "in: {} ({} files, {:.1} MB)",
+        dir.display(),
+        files.len(),
+        size as f64 / 1e6
+    );
+    let checksum = package.checksum()?;
+    match &locked.checksum {
+        Some(expected) if *expected == checksum => println!("checksum: {checksum} (as locked)"),
+        Some(expected) => println!("checksum: {checksum} (CHANGED: locked as {expected})"),
+        None => println!("checksum: {checksum}"),
+    }
+    let cached = library.book_cache().open(package)?;
+    let books = &cached.manifest().books;
+    let verses: usize = (books.iter())
+        .flat_map(|(_, counts)| counts.iter().map(|&c| c as usize))
+        .sum();
+    println!(
+        "{} books, {verses} verses ({})",
+        books.len(),
+        cached.manifest().source_format
+    );
+    Ok(())
+}
+
+fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> biblix::Result<()> {
+    let library = cli.library();
+    let mut projects = vec![Project::open(library.root())?, cli.project(&library)?];
+    for dir in keep {
+        projects.push(Project::open(dir)?);
+    }
+    let used: Vec<(String, String)> = (projects.iter())
+        .filter_map(|p| p.lock())
+        .flat_map(|lock| lock.packages.iter())
+        .filter(|p| p.path.is_none())
+        .map(|p| (p.id.clone(), p.key()))
+        .collect();
+    let unused: Vec<(String, String)> = (library.installed().into_iter())
+        .filter(|v| !used.contains(v))
+        .collect();
+    if unused.is_empty() {
+        println!("every installed version is used");
+        return Ok(());
+    }
+    for (id, key) in &unused {
+        let dir = library.root().join("packages").join(id).join(key);
+        if remove {
+            std::fs::remove_dir_all(&dir).map_err(|e| biblix::BiblixError::Io {
+                path: dir.display().to_string(),
+                message: e.to_string(),
+            })?;
+            // Its parsed books: `<id>/<version>-<checksum>`
+            let cache = library.cache_dir().join("books").join(id);
+            for entry in std::fs::read_dir(&cache).into_iter().flatten().flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with(&format!("{key}-")) {
+                    let _ = std::fs::remove_dir_all(entry.path());
+                }
+            }
+            // The id's folder too, once it has no versions (remove_dir only removes empty ones)
+            let _ = std::fs::remove_dir(library.root().join("packages").join(id));
+            println!("removed {id} {key}");
+        } else {
+            println!("unused: {id} {key} ({})", dir.display());
+        }
+    }
+    if !remove {
+        println!(
+            "{} unused (other vaults may use them: --keep <their folder>); bx clean --remove deletes them",
+            unused.len()
+        );
+    }
     Ok(())
 }

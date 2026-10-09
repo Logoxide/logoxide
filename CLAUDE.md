@@ -66,7 +66,7 @@ before changing the design.
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
 - `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog entry <git URL>`. Catalogs and
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog entry <git URL>`. Catalogs and
   imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 - `crates/biblix-ffi`: BoltFFI 0.31 bindings (npm and PyPI `biblix`), re-exporting topos-ffi
