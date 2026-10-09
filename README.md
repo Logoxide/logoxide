@@ -69,6 +69,8 @@ bx install                                 # what biblix.lock says, on a new dev
 bx update [id]                             # newer versions the requirements allow
 bx list
 
+bx new --from book.epub --license CC0-1.0   # a package from one file: an EPUB's title and authors fill it in
+bx new my-library --kind collection --name "My Library" --language en   # a package of packages
 bx release --set-version                   # in a package's repository: summary, version check, tag
 bx diff v1.0.0                             # what changed since a release
 bx show --git https://example.org/bsb      # a release's summary, without its text

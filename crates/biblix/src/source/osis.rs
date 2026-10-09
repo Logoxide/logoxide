@@ -44,8 +44,8 @@ impl OsisSource {
 }
 
 impl Source for OsisSource {
-    fn format(&self) -> Format {
-        Format::Osis
+    fn format(&self) -> Option<Format> {
+        Some(Format::Osis)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {

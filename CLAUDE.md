@@ -12,7 +12,9 @@ before changing the design.
     `[package]`), like `Cargo.toml`. "Index" means only a registry. Formats, Cargo-style features,
     and `git`/`path` dependencies; no default registry. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
-    `aliases` (`Project::names`)
+    `aliases` (`Project::names`). `[package]` has `authors` (a list) and `description`. Kinds
+    include `book` and `collection` (no `[formats]`, only dependencies; a project's Bibles
+    include a collection's); the `epub` format is kept as files, not read as verses
   - `storage.rs`: `Storage` (read, list, write) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`
   - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
@@ -23,7 +25,9 @@ before changing the design.
     `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers. Preference: USX,
     USFM, OSIS, ThML
   - `package.rs`: opening a package picks the best readable format its enabled features turn on;
-    `checksum()` hashes every file but `.git`
+    a package that isn't a Bible (a book, a collection) may have none and opens with
+    `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but
+    `.git`
   - `cache.rs`: verse counts and parsed books (postcard) per `<id>/<version>-<checksum>`;
     `CachedPackage::add_to` gives topos's `Translations` the name, aliases, and counts
   - `lock.rs`: `biblix.lock` (each package's version, commit, checksum, features, and
@@ -75,7 +79,20 @@ before changing the design.
     without structural markers) and `biblix.verses.bin` (`BXV1`, 12 bytes a verse: book,
     chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
     `diff` (removed, renumbered: old text at another number, bridged, reworded, added) and
-    `Change` (patch/minor/major; before 1.0 the minor counts as major, like Cargo)
+    `Change` (patch/minor/major; before 1.0 the minor counts as major, like Cargo).
+    `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
+    verses) change: a minor change. The passages a book cites go in `biblix.references.bin`
+    (the summary counts its references)
+  - `references.rs`: the Bible references in a package's EPUBs, found by topos-formats
+    (`search_epub_reader`, pure Rust, so WebAssembly too). `find` reads the books: each
+    reference's OSIS passage, file, CFI, chapter, UTF-16 range, line, column, spine item, and
+    paragraph (about 0.1 s a book natively, 0.25 s in WebAssembly). Only `cited` is published
+    (`BXR1`: deflate over postcard of each passage and its count, in Bible order; 2.6 KB for 937
+    references): locations are only of use with the book, which gives them again
+  - `package.rs` also says what a package is made of: `declared_files` (the manifest, each
+    format's files by its extensions, the license file, summary files, timings, `include`
+    globs); `checksum` hashes only those, so a reader's annotations beside a book never change
+    it. `other_files` are kept by repairs and stop `bx clean`
   - `release.rs`: summarize, compare with the newest release tag's summary (or its text, for
     releases before summaries), check the version, write, commit, tag `v{version}`
 - `crates/biblix-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
@@ -85,7 +102,10 @@ before changing the design.
   set by `main.rs`, and tests have none) and loads `bibles = ["id"]` or, with no Bible settings,
   the project's Bibles. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
-- `crates/bx`: `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
+- `crates/bx`: `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
+  publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
+  OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
+  names it, like `cargo new`; then `bx release`), `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry`, `media add <file> --url`
@@ -102,7 +122,9 @@ before changing the design.
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry biblix's books and counts
   across. `BiblixCatalog` (`catalog.rs`) searches catalogs, and `Biblix.importEbible` and
-  `importFetchBible` make downloads into a package's files. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
+  `importFetchBible` make downloads into a package's files. `create.rs`: `fileMetadata`,
+  `newPackage` (a package's files from one file), `newCollection`, `parseReferences`, and
+  `BiblixPackage.references()`. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given; whatever is missing (refs, an archive, an installed package's files) stops the round and
   is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `libbiblix.rlib`. Build with

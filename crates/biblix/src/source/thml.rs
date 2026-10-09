@@ -50,8 +50,8 @@ impl ThmlSource {
 }
 
 impl Source for ThmlSource {
-    fn format(&self) -> Format {
-        Format::Thml
+    fn format(&self) -> Option<Format> {
+        Some(Format::Thml)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {

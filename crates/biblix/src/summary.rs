@@ -1,7 +1,8 @@
 /*!
 What a package version holds, published with it so it can be known without downloading the text:
-`biblix.summary.toml` (its books' verse counts, how big each format is, how many of each element)
-and `biblix.verses.bin` (a short hash of every verse's text). `bx release` writes them, `bx verify`
+`biblix.summary.toml` (its books' verse counts, how big each format is, how many of each element),
+`biblix.verses.bin` (a short hash of every verse's text), and for books,
+`biblix.references.bin` (the passages they cite, [`crate::references`]). `bx release` writes them, `bx verify`
 builds them again and compares, and two versions' summaries say what changed between them
 ([`diff`]), which says how the version number must change ([`Change`]).
 
@@ -39,6 +40,10 @@ pub struct Summary {
     pub version: semver::Version,
     /// The checksum of every file but the summary's own two
     pub text_checksum: String,
+    /// The checksum of the formats' files alone (not `biblix.toml`): for a package without
+    /// verses (a book), what says whether its text changed
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub files_checksum: Option<String>,
     /// How many verses (verse markers: a bridge like 4-5 is one)
     pub verses: u64,
     /// Bytes per format, so a phone can choose
@@ -51,6 +56,17 @@ pub struct Summary {
     /// The audio and video it lists (not stored in it): how many files, and their bytes
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<MediaSummary>,
+    /// How many Bible references its books (EPUBs) have; the passages they cite are in
+    /// `biblix.references.bin`
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub references: u64,
+    /// The passages they cite, and how often (read from or written to `biblix.references.bin`)
+    #[serde(skip)]
+    pub cited: Vec<crate::references::Cited>,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// A package's media, in its summary
@@ -148,7 +164,7 @@ fn count(nodes: &[Node], contents: &mut BTreeMap<String, u64>) {
 
 /// The files a summary leaves out of its checksum (itself)
 pub fn is_summary_file(path: &str) -> bool {
-    path == SUMMARY || path == VERSES
+    path == SUMMARY || path == VERSES || path == crate::references::REFERENCES
 }
 
 /// Reads every book of a package into its summary and verse hashes
@@ -178,25 +194,40 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
         }
     }
     let storage = package.storage();
-    let mut sizes = BTreeMap::new();
-    for (name, entry) in &package.manifest().formats {
-        let dir = entry.path.trim_end_matches('/');
-        let mut size = 0;
-        let files = match storage.list(dir) {
-            Ok(_) => storage.walk(dir)?,
-            // A format whose path is one file
-            Err(_) => vec![dir.to_string()],
-        };
-        for file in files {
-            size += storage.read(&file).map(|b| b.len() as u64).unwrap_or(0);
+    // The package's files (not the summary's own, nor a reader's annotations), and each format's
+    let declared = crate::package::declared_files(storage.as_ref())?;
+    let text_files: Vec<String> = (declared.into_iter())
+        .filter(|p| !is_summary_file(p))
+        .collect();
+    let manifest = package.manifest();
+    let format_of = |path: &str| {
+        (manifest.formats.iter())
+            .find(|(_, f)| {
+                let dir = f.path.trim_end_matches('/');
+                path == dir || path.starts_with(&format!("{dir}/"))
+            })
+            .map(|(name, _)| name.clone())
+    };
+    let mut sizes: BTreeMap<String, u64> = (manifest.formats.keys())
+        .map(|name| (name.clone(), 0))
+        .collect();
+    let mut format_files = vec![];
+    for path in &text_files {
+        if let Some(name) = format_of(path) {
+            *sizes.entry(name).or_default() += storage.read(path)?.len() as u64;
+            format_files.push(path.clone());
         }
-        sizes.insert(name.clone(), size);
     }
+    let found = crate::references::find(package)?;
     let summary = Summary {
         summary: SUMMARY_VERSION,
         id: info.id.clone(),
         version: info.version.clone(),
-        text_checksum: crate::package::checksum_without(storage.as_ref(), is_summary_file)?,
+        text_checksum: crate::package::checksum_of(storage.as_ref(), &text_files)?,
+        files_checksum: Some(crate::package::checksum_of(
+            storage.as_ref(),
+            &format_files,
+        )?),
         verses: hashes.len() as u64,
         sizes,
         books,
@@ -207,6 +238,8 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
                 files: m.files.len() as u64,
                 bytes: m.files.iter().map(|f| f.size).sum(),
             }),
+        references: found.len() as u64,
+        cited: crate::references::cited(&found),
     };
     Ok((summary, hashes))
 }
@@ -234,15 +267,24 @@ impl Summary {
 
     /// Reads a package's published summary and verse hashes
     pub fn read(storage: &dyn Storage) -> Result<(Summary, Vec<VerseHash>)> {
-        let summary = Summary::parse(&storage.read_string(SUMMARY)?)?;
+        let mut summary = Summary::parse(&storage.read_string(SUMMARY)?)?;
         let verses = decode_verses(&storage.read(VERSES)?)?;
+        if summary.references > 0 {
+            let bytes = storage.read(crate::references::REFERENCES)?;
+            summary.cited = crate::references::decode(&bytes)?;
+        }
         Ok((summary, verses))
     }
 
-    /// Writes the summary and verse hashes into a package
+    /// Writes the summary and verse hashes into a package, and its references when it has any
     pub fn write(&self, verses: &[VerseHash], storage: &dyn Storage) -> Result<()> {
         storage.write(SUMMARY, self.to_toml()?.as_bytes())?;
-        storage.write(VERSES, &encode_verses(verses))
+        storage.write(VERSES, &encode_verses(verses))?;
+        if !self.cited.is_empty() {
+            let bytes = crate::references::encode(&self.cited)?;
+            storage.write(crate::references::REFERENCES, &bytes)?;
+        }
+        Ok(())
     }
 }
 
@@ -301,6 +343,19 @@ pub struct Diff {
     pub moved: Vec<(VerseHash, VerseHash)>,
     /// Verses whose bridge changed (`4-5` became `4`)
     pub bridged: Vec<VerseHash>,
+    /// For packages without verses (books): their files changed, in ways verses can't show
+    pub files_changed: bool,
+}
+
+/// What changed between two summaries, with their verses: [`diff`], and for packages without
+/// verses (books), whether their files did
+pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash])) -> Diff {
+    let mut d = diff(old.1, new.1);
+    d.files_changed = old.1.is_empty()
+        && new.1.is_empty()
+        && (old.0.files_checksum.as_ref())
+            .is_some_and(|c| Some(c) != new.0.files_checksum.as_ref());
+    d
 }
 
 /// What changed from `old` to `new`
@@ -336,7 +391,7 @@ impl Diff {
     pub fn change(&self) -> Change {
         if !self.removed.is_empty() || !self.moved.is_empty() || !self.bridged.is_empty() {
             Change::Major
-        } else if !self.changed.is_empty() || !self.added.is_empty() {
+        } else if !self.changed.is_empty() || !self.added.is_empty() || self.files_changed {
             Change::Minor
         } else {
             Change::Patch

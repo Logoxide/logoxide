@@ -22,7 +22,7 @@ pub struct UsxSource {
 
 impl UsxSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = book_files(storage.as_ref(), dir, "usx", |head| {
+        let files = book_files(storage.as_ref(), dir, &["usx"], |head| {
             // `<book code="JHN" ...>`
             let rest = &head[head.find("<book")?..];
             Some(rest.split("code=\"").nth(1)?.split('"').next()?.to_string())
@@ -32,8 +32,8 @@ impl UsxSource {
 }
 
 impl Source for UsxSource {
-    fn format(&self) -> Format {
-        Format::Usx
+    fn format(&self) -> Option<Format> {
+        Some(Format::Usx)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {

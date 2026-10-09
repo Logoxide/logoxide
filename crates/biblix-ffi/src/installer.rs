@@ -35,6 +35,9 @@ pub enum UpdateMode {
     Only {
         ids: Vec<String>,
     },
+    /// Like `Nothing`, but installed versions whose files changed (a reader edited them) are
+    /// fetched again and their files handed back to write over them (`bx install --repair`)
+    Repair,
 }
 
 /// Something biblix needs from the host before it can go on
@@ -214,6 +217,12 @@ impl Packages for Round<'_> {
         (self.given.borrow_mut().installed).insert(library_dir(locked), Arc::new(copy));
         Ok(())
     }
+
+    /// The same as installing: its files go back to the host, which writes them over the
+    /// changed ones (its other files, a reader's annotations, are the host's to keep)
+    fn repair(&self, locked: &LockedPackage, files: &dyn Storage) -> biblix_core::Result<()> {
+        self.install(locked, files)
+    }
 }
 
 /// What a round ended with: its result, or what it asked for
@@ -293,8 +302,9 @@ impl BiblixInstaller {
         project: &BiblixProject,
         update: UpdateMode,
     ) -> Result<InstallStep, BiblixError> {
+        let repair = update == UpdateMode::Repair;
         let update = match update {
-            UpdateMode::Nothing => Update::Nothing,
+            UpdateMode::Nothing | UpdateMode::Repair => Update::Nothing,
             UpdateMode::All => Update::All,
             UpdateMode::Only { ids } => Update::Only(ids.into_iter().collect()),
         };
@@ -304,6 +314,7 @@ impl BiblixInstaller {
                 fetcher: round,
                 previous: project.project.lock(),
                 update,
+                repair,
             }
             .resolve(project.project.manifest())
         })?;

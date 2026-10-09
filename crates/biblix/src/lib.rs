@@ -13,6 +13,7 @@ The plan, with what comes next (the library, `bx`, git sources, summaries, and v
 pub mod archive;
 pub mod cache;
 pub mod catalog;
+pub mod create;
 pub mod error;
 pub mod git;
 pub mod import;
@@ -22,6 +23,7 @@ pub mod manifest;
 pub mod media;
 pub mod package;
 pub mod project;
+pub mod references;
 pub mod release;
 pub mod resolve;
 pub mod source;

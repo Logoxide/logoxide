@@ -2,7 +2,7 @@
 
 An example of how biblix is meant to be used, from both sides: someone reading Bibles in a vault
 (notes, Obsidian, an editor), and someone publishing a package. Every command here runs today,
-except those under "Commentaries, books, and other formats", which are a sketch. The URLs are
+except those under "Commentaries and other formats", which are a sketch. The URLs are
 examples, since no package is hosted yet (see the end).
 
 ## Reading: a vault with a few Bibles
@@ -216,7 +216,124 @@ bx media check --offline                  # the timings against the text
 bx media check                            # and download and check every file
 ```
 
-## Commentaries, books, and other formats (a sketch)
+## Books and collections
+
+A book (an EPUB) is a package like a Bible, but its text isn't read as verses: biblix keeps its
+file, and topos finds the references in it (each located by an EPUB CFI). `bx new --from` makes
+one from the file, filling in what the EPUB says about itself (its title, subtitle, every author,
+language, and publisher); flags give the rest, and win over the file:
+
+```sh
+cd ~/Documents/biblix-dorean-repos
+bx new --from epubs/the-dorean-principle.epub --version 1.0.0 --license CC0-1.0
+# created the-dorean-principle (Book) in the-dorean-principle
+```
+
+```toml
+# Made by biblix from the-dorean-principle.epub
+[package]
+id = "the-dorean-principle"
+name = "The Dorean Principle"
+abbreviation = "TDP"
+authors = ["Conley Owens"]
+version = "1.0.0"
+kind = "book"
+language = "en-US"
+license = "CC0-1.0"
+
+[formats]
+epub = { path = "epub/" }
+```
+
+```sh
+cd the-dorean-principle && bx release     # commits and tags v1.0.0
+```
+
+The id comes from the title (`--id`, or the folder's name: `bx new my-folder --from …`), the
+abbreviation from its initials (`--abbreviation`), and `--author` (repeated, in order),
+`--name`, `--description`, `--language`, `--kind`, `--publisher`, and `--homepage` set the
+others. An EPUB names no license biblix can trust, so give one (`--license`). A book has no verses
+to compare, so `bx release` compares its files: any change is a minor version.
+
+Its release also publishes the passages topos finds it citing, with how often
+(`biblix.references.bin`, a few KB), so which books cite a passage can be known without
+downloading them. Where each reference is (its chapter, paragraph, and an EPUB CFI readers open
+straight to) comes from the book itself, in a tenth of a second:
+
+```sh
+bx show --git github:someone/the-dorean-principle --references | grep "^Matt.10.8"
+# Matt.10.8 (7)
+# Matt.10.8-Matt.10.10 (5)
+bx show the-dorean-principle --references --locations | grep "^Matt.10.8 "
+# Matt.10.8  [Foreword]  Since 2006, FirstLove Publications has given away over 300,000 copies of publica…
+# Matt.10.8  [1. The Command of Christ]  Jesus forbids ministerial reciprocity in Mat­thew 10:8 when he commands his disc…
+```
+
+`--format tsv` or `json` gives every field (with `--locations`: the CFI, offsets, line, and
+column).
+
+### Your files beside a package's
+
+A package is the files its manifest declares: `biblix.toml`, each format's own files (`usx/*.usx`,
+`epub/*.epub`), the license file, the summary, media timings, and what `include = ["…"]` names.
+Anything else in its folder (an annotation File++ writes beside a book, `JHN - Annotations.md`)
+isn't part of it: it doesn't change the checksum, isn't removed by `bx clean` (which keeps that
+version's folder, and says why), and stays through a repair. Editing a package's own files is
+caught:
+
+```sh
+bx install
+# bx: bsb 1.0.1: its files in packages/bsb/1.0.1+gcd07745e changed since it was locked (…): `bx install --repair` puts them back
+bx info bsb
+# checksum: sha256:abe3… (CHANGED: locked as sha256:0e61…; bx install --repair puts its files back)
+# not the package's (kept): usx/JHN - Annotations.md
+bx install --repair
+# repaired bsb 1.0.1
+```
+
+A **collection** is a package of packages: no text of its own, only dependencies. Each work stays
+its own package, versioned on its own, and the collection gathers them:
+
+```sh
+bx new dorean-collection --kind collection --name "The Dorean Collection" \
+  --abbreviation DOREAN --language en --license CC0-1.0 --version 1.0.0
+bx add --project dorean-collection github:someone/the-dorean-principle
+bx add --project dorean-collection github:someone/the-doctrine-of-simony
+# … and the others
+cd dorean-collection && bx release
+```
+
+A vault that adds the collection gets every package in it, locked one by one, and the Bibles in a
+collection are the vault's Bibles:
+
+```sh
+bx add github:someone/dorean-collection
+bx list
+# abolish-the-jesus-trade 1.0.0  ATJT (Abolish the Jesus Trade), CC0-1.0  …  (a dependency)
+# dorean-collection 1.0.0  DOREAN (The Dorean Collection), CC0-1.0  …
+# …
+```
+
+To let readers take only some of a collection, make its dependencies optional, each turned on by
+a feature (edit its `biblix.toml`; `bx add` writes plain dependencies):
+
+```toml
+[features]
+default = ["dorean-principle"]
+dorean-principle = ["dep:the-dorean-principle"]
+simony = ["dep:the-doctrine-of-simony"]
+all = ["dorean-principle", "simony"]
+
+[dependencies]
+the-dorean-principle = { git = "https://github.com/someone/the-dorean-principle", version = "1", optional = true }
+the-doctrine-of-simony = { git = "https://github.com/someone/the-doctrine-of-simony", version = "1", optional = true }
+```
+
+```sh
+bx add github:someone/dorean-collection -F simony --no-default-features
+```
+
+## Commentaries and other formats (a sketch)
 
 What's missing here is biblix's side, not topos's:
 
@@ -229,7 +346,7 @@ What's missing here is biblix's side, not topos's:
   KJV from open-bibles' OSIS and from CCEL's ThML both give 31,102 verses in its 66 books). What
   it doesn't read yet is everything that isn't a Bible: a commentary needs its sections tied to
   the verses they're on, and its own summary (sections, not verse counts). SWORD needs wiring to
-  sword-modules. EPUB has no tree in topos-bible-markup (it's XHTML, so it renders as it is).
+  sword-modules.
 
 What's below is how it could look, not what runs.
 
@@ -266,47 +383,6 @@ bx import ccel:henry/mhc                  # CCEL's ThML (downloads need a login:
 bx import ./mhc.thml --kind commentary    # a file someone already has
 ```
 
-An EPUB isn't keyed by verse, so it's a `kind = "book"`: its chapters are the units, and the
-references topos finds in its text (`John 3:16`) link it to Bibles instead of a verse key.
-
-### Libraries of packages
-
-Each work is its own package (Henry's, Gill's, and Poole's commentaries, each versioned on its own
-as its text is corrected), and a library of them is a package of packages: no text, only
-optional dependencies, each turned on by a feature, so readers take only what they want.
-
-```toml
-[package]
-id = "puritan-commentaries"
-name = "Puritan Commentaries"
-abbreviation = "PURITAN"
-kind = "collection"
-version = "1.0.0"
-language = "en"
-
-[features]
-default = ["henry"]
-henry = ["dep:mhc"]
-gill = ["dep:gill"]
-poole = ["dep:poole"]
-all = ["henry", "gill", "poole"]
-
-[dependencies]
-mhc = { git = "https://github.com/someone/mhc", version = "1", optional = true }
-gill = { git = "https://github.com/someone/gill", version = "1", optional = true }
-poole = { git = "https://github.com/someone/poole", version = "1", optional = true }
-```
-
-```sh
-bx add github:someone/puritan-commentaries -F gill --no-default-features
-bx add github:someone/puritan-commentaries -F all
-```
-
-Only the chosen works are downloaded, since each is its own repository. The lock records the
-collection and each package it brought in, with its own commit and checksum. Not working yet: a
-package must have `[formats]`, and a project's Bibles are only the packages it names, not what a
-collection brings in.
-
 ## What isn't there yet
 
 - **Nothing is hosted**: biblix, the KJV and BSB packages, and a catalog of them are local
@@ -314,6 +390,6 @@ collection brings in.
   `file://` URLs exist.
 - **Installing bx** needs a topos checkout next to biblix (`cargo install --path crates/bx`)
   until topos 0.6 is released.
-- `bx update` doesn't yet say when a newer major version exists; collections, `ver=` links,
+- `bx update` doesn't yet say when a newer major version exists; `ver=` links,
   SWORD, Door43, and CCEL imports, and an audio player are later steps (`doc/biblix.md` in
   topos).

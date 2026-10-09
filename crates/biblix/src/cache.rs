@@ -78,7 +78,8 @@ impl Cache {
                     id: info.id.clone(),
                     version: info.version.to_string(),
                     checksum,
-                    source_format: format!("{:?}", source.format()).to_lowercase(),
+                    source_format: (source.format())
+                        .map_or(String::from("none"), |f| format!("{f:?}").to_lowercase()),
                     books,
                 };
                 let bytes = postcard::to_stdvec(&manifest)

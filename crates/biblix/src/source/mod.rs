@@ -42,7 +42,8 @@ impl Book {
 }
 
 pub trait Source: Send + Sync {
-    fn format(&self) -> Format;
+    /// The format read, if any (a book or a collection has no verse text: [`NoText`])
+    fn format(&self) -> Option<Format>;
 
     /// The books it has, in order, and the file each is in (several books can share one)
     fn files(&self) -> &BTreeMap<BookId, String>;
@@ -56,6 +57,42 @@ pub trait Source: Send + Sync {
 
     fn books(&self) -> Vec<BookId> {
         self.files().keys().copied().collect()
+    }
+}
+
+/**
+A package with no verse text to read: a book (an EPUB, whose references topos finds), or a
+collection (only dependencies). It has no books, so its summary has sizes and a checksum but no
+verses
+*/
+pub struct NoText {
+    pub format: Option<Format>,
+    files: BTreeMap<BookId, String>,
+}
+
+impl NoText {
+    pub fn new(format: Option<Format>) -> NoText {
+        NoText {
+            format,
+            files: BTreeMap::new(),
+        }
+    }
+}
+
+impl Source for NoText {
+    fn format(&self) -> Option<Format> {
+        self.format
+    }
+
+    fn files(&self) -> &BTreeMap<BookId, String> {
+        &self.files
+    }
+
+    fn book(&self, id: BookId) -> Result<Book> {
+        Err(crate::error::BiblixError::NotFound(format!(
+            "book {}: this package has no verse text",
+            id.0
+        )))
     }
 }
 
@@ -80,19 +117,19 @@ pub(crate) fn code_from_name(stem: &str) -> Option<BookId> {
         })
 }
 
-/// Each book's file in a folder: files with `extension`, named for their book, else by the code
-/// `code_in` finds at the start of the file
+/// Each book's file in a folder: files with one of the format's `extensions`, named for their
+/// book, else by the code `code_in` finds at the start of the file
 pub(crate) fn book_files(
     storage: &dyn crate::storage::Storage,
     dir: &str,
-    extension: &str,
+    extensions: &[&str],
     code_in: impl Fn(&str) -> Option<String>,
 ) -> Result<BTreeMap<BookId, String>> {
     let mut files = BTreeMap::new();
     for name in storage.list(dir)? {
         let Some(stem) = name
             .rsplit_once('.')
-            .filter(|(_, ext)| ext.eq_ignore_ascii_case(extension))
+            .filter(|(_, ext)| extensions.iter().any(|e| ext.eq_ignore_ascii_case(e)))
             .map(|(stem, _)| stem)
         else {
             continue;

@@ -53,6 +53,16 @@ pub enum BiblixError {
         expected: String,
         actual: String,
     },
+    /// An installed version's files changed (edited in the library); repairing puts them back
+    #[error(
+        "{id}: its files in {dir} changed since it was locked (expected {expected}, got {actual}): `bx install --repair` puts them back"
+    )]
+    Changed {
+        id: String,
+        dir: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 impl BiblixError {

@@ -26,7 +26,7 @@ pub struct UsfmSource {
 
 impl UsfmSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = book_files(storage.as_ref(), dir, "usfm", |head| {
+        let files = book_files(storage.as_ref(), dir, &["usfm", "sfm"], |head| {
             // `\id JHN ...`
             let rest = &head[head.find("\\id ")? + 4..];
             Some(rest.split_whitespace().next()?.to_string())
@@ -61,8 +61,8 @@ pub fn usfm_to_usx(usfm: &str) -> Result<String> {
 }
 
 impl Source for UsfmSource {
-    fn format(&self) -> Format {
-        Format::Usfm
+    fn format(&self) -> Option<Format> {
+        Some(Format::Usfm)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {

@@ -12,7 +12,7 @@ use crate::{
     package::{Features, Package},
     storage::{FsStorage, MemoryStorage, Storage},
     summary::{
-        Change, Diff, SUMMARY, Summary, VERSES, VerseHash, diff, next_version, summarize,
+        Change, Diff, SUMMARY, Summary, VERSES, VerseHash, diff_summaries, next_version, summarize,
         version_change,
     },
 };
@@ -26,7 +26,12 @@ pub fn summary_at(
 ) -> Result<(Summary, Vec<VerseHash>)> {
     let reference = GitRef::Tag(tag.to_string());
     let published = MemoryStorage::new();
-    fetcher.fetch_files(url, &reference, &[SUMMARY, VERSES], &published)?;
+    fetcher.fetch_files(
+        url,
+        &reference,
+        &[SUMMARY, VERSES, crate::references::REFERENCES],
+        &published,
+    )?;
     if let Ok(published) = Summary::read(&published) {
         return Ok(published);
     }
@@ -82,8 +87,8 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
         .map_err(|e| BiblixError::io(&repo.display().to_string(), e))?
         .display()
         .to_string();
-    let (_, old_verses) = summary_at(git, &url, &tag)?;
-    let d = diff(&old_verses, &verses);
+    let (old_summary, old_verses) = summary_at(git, &url, &tag)?;
+    let d = diff_summaries((&old_summary, &old_verses), (&summary, &verses));
     let minimum = Some(next_version(&old_version, d.change()));
     Ok(Plan {
         summary,
@@ -127,7 +132,9 @@ pub fn describe(d: &Diff) -> String {
     .filter(|(n, _)| *n > 0)
     .map(|(n, what)| format!("{n} verse{} {what}", if n == 1 { "" } else { "s" }))
     .collect();
-    if parts.is_empty() {
+    if d.files_changed {
+        String::from("its files changed (it has no verses to compare)")
+    } else if parts.is_empty() {
         String::from("no verse changed")
     } else {
         parts.join(", ")

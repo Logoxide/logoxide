@@ -3,7 +3,7 @@
 use biblix_core::{
     catalog::{Catalog, CatalogEntry as CoreEntry, CatalogSource as CoreSource},
     import::{ebible_zip_url, fetch_bible_book_url},
-    manifest::{Direction, PackageKind as CoreKind},
+    manifest::Direction,
 };
 use boltffi::*;
 
@@ -101,14 +101,7 @@ impl From<CatalogEntry> for CoreEntry {
             license: e.license,
             copyright: e.copyright,
             version: e.version,
-            kind: match e.kind {
-                PackageKind::Bible => CoreKind::Bible,
-                PackageKind::Commentary => CoreKind::Commentary,
-                PackageKind::Lexicon => CoreKind::Lexicon,
-                PackageKind::CrossReferences => CoreKind::CrossReferences,
-                PackageKind::VersificationMap => CoreKind::VersificationMap,
-                PackageKind::Book => CoreKind::Book,
-            },
+            kind: e.kind.into(),
             direction: match e.right_to_left {
                 true => Direction::Rtl,
                 false => Direction::Ltr,

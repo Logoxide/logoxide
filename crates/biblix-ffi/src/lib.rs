@@ -10,6 +10,7 @@ and the cache files it writes are handed back ([`BiblixPackage::cache_writes`]).
 */
 
 mod catalog;
+mod create;
 mod installer;
 mod package;
 mod project;
@@ -17,6 +18,7 @@ mod project;
 mod tests;
 
 pub use catalog::*;
+pub use create::*;
 pub use installer::*;
 pub use package::*;
 pub use project::*;
@@ -65,7 +67,8 @@ impl From<biblix_core::BiblixError> for BiblixError {
             | E::ReadOnly
             | E::Fetch { .. }
             | E::Resolve(_)
-            | E::Checksum { .. } => BiblixError::Files { message },
+            | E::Checksum { .. }
+            | E::Changed { .. } => BiblixError::Files { message },
         }
     }
 }
@@ -177,14 +180,7 @@ impl Biblix {
     ) -> Result<Vec<PackageFile>, BiblixError> {
         let files = biblix_core::MemoryStorage::new();
         biblix_core::import::ebible(&entry.into(), &zip, &files)?;
-        let mut out = vec![];
-        for path in biblix_core::Storage::walk(&files, "")? {
-            out.push(PackageFile {
-                bytes: biblix_core::Storage::read(&files, &path)?,
-                path,
-            });
-        }
-        Ok(out)
+        create::files_of(&files)
     }
 
     /// A package made from fetch.bible's books (each `FetchBook`'s bytes, its `code` as the
@@ -197,14 +193,43 @@ impl Biblix {
         let books: Vec<(String, Vec<u8>)> = books.into_iter().map(|b| (b.path, b.bytes)).collect();
         let files = biblix_core::MemoryStorage::new();
         biblix_core::import::fetch_bible(&entry.into(), &books, &files)?;
-        let mut out = vec![];
-        for path in biblix_core::Storage::walk(&files, "")? {
-            out.push(PackageFile {
-                bytes: biblix_core::Storage::read(&files, &path)?,
-                path,
-            });
-        }
-        Ok(out)
+        create::files_of(&files)
+    }
+
+    /// What a file says about itself, to fill in a new package's form: an EPUB's title,
+    /// subtitle, authors, language, publisher, and rights; nothing for other formats
+    pub fn file_metadata(
+        &self,
+        file_name: String,
+        bytes: Vec<u8>,
+    ) -> Result<FileMetadata, BiblixError> {
+        create::file_metadata(&file_name, &bytes)
+    }
+
+    /// A new package made from one file (`book.epub`, `JHN.usx`): its files, relative to its
+    /// folder (`biblix.toml`, and the file in its format's folder: `epub/book.epub`). What's
+    /// given wins over the file's metadata; an EPUB fills in the rest, other formats need a name
+    /// and a language. Make the folder a git repository to release it
+    pub fn new_package(
+        &self,
+        file_name: String,
+        bytes: Vec<u8>,
+        given: NewPackage,
+    ) -> Result<Vec<PackageFile>, BiblixError> {
+        create::new_package(&file_name, &bytes, given)
+    }
+
+    /// A new collection (a package of packages, with no text of its own; it needs a name and a
+    /// language): its `biblix.toml`. Add its packages with `BiblixProject.addDependency` on it
+    pub fn new_collection(&self, given: NewPackage) -> Result<Vec<PackageFile>, BiblixError> {
+        create::new_collection(given)
+    }
+
+    /// The passages a release's books cite, from its `biblix.references.bin` (read without the
+    /// books; with them, `BiblixPackage.references()` gives where each reference is)
+    pub fn parse_references(&self, bytes: Vec<u8>) -> Result<Vec<CitedPassage>, BiblixError> {
+        let cited = biblix_core::references::decode(&bytes)?;
+        Ok(cited.into_iter().map(CitedPassage::from).collect())
     }
 
     /// Whether downloaded bytes are a listed media file (its size and SHA-256); an error says

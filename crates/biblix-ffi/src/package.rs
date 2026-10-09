@@ -22,6 +22,8 @@ pub enum PackageKind {
     CrossReferences,
     VersificationMap,
     Book,
+    /// Other packages (its dependencies), with no text of its own
+    Collection,
 }
 
 impl From<CoreKind> for PackageKind {
@@ -33,6 +35,21 @@ impl From<CoreKind> for PackageKind {
             CoreKind::CrossReferences => PackageKind::CrossReferences,
             CoreKind::VersificationMap => PackageKind::VersificationMap,
             CoreKind::Book => PackageKind::Book,
+            CoreKind::Collection => PackageKind::Collection,
+        }
+    }
+}
+
+impl From<PackageKind> for CoreKind {
+    fn from(kind: PackageKind) -> Self {
+        match kind {
+            PackageKind::Bible => CoreKind::Bible,
+            PackageKind::Commentary => CoreKind::Commentary,
+            PackageKind::Lexicon => CoreKind::Lexicon,
+            PackageKind::CrossReferences => CoreKind::CrossReferences,
+            PackageKind::VersificationMap => CoreKind::VersificationMap,
+            PackageKind::Book => CoreKind::Book,
+            PackageKind::Collection => CoreKind::Collection,
         }
     }
 }
@@ -46,6 +63,9 @@ pub struct PackageInfo {
     pub name: String,
     /// What references name it by (`John 3:16 BSB`)
     pub abbreviation: String,
+    /// Who wrote it, in order
+    pub authors: Vec<String>,
+    pub description: Option<String>,
     pub aliases: Vec<String>,
     pub version: String,
     pub kind: PackageKind,
@@ -71,6 +91,8 @@ impl From<&manifest::Package> for PackageInfo {
             id: info.id.clone(),
             name: info.name.clone(),
             abbreviation: info.abbreviation.clone(),
+            authors: info.authors.clone(),
+            description: info.description.clone(),
             aliases: info.aliases.clone(),
             version: info.version.to_string(),
             kind: info.kind.into(),
@@ -310,6 +332,13 @@ impl BiblixPackage {
             .flat_map(|m| m.files.iter())
             .map(MediaFile::from)
             .collect()
+    }
+
+    /// The Bible references in its books (EPUBs), in book order, each with its chapter and CFI;
+    /// empty for a package without books. Found by reading them (well under a second a book)
+    pub fn references(&self) -> Result<Vec<crate::FoundReference>, BiblixError> {
+        let found = biblix_core::references::find(self.cached.package())?;
+        Ok(found.into_iter().map(Into::into).collect())
     }
 
     /// Where each verse is in a listed file (from the package's WebVTT timings, in their order),

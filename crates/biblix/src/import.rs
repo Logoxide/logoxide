@@ -163,6 +163,8 @@ fn finish(
         id: entry.id.clone(),
         name: entry.name.clone(),
         abbreviation: entry.abbreviation.clone(),
+        authors: vec![],
+        description: entry.description.clone(),
         aliases: entry.aliases.clone(),
         version,
         kind: entry.kind,
@@ -174,6 +176,7 @@ fn finish(
         homepage: Some(made.homepage),
         upstream: Some(made.upstream),
         versification: String::from("own"),
+        include: vec![],
     };
     let manifest = Manifest {
         package: Some(info),

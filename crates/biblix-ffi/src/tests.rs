@@ -408,6 +408,29 @@ fn installing_with_the_host_downloading() {
     };
     assert!(matches!(error, BiblixError::Files { .. }), "{error:?}");
 
+    // Repairing hands back its files to write over the changed one; an annotation beside them
+    // isn't the package's, so it changes nothing
+    let mut annotated = files_under(&[], "");
+    annotated.push(file("biblix.toml", MANIFEST));
+    annotated.push(file("usx/JHN.usx", &USX.replace("loved", "LOVED")));
+    annotated.push(file("usx/JHN - Annotations.md", "my note"));
+    host.library.insert(TEST_DIR.into(), annotated);
+    host.requests.clear();
+    let installer = biblix.installer();
+    let (repaired, files) = loop {
+        match installer.install(&project, UpdateMode::Repair).unwrap() {
+            InstallStep::Done { lock, files } => break (lock, files),
+            InstallStep::Fetch { request } => host.answer(&installer, request),
+        }
+    };
+    assert_eq!(repaired, lock);
+    let book = files
+        .iter()
+        .find(|f| f.path == format!("{TEST_DIR}/usx/JHN.usx"))
+        .expect("the changed book is handed back");
+    assert_eq!(String::from_utf8(book.bytes.clone()).unwrap(), USX);
+    assert!(!files.iter().any(|f| f.path.ends_with(".md")));
+
     // Removing it leaves the manifest without it
     let removed = project.remove_dependency("test".into()).unwrap();
     assert!(removed.dependencies().is_empty());
@@ -537,4 +560,71 @@ fn media_by_url_and_hash() {
             .media_store_path(media[0].clone())
             .starts_with("media/2c/2cf24dba")
     );
+}
+
+#[test]
+fn making_packages() {
+    let biblix = Biblix::new();
+    // A Bible's USX says nothing about itself, so a name and a language are given
+    let given = crate::NewPackage {
+        name: Some("My Gospel".into()),
+        language: Some("en".into()),
+        authors: vec!["Me".into(), "You".into()],
+        version: Some("1.0.0".into()),
+        ..crate::NewPackage::default()
+    };
+    assert_eq!(
+        biblix
+            .file_metadata("JHN.usx".into(), USX.as_bytes().to_vec())
+            .unwrap(),
+        crate::FileMetadata::default()
+    );
+    let files = biblix
+        .new_package("JHN.usx".into(), USX.as_bytes().to_vec(), given.clone())
+        .unwrap();
+    let mut paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    paths.sort();
+    assert_eq!(paths, ["biblix.toml", "usx/JHN.usx"]);
+    // It opens, as the host would after writing it
+    let package = biblix.open_package(files, defaults(), vec![]).unwrap();
+    let info = package.info();
+    assert_eq!(
+        (info.id.as_str(), info.abbreviation.as_str(), info.kind),
+        ("my-gospel", "MG", PackageKind::Bible)
+    );
+    assert_eq!(info.authors, ["Me", "You"]);
+    assert!(package.references().unwrap().is_empty());
+    // Without a language, the error says what to give
+    let no_language = crate::NewPackage {
+        language: None,
+        ..given.clone()
+    };
+    let error = biblix
+        .new_package("JHN.usx".into(), USX.as_bytes().to_vec(), no_language)
+        .unwrap_err();
+    assert!(matches!(error, BiblixError::Import { .. }), "{error:?}");
+
+    // A collection is its manifest alone
+    let collection = biblix
+        .new_collection(crate::NewPackage {
+            id: Some("library".into()),
+            ..given
+        })
+        .unwrap();
+    assert_eq!(collection.len(), 1);
+    let text = String::from_utf8(collection[0].bytes.clone()).unwrap();
+    assert!(text.contains("kind = \"collection\""), "{text}");
+
+    // A published references file: the passages cited
+    let published = biblix_core::references::encode(&[biblix_core::references::Cited {
+        passage: "John.3.16".into(),
+        count: 3,
+    }])
+    .unwrap();
+    let cited = biblix.parse_references(published).unwrap();
+    assert_eq!(
+        (cited[0].passage.as_str(), cited[0].count),
+        ("John.3.16", 3)
+    );
+    assert!(biblix.parse_references(b"not one".to_vec()).is_err());
 }

@@ -74,6 +74,16 @@ enum Command {
         /// The release (the newest by default)
         #[arg(long, requires = "git")]
         tag: Option<String>,
+        /// List the passages its books (EPUBs) cite, and how often
+        #[arg(long)]
+        references: bool,
+        /// With --references: every reference, with where it is (chapter, paragraph, CFI,
+        /// offsets), read from the books (so not with --git)
+        #[arg(long, requires = "references", conflicts_with = "git")]
+        locations: bool,
+        /// How to list them: text, tsv, or json
+        #[arg(long, default_value = "text", requires = "references")]
+        format: String,
     },
     /// Writes the package's summary, checks its version against what changed since the last
     /// release, then commits and tags it
@@ -108,6 +118,11 @@ enum Command {
         #[arg(long)]
         cache: Option<PathBuf>,
     },
+    /// Makes a new package in its own folder (a git repository): from one file (`--from
+    /// book.epub`; an EPUB's title, subtitle, authors, and language fill in what isn't given), or
+    /// a collection (`--kind collection`), whose packages are its dependencies (`bx add
+    /// --project <its folder>`). Then `bx release` in it commits and tags it
+    New(NewArgs),
     /// Starts a biblix.toml in a folder (the current one by default), like a vault's
     Init {
         #[arg(default_value = ".")]
@@ -121,7 +136,12 @@ enum Command {
         id: String,
     },
     /// Installs what biblix.lock says (resolving what it doesn't have yet)
-    Install,
+    Install {
+        /// Put back the files of installed versions that changed (edited in the library), instead
+        /// of stopping; files that aren't the package's (annotations) stay
+        #[arg(long)]
+        repair: bool,
+    },
     /// Moves packages to the newest versions their requirements allow
     Update {
         /// Only these packages (all by default)
@@ -259,6 +279,51 @@ struct AddArgs {
 }
 
 #[derive(Args)]
+struct NewArgs {
+    /// The package's folder (by default its id, in the current folder)
+    dir: Option<PathBuf>,
+    /// The file it's made from: .epub (a book), .usx, .usfm, .osis, or .thml (a Bible)
+    #[arg(long, required_unless_present = "kind")]
+    from: Option<PathBuf>,
+    /// What dependencies call it (by default its folder's name, else from its name:
+    /// `the-dorean-principle`)
+    #[arg(long)]
+    id: Option<String>,
+    /// Its title (an EPUB's own by default)
+    #[arg(long)]
+    name: Option<String>,
+    /// What references name it by (by default its name's initials: `TDP`)
+    #[arg(long)]
+    abbreviation: Option<String>,
+    /// An author (repeat for more, in order; an EPUB's own by default)
+    #[arg(long = "author")]
+    authors: Vec<String>,
+    /// A sentence about it (an EPUB's subtitle by default)
+    #[arg(long)]
+    description: Option<String>,
+    /// Its first version (0.1.0 by default)
+    #[arg(long)]
+    version: Option<String>,
+    /// bible, commentary, lexicon, book, collection, ... (by default from the file: an EPUB is a
+    /// book)
+    #[arg(long)]
+    kind: Option<String>,
+    /// BCP 47 (`en`; an EPUB's own by default)
+    #[arg(long)]
+    language: Option<String>,
+    /// An SPDX expression (`CC0-1.0`); shown, never enforced
+    #[arg(long)]
+    license: Option<String>,
+    #[arg(long)]
+    publisher: Option<String>,
+    #[arg(long)]
+    homepage: Option<String>,
+    /// Don't make the folder a git repository
+    #[arg(long)]
+    no_git: bool,
+}
+
+#[derive(Args)]
 struct PackageArgs {
     /// The package's folder (with its biblix.toml)
     #[arg(default_value = ".")]
@@ -289,13 +354,25 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
     let result = match &cli.command {
         Command::Show {
-            package, git: None, ..
-        } => show(package),
+            package,
+            git: None,
+            references,
+            locations,
+            format,
+            ..
+        } => show(package, references.then_some((format.as_str(), *locations))),
         Command::Show {
             git: Some(url),
             tag,
+            references,
+            format,
             ..
-        } => show_remote(&cli, &biblix::git::expand_url(url), tag.as_deref()),
+        } => show_remote(
+            &cli,
+            &biblix::git::expand_url(url),
+            tag.as_deref(),
+            references.then_some(format.as_str()),
+        ),
         Command::Release {
             path,
             set_version,
@@ -304,11 +381,13 @@ fn main() -> ExitCode {
         Command::Diff { path, from, to } => diff(&cli, path, from, to.as_deref()),
         Command::Verify(args) => verify(args),
         Command::Check { package, cache } => check(package, cache.clone()),
+        Command::New(args) => new(args),
         Command::Init { dir } => biblix::Project::init(dir)
             .map(|p| println!("created {}", p.dir().join(MANIFEST).display())),
         Command::Add(args) => add(&cli, args),
         Command::Remove { id } => remove(&cli, id),
-        Command::Install => install(&cli, Update::Nothing),
+        Command::Install { repair: false } => install(&cli, Update::Nothing),
+        Command::Install { repair: true } => repair(&cli),
         Command::Update { ids } => install(
             &cli,
             match ids.is_empty() {
@@ -349,7 +428,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn show(args: &PackageArgs) -> biblix::Result<()> {
+fn show(args: &PackageArgs, references: Option<(&str, bool)>) -> biblix::Result<()> {
     let package = args.open()?;
     let info = package.info();
     let manifest = package.manifest();
@@ -357,6 +436,12 @@ fn show(args: &PackageArgs) -> biblix::Result<()> {
         "{} {} ({}), {}",
         info.id, info.version, info.abbreviation, info.name
     );
+    if let Some(description) = &info.description {
+        println!("{description}");
+    }
+    if !info.authors.is_empty() {
+        println!("by {}", info.authors.join(", "));
+    }
     println!(
         "kind: {:?}, language: {}, direction: {:?}",
         info.kind, info.language, info.direction
@@ -386,10 +471,13 @@ fn show(args: &PackageArgs) -> biblix::Result<()> {
         .collect();
     let all: Vec<&str> = manifest.formats.keys().map(String::as_str).collect();
     println!(
-        "formats: {} (enabled: {}; reading {:?})",
+        "formats: {} (enabled: {}; reading {})",
         all.join(", "),
         enabled.join(", "),
-        package.source().format()
+        match package.source().format() {
+            Some(format) if format.readable() => format!("{format:?}"),
+            _ => String::from("no verse text"),
+        }
     );
     let features: Vec<&str> = package
         .enabled()
@@ -423,13 +511,108 @@ fn show(args: &PackageArgs) -> biblix::Result<()> {
         .iter()
         .filter_map(|b| bible_data().books().get_usfm(*b).map(String::as_str))
         .collect();
-    println!("books: {} ({})", books.len(), codes.join(" "));
+    if !books.is_empty() {
+        println!("books: {} ({})", books.len(), codes.join(" "));
+    }
     println!("checksum: {}", package.checksum()?);
+    let found = biblix::references::find(&package)?;
+    if !found.is_empty() {
+        println!("references: {} (in its books)", found.len());
+    }
+    match references {
+        Some((format, true)) => print_references(&found, format)?,
+        Some((format, false)) => print_cited(&biblix::references::cited(&found), format)?,
+        None => {}
+    }
+    Ok(())
+}
+
+/// The passages cited, with how often, as text, TSV, or JSON
+fn print_cited(cited: &[biblix::references::Cited], format: &str) -> biblix::Result<()> {
+    match format {
+        "json" => println!(
+            "{}",
+            serde_json::to_string_pretty(cited)
+                .map_err(|e| biblix::BiblixError::Manifest(e.to_string()))?
+        ),
+        "tsv" => {
+            println!("passage\tcount");
+            for c in cited {
+                println!("{}\t{}", c.passage, c.count);
+            }
+        }
+        "text" => {
+            for c in cited {
+                match c.count {
+                    1 => println!("{}", c.passage),
+                    n => println!("{} ({n})", c.passage),
+                }
+            }
+        }
+        other => {
+            return Err(biblix::BiblixError::Manifest(format!(
+                "--format {other}: text, tsv, or json"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Every reference, with where it is: as text (its passage, chapter, and paragraph, shortened),
+/// TSV, or JSON
+fn print_references(
+    found: &[biblix::references::FoundReference],
+    format: &str,
+) -> biblix::Result<()> {
+    match format {
+        "json" => println!(
+            "{}",
+            serde_json::to_string_pretty(found)
+                .map_err(|e| biblix::BiblixError::Manifest(e.to_string()))?
+        ),
+        "tsv" => {
+            println!("passage\tfile\tchapter\tcfi\tstart\tend\tline\tcolumn\tspine\tline_text");
+            let clean = |s: &str| s.replace(['\t', '\n', '\r'], " ");
+            for r in found {
+                println!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    r.passage,
+                    r.file,
+                    clean(r.chapter.as_deref().unwrap_or("")),
+                    r.cfi,
+                    r.start,
+                    r.end,
+                    r.line,
+                    r.column,
+                    r.spine,
+                    clean(&r.line_text)
+                );
+            }
+        }
+        "text" => {
+            for r in found {
+                let text: String = r.line_text.split_whitespace().collect::<Vec<_>>().join(" ");
+                let short: String = text.chars().take(80).collect();
+                let more = if short.len() < text.len() { "…" } else { "" };
+                println!(
+                    "{}  [{}]  {short}{more}",
+                    r.passage,
+                    r.chapter.as_deref().unwrap_or("-")
+                );
+            }
+        }
+        other => {
+            return Err(biblix::BiblixError::Manifest(format!(
+                "--format {other}: text, tsv, or json"
+            )));
+        }
+    }
     Ok(())
 }
 
 fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
     let package = args.open()?;
+    let package_kind = package.info().kind;
     let timings = biblix::media::check_package_timings(&package)?;
     let start = Instant::now();
     let (mut verses, mut books) = (0, 0);
@@ -459,10 +642,18 @@ fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
             }
         }
     }
-    println!(
-        "{books} books, {verses} verses, read in {:.0?}",
-        start.elapsed()
-    );
+    match package_kind {
+        biblix::manifest::PackageKind::Collection => {
+            println!("a collection: no text of its own, only its dependencies")
+        }
+        _ if books == 0 => {
+            println!("no verse text (a {package_kind:?}): its files are kept as they are")
+        }
+        _ => println!(
+            "{books} books, {verses} verses, read in {:.0?}",
+            start.elapsed()
+        ),
+    }
     timings_report(&timings)
 }
 
@@ -613,6 +804,112 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     Ok(())
 }
 
+fn new(args: &NewArgs) -> biblix::Result<()> {
+    use biblix::{create, manifest::PackageKind};
+    let kind = (args.kind.as_deref())
+        .map(|k| {
+            serde_json::from_value::<PackageKind>(serde_json::Value::String(k.to_string()))
+                .map_err(|_| {
+                    biblix::BiblixError::Manifest(format!(
+                        "--kind {k}: bible, commentary, lexicon, cross-references, versification-map, book, or collection"
+                    ))
+                })
+        })
+        .transpose()?;
+    // Like `cargo new <dir>`: the folder names it, unless --id does
+    let from_dir = (args.dir.as_ref())
+        .and_then(|d| d.file_name())
+        .map(|n| create::id_from(&n.to_string_lossy()));
+    let given = create::NewPackage {
+        id: args.id.clone().or(from_dir),
+        name: args.name.clone(),
+        abbreviation: args.abbreviation.clone(),
+        authors: args.authors.clone(),
+        description: args.description.clone(),
+        version: (args.version.as_deref())
+            .map(|v| {
+                v.parse()
+                    .map_err(|e| biblix::BiblixError::Manifest(format!("--version {v}: {e}")))
+            })
+            .transpose()?,
+        kind,
+        language: args.language.clone(),
+        license: args.license.clone(),
+        publisher: args.publisher.clone(),
+        homepage: args.homepage.clone(),
+    };
+    let staged = MemoryStorage::new();
+    let (manifest, rights) = match (&args.from, kind) {
+        (Some(file), _) => {
+            let bytes = std::fs::read(file).map_err(|e| biblix::BiblixError::Io {
+                path: file.display().to_string(),
+                message: e.to_string(),
+            })?;
+            let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
+            let name = name.unwrap_or_default();
+            let rights = match create::file_format(&name, &bytes) {
+                Some(("epub", _)) => create::epub_metadata(&bytes)?.rights,
+                _ => None,
+            };
+            (
+                create::new_from_file(&name, &bytes, &given, &staged)?,
+                rights,
+            )
+        }
+        (None, Some(PackageKind::Collection)) => (create::new_collection(&given, &staged)?, None),
+        (None, _) => {
+            return Err(biblix::BiblixError::Manifest(String::from(
+                "give the file it's made from (--from), or --kind collection",
+            )));
+        }
+    };
+    let info = manifest
+        .package
+        .as_ref()
+        .ok_or_else(|| biblix::BiblixError::Manifest(String::from("no [package]")))?;
+    let dir = args.dir.clone().unwrap_or_else(|| PathBuf::from(&info.id));
+    if dir.exists() && std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_some()) {
+        return Err(biblix::BiblixError::Manifest(format!(
+            "{} already exists",
+            dir.display()
+        )));
+    }
+    let dest = FsStorage::new(&dir);
+    for path in staged.walk("")? {
+        dest.write(&path, &staged.read(&path)?)?;
+    }
+    if !args.no_git {
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&dir)
+            .status();
+        if !status.is_ok_and(|s| s.success()) {
+            eprintln!("warning: `git init` failed in {}", dir.display());
+        }
+    }
+    println!("created {} ({:?}) in {}", info.id, info.kind, dir.display());
+    print!("{}", staged.read_string(MANIFEST)?);
+    if info.license.is_none() {
+        println!(
+            "no license given: add one with --license (an SPDX expression, CC0-1.0); it's shown, never enforced"
+        );
+    }
+    if let Some(rights) = rights {
+        println!("the file says of its rights: {rights}");
+    }
+    match info.kind {
+        PackageKind::Collection => println!(
+            "next: bx add --project {} <each package's git URL>, then bx release there",
+            dir.display()
+        ),
+        _ => println!(
+            "next: bx release in {} (commits and tags it)",
+            dir.display()
+        ),
+    }
+    Ok(())
+}
+
 fn remove(cli: &Cli, id: &str) -> biblix::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
@@ -624,6 +921,32 @@ fn remove(cli: &Cli, id: &str) -> biblix::Result<()> {
     project.save_manifest()?;
     project.install(&library, &cli.fetcher(&library), Update::Nothing)?;
     println!("removed {id}");
+    Ok(())
+}
+
+fn repair(cli: &Cli) -> biblix::Result<()> {
+    let library = cli.library();
+    let mut project = cli.project(&library)?;
+    // Which installed versions changed, to say what was put back
+    let changed: Vec<String> = (project.lock().into_iter())
+        .flat_map(|lock| lock.packages.iter())
+        .filter(|p| p.checksum.is_some() && library.is_installed(p, project.dir()))
+        .filter(|p| {
+            let dir = FsStorage::new(library.package_dir(p, project.dir()));
+            biblix::package::checksum(&dir).ok() != p.checksum
+        })
+        .map(|p| p.label())
+        .collect();
+    let lock = project.repair(&library, &cli.fetcher(&library))?;
+    for label in &changed {
+        println!("repaired {label}");
+    }
+    println!(
+        "{} packages, {} repaired, locked in {}",
+        lock.packages.len(),
+        changed.len(),
+        project.dir().join(biblix::lock::LOCKFILE).display()
+    );
     Ok(())
 }
 
@@ -702,15 +1025,19 @@ fn list(cli: &Cli) -> biblix::Result<()> {
 }
 
 fn print_summary(summary: &biblix::summary::Summary) {
-    println!(
-        "{} {}: {} books, {} verses",
-        summary.id,
-        summary.version,
-        summary.books.len(),
-        summary.verses
-    );
+    match summary.verses {
+        0 => println!("{} {}", summary.id, summary.version),
+        verses => println!(
+            "{} {}: {} books, {verses} verses",
+            summary.id,
+            summary.version,
+            summary.books.len(),
+        ),
+    }
     let codes: Vec<&str> = summary.books.keys().map(String::as_str).collect();
-    println!("books: {}", codes.join(" "));
+    if !codes.is_empty() {
+        println!("books: {}", codes.join(" "));
+    }
     for (format, size) in &summary.sizes {
         println!("{format}: {:.1} MB", *size as f64 / 1_000_000.0);
     }
@@ -719,11 +1046,21 @@ fn print_summary(summary: &biblix::summary::Summary) {
         .iter()
         .map(|(k, n)| format!("{k} {n}"))
         .collect();
-    println!("contents: {}", contents.join(", "));
+    if !contents.is_empty() {
+        println!("contents: {}", contents.join(", "));
+    }
+    if summary.references > 0 {
+        println!("references: {} (in its books)", summary.references);
+    }
     println!("text checksum: {}", summary.text_checksum);
 }
 
-fn show_remote(cli: &Cli, url: &str, tag: Option<&str>) -> biblix::Result<()> {
+fn show_remote(
+    cli: &Cli,
+    url: &str,
+    tag: Option<&str>,
+    references: Option<&str>,
+) -> biblix::Result<()> {
     use biblix::git::Fetcher;
     let library = cli.library();
     let fetcher = cli.fetcher(&library);
@@ -740,7 +1077,12 @@ fn show_remote(cli: &Cli, url: &str, tag: Option<&str>) -> biblix::Result<()> {
                 .ok_or_else(|| biblix::BiblixError::Resolve(format!("{url} has no releases")))?
         }
     };
-    let paths = [MANIFEST, biblix::summary::SUMMARY, biblix::summary::VERSES];
+    let paths = [
+        MANIFEST,
+        biblix::summary::SUMMARY,
+        biblix::summary::VERSES,
+        biblix::references::REFERENCES,
+    ];
     let files = MemoryStorage::new();
     fetcher.fetch_files(url, &biblix::git::GitRef::Tag(tag.clone()), &paths, &files)?;
     let manifest = biblix::Manifest::parse(&files.read_string(MANIFEST)?)?;
@@ -754,7 +1096,12 @@ fn show_remote(cli: &Cli, url: &str, tag: Option<&str>) -> biblix::Result<()> {
         );
     }
     match summary {
-        Ok(summary) => print_summary(&summary),
+        Ok(summary) => {
+            print_summary(&summary);
+            if let Some(format) = references {
+                print_cited(&summary.cited, format)?;
+            }
+        }
         Err(_) => println!(
             "{tag} has no summary (released before `bx release`): install it to see what it holds"
         ),
@@ -841,15 +1188,15 @@ fn diff(cli: &Cli, path: &std::path::Path, from: &str, to: Option<&str>) -> bibl
         })?
         .display()
         .to_string();
-    let (_, old) = biblix::release::summary_at(&git, &url, from)?;
+    let old = biblix::release::summary_at(&git, &url, from)?;
     let new = match to {
-        Some(tag) => biblix::release::summary_at(&git, &url, tag)?.1,
+        Some(tag) => biblix::release::summary_at(&git, &url, tag)?,
         None => {
             let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(path));
-            biblix::summary::summarize(&Package::open(storage, Features::default())?)?.1
+            biblix::summary::summarize(&Package::open(storage, Features::default())?)?
         }
     };
-    let d = biblix::summary::diff(&old, &new);
+    let d = biblix::summary::diff_summaries((&old.0, &old.1), (&new.0, &new.1));
     println!(
         "{}: a {:?} change",
         biblix::release::describe(&d),
@@ -1152,8 +1499,12 @@ fn catalog_entry(cli: &Cli, url: &str) -> biblix::Result<()> {
 fn info(cli: &Cli, id: &str) -> biblix::Result<()> {
     let library = cli.library();
     let project = cli.project(&library)?;
+    // The manifest's own, else one they brought in (a collection's)
     let locked = (project.lock())
-        .and_then(|lock| lock.get(id))
+        .and_then(|lock| {
+            lock.get(id)
+                .or_else(|| lock.packages.iter().find(|p| p.id == id))
+        })
         .cloned()
         .ok_or_else(|| {
             biblix::BiblixError::NotFound(format!("{id} isn't in the lock file (bx install)"))
@@ -1195,8 +1546,14 @@ fn info(cli: &Cli, id: &str) -> biblix::Result<()> {
     let checksum = package.checksum()?;
     match &locked.checksum {
         Some(expected) if *expected == checksum => println!("checksum: {checksum} (as locked)"),
-        Some(expected) => println!("checksum: {checksum} (CHANGED: locked as {expected})"),
+        Some(expected) => println!(
+            "checksum: {checksum} (CHANGED: locked as {expected}; bx install --repair puts its files back)"
+        ),
         None => println!("checksum: {checksum}"),
+    }
+    let others = biblix::package::other_files(&storage)?;
+    if !others.is_empty() {
+        println!("not the package's (kept): {}", others.join(", "));
     }
     let cached = library.book_cache().open(package)?;
     let books = &cached.manifest().books;
@@ -1232,6 +1589,18 @@ fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> biblix::Result<()> {
     }
     for (id, key) in &unused {
         let dir = library.root().join("packages").join(id).join(key);
+        // Files that aren't the package's (a reader's annotations) are never removed: the folder
+        // stays, and says why
+        let others = biblix::package::other_files(&FsStorage::new(&dir))?;
+        if !others.is_empty() {
+            println!(
+                "kept {id} {key}: {} file{} not the package's ({})",
+                others.len(),
+                if others.len() == 1 { " is" } else { "s are" },
+                others.join(", ")
+            );
+            continue;
+        }
         if remove {
             // Its parsed books are `<id>/<version>-<checksum>`: by the files' checksum, since
             // forks share versions

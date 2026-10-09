@@ -279,12 +279,29 @@ impl Project {
         fetcher: &dyn Fetcher,
         update: Update,
     ) -> Result<&Lockfile> {
+        self.install_with(library, fetcher, update, false)
+    }
+
+    /// [`Project::install`], putting back the files of installed versions that changed (a
+    /// reader edited them) instead of stopping there; files the packages don't declare stay
+    pub fn repair(&mut self, library: &Library, fetcher: &dyn Fetcher) -> Result<&Lockfile> {
+        self.install_with(library, fetcher, Update::Nothing, true)
+    }
+
+    fn install_with(
+        &mut self,
+        library: &Library,
+        fetcher: &dyn Fetcher,
+        update: Update,
+        repair: bool,
+    ) -> Result<&Lockfile> {
         let packages = library.packages(&self.dir);
         let resolver = Resolver {
             packages: &packages,
             fetcher,
             previous: self.lock.as_ref(),
             update,
+            repair,
         };
         let lock = resolver.resolve(&self.manifest)?;
         let path = self.dir.join(LOCKFILE);
@@ -294,8 +311,9 @@ impl Project {
     }
 
     /**
-    The translations the manifest asks for (its Bibles, not their dependencies), for topos: each
-    one's abbreviation, aliases, and verse counts, from the library's cache
+    The translations the manifest asks for (its Bibles, and those in its collections; not other
+    dependencies), for topos: each one's abbreviation, aliases, and verse counts, from the
+    library's cache
     */
     pub fn translations(&self, library: &Library) -> Result<Translations> {
         let mut translations = Translations::default();
@@ -303,8 +321,20 @@ impl Project {
             return Ok(translations);
         };
         let cache = library.book_cache();
-        for locked in lock.roots() {
+        // The manifest's packages, and what each collection among them brings in
+        let mut todo: Vec<&crate::LockedPackage> = lock.roots().collect();
+        todo.reverse();
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(locked) = todo.pop() {
+            if !seen.insert(locked.name()) {
+                continue;
+            }
             let package = library.open(locked, &self.dir)?;
+            if package.info().kind == PackageKind::Collection {
+                let inside = (locked.dependencies.iter()).filter_map(|name| lock.named(name));
+                todo.extend(inside.rev());
+                continue;
+            }
             if package.info().kind != PackageKind::Bible {
                 continue;
             }

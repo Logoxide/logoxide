@@ -164,7 +164,7 @@ fn versions_locks_and_updates() {
     let error = project
         .install(&library, &fetcher, Update::Nothing)
         .unwrap_err();
-    assert!(matches!(error, BiblixError::Checksum { .. }), "{error}");
+    assert!(matches!(error, BiblixError::Changed { .. }), "{error}");
 
     // A requirement no tag matches
     project.add("tb", &git_dep(&repo, Some("3"))).unwrap();
@@ -304,4 +304,83 @@ fn forks_side_by_side() {
         error.to_string().contains("asks for the package `bsb`"),
         "{error}"
     );
+}
+
+#[test]
+fn collections_bring_in_their_packages() {
+    let world = World::new("collections");
+    let bible = world.path("repos/tb");
+    std::fs::create_dir_all(&bible).unwrap();
+    release(&bible, "tb", "1.0.0", "words", "");
+    // A collection: no text, only its packages
+    let collection = world.path("repos/library");
+    std::fs::create_dir_all(&collection).unwrap();
+    std::fs::write(
+        collection.join("biblix.toml"),
+        format!(
+            "[package]\nid = \"library\"\nname = \"A Library\"\nabbreviation = \"LIB\"\nversion = \"1.0.0\"\nkind = \"collection\"\nlanguage = \"en\"\n\n[dependencies]\ntb = {{ git = \"{}\", version = \"1\" }}\n",
+            bible.display()
+        ),
+    )
+    .unwrap();
+    git(&collection, &["init", "-q", "-b", "main"]);
+    git(&collection, &["add", "-A"]);
+    git(&collection, &["commit", "-q", "-m", "1.0.0"]);
+    git(&collection, &["tag", "v1.0.0"]);
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("library", &git_dep(&collection, None)).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(locked(&project), ["library 1.0.0", "tb 1.0.0"]);
+    // Its Bible is the project's, though only the collection is named
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("TB"), Some("TB"));
+    assert_eq!(translations.get("LIB"), None);
+}
+
+#[test]
+fn annotations_stay_and_edits_are_repaired() {
+    let world = World::new("annotations");
+    let repo = world.path("repos/tb");
+    std::fs::create_dir_all(&repo).unwrap();
+    // A file in the repository that the package doesn't declare isn't installed
+    std::fs::create_dir_all(&repo).unwrap();
+    std::fs::write(repo.join("README.md"), "about the repository").unwrap();
+    release(&repo, "tb", "1.0.0", "words", "");
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("tb", &git_dep(&repo, None)).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let locked = project.lock().unwrap().get("tb").unwrap().clone();
+    let dir = library.package_dir(&locked, project.dir());
+    assert!(!dir.join("README.md").exists());
+
+    // A reader's annotation beside a book: still the same package
+    let note = dir.join("usx/JHN - Annotations.md");
+    std::fs::write(&note, "my note").unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+
+    // An edited book is caught, and repairing puts it back, keeping the annotation
+    std::fs::write(dir.join("usx/JHN.usx"), "edited").unwrap();
+    let error = project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap_err();
+    assert!(error.to_string().contains("--repair"), "{error}");
+    project.repair(&library, &fetcher).unwrap();
+    let book = std::fs::read_to_string(dir.join("usx/JHN.usx")).unwrap();
+    assert!(book.contains("words"), "{book}");
+    assert_eq!(std::fs::read_to_string(&note).unwrap(), "my note");
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
 }

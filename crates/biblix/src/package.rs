@@ -11,7 +11,7 @@ use topos_bible::data::books::BookId;
 use crate::{
     error::{BiblixError, Result},
     manifest::{self, Enabled, Format, MANIFEST, Manifest},
-    source::{OsisSource, Source, ThmlSource, UsfmSource, UsxSource},
+    source::{NoText, OsisSource, Source, ThmlSource, UsfmSource, UsxSource},
     storage::Storage,
 };
 
@@ -57,8 +57,24 @@ impl Package {
         // The best one biblix reads (the enum's order)
         formats.sort();
         let Some(&(format, path)) = formats.first() else {
-            let names: Vec<&str> = manifest.formats(&enabled).iter().map(|(n, _)| *n).collect();
-            return Err(BiblixError::NoReadableFormat(names.join(", ")));
+            let enabled_formats = manifest.formats(&enabled);
+            // A Bible is read as verses; a book or a collection can have none
+            let kind = manifest
+                .package
+                .as_ref()
+                .map(|p| p.kind)
+                .unwrap_or_default();
+            if kind == manifest::PackageKind::Bible {
+                let names: Vec<&str> = enabled_formats.iter().map(|(n, _)| *n).collect();
+                return Err(BiblixError::NoReadableFormat(names.join(", ")));
+            }
+            let format = (enabled_formats.iter()).find_map(|(name, _)| Format::from_name(name));
+            return Ok(Package {
+                manifest,
+                storage,
+                enabled,
+                source: Box::new(NoText::new(format)),
+            });
         };
         let dir = path.trim_end_matches('/');
         let source: Box<dyn Source> = match format {
@@ -107,34 +123,126 @@ impl Package {
         self.source.books()
     }
 
-    /// The checksum of every file in the package (see [`checksum`])
+    /// The checksum of the package's files (see [`checksum`])
     pub fn checksum(&self) -> Result<String> {
         checksum(self.storage.as_ref())
     }
 }
 
-/**
-A hash of every file in a package (`sha256:` and hex), except git's: it names this exact text, for
-caches, lock files, and checking downloads
-- Each file's path and length go in before its bytes, so moving bytes between files changes it
-*/
-pub fn checksum(storage: &dyn Storage) -> Result<String> {
-    checksum_without(storage, |_| false)
-}
-
-/// [`checksum`], leaving out the files `skip` names
-pub fn checksum_without(storage: &dyn Storage, skip: impl Fn(&str) -> bool) -> Result<String> {
-    let mut paths = vec![];
+/// The files a package is made of: what its manifest declares, so other files in its folder (a
+/// reader's annotations beside a book, `.DS_Store`) are never part of it. In path order:
+/// - `biblix.toml`, its license file, and the summary's files
+/// - each format's files, by the format's extensions (`usx/*.usx`; a format biblix doesn't read,
+///   like SWORD, is every file under its path)
+/// - the media's timings (`*.vtt` in `[media] timings`)
+/// - what `include` matches (`README.md`, `images/**`)
+pub fn declared_files(storage: &dyn Storage) -> Result<Vec<String>> {
+    let manifest = Manifest::parse(&storage.read_string(MANIFEST)?)?;
+    let mut all = vec![];
     for name in storage.list("")? {
         match name.strip_suffix('/') {
             Some(".git") => {}
-            Some(dir) => paths.extend(storage.walk(dir)?),
-            None => paths.push(name),
+            Some(dir) => all.extend(storage.walk(dir)?),
+            None => all.push(name),
         }
     }
+    let mut files: Vec<String> = all
+        .into_iter()
+        .filter(|path| declares(&manifest, path))
+        .collect();
+    files.sort();
+    Ok(files)
+}
+
+/// Whether a manifest declares a path as one of its package's files
+pub fn declares(manifest: &Manifest, path: &str) -> bool {
+    let under = |dir: &str| {
+        let dir = dir.trim_matches('/');
+        dir.is_empty() || path == dir || path.starts_with(&format!("{dir}/"))
+    };
+    let extension = path
+        .rsplit_once('/')
+        .map_or(path, |(_, name)| name)
+        .rsplit_once('.')
+        .map(|(_, e)| e);
+    let has = |extensions: &[&str]| {
+        extension.is_some_and(|e| extensions.iter().any(|x| e.eq_ignore_ascii_case(x)))
+    };
+    let info = manifest.package.as_ref();
+    path == MANIFEST
+        || crate::summary::is_summary_file(path)
+        || info.and_then(|i| i.license_file.as_deref()) == Some(path)
+        || manifest.formats.iter().any(|(name, entry)| {
+            under(&entry.path)
+                && (Format::from_name(name).and_then(Format::extensions))
+                    // A format whose path is the file itself
+                    .is_none_or(|extensions| has(extensions) || path == entry.path)
+        })
+        || (manifest.media.as_ref())
+            .and_then(|m| m.timings.as_deref())
+            .is_some_and(|dir| under(dir) && has(&["vtt"]))
+        || info.is_some_and(|i| i.include.iter().any(|pattern| glob(pattern, path)))
+}
+
+/// Whether `path` matches a pattern: `*` is any characters but `/`, `?` one of them, `**` any
+/// folders (or none), and a pattern ending in `/` is everything under that folder
+pub fn glob(pattern: &str, path: &str) -> bool {
+    if let Some(dir) = pattern.strip_suffix('/') {
+        return path.starts_with(&format!("{dir}/"));
+    }
+    let pattern: Vec<&str> = pattern.split('/').collect();
+    let path: Vec<&str> = path.split('/').collect();
+    glob_parts(&pattern, &path)
+}
+
+fn glob_parts(pattern: &[&str], path: &[&str]) -> bool {
+    match pattern.split_first() {
+        None => path.is_empty(),
+        Some((&"**", rest)) => (0..=path.len()).any(|skip| glob_parts(rest, &path[skip..])),
+        Some((first, rest)) => path.split_first().is_some_and(|(name, more)| {
+            glob_name(first.as_bytes(), name.as_bytes()) && glob_parts(rest, more)
+        }),
+    }
+}
+
+fn glob_name(pattern: &[u8], name: &[u8]) -> bool {
+    match pattern.split_first() {
+        None => name.is_empty(),
+        Some((b'*', rest)) => (0..=name.len()).any(|skip| glob_name(rest, &name[skip..])),
+        Some((b'?', rest)) => !name.is_empty() && glob_name(rest, &name[1..]),
+        Some((c, rest)) => name.first() == Some(c) && glob_name(rest, &name[1..]),
+    }
+}
+
+/// A hash of a package's files ([`declared_files`]; `sha256:` and hex): it names this exact text,
+/// for caches, lock files, and checking downloads. Files a reader added beside them don't change it
+/// - Each file's path and length go in before its bytes, so moving bytes between files changes it
+pub fn checksum(storage: &dyn Storage) -> Result<String> {
+    checksum_of(storage, &declared_files(storage)?)
+}
+
+/// The files in a package's folder that aren't the package's (annotations, notes): kept by
+/// repairs, and they stop `bx clean` from removing the folder
+pub fn other_files(storage: &dyn Storage) -> Result<Vec<String>> {
+    let declared = declared_files(storage)?;
+    let mut others = vec![];
+    for name in storage.list("")? {
+        let paths = match name.strip_suffix('/') {
+            Some(".git") => continue,
+            Some(dir) => storage.walk(dir)?,
+            None => vec![name],
+        };
+        others.extend(paths.into_iter().filter(|p| !declared.contains(p)));
+    }
+    others.sort();
+    Ok(others)
+}
+
+/// A hash of these files (in this order), as [`checksum`] makes it
+pub fn checksum_of(storage: &dyn Storage, paths: &[String]) -> Result<String> {
     let mut hasher = Sha256::new();
-    for path in paths.into_iter().filter(|p| !skip(p)) {
-        let bytes = storage.read(&path)?;
+    for path in paths {
+        let bytes = storage.read(path)?;
         hasher.update(path.as_bytes());
         hasher.update([0]);
         hasher.update((bytes.len() as u64).to_le_bytes());
@@ -146,4 +254,74 @@ pub fn checksum_without(storage: &dyn Storage, skip: impl Fn(&str) -> bool) -> R
         .map(|b| format!("{b:02x}"))
         .collect();
     Ok(format!("sha256:{hex}"))
+}
+
+/// A copy of a package's declared files alone ([`declared_files`])
+pub fn only_declared(storage: &dyn Storage) -> Result<crate::MemoryStorage> {
+    let copy = crate::MemoryStorage::new();
+    for path in declared_files(storage)? {
+        copy.write(&path, &storage.read(&path)?)?;
+    }
+    Ok(copy)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MemoryStorage;
+
+    #[test]
+    fn globs() {
+        assert!(glob("README.md", "README.md"));
+        assert!(!glob("README.md", "docs/README.md"));
+        assert!(glob("*.md", "NOTES.md"));
+        assert!(!glob("*.md", "docs/NOTES.md"));
+        assert!(glob("images/**", "images/a/b.png"));
+        assert!(glob("**/*.png", "a.png"));
+        assert!(glob("**/*.png", "x/y/a.png"));
+        assert!(glob("ch?.txt", "ch1.txt"));
+        assert!(glob("extras/", "extras/a/b"));
+        assert!(!glob("extras/", "extras"));
+    }
+
+    #[test]
+    fn a_package_is_what_it_declares() {
+        let files = MemoryStorage::new();
+        let manifest = "[package]\nid = \"t\"\nname = \"T\"\nabbreviation = \"T\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nlicense-file = \"LICENSE.txt\"\ninclude = [\"images/**\"]\n\n[formats]\nusx = { path = \"usx/\" }\nsword = { path = \"sword/\" }\n\n[media]\ntimings = \"timings/\"\n";
+        for (path, text) in [
+            ("biblix.toml", manifest),
+            ("LICENSE.txt", "free"),
+            ("README.md", "not declared"),
+            ("usx/JHN.usx", "<usx/>"),
+            ("usx/JHN - Annotations.md", "a reader's note"),
+            ("sword/mods.d/t.conf", "[T]"),
+            ("timings/JHN.vtt", "WEBVTT"),
+            ("timings/notes.md", "not a timing"),
+            ("images/a/map.png", "png"),
+            (".git/HEAD", "ref"),
+        ] {
+            files.write(path, text.as_bytes()).unwrap();
+        }
+        assert_eq!(
+            declared_files(&files).unwrap(),
+            [
+                "LICENSE.txt",
+                "biblix.toml",
+                "images/a/map.png",
+                "sword/mods.d/t.conf",
+                "timings/JHN.vtt",
+                "usx/JHN.usx"
+            ]
+        );
+        assert_eq!(
+            other_files(&files).unwrap(),
+            ["README.md", "timings/notes.md", "usx/JHN - Annotations.md"]
+        );
+        // A note beside a book doesn't change the checksum; a changed book does
+        let before = checksum(&files).unwrap();
+        files.write("usx/JHN - Annotations.md", b"more").unwrap();
+        assert_eq!(checksum(&files).unwrap(), before);
+        files.write("usx/JHN.usx", b"<usx>changed</usx>").unwrap();
+        assert_ne!(checksum(&files).unwrap(), before);
+    }
 }

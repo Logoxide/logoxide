@@ -70,6 +70,12 @@ pub struct Package {
     pub name: String,
     /// What references name it by (`John 3:16 BSB`)
     pub abbreviation: String,
+    /// Who wrote it (a book's authors, a translation's translators), in order
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub authors: Vec<String>,
+    /// A sentence or two about it (a book's subtitle)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aliases: Vec<String>,
     pub version: semver::Version,
@@ -77,7 +83,7 @@ pub struct Package {
     pub kind: PackageKind,
     /// BCP 47: `en`, `grc`
     pub language: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Direction::is_ltr")]
     pub direction: Direction,
     /// An SPDX expression (`CC0-1.0`, `LicenseRef-PublicDomain`); shown, never enforced
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -92,12 +98,20 @@ pub struct Package {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,
     /// `own` (the text's verse markers say), or a named system: `KJV`, `NRSV`, `MT`, ...
-    #[serde(default = "own")]
+    #[serde(default = "own", skip_serializing_if = "is_own")]
     pub versification: String,
+    /// More files the package is made of, as patterns (`README.md`, `images/**`): besides
+    /// these, only what the manifest names is (see [`crate::package::declared_files`])
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub include: Vec<String>,
 }
 
 fn own() -> String {
     String::from("own")
+}
+
+fn is_own(versification: &str) -> bool {
+    versification == "own"
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -110,6 +124,9 @@ pub enum PackageKind {
     CrossReferences,
     VersificationMap,
     Book,
+    /// Other packages, as its dependencies (a library: a feature can turn on each one), and no
+    /// text of its own
+    Collection,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -118,6 +135,12 @@ pub enum Direction {
     #[default]
     Ltr,
     Rtl,
+}
+
+impl Direction {
+    fn is_ltr(&self) -> bool {
+        *self == Direction::Ltr
+    }
 }
 
 /// Where a format's files are, and the feature that turns it on (always on without one)
@@ -139,6 +162,9 @@ pub enum Format {
     Sword,
     Thml,
     Zefania,
+    /// A book as an EPUB: kept and summarized as files, not read as verses (topos finds the
+    /// references in it)
+    Epub,
 }
 
 impl Format {
@@ -151,7 +177,23 @@ impl Format {
             "sword" => Format::Sword,
             "thml" => Format::Thml,
             "zefania" => Format::Zefania,
+            "epub" => Format::Epub,
             _ => return None,
+        })
+    }
+
+    /// The extensions of its files (`None`: every file under its path, for formats biblix keeps
+    /// without reading, like a SWORD module's folder)
+    pub fn extensions(self) -> Option<&'static [&'static str]> {
+        Some(match self {
+            Format::Usx => &["usx"],
+            Format::Usfm => &["usfm", "sfm"],
+            Format::Usj => &["json"],
+            Format::Osis => &["xml", "osis"],
+            Format::Thml => &["xml", "thml"],
+            Format::Zefania => &["xml"],
+            Format::Epub => &["epub"],
+            Format::Sword => return None,
         })
     }
 
@@ -304,8 +346,18 @@ impl Manifest {
                     package.id
                 ));
             }
-            if self.formats.is_empty() {
-                return err(String::from("a package needs [formats]"));
+            // A collection is only its dependencies
+            match (
+                package.kind == PackageKind::Collection,
+                self.formats.is_empty(),
+            ) {
+                (false, true) => return err(String::from("a package needs [formats]")),
+                (true, false) => {
+                    return err(String::from(
+                        "a collection has no [formats]: its packages are its dependencies",
+                    ));
+                }
+                _ => {}
             }
         }
         for (name, format) in &self.formats {

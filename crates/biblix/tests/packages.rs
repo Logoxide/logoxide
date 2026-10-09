@@ -77,7 +77,7 @@ fn features_choose_the_format() {
         },
     )
     .unwrap();
-    assert_eq!(format!("{:?}", both.source().format()), "Usx");
+    assert_eq!(format!("{:?}", both.source().format()), "Some(Usx)");
     let usfm = Package::open(
         storage(),
         Features {

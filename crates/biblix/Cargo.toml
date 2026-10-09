@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 topos-bible.workspace = true
 topos-bible-markup.workspace = true
+topos-bible-formats.workspace = true
 serde.workspace = true
 toml = { version = "0.9", features = ["preserve_order"] }
 semver = { version = "1", features = ["serde"] }
@@ -25,3 +26,5 @@ flate2 = "1"
 tar = { version = "0.4", default-features = false }
 # Reading downloads publishers serve as .zip (eBible.org)
 zip = { version = "2", default-features = false, features = ["deflate"] }
+# Reading an EPUB's metadata (bx new)
+quick-xml = "0.42"

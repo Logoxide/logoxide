@@ -86,8 +86,9 @@ pub struct Dependency {
     pub rev: Option<String>,
     pub features: Vec<String>,
     pub default_features: bool,
-    /// The package's id, when the dependency is named something else (a second fork)
-    pub package: Option<String>,
+    /// The package's id, when the dependency is named something else (a second fork);
+    /// `package` in `biblix.toml`
+    pub package_id: Option<String>,
     /// What references name it by here, in place of the package's own abbreviation
     pub abbreviation: Option<String>,
     /// Its aliases here, in place of the package's own
@@ -114,7 +115,7 @@ impl TryFrom<Dependency> for DetailedDependency {
             rev: d.rev,
             features: d.features,
             default_features: d.default_features,
-            package: d.package,
+            package: d.package_id,
             abbreviation: d.abbreviation,
             aliases: d.aliases,
             ..DetailedDependency::default()

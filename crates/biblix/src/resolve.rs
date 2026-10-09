@@ -36,6 +36,10 @@ pub trait Packages {
 
     /// Puts a fetched version's files in the library, where `locked` goes
     fn install(&self, locked: &LockedPackage, files: &dyn Storage) -> Result<()>;
+
+    /// Puts an installed version's files back as they were fetched (`files`), where they were
+    /// changed: its own files only, so a reader's annotations beside them stay
+    fn repair(&self, locked: &LockedPackage, files: &dyn Storage) -> Result<()>;
 }
 
 /// Which locked packages may move to newer versions
@@ -64,6 +68,9 @@ pub struct Resolver<'a> {
     /// The lock file before this resolve, if any
     pub previous: Option<&'a Lockfile>,
     pub update: Update,
+    /// Installed versions whose files changed are fetched again and put back, instead of being
+    /// an error
+    pub repair: bool,
 }
 
 /// A dependency to resolve, and where it was named
@@ -345,17 +352,24 @@ impl Resolver<'_> {
             && let Some(installed) = self.packages.installed(kept)?
         {
             let checksum = crate::package::checksum(installed.as_ref())?;
-            if kept.checksum.as_ref().is_some_and(|c| *c != checksum) {
-                return Err(BiblixError::Checksum {
-                    id: kept.name(),
+            let changed = kept.checksum.as_ref().is_some_and(|c| *c != checksum);
+            if changed && !self.repair {
+                return Err(BiblixError::Changed {
+                    id: kept.label(),
+                    dir: crate::library::library_dir(kept),
                     expected: kept.checksum.clone().unwrap_or_default(),
-                    actual: format!("{checksum} in {}", crate::library::library_dir(kept)),
+                    actual: checksum,
                 });
             }
-            return Ok(kept.clone());
+            if !changed {
+                return Ok(kept.clone());
+            }
+            // Changed, and repairing: fetched again below, and its files put back
         }
-        let storage = MemoryStorage::new();
-        let commit = self.fetcher.fetch(url, reference, &storage)?;
+        let fetched = MemoryStorage::new();
+        let commit = self.fetcher.fetch(url, reference, &fetched)?;
+        // The package's own files: what its manifest declares
+        let storage = crate::package::only_declared(&fetched)?;
         // Opened only to read what it is; no format needs to be enabled for that
         let manifest =
             crate::manifest::Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?;
@@ -417,11 +431,14 @@ impl Resolver<'_> {
             Some(installed) => {
                 let installed = crate::package::checksum(installed.as_ref())?;
                 if Some(&installed) != locked.checksum.as_ref() {
-                    return Err(BiblixError::Checksum {
-                        id: locked.name(),
-                        expected: installed,
-                        actual: locked.checksum.clone().unwrap_or_default(),
-                    });
+                    if !self.repair {
+                        return Err(BiblixError::Checksum {
+                            id: locked.name(),
+                            expected: installed,
+                            actual: locked.checksum.clone().unwrap_or_default(),
+                        });
+                    }
+                    self.packages.repair(&locked, &storage)?;
                 }
             }
             None => self.packages.install(&locked, &storage)?,

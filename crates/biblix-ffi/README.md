@@ -56,7 +56,7 @@ let step = installer.inspect(url, null, null, null);
 while (step.tag === "Fetch") { await answer(step.request); step = installer.inspect(url, null, null, null); }
 const { info } = step.inspected;
 project = project.addDependency(info.id, { git: url, version: info.version, path: null, tag: null,
-  branch: null, rev: null, features: [], defaultFeatures: true });
+  branch: null, rev: null, features: [], defaultFeatures: true, packageId: null, abbreviation: null, aliases: null });
 
 let result = installer.install(project, { tag: "Nothing" }); // or { tag: "All" }, { tag: "Only", ids }
 while (result.tag === "Fetch") { await answer(result.request); result = installer.install(project, { tag: "Nothing" }); }
@@ -78,6 +78,36 @@ async function answer(r: FetchRequest) {
 - Installed versions are checked against the lock file's checksum, so changed files are an error
 - `examples/node/install.ts` installs real packages this way (`https://` with `fetch()`; for
   `file://` repositories, git makes the same bytes an HTTP host serves)
+
+## Making packages
+
+A package can be made from one file the person picks: an EPUB fills in its own title, subtitle,
+authors, language, and publisher; a Bible's USX or USFM needs a name and a language. biblix gives
+back the package's files to write into a new folder (then a git repository, to release it):
+
+```ts
+const metadata = biblix.fileMetadata(name, bytes); // to fill a form: { title, subtitle, authors, language, publisher, rights }
+const files = biblix.newPackage(name, bytes, {
+  id: null, name: null, abbreviation: null, authors: [], description: null, version: "1.0.0",
+  kind: null, language: null, license: "CC0-1.0", publisher: null, homepage: null,
+}); // biblix.toml, and epub/<name>
+for (const file of files) await write(`${folder}/${file.path}`, file.bytes);
+
+// A collection: a package of packages, its dependencies added afterwards
+const manifest = biblix.newCollection({ ...given, name: "My Library", language: "en" });
+```
+
+- What's given wins over the file; the id comes from the name (`the-dorean-principle`), the
+  abbreviation from its initials (`TDP`), the version is 0.1.0 unless given
+- A book (`kind: Book`) has no verse text: `pkg.references()` reads its EPUBs for the Bible
+  references in them (each a `passage` in OSIS, the `file`, its `chapter`, a `cfi` EPUB readers
+  open, and its UTF-16 range, line, column, spine item, and paragraph: what
+  `ToposIndex.setEpub` takes, with `topos.parseOsis(passage)`). `parseReferences` reads a
+  release's `biblix.references.bin` without its books: the passages cited, and how often
+- A package is what its manifest declares, so files a reader adds beside it (annotations) don't
+  change its checksum. `installer.install(project, { tag: "Repair" })` hands back the files of
+  any installed version whose own files changed, to write over them
+- `examples/node/book.ts` makes a package from a real EPUB and lists what it cites
 
 ## Building
 

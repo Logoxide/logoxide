@@ -13,5 +13,7 @@ repository = "https://github.com/MasterTemple/biblix"
 topos-bible = { path = "../topos/crates/topos-lib" }
 topos-bible-markup = { path = "../topos/crates/topos-markup", features = ["serde"] }
 topos-bible-index = { path = "../topos/crates/topos-index", default-features = false, features = ["files"] }
+# Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
+topos-bible-formats = { path = "../topos/crates/topos-formats", default-features = false, features = ["epub"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }

@@ -1,0 +1,432 @@
+/*!
+Making a new package from a single file (`bx new --from book.epub`): the file in its format's
+folder, with a `biblix.toml` around it. What the file says about itself fills in the manifest,
+and anything given ([`NewPackage`]) wins over it:
+
+- **EPUB** (a book): its title, subtitle (the description), every author (`dc:creator`, leaving
+  out editors, illustrators, and other roles), language, and publisher, from its package document
+  (the `.opf` its `META-INF/container.xml` names)
+- **USX, USFM, OSIS, ThML** (a Bible, or a book of one): nothing is read from them yet, so a name
+  and a language must be given
+
+A collection ([`new_collection`]) has no file: its packages are its dependencies.
+*/
+
+use quick_xml::{Reader, events::Event};
+use topos_bible_markup::decode_entities;
+
+use crate::{
+    error::{BiblixError, Result},
+    manifest::{Direction, FormatEntry, MANIFEST, Manifest, Package as Info, PackageKind},
+    storage::Storage,
+};
+
+/// What a file's own metadata says (empty where it says nothing)
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FileMetadata {
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub authors: Vec<String>,
+    pub language: Option<String>,
+    pub publisher: Option<String>,
+    /// Its rights statement, if it has one (shown to the person making the package, who gives
+    /// the license: biblix doesn't guess one)
+    pub rights: Option<String>,
+}
+
+/// What to put in a new package's `[package]`; each one given wins over the file's metadata
+#[derive(Clone, Debug, Default)]
+pub struct NewPackage {
+    pub id: Option<String>,
+    pub name: Option<String>,
+    pub abbreviation: Option<String>,
+    pub authors: Vec<String>,
+    pub description: Option<String>,
+    pub version: Option<semver::Version>,
+    pub kind: Option<PackageKind>,
+    pub language: Option<String>,
+    pub license: Option<String>,
+    pub publisher: Option<String>,
+    pub homepage: Option<String>,
+}
+
+/// The format a file is in, from its extension (and, for `.xml`, its root element), and the kind
+/// of package it makes
+pub fn file_format(name: &str, bytes: &[u8]) -> Option<(&'static str, PackageKind)> {
+    let lower = name.to_ascii_lowercase();
+    let extension = lower.rsplit_once('.').map(|(_, e)| e)?;
+    Some(match extension {
+        "epub" => ("epub", PackageKind::Book),
+        "usx" => ("usx", PackageKind::Bible),
+        "usfm" | "sfm" => ("usfm", PackageKind::Bible),
+        "osis" => ("osis", PackageKind::Bible),
+        "thml" => ("thml", PackageKind::Bible),
+        "xml" => {
+            let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_lowercase();
+            match () {
+                _ if head.contains("<osis") => ("osis", PackageKind::Bible),
+                _ if head.contains("<thml") => ("thml", PackageKind::Bible),
+                _ if head.contains("<usx") => ("usx", PackageKind::Bible),
+                _ => return None,
+            }
+        }
+        _ => return None,
+    })
+}
+
+/// An EPUB's metadata, from the package document its `META-INF/container.xml` names
+pub fn epub_metadata(bytes: &[u8]) -> Result<FileMetadata> {
+    let files = crate::import::unzip(bytes)?;
+    let file = |path: &str| {
+        (files.iter())
+            .find(|(p, _)| p == path)
+            .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
+            .ok_or_else(|| BiblixError::Import(format!("EPUB: no {path}")))
+    };
+    let container = file("META-INF/container.xml")?;
+    let opf_path = (elements(&container).into_iter())
+        .find(|e| e.name == "rootfile")
+        .and_then(|e| e.attr("full-path").map(String::from))
+        .ok_or_else(|| BiblixError::Import(String::from("EPUB: no rootfile in its container")))?;
+    Ok(opf_metadata(&file(&opf_path)?))
+}
+
+/// The metadata in an EPUB's package document (`.opf`), EPUB 2 or 3
+pub fn opf_metadata(opf: &str) -> FileMetadata {
+    let found = elements(opf);
+    // EPUB 3 says what a title or a creator is with `<meta refines="#id" property="…">`
+    let refined = |id: Option<&str>, property: &str| {
+        let id = id?;
+        (found.iter())
+            .find(|m| {
+                m.name == "meta"
+                    && m.attr("refines") == Some(&format!("#{id}"))
+                    && m.attr("property") == Some(property)
+            })
+            .map(|m| m.text.trim().to_string())
+    };
+    let text = |name: &str| {
+        (found.iter())
+            .filter(|e| e.name == name)
+            .map(|e| e.text.trim().to_string())
+            .find(|t| !t.is_empty())
+    };
+    let titles: Vec<&Element> = (found.iter())
+        .filter(|e| e.name == "title" && !e.text.trim().is_empty())
+        .collect();
+    let title_type = |e: &Element| refined(e.attr("id"), "title-type");
+    // The main title, else the first; the subtitle, else another one
+    let main = (titles.iter())
+        .position(|e| title_type(e).as_deref() == Some("main"))
+        .unwrap_or(0);
+    let title = titles.get(main);
+    let subtitle = (titles.iter())
+        .find(|e| title_type(e).as_deref() == Some("subtitle"))
+        .or_else(|| (titles.iter().enumerate()).find_map(|(i, e)| (i != main).then_some(e)));
+    let authors = (found.iter())
+        .filter(|e| e.name == "creator" && !e.text.trim().is_empty())
+        .filter(|e| {
+            // Authors only: a role that says otherwise (editor, illustrator) leaves one out
+            let role = (e.attr("role").map(String::from)).or_else(|| refined(e.attr("id"), "role"));
+            role.is_none_or(|r| r == "aut")
+        })
+        .map(|e| e.text.trim().to_string())
+        .collect();
+    FileMetadata {
+        title: title.map(|e| e.text.trim().to_string()),
+        subtitle: subtitle.map(|e| e.text.trim().to_string()),
+        authors,
+        language: text("language"),
+        publisher: text("publisher"),
+        rights: text("rights"),
+    }
+}
+
+/// An element of a small XML document: its local name (no prefix), attributes (local names too),
+/// and its text
+struct Element {
+    name: String,
+    attributes: Vec<(String, String)>,
+    text: String,
+}
+
+impl Element {
+    fn attr(&self, name: &str) -> Option<&str> {
+        (self.attributes.iter())
+            .find(|(n, _)| n == name)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+/// Every element in `xml`, in document order, each with the text directly inside it
+fn elements(xml: &str) -> Vec<Element> {
+    let local = |name: &str| name.rsplit(':').next().unwrap_or_default().to_string();
+    let mut reader = Reader::from_str(xml);
+    let mut found: Vec<Element> = vec![];
+    let mut open: Vec<usize> = vec![];
+    let text_in = |found: &mut Vec<Element>, open: &[usize], text: &str| {
+        if let Some(&at) = open.last() {
+            found[at].text.push_str(text);
+        }
+    };
+    loop {
+        let event = match reader.read_event() {
+            Ok(Event::Eof) | Err(_) => break,
+            Ok(event) => event,
+        };
+        match event {
+            Event::Start(ref e) | Event::Empty(ref e) => {
+                let attributes = (e.attributes().flatten())
+                    .map(|a| (local(a.key.0), decode_entities(&a.value)))
+                    .collect();
+                found.push(Element {
+                    name: local(e.name().0),
+                    attributes,
+                    text: String::new(),
+                });
+                if matches!(event, Event::Start(_)) {
+                    open.push(found.len() - 1);
+                }
+            }
+            Event::End(_) => {
+                open.pop();
+            }
+            Event::Text(t) => text_in(&mut found, &open, &t),
+            Event::GeneralRef(r) => {
+                let reference: &str = &r;
+                text_in(
+                    &mut found,
+                    &open,
+                    &decode_entities(&format!("&{reference};")),
+                );
+            }
+            Event::CData(c) => text_in(&mut found, &open, &c.into_inner()),
+            _ => {}
+        }
+    }
+    found
+}
+
+/// A package id from a name: lowercase ASCII letters and digits, words joined by `-`
+/// (`God's Word Is Not Bound` → `gods-word-is-not-bound`)
+pub fn id_from(name: &str) -> String {
+    let mut id = String::new();
+    for c in name.chars().filter(|c| *c != '\'' && *c != '’') {
+        if c.is_ascii_alphanumeric() {
+            id.push(c.to_ascii_lowercase());
+        } else if !id.is_empty() && !id.ends_with('-') {
+            id.push('-');
+        }
+    }
+    id.trim_end_matches('-').to_string()
+}
+
+/// An abbreviation from a name: each word's first letter or digit, capitalized
+/// (`The Dorean Principle` → `TDP`)
+pub fn abbreviation_from(name: &str) -> String {
+    (name.split_whitespace())
+        .filter_map(|word| word.chars().find(|c| c.is_alphanumeric()))
+        .flat_map(char::to_uppercase)
+        .collect()
+}
+
+/// Writes a new package made from one file into `dest`: its `biblix.toml`, and the file in its
+/// format's folder (`epub/the-dorean-principle.epub`). Gives the manifest
+pub fn new_from_file(
+    file_name: &str,
+    bytes: &[u8],
+    given: &NewPackage,
+    dest: &dyn Storage,
+) -> Result<Manifest> {
+    let (format, kind) = file_format(file_name, bytes).ok_or_else(|| {
+        BiblixError::Import(format!(
+            "{file_name}: not a format biblix packages (.epub, .usx, .usfm, .osis, .thml, or their .xml)"
+        ))
+    })?;
+    let metadata = match format {
+        "epub" => epub_metadata(bytes)?,
+        _ => FileMetadata::default(),
+    };
+    let name = (given.name.clone())
+        .or(metadata.title.clone())
+        .ok_or_else(|| missing(file_name, "a name (--name)"))?;
+    let language = (given.language.clone())
+        .or(metadata.language.clone())
+        .ok_or_else(|| missing(file_name, "a language (--language, BCP 47: en)"))?;
+    let info = Info {
+        id: given.id.clone().unwrap_or_else(|| id_from(&name)),
+        abbreviation: (given.abbreviation.clone()).unwrap_or_else(|| abbreviation_from(&name)),
+        name,
+        authors: match given.authors.is_empty() {
+            true => metadata.authors.clone(),
+            false => given.authors.clone(),
+        },
+        description: given.description.clone().or(metadata.subtitle.clone()),
+        aliases: vec![],
+        version: (given.version.clone()).unwrap_or_else(|| semver::Version::new(0, 1, 0)),
+        kind: given.kind.unwrap_or(kind),
+        language,
+        direction: Direction::Ltr,
+        license: given.license.clone(),
+        license_file: None,
+        publisher: given.publisher.clone().or(metadata.publisher.clone()),
+        homepage: given.homepage.clone(),
+        upstream: None,
+        versification: String::from("own"),
+        include: vec![],
+    };
+    let manifest = Manifest {
+        package: Some(info),
+        formats: [(
+            format.to_string(),
+            FormatEntry {
+                path: format!("{format}/"),
+                feature: None,
+            },
+        )]
+        .into(),
+        ..Manifest::default()
+    };
+    let base = file_name.rsplit(['/', '\\']).next().unwrap_or(file_name);
+    write(&manifest, &format!("# Made by biblix from {base}\n"), dest)?;
+    dest.write(&format!("{format}/{base}"), bytes)?;
+    Ok(manifest)
+}
+
+/// Writes a new collection's `biblix.toml` into `dest`: no text, its packages added afterwards
+/// as its dependencies (`bx add --project <its folder>`)
+pub fn new_collection(given: &NewPackage, dest: &dyn Storage) -> Result<Manifest> {
+    let name = (given.name.clone()).ok_or_else(|| missing("a collection", "a name (--name)"))?;
+    let language = (given.language.clone())
+        .ok_or_else(|| missing("a collection", "a language (--language, BCP 47: en)"))?;
+    let info = Info {
+        id: given.id.clone().unwrap_or_else(|| id_from(&name)),
+        abbreviation: (given.abbreviation.clone()).unwrap_or_else(|| abbreviation_from(&name)),
+        name,
+        authors: given.authors.clone(),
+        description: given.description.clone(),
+        aliases: vec![],
+        version: (given.version.clone()).unwrap_or_else(|| semver::Version::new(0, 1, 0)),
+        kind: PackageKind::Collection,
+        language,
+        direction: Direction::Ltr,
+        license: given.license.clone(),
+        license_file: None,
+        publisher: given.publisher.clone(),
+        homepage: given.homepage.clone(),
+        upstream: None,
+        versification: String::from("own"),
+        include: vec![],
+    };
+    let manifest = Manifest {
+        package: Some(info),
+        ..Manifest::default()
+    };
+    write(
+        &manifest,
+        "# A collection: its packages are its dependencies (bx add --project <this folder>)\n",
+        dest,
+    )?;
+    Ok(manifest)
+}
+
+fn missing(what: &str, needs: &str) -> BiblixError {
+    BiblixError::Import(format!("{what}: give {needs}; the file doesn't say"))
+}
+
+fn write(manifest: &Manifest, header: &str, dest: &dyn Storage) -> Result<()> {
+    manifest.validate()?;
+    let text = toml::to_string(manifest).map_err(|e| BiblixError::Manifest(e.to_string()))?;
+    // Each format on one line (`epub = { path = "epub/" }`), as manifests are written by hand
+    let mut doc: toml_edit::DocumentMut =
+        (text.parse()).map_err(|e: toml_edit::TomlError| BiblixError::Manifest(e.to_string()))?;
+    if let Some(formats) = doc.get_mut("formats").and_then(|f| f.as_table_mut()) {
+        let inline: Vec<(String, toml_edit::InlineTable)> = (formats.iter())
+            .filter_map(|(name, f)| Some((name.to_string(), f.as_table()?.clone())))
+            .map(|(name, table)| (name, table.into_inline_table()))
+            .collect();
+        formats.clear();
+        for (name, table) in inline {
+            formats.insert(&name, toml_edit::value(table));
+        }
+    }
+    dest.write(MANIFEST, format!("{header}{doc}").as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const OPF3: &str = r##"<?xml version="1.0"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:title id="t1">The Doctrine of Simony</dc:title>
+<dc:title id="t2">A Theological Retrieval &amp; Appraisal</dc:title>
+<meta refines="#t1" property="title-type">main</meta>
+<meta refines="#t2" property="title-type">subtitle</meta>
+<dc:creator id="a1">Conley Owens</dc:creator>
+<dc:creator id="e1">An Editor</dc:creator>
+<meta refines="#e1" property="role" scheme="marc:relators">edt</meta>
+<dc:language>en-US</dc:language>
+</metadata></package>"##;
+
+    const OPF2: &str = r#"<package xmlns:opf="http://www.idpf.org/2007/opf"><metadata>
+<dc:title>Abolish the Jesus Trade</dc:title>
+<dc:creator opf:role="aut">Andrew Case</dc:creator>
+<dc:creator opf:role="aut">Conley Owens</dc:creator>
+<dc:creator opf:role="ill">Someone Else</dc:creator>
+<dc:language>en</dc:language>
+<dc:rights>Public domain</dc:rights>
+</metadata></package>"#;
+
+    #[test]
+    fn reads_epub_metadata() {
+        let three = opf_metadata(OPF3);
+        assert_eq!(three.title.as_deref(), Some("The Doctrine of Simony"));
+        assert_eq!(
+            three.subtitle.as_deref(),
+            Some("A Theological Retrieval & Appraisal")
+        );
+        assert_eq!(three.authors, ["Conley Owens"]);
+        assert_eq!(three.language.as_deref(), Some("en-US"));
+        let two = opf_metadata(OPF2);
+        assert_eq!(two.authors, ["Andrew Case", "Conley Owens"]);
+        assert_eq!(two.subtitle, None);
+        assert_eq!(two.rights.as_deref(), Some("Public domain"));
+    }
+
+    #[test]
+    fn names_from_titles() {
+        assert_eq!(id_from("God's Word Is Not Bound"), "gods-word-is-not-bound");
+        assert_eq!(id_from("  Hello, World! 2 "), "hello-world-2");
+        assert_eq!(abbreviation_from("The Dorean Principle"), "TDP");
+        assert_eq!(abbreviation_from("God's Word Is Not Bound"), "GWINB");
+    }
+
+    #[test]
+    fn makes_packages() {
+        let dest = crate::MemoryStorage::new();
+        let given = NewPackage {
+            name: Some("Notes".into()),
+            language: Some("en".into()),
+            ..NewPackage::default()
+        };
+        let made = new_from_file("dir/JHN.usfm", b"\\id JHN", &given, &dest).unwrap();
+        let info = made.package.unwrap();
+        assert_eq!((info.id.as_str(), info.kind), ("notes", PackageKind::Bible));
+        assert!(dest.read("usfm/JHN.usfm").is_ok());
+        // Without a language, it says which flag gives one
+        let no_language = NewPackage {
+            name: Some("Notes".into()),
+            ..NewPackage::default()
+        };
+        let error = new_from_file("JHN.usfm", b"", &no_language, &dest).unwrap_err();
+        assert!(error.to_string().contains("--language"), "{error}");
+        assert!(new_from_file("notes.txt", b"", &given, &dest).is_err());
+
+        let collection = crate::MemoryStorage::new();
+        let made = new_collection(&given, &collection).unwrap();
+        assert_eq!(made.package.unwrap().kind, PackageKind::Collection);
+        assert!(made.formats.is_empty());
+    }
+}
