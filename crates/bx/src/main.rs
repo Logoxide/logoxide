@@ -192,11 +192,15 @@ enum MediaCommand {
         #[arg(long, default_value = ".")]
         package: PathBuf,
     },
-    /// Downloads every listed file and checks its size and hash
+    /// Checks the timings (WebVTT, a cue per verse) against the text, then downloads every
+    /// listed file and checks its size and hash
     Check {
         /// The package's folder
         #[arg(default_value = ".")]
         package: PathBuf,
+        /// Only the timings: nothing is downloaded
+        #[arg(long)]
+        offline: bool,
     },
 }
 
@@ -319,7 +323,7 @@ fn main() -> ExitCode {
             book,
             package,
         }) => media_add(file, url, book.as_deref(), package),
-        Command::Media(MediaCommand::Check { package }) => media_check(package),
+        Command::Media(MediaCommand::Check { package, offline }) => media_check(package, *offline),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -411,6 +415,7 @@ fn show(args: &PackageArgs) -> biblix::Result<()> {
 
 fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
     let package = args.open()?;
+    let timings = biblix::media::check_package_timings(&package)?;
     let start = Instant::now();
     let (mut verses, mut books) = (0, 0);
     match cache {
@@ -443,7 +448,21 @@ fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
         "{books} books, {verses} verses, read in {:.0?}",
         start.elapsed()
     );
-    Ok(())
+    timings_report(&timings)
+}
+
+/// Prints a package's timing problems; an error if it has any
+fn timings_report(problems: &[String]) -> biblix::Result<()> {
+    for problem in problems {
+        println!("timings: {problem}");
+    }
+    match problems.len() {
+        0 => Ok(()),
+        n => Err(biblix::BiblixError::Media(format!(
+            "{n} problem{} with the timings",
+            if n == 1 { "" } else { "s" }
+        ))),
+    }
 }
 
 fn version_req(text: &str) -> biblix::Result<semver::VersionReq> {
@@ -1232,12 +1251,27 @@ fn media_add(
     Ok(())
 }
 
-fn media_check(package: &std::path::Path) -> biblix::Result<()> {
-    let storage = FsStorage::new(package);
-    let manifest = biblix::Manifest::parse(&storage.read_string(MANIFEST)?)?;
-    let files = manifest.media.map(|m| m.files).unwrap_or_default();
+fn media_check(package: &std::path::Path, offline: bool) -> biblix::Result<()> {
+    let opened = biblix::Package::open(Arc::new(FsStorage::new(package)), Default::default())?;
+    let files = (opened.manifest().media.as_ref())
+        .map(|m| m.files.clone())
+        .unwrap_or_default();
     if files.is_empty() {
         println!("no media listed");
+        return Ok(());
+    }
+    let timings = biblix::media::check_package_timings(&opened)?;
+    if opened
+        .manifest()
+        .media
+        .as_ref()
+        .is_some_and(|m| m.timings.is_some())
+        && timings.is_empty()
+    {
+        println!("timings: ok");
+    }
+    timings_report(&timings)?;
+    if offline {
         return Ok(());
     }
     let mut failed = 0;

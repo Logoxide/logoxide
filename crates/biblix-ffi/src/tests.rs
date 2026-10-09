@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use crate::{
     Biblix, BiblixError, BiblixInstaller, BiblixProject, BookStyle, BookTextOptions, Dependency,
     FetchRequest, InspectStep, InstallStep, OffsetUnit, PackageFeatures, PackageFile, PackageKind,
-    PackageLocation, Topos, ToposTranslations, UpdateMode,
+    PackageLocation, Topos, ToposTranslations, UpdateMode, VerseTiming,
 };
 
 const USX: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -491,12 +491,35 @@ fn catalogs_and_ebible_imports() {
 #[test]
 fn media_by_url_and_hash() {
     let manifest = format!(
-        "{MANIFEST}\n[[media.files]]\npath = \"JHN.mp3\"\nurl = \"https://example.org/JHN.mp3\"\nsize = 5\nsha256 = \"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\"\n"
+        "{MANIFEST}\n[media]\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"JHN.mp3\"\nurl = \"https://example.org/JHN.mp3\"\nsize = 5\nsha256 = \"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\"\n"
     );
-    let files = vec![file("biblix.toml", &manifest), file("usx/JHN.usx", USX)];
+    let vtt = "WEBVTT\n\nJHN 3:16\n00:04.000 --> 00:09.500\nFor God so loved the world\n";
+    let files = vec![
+        file("biblix.toml", &manifest),
+        file("usx/JHN.usx", USX),
+        file("timings/JHN.vtt", vtt),
+    ];
     let biblix = Biblix::new();
     let package = biblix.open_package(files, defaults(), vec![]).unwrap();
     let media = package.media();
+    let timings = package.timings(media[0].clone()).unwrap();
+    assert_eq!(
+        timings,
+        [VerseTiming {
+            book: "JHN".into(),
+            book_id: 43,
+            chapter: 3,
+            verse: 16,
+            last: 16,
+            start_ms: 4_000,
+            end_ms: 9_500
+        }]
+    );
+    assert_eq!(biblix.parse_timings(vtt.into()).unwrap(), timings);
+    assert!(matches!(
+        biblix.parse_timings("JHN 3:16".into()),
+        Err(BiblixError::Media { .. })
+    ));
     assert_eq!(media.len(), 1);
     assert!(
         biblix

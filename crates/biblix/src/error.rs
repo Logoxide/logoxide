@@ -37,6 +37,9 @@ pub enum BiblixError {
     /// A download can't be made into a package
     #[error("import: {0}")]
     Import(String),
+    /// A package's media list or timings are wrong
+    #[error("media: {0}")]
+    Media(String),
     /// Fetching a package failed
     #[error("{url}: {message}")]
     Fetch { url: String, message: String },

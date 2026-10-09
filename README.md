@@ -45,6 +45,11 @@ What works (steps 1 to 5 of the plan, and eBible.org's importer from 7, `doc/bib
   sets `default-catalogs = false`), and `bx catalog entry <git URL>` writes a catalog's entry
   for a package
 
+- Media: audio and video are listed in `[media]` by URL, size, and SHA-256, never stored in the
+  package (`bx media add <file> --url <URL>`). An audio Bible's timings say where each verse is:
+  a WebVTT file per recording (`timings/JHN.vtt`), each cue named by its verse (`JHN 3:16`).
+  `bx media check` checks the timings against the text and downloads and checks every file
+
 The Obsidian plugin (`obsidian-topos-bible`) uses biblix-ffi: Bibles in its vault's `Biblix/`
 folder, added from its settings by searching the catalogs or by git URL.
 

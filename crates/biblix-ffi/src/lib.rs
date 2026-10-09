@@ -43,6 +43,8 @@ pub enum BiblixError {
     Catalog { message: String },
     /// A download can't be made into a package
     Import { message: String },
+    /// A package's media list or timings are wrong
+    Media { message: String },
 }
 
 impl From<biblix_core::BiblixError> for BiblixError {
@@ -57,6 +59,7 @@ impl From<biblix_core::BiblixError> for BiblixError {
             E::Cache(_) => BiblixError::Cache { message },
             E::Catalog(_) => BiblixError::Catalog { message },
             E::Import(_) => BiblixError::Import { message },
+            E::Media(_) => BiblixError::Media { message },
             E::Io { .. }
             | E::BadPath(_)
             | E::ReadOnly
@@ -208,6 +211,13 @@ impl Biblix {
     /// what differs
     pub fn verify_media(&self, file: MediaFile, bytes: Vec<u8>) -> Result<(), BiblixError> {
         Ok(biblix_core::media::verify(&file.into(), &bytes)?)
+    }
+
+    /// A WebVTT timings file's verses (cues named `JHN 3:16`), for timings that aren't in a
+    /// package
+    pub fn parse_timings(&self, text: String) -> Result<Vec<VerseTiming>, BiblixError> {
+        let timings = biblix_core::media::parse_timings(&text)?;
+        Ok(timings.into_iter().map(VerseTiming::from).collect())
     }
 
     /// Where to keep a media file once checked, by its hash (`media/9f/9f86…`, relative to a

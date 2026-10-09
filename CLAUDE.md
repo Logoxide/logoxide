@@ -43,7 +43,11 @@ before changing the design.
   - `media.rs`: `[media]` in a package's `biblix.toml`: each audio or video file's path, URL,
     size, SHA-256, and book, never stored in the package; `verify` checks a download,
     `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
-    by the text. Timings (each verse's start and end) have a folder but no format yet
+    by the text. Timings (audio Bibles: where each verse is) are WebVTT, `timings/<stem>.vtt` per
+    file, each cue named by its verse (`JHN 3:16`, `JHN 3:17-18`; other cues are skipped):
+    `parse_timings`, `timings`, and `check_package_timings` (verses the text lacks, another book,
+    out of order, overlapping, missing or unlisted files), which `bx check`, `bx media check`, and
+    `bx release` run. topos's subtitle parser isn't used: it only takes numbered cues
   - `library.rs`: installed versions in `packages/<id>/<version>` (or `<version>+g<commit>` when
     not from its release tag), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
@@ -73,7 +77,7 @@ before changing the design.
 - `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry`, `media add <file> --url`
-  (lists a file by size and hash), `media check` (downloads and checks every listed file). Catalogs and
+  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Catalogs and
   imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 - `crates/biblix-ffi`: BoltFFI 0.31 bindings (npm and PyPI `biblix`), re-exporting topos-ffi

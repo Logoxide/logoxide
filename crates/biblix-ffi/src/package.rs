@@ -112,6 +112,37 @@ impl From<&biblix_core::media::MediaFile> for MediaFile {
     }
 }
 
+/// Where one verse (or a bridge: `verse` to `last`) is in a recording, from its timings
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerseTiming {
+    /// The book's USFM code: `JHN`
+    pub book: String,
+    /// Its number, as `BiblixPackage.books()` gives them (0 for a code topos doesn't know)
+    pub book_id: u8,
+    pub chapter: u16,
+    pub verse: u16,
+    pub last: u16,
+    /// From the start of the recording, in milliseconds
+    pub start_ms: u32,
+    pub end_ms: u32,
+}
+
+impl From<biblix_core::media::VerseTiming> for VerseTiming {
+    fn from(t: biblix_core::media::VerseTiming) -> Self {
+        let books = biblix_core::bible_data().books();
+        Self {
+            book_id: books.search_usfm(&t.book).map_or(0, |id| id.0),
+            book: t.book,
+            chapter: t.chapter,
+            verse: t.verse,
+            last: t.last,
+            start_ms: t.start_ms,
+            end_ms: t.end_ms,
+        }
+    }
+}
+
 impl From<MediaFile> for biblix_core::media::MediaFile {
     fn from(f: MediaFile) -> Self {
         Self {
@@ -279,6 +310,18 @@ impl BiblixPackage {
             .flat_map(|m| m.files.iter())
             .map(MediaFile::from)
             .collect()
+    }
+
+    /// Where each verse is in a listed file (from the package's WebVTT timings, in their order),
+    /// to play from a verse or follow along; empty if it has none
+    pub fn timings(&self, file: MediaFile) -> Result<Vec<VerseTiming>, BiblixError> {
+        let file = file.into();
+        let timings = biblix_core::media::timings(self.cached.package(), &file)?;
+        Ok(timings
+            .into_iter()
+            .flatten()
+            .map(VerseTiming::from)
+            .collect())
     }
 
     /// Each book's file, relative to the package's folder (`usx/JHN.usx`), for hosts that open

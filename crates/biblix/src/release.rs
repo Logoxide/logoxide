@@ -53,10 +53,18 @@ impl Plan {
     }
 }
 
-/// Summarizes the package in `repo` and compares it with the newest earlier release
+/// Summarizes the package in `repo` and compares it with the newest earlier release. Media
+/// timings that don't fit the text are an error
 pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
     let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(repo));
     let package = Package::open(storage, Features::default())?;
+    let problems = crate::media::check_package_timings(&package)?;
+    if !problems.is_empty() {
+        return Err(BiblixError::Media(format!(
+            "the timings don't fit the text (bx media check --offline): {}",
+            problems.join("; ")
+        )));
+    }
     let (summary, verses) = summarize(&package)?;
     let tags = git.local_versions(repo)?;
     // The newest release (the version must be newer than it)
