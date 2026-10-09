@@ -56,6 +56,10 @@ pub struct Manifest {
     /// A vault's (or a machine's) choices: the default Bible, the ones to compare
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub settings: Option<Settings>,
+    /// Audio and video, listed by URL and hash, never stored in the package
+    /// ([`crate::media`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<crate::media::Media>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

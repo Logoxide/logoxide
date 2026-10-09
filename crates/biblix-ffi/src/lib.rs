@@ -204,6 +204,18 @@ impl Biblix {
         Ok(out)
     }
 
+    /// Whether downloaded bytes are a listed media file (its size and SHA-256); an error says
+    /// what differs
+    pub fn verify_media(&self, file: MediaFile, bytes: Vec<u8>) -> Result<(), BiblixError> {
+        Ok(biblix_core::media::verify(&file.into(), &bytes)?)
+    }
+
+    /// Where to keep a media file once checked, by its hash (`media/9f/9f86…`, relative to a
+    /// cache), so versions that list the same file share it
+    pub fn media_store_path(&self, file: MediaFile) -> String {
+        biblix_core::media::store_path(&file.into())
+    }
+
     /// Installs packages and inspects repositories, with the host downloading
     pub fn installer(&self) -> BiblixInstaller {
         BiblixInstaller::new()

@@ -86,6 +86,44 @@ impl From<&manifest::Package> for PackageInfo {
     }
 }
 
+/// An audio or video file a package lists
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MediaFile {
+    /// Its name in the package: `JHN.mp3`
+    pub path: String,
+    pub url: String,
+    pub size: u64,
+    /// Lowercase hex
+    pub sha256: String,
+    /// The book it reads (a USFM code), if one
+    pub book: Option<String>,
+}
+
+impl From<&biblix_core::media::MediaFile> for MediaFile {
+    fn from(f: &biblix_core::media::MediaFile) -> Self {
+        Self {
+            path: f.path.clone(),
+            url: f.url.clone(),
+            size: f.size,
+            sha256: f.sha256.clone(),
+            book: f.book.clone(),
+        }
+    }
+}
+
+impl From<MediaFile> for biblix_core::media::MediaFile {
+    fn from(f: MediaFile) -> Self {
+        Self {
+            path: f.path,
+            url: f.url,
+            size: f.size,
+            sha256: f.sha256,
+            book: f.book,
+        }
+    }
+}
+
 /// A book and its file in a package
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -232,6 +270,15 @@ impl BiblixPackage {
     pub fn books(&self) -> Vec<u8> {
         let books = &self.cached.manifest().books;
         books.iter().map(|(id, _)| id.0).collect()
+    }
+
+    /// The audio and video it lists (by URL and hash; download one when it's played, check it
+    /// with `Biblix::verify_media`, and keep it at `Biblix::media_store_path`)
+    pub fn media(&self) -> Vec<MediaFile> {
+        (self.cached.package().manifest().media.iter())
+            .flat_map(|m| m.files.iter())
+            .map(MediaFile::from)
+            .collect()
     }
 
     /// Each book's file, relative to the package's folder (`usx/JHN.usx`), for hosts that open

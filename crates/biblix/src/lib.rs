@@ -19,6 +19,7 @@ pub mod import;
 pub mod library;
 pub mod lock;
 pub mod manifest;
+pub mod media;
 pub mod package;
 pub mod project;
 pub mod release;

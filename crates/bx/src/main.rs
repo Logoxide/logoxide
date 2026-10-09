@@ -162,6 +162,33 @@ enum Command {
     /// Catalogs: lists of packages anyone can host
     #[command(subcommand)]
     Catalog(CatalogCommand),
+    /// A package's audio and video, listed by URL and hash
+    #[command(subcommand)]
+    Media(MediaCommand),
+}
+
+#[derive(Subcommand)]
+enum MediaCommand {
+    /// Lists a file in the package's biblix.toml: its URL, size, and SHA-256 (from the file here)
+    Add {
+        /// The file, as it's served
+        file: PathBuf,
+        /// Where it's served
+        #[arg(long)]
+        url: String,
+        /// The book it reads (a USFM code)
+        #[arg(long)]
+        book: Option<String>,
+        /// The package's folder
+        #[arg(long, default_value = ".")]
+        package: PathBuf,
+    },
+    /// Downloads every listed file and checks its size and hash
+    Check {
+        /// The package's folder
+        #[arg(default_value = ".")]
+        package: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -265,6 +292,13 @@ fn main() -> ExitCode {
         } => search(&cli, &query.join(" "), catalog, *limit),
         Command::Import { source } => import(&cli, source),
         Command::Catalog(CatalogCommand::Entry { git }) => catalog_entry(&cli, git),
+        Command::Media(MediaCommand::Add {
+            file,
+            url,
+            book,
+            package,
+        }) => media_add(file, url, book.as_deref(), package),
+        Command::Media(MediaCommand::Check { package }) => media_check(package),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -294,6 +328,14 @@ fn show(args: &PackageArgs) -> biblix::Result<()> {
             .or(info.license_file.as_deref())
             .unwrap_or("none given")
     );
+    if let Some(media) = manifest.media.as_ref().filter(|m| !m.files.is_empty()) {
+        let bytes: u64 = media.files.iter().map(|f| f.size).sum();
+        println!(
+            "media: {} files, {:.1} MB, listed by URL and hash",
+            media.files.len(),
+            bytes as f64 / 1e6
+        );
+    }
     if let Some(upstream) = &info.upstream {
         println!("upstream: {upstream}");
     }
@@ -1012,4 +1054,95 @@ fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> biblix::Result<()> {
         );
     }
     Ok(())
+}
+
+fn media_add(
+    file: &std::path::Path,
+    url: &str,
+    book: Option<&str>,
+    package: &std::path::Path,
+) -> biblix::Result<()> {
+    let io = |path: &std::path::Path, e: std::io::Error| biblix::BiblixError::Io {
+        path: path.display().to_string(),
+        message: e.to_string(),
+    };
+    let bytes = std::fs::read(file).map_err(|e| io(file, e))?;
+    let name = file
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let mut entry = biblix::media::MediaFile::of(&name, url, &bytes);
+    entry.book = book.map(str::to_uppercase);
+    let path = package.join(MANIFEST);
+    let text = std::fs::read_to_string(&path).map_err(|e| io(&path, e))?;
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e: toml_edit::TomlError| biblix::BiblixError::Manifest(e.to_string()))?;
+    let media = doc
+        .entry("media")
+        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_mut()
+        .ok_or_else(|| biblix::BiblixError::Manifest(String::from("[media] isn't a table")))?;
+    let files = media
+        .entry("files")
+        .or_insert(toml_edit::Item::ArrayOfTables(
+            toml_edit::ArrayOfTables::new(),
+        ))
+        .as_array_of_tables_mut()
+        .ok_or_else(|| biblix::BiblixError::Manifest(String::from("media.files isn't a list")))?;
+    // Listed again: replaced
+    let mut kept = toml_edit::ArrayOfTables::new();
+    for table in files.iter() {
+        if table.get("path").and_then(|p| p.as_str()) != Some(&name) {
+            kept.push(table.clone());
+        }
+    }
+    let mut table = toml_edit::Table::new();
+    table.insert("path", toml_edit::value(&entry.path));
+    table.insert("url", toml_edit::value(&entry.url));
+    table.insert("size", toml_edit::value(entry.size as i64));
+    table.insert("sha256", toml_edit::value(&entry.sha256));
+    if let Some(book) = &entry.book {
+        table.insert("book", toml_edit::value(book));
+    }
+    kept.push(table);
+    *files = kept;
+    // Still a manifest biblix reads
+    biblix::Manifest::parse(&doc.to_string())?;
+    std::fs::write(&path, doc.to_string()).map_err(|e| io(&path, e))?;
+    println!(
+        "listed {} ({:.1} MB, sha256 {}) in {}",
+        entry.path,
+        entry.size as f64 / 1e6,
+        &entry.sha256[..16],
+        path.display()
+    );
+    Ok(())
+}
+
+fn media_check(package: &std::path::Path) -> biblix::Result<()> {
+    let storage = FsStorage::new(package);
+    let manifest = biblix::Manifest::parse(&storage.read_string(MANIFEST)?)?;
+    let files = manifest.media.map(|m| m.files).unwrap_or_default();
+    if files.is_empty() {
+        println!("no media listed");
+        return Ok(());
+    }
+    let mut failed = 0;
+    for file in &files {
+        match get(&file.url).and_then(|bytes| biblix::media::verify(file, &bytes)) {
+            Ok(()) => println!("ok: {}", file.path),
+            Err(error) => {
+                failed += 1;
+                println!("FAILED: {}: {error}", file.path);
+            }
+        }
+    }
+    match failed {
+        0 => Ok(()),
+        n => Err(biblix::BiblixError::Fetch {
+            url: package.display().to_string(),
+            message: format!("{n} of {} media files don't match", files.len()),
+        }),
+    }
 }

@@ -38,6 +38,10 @@ before changing the design.
     date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
     codes; other paths answer with fetch.bible's site, which is refused) into `usx/` +
     `COPYRIGHT.txt`. A vault uses either as a path package in `imports/<id>/`
+  - `media.rs`: `[media]` in a package's `biblix.toml`: each audio or video file's path, URL,
+    size, SHA-256, and book, never stored in the package; `verify` checks a download,
+    `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
+    by the text. Timings (each verse's start and end) have a folder but no format yet
   - `library.rs`: installed versions in `packages/<id>/<version>` (or `<version>+g<commit>` when
     not from its release tag), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
@@ -66,7 +70,8 @@ before changing the design.
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
 - `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog entry <git URL>`. Catalogs and
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog entry <git URL>`, `media add <file> --url`
+  (lists a file by size and hash), `media check` (downloads and checks every listed file). Catalogs and
   imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own
 - `crates/biblix-ffi`: BoltFFI 0.31 bindings (npm and PyPI `biblix`), re-exporting topos-ffi

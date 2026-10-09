@@ -476,3 +476,29 @@ fn catalogs_and_ebible_imports() {
     assert_eq!(project.catalogs()[0], biblix.ebible_catalog_url());
     assert_eq!(project.catalogs().len(), 2);
 }
+
+#[test]
+fn media_by_url_and_hash() {
+    let manifest = format!(
+        "{MANIFEST}\n[[media.files]]\npath = \"JHN.mp3\"\nurl = \"https://example.org/JHN.mp3\"\nsize = 5\nsha256 = \"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824\"\n"
+    );
+    let files = vec![file("biblix.toml", &manifest), file("usx/JHN.usx", USX)];
+    let biblix = Biblix::new();
+    let package = biblix.open_package(files, defaults(), vec![]).unwrap();
+    let media = package.media();
+    assert_eq!(media.len(), 1);
+    assert!(
+        biblix
+            .verify_media(media[0].clone(), b"hello".to_vec())
+            .is_ok()
+    );
+    assert!(matches!(
+        biblix.verify_media(media[0].clone(), b"hellO".to_vec()),
+        Err(BiblixError::Files { .. })
+    ));
+    assert!(
+        biblix
+            .media_store_path(media[0].clone())
+            .starts_with("media/2c/2cf24dba")
+    );
+}

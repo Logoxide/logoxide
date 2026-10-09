@@ -48,6 +48,16 @@ pub struct Summary {
     /// How many of each kind of element (`note`, `title`, `words-of-jesus`, ...), and `strongs`,
     /// the words tagged with Strong's numbers
     pub contents: BTreeMap<String, u64>,
+    /// The audio and video it lists (not stored in it): how many files, and their bytes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub media: Option<MediaSummary>,
+}
+
+/// A package's media, in its summary
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MediaSummary {
+    pub files: u64,
+    pub bytes: u64,
 }
 
 /// One verse and the hash of its text
@@ -191,6 +201,12 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
         sizes,
         books,
         contents,
+        media: (package.manifest().media.as_ref())
+            .filter(|m| !m.files.is_empty())
+            .map(|m| MediaSummary {
+                files: m.files.len() as u64,
+                bytes: m.files.iter().map(|f| f.size).sum(),
+            }),
     };
     Ok((summary, hashes))
 }
