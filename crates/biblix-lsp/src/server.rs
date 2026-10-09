@@ -721,6 +721,9 @@ impl Server {
 
     /// Every reference in the document, for outlines and pickers
     pub fn document_symbols(&self, params: DocumentSymbolParams) -> Option<DocumentSymbolResponse> {
+        if let Some((bible, book)) = self.book_document(&params.text_document.uri) {
+            return book_symbols(bible, book);
+        }
         let text = self.documents.get(&params.text_document.uri)?;
         let index = LineIndex::new(text);
         let symbols = self
@@ -1322,6 +1325,64 @@ fn lsp_position(index: &LineIndex, offset: usize) -> Position {
 
 pub fn lsp_range(index: &LineIndex, start: usize, end: usize) -> Range {
     Range::new(lsp_position(index, start), lsp_position(index, end))
+}
+
+/**
+A whole book's chapters (`John 3`), each with its verses (`John 3:16`, or `John 3:16-17` for a
+bridge), for an outline and for moving between them
+- A chapter runs from its label (or its first verse, if labels are hidden) to its last verse's
+  end; its selection is the label (or the first verse)
+*/
+fn book_symbols(bible: &Bible, book: BookId) -> Option<DocumentSymbolResponse> {
+    let rendered = bible.render(book)?;
+    let index = LineIndex::new(&rendered.text);
+    let name = bible.book_name(book).unwrap_or_default();
+    #[allow(deprecated)]
+    let symbol = |name: String, kind, range| DocumentSymbol {
+        name,
+        detail: None,
+        kind,
+        tags: None,
+        deprecated: None,
+        range,
+        selection_range: range,
+        children: None,
+    };
+    let mut chapters: Vec<(u8, DocumentSymbol)> = vec![];
+    for (range, part) in &rendered.parts {
+        let (chapter, verse) = match *part {
+            Part::Chapter(chapter) => (chapter, None),
+            Part::Verse {
+                chapter,
+                verse,
+                last,
+            } => (chapter, Some((verse, last))),
+        };
+        if chapter == 0 {
+            continue;
+        }
+        let range = lsp_range(&index, range.start, range.end);
+        if chapters.last().is_none_or(|(c, _)| *c != chapter) {
+            let label = symbol(format!("{name} {chapter}"), SymbolKind::NAMESPACE, range);
+            chapters.push((chapter, label));
+        }
+        let (_, current) = chapters.last_mut()?;
+        current.range.end = range.end;
+        if let Some((verse, last)) = verse {
+            let numbers = match last > verse {
+                true => format!("{verse}-{last}"),
+                false => verse.to_string(),
+            };
+            let verse = symbol(
+                format!("{name} {chapter}:{numbers}"),
+                SymbolKind::KEY,
+                range,
+            );
+            current.children.get_or_insert_default().push(verse);
+        }
+    }
+    let chapters = chapters.into_iter().map(|(_, symbol)| symbol).collect();
+    Some(DocumentSymbolResponse::Nested(chapters))
 }
 
 #[cfg(test)]
@@ -2004,6 +2065,47 @@ to condemn.</char> <verse eid="JHN 3:17"/></para>
             text_document: TextDocumentIdentifier::new(uri.clone()),
         });
         assert!(notes.data.is_empty());
+
+        // Symbols: each chapter from its label, with its verses
+        let Some(DocumentSymbolResponse::Nested(chapters)) =
+            server.document_symbols(DocumentSymbolParams {
+                text_document: TextDocumentIdentifier::new(book_uri()),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            })
+        else {
+            panic!("no symbols");
+        };
+        let outline: Vec<_> = (chapters.iter())
+            .map(|c| {
+                let verses = c.children.iter().flatten();
+                let verses: Vec<_> = verses.map(|v| (v.name.as_str(), v.range.start)).collect();
+                (
+                    c.name.as_str(),
+                    c.selection_range.start,
+                    c.range.end,
+                    verses,
+                )
+            })
+            .collect();
+        let pos = Position::new;
+        assert_eq!(
+            outline,
+            [
+                (
+                    "John 3",
+                    pos(1, 0),
+                    pos(3, 76),
+                    vec![("John 3:16", pos(3, 0)), ("John 3:17", pos(3, 33))]
+                ),
+                (
+                    "John 4",
+                    pos(4, 0),
+                    pos(5, 21),
+                    vec![("John 4:1", pos(5, 0))]
+                ),
+            ]
+        );
 
         // References from a verse in the book: every reference that names it
         let references = |line, character| {
