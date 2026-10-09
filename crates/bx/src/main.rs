@@ -152,6 +152,10 @@ enum Command {
         /// How many to show
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// One JSON array, for editors: each package's id, names, language, license, and the bx
+        /// arguments that install it
+        #[arg(long)]
+        json: bool,
     },
     /// Makes a package from another publisher's download, puts it in the project's `imports/`,
     /// and adds it as a path package: `ebible:<id>` or `fetch:<id>` (as `bx search` shows)
@@ -289,7 +293,8 @@ fn main() -> ExitCode {
             query,
             catalog,
             limit,
-        } => search(&cli, &query.join(" "), catalog, *limit),
+            json,
+        } => search(&cli, &query.join(" "), catalog, *limit, *json),
         Command::Import { source } => import(&cli, source),
         Command::Catalog(CatalogCommand::Entry { git }) => catalog_entry(&cli, git),
         Command::Media(MediaCommand::Add {
@@ -821,7 +826,13 @@ fn load_catalog(location: &str) -> biblix::Result<biblix::catalog::Catalog> {
     biblix::catalog::Catalog::parse(location, &String::from_utf8_lossy(&bytes))
 }
 
-fn search(cli: &Cli, query: &str, catalogs: &[String], limit: usize) -> biblix::Result<()> {
+fn search(
+    cli: &Cli,
+    query: &str,
+    catalogs: &[String],
+    limit: usize,
+    json: bool,
+) -> biblix::Result<()> {
     let catalogs = match catalogs.is_empty() {
         true => cli.project(&cli.library())?.manifest().catalogs(),
         false => catalogs.to_vec(),
@@ -831,6 +842,34 @@ fn search(cli: &Cli, query: &str, catalogs: &[String], limit: usize) -> biblix::
         all = all.merge(load_catalog(location)?);
     }
     let found = all.search(query);
+    if json {
+        use biblix::catalog::CatalogSource;
+        let entries: Vec<serde_json::Value> = (found.iter().take(limit))
+            .map(|e| {
+                let install = match &e.source {
+                    CatalogSource::Git { url } => {
+                        vec![String::from("add"), String::from("--git"), url.clone()]
+                    }
+                    CatalogSource::Ebible { id } => {
+                        vec![String::from("import"), format!("ebible:{id}")]
+                    }
+                    CatalogSource::FetchBible { id, .. } => {
+                        vec![String::from("import"), format!("fetch:{id}")]
+                    }
+                };
+                serde_json::json!({
+                    "id": e.id,
+                    "abbreviation": e.abbreviation,
+                    "name": e.name,
+                    "language": e.language_name.as_deref().unwrap_or(&e.language),
+                    "license": e.license,
+                    "install": install,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::Value::Array(entries));
+        return Ok(());
+    }
     for entry in found.iter().take(limit) {
         let language = entry.language_name.as_deref().unwrap_or(&entry.language);
         let source = match &entry.source {
