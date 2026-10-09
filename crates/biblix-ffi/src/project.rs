@@ -50,6 +50,10 @@ pub struct LockedEntry {
     pub git: Option<String>,
     /// The commit its files are from
     pub commit: Option<String>,
+    /// The package the manifest asks for that brings it in (what the manifest calls that one),
+    /// when the manifest doesn't ask for it itself. A collection's packages are the project's
+    /// Bibles and books; another package's dependencies aren't
+    pub dependency_of: Option<String>,
 }
 
 impl From<&LockedPackage> for LockedEntry {
@@ -68,6 +72,7 @@ impl From<&LockedPackage> for LockedEntry {
             checksum: locked.checksum.clone(),
             git: locked.git.clone(),
             commit: locked.commit.clone(),
+            dependency_of: None,
         }
     }
 }
@@ -167,25 +172,40 @@ impl BiblixProject {
             .collect()
     }
 
-    /// The packages the manifest asks for, as the lock file has them (not their dependencies);
-    /// empty without a lock file
+    /// The packages the manifest asks for, as the lock file has them, each followed by what it
+    /// brings in (`dependencyOf` names the one asked for), each package once; empty without a
+    /// lock file
     pub fn packages(&self) -> Vec<LockedEntry> {
         let Some(lock) = self.project.lock() else {
             return Vec::new();
         };
         let manifest = self.project.manifest();
-        (lock.roots())
-            .map(|locked| {
+        let mut entries = vec![];
+        // A package both asked for and brought in is listed as asked for
+        let roots: std::collections::BTreeSet<String> = lock.roots().map(|p| p.name()).collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for root in lock.roots() {
+            let mut todo = vec![(root, None::<String>)];
+            while let Some((locked, of)) = todo.pop() {
+                if (of.is_some() && roots.contains(&locked.name())) || !seen.insert(locked.name()) {
+                    continue;
+                }
                 let mut entry = LockedEntry::from(locked);
-                if let Some(biblix_core::manifest::Dependency::Detailed(d)) =
-                    manifest.dependencies.get(&entry.name)
+                if of.is_none()
+                    && let Some(biblix_core::manifest::Dependency::Detailed(d)) =
+                        manifest.dependencies.get(&entry.name)
                 {
                     entry.abbreviation = d.abbreviation.clone();
                     entry.aliases = d.aliases.clone();
                 }
-                entry
-            })
-            .collect()
+                entry.dependency_of = of;
+                let of = Some(root.dependency_name().to_string());
+                let inside = (locked.dependencies.iter()).filter_map(|name| lock.named(name));
+                todo.extend(inside.rev().map(|p| (p, of.clone())));
+                entries.push(entry);
+            }
+        }
+        entries
     }
 
     /// Dependencies the lock file doesn't have yet (added since it was written: install them)

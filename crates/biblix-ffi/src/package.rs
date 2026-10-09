@@ -341,6 +341,12 @@ impl BiblixPackage {
         Ok(found.into_iter().map(Into::into).collect())
     }
 
+    /// Its books' EPUBs, relative to its folder (`epub/the-dorean-principle.epub`), for hosts
+    /// that show them as files of their own; empty for a package without books
+    pub fn epub_files(&self) -> Result<Vec<String>, BiblixError> {
+        Ok(biblix_core::references::epub_files(self.cached.package())?)
+    }
+
     /// Where each verse is in a listed file (from the package's WebVTT timings, in their order),
     /// to play from a verse or follow along; empty if it has none
     pub fn timings(&self, file: MediaFile) -> Result<Vec<VerseTiming>, BiblixError> {

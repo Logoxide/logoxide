@@ -127,7 +127,9 @@ before changing the design.
   across. `BiblixCatalog` (`catalog.rs`) searches catalogs, and `Biblix.importEbible` and
   `importFetchBible` make downloads into a package's files. `create.rs`: `fileMetadata`,
   `newPackage` (a package's files from one file), `newCollection`, `parseReferences`, and
-  `BiblixPackage.references()`. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
+  `BiblixPackage.references()` and `epubFiles()`. `BiblixProject.packages()` lists each package
+  the manifest asks for followed by what it brings in (`LockedEntry.dependencyOf`), so hosts see
+  a collection's packages. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given; whatever is missing (refs, an archive, an installed package's files) stops the round and
   is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `libbiblix.rlib`. Build with

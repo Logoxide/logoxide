@@ -62,12 +62,10 @@ pub struct Cited {
     pub count: u32,
 }
 
-/// Every reference in the EPUBs the package's enabled formats hold, file by file in path order,
-/// each file's in the order they're in it. Empty for a package without EPUBs
-pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
-    let storage = package.storage();
-    let declared = crate::package::declared_files(storage.as_ref())?;
-    let files: Vec<&String> = (declared.iter())
+/// The EPUBs the package's enabled formats hold, in path order (`epub/the-dorean-principle.epub`)
+pub fn epub_files(package: &Package) -> Result<Vec<String>> {
+    let declared = crate::package::declared_files(package.storage().as_ref())?;
+    Ok((declared.into_iter())
         .filter(|f| f.to_ascii_lowercase().ends_with(".epub"))
         .filter(|f| {
             (package.manifest().formats(package.enabled()).iter()).any(|(name, entry)| {
@@ -76,7 +74,14 @@ pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
                     && (f.as_str() == dir || f.starts_with(&format!("{dir}/")))
             })
         })
-        .collect();
+        .collect())
+}
+
+/// Every reference in the EPUBs the package's enabled formats hold, file by file in path order,
+/// each file's in the order they're in it. Empty for a package without EPUBs
+pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
+    let storage = package.storage();
+    let files = epub_files(package)?;
     if files.is_empty() {
         return Ok(vec![]);
     }
@@ -84,7 +89,7 @@ pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
     let matcher = BibleMatcher::new(data.clone(), ComplexFilter::default());
     let mut found = vec![];
     for file in files {
-        let bytes = storage.read(file)?;
+        let bytes = storage.read(&file)?;
         let matches =
             search_epub_reader(&matcher, std::io::Cursor::new(bytes), CfiOptions::default())
                 .map_err(|e| BiblixError::Book {

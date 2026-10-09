@@ -91,6 +91,10 @@ fn a_book_from_an_epub() {
     let package = Package::open(Arc::new(files), Features::default()).unwrap();
     assert!(package.books().is_empty());
     // Read from the book: every reference, and where it is
+    assert_eq!(
+        biblix::references::epub_files(&package).unwrap(),
+        ["epub/Freely-Given.epub"]
+    );
     let found = biblix::references::find(&package).unwrap();
     let passages: Vec<&str> = found.iter().map(|r| r.passage.as_str()).collect();
     assert_eq!(passages, ["Matt.10.8", "1Cor.9", "John.3.16-John.3.18"]);

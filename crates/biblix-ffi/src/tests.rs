@@ -144,6 +144,50 @@ fn topos_reads_its_books_and_verse_counts() {
 }
 
 #[test]
+fn a_collections_packages_follow_it() {
+    let manifest = r#"
+[dependencies]
+books = { git = "https://example.org/books", version = "1" }
+romans = { git = "https://example.org/romans", version = "1" }
+"#;
+    let lock = r#"
+version = 1
+dependencies = ["books 1.0.0", "romans 1.0.0"]
+
+[[package]]
+id = "books"
+version = "1.0.0"
+git = "https://example.org/books"
+dependencies = ["acts 1.0.0", "romans 1.0.0"]
+
+[[package]]
+id = "acts"
+version = "1.0.0"
+git = "https://example.org/acts"
+
+[[package]]
+id = "romans"
+version = "1.0.0"
+git = "https://example.org/romans"
+"#;
+    let project = Biblix::new()
+        .parse_project(Some(manifest.into()), Some(lock.into()))
+        .unwrap();
+    let listed: Vec<(String, Option<String>)> = (project.packages().into_iter())
+        .map(|p| (p.id, p.dependency_of))
+        .collect();
+    // romans is asked for too: listed once, as asked for
+    assert_eq!(
+        listed,
+        [
+            (String::from("books"), None),
+            (String::from("acts"), Some(String::from("books"))),
+            (String::from("romans"), None),
+        ]
+    );
+}
+
+#[test]
 fn a_vaults_packages() {
     let manifest = r#"
 [dependencies]
@@ -194,6 +238,8 @@ path = "bibles/mine"
     );
     assert_eq!(packages[0].features.features, ["sword"]);
     assert_eq!(packages[0].checksum.as_deref(), Some("sha256:00"));
+
+    assert!(packages.iter().all(|p| p.dependency_of.is_none()));
 
     let no_lock = Biblix::new()
         .parse_project(Some(manifest.into()), None)
@@ -594,6 +640,7 @@ fn making_packages() {
     );
     assert_eq!(info.authors, ["Me", "You"]);
     assert!(package.references().unwrap().is_empty());
+    assert!(package.epub_files().unwrap().is_empty());
     // Without a language, the error says what to give
     let no_language = crate::NewPackage {
         language: None,
