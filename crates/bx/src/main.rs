@@ -1,6 +1,11 @@
 //! `bx`: biblix's command line
 
-use std::{path::PathBuf, process::ExitCode, sync::Arc, time::Instant};
+use std::{
+    path::{Path, PathBuf},
+    process::ExitCode,
+    sync::Arc,
+    time::Instant,
+};
 
 use biblix::{
     Cache, Features, FsStorage, Library, MemoryStorage, Package, Project, Storage, bible_data,
@@ -141,7 +146,7 @@ enum Command {
         keep: Vec<PathBuf>,
     },
     /// Finds packages in catalogs by name, abbreviation, or language (the project's catalogs,
-    /// else eBible.org's list)
+    /// then eBible.org's and fetch.bible's lists: bx catalog list)
     Search {
         /// Words to find (every one must match)
         query: Vec<String>,
@@ -197,6 +202,14 @@ enum MediaCommand {
 
 #[derive(Subcommand)]
 enum CatalogCommand {
+    /// The catalogs `bx search` looks through: the project's, then eBible.org's and fetch.bible's
+    List,
+    /// Searches a catalog too (a URL, or a path relative to the project): a catalog.toml,
+    /// eBible.org's translations.csv, or fetch.bible's manifest.json. It's read first, to check it
+    Add { location: String },
+    /// Stops searching a catalog. Removing eBible.org's or fetch.bible's turns the defaults off
+    /// (`default-catalogs = false`), keeping the other one
+    Remove { location: String },
     /// A catalog.toml entry for a package's repository (its newest release's biblix.toml)
     Entry {
         /// The package's git URL
@@ -297,6 +310,9 @@ fn main() -> ExitCode {
         } => search(&cli, &query.join(" "), catalog, *limit, *json),
         Command::Import { source } => import(&cli, source),
         Command::Catalog(CatalogCommand::Entry { git }) => catalog_entry(&cli, git),
+        Command::Catalog(CatalogCommand::List) => catalog_list(&cli),
+        Command::Catalog(CatalogCommand::Add { location }) => catalog_add(&cli, location),
+        Command::Catalog(CatalogCommand::Remove { location }) => catalog_remove(&cli, location),
         Command::Media(MediaCommand::Add {
             file,
             url,
@@ -813,17 +829,57 @@ fn get(url: &str) -> biblix::Result<Vec<u8>> {
         .map_err(fail)
 }
 
-/// A catalog from a URL or a path
-fn load_catalog(location: &str) -> biblix::Result<biblix::catalog::Catalog> {
+/// A catalog from a URL or a path (relative to `base`)
+fn load_catalog(location: &str, base: &Path) -> biblix::Result<biblix::catalog::Catalog> {
     let bytes = if location.starts_with("https://") || location.starts_with("http://") {
         get(location)?
     } else {
-        std::fs::read(location).map_err(|e| biblix::BiblixError::Io {
-            path: location.to_string(),
+        let path = base.join(location);
+        std::fs::read(&path).map_err(|e| biblix::BiblixError::Io {
+            path: path.display().to_string(),
             message: e.to_string(),
         })?
     };
     biblix::catalog::Catalog::parse(location, &String::from_utf8_lossy(&bytes))
+}
+
+fn catalog_list(cli: &Cli) -> biblix::Result<()> {
+    let project = cli.project(&cli.library())?;
+    let defaults = biblix::catalog::DEFAULT_CATALOGS;
+    for location in project.manifest().catalogs() {
+        let note = match defaults.contains(&location.as_str()) {
+            true => " (default)",
+            false => "",
+        };
+        println!("{location}{note}");
+    }
+    Ok(())
+}
+
+fn catalog_add(cli: &Cli, location: &str) -> biblix::Result<()> {
+    let mut project = cli.project(&cli.library())?;
+    let catalog = load_catalog(location, project.dir())?;
+    if !project.add_catalog(location)? {
+        println!("{location} is already searched");
+        return Ok(());
+    }
+    project.save_manifest()?;
+    let count = catalog.entries.len();
+    let plural = if count == 1 { "" } else { "s" };
+    println!("Added {location}: {count} package{plural}");
+    Ok(())
+}
+
+fn catalog_remove(cli: &Cli, location: &str) -> biblix::Result<()> {
+    let mut project = cli.project(&cli.library())?;
+    if !project.remove_catalog(location)? {
+        return Err(biblix::BiblixError::Catalog(format!(
+            "{location} isn't searched (bx catalog list)"
+        )));
+    }
+    project.save_manifest()?;
+    println!("Removed {location}");
+    Ok(())
 }
 
 fn search(
@@ -833,13 +889,30 @@ fn search(
     limit: usize,
     json: bool,
 ) -> biblix::Result<()> {
-    let catalogs = match catalogs.is_empty() {
-        true => cli.project(&cli.library())?.manifest().catalogs(),
-        false => catalogs.to_vec(),
+    let (catalogs, base) = match catalogs.is_empty() {
+        true => {
+            let project = cli.project(&cli.library())?;
+            (project.manifest().catalogs(), project.dir().to_path_buf())
+        }
+        false => (catalogs.to_vec(), PathBuf::from(".")),
     };
     let mut all = biblix::catalog::Catalog::default();
+    let mut failed = 0;
     for location in &catalogs {
-        all = all.merge(load_catalog(location)?);
+        // One catalog that can't be read doesn't stop the others
+        match load_catalog(location, &base) {
+            Ok(catalog) => all = all.merge(catalog),
+            Err(e) if catalogs.len() > 1 => {
+                eprintln!("warning: {e}");
+                failed += 1;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    if failed == catalogs.len() {
+        return Err(biblix::BiblixError::Catalog(String::from(
+            "no catalog could be read",
+        )));
     }
     let found = all.search(query);
     if json {
@@ -912,7 +985,7 @@ fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
             )));
         }
     };
-    let catalog = load_catalog(catalog)?;
+    let catalog = load_catalog(catalog, Path::new("."))?;
     let entry = (catalog.entries.iter())
         .find(|e| match &e.source {
             CatalogSource::Ebible { id: i } | CatalogSource::FetchBible { id: i, .. } => i == id,

@@ -199,8 +199,8 @@ fn yes() -> bool {
     true
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Settings {
     /// The Bible references use when they name none
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -208,18 +208,40 @@ pub struct Settings {
     /// Bibles shown after the named one
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub compare: Vec<String>,
-    /// Catalogs to search for packages (URLs or paths; see [`crate::catalog`]). Without any,
-    /// eBible.org's and fetch.bible's lists
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub catalogs: Option<Vec<String>>,
+    /// Catalogs (or registries) to search for packages, besides eBible.org's and fetch.bible's
+    /// lists: URLs or paths (see [`crate::catalog`]). Their entries come first
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub catalogs: Vec<String>,
+    /// Whether eBible.org's and fetch.bible's lists are searched too
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub default_catalogs: bool,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            default: None,
+            compare: Vec::new(),
+            catalogs: Vec::new(),
+            default_catalogs: true,
+        }
+    }
 }
 
 impl Manifest {
-    /// The catalogs to search: `[settings] catalogs`, else eBible.org's and fetch.bible's lists
+    /// The catalogs to search: `[settings] catalogs`, then eBible.org's and fetch.bible's lists
+    /// (unless `default-catalogs = false`)
     pub fn catalogs(&self) -> Vec<String> {
-        (self.settings.as_ref())
-            .and_then(|s| s.catalogs.clone())
-            .unwrap_or_else(|| crate::catalog::DEFAULT_CATALOGS.map(String::from).to_vec())
+        let settings = self.settings.clone().unwrap_or_default();
+        let mut catalogs = settings.catalogs;
+        if settings.default_catalogs {
+            for default in crate::catalog::DEFAULT_CATALOGS {
+                if !catalogs.iter().any(|c| c == default) {
+                    catalogs.push(default.to_string());
+                }
+            }
+        }
+        catalogs
     }
 }
 
@@ -450,6 +472,31 @@ compare = ["mine"]
         assert!(m.package.is_none());
         assert!(matches!(m.dependencies["later"], Dependency::Version(_)));
         assert_eq!(m.settings.unwrap().default.as_deref(), Some("bsb"));
+    }
+
+    #[test]
+    fn a_vaults_catalogs_come_before_the_defaults() {
+        use crate::catalog::{DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
+        let catalogs = |settings: &str| {
+            Manifest::parse(&format!("[dependencies]\n[settings]\n{settings}"))
+                .unwrap()
+                .catalogs()
+        };
+        assert_eq!(Manifest::default().catalogs(), DEFAULT_CATALOGS);
+        assert_eq!(
+            catalogs("catalogs = [\"mine.toml\"]"),
+            ["mine.toml", EBIBLE_CATALOG, FETCH_BIBLE_CATALOG]
+        );
+        // Named again: listed once, where the vault puts it
+        let again = format!("catalogs = [\"{FETCH_BIBLE_CATALOG}\", \"mine.toml\"]");
+        assert_eq!(
+            catalogs(&again),
+            [FETCH_BIBLE_CATALOG, "mine.toml", EBIBLE_CATALOG]
+        );
+        assert_eq!(
+            catalogs("catalogs = [\"mine.toml\"]\ndefault-catalogs = false"),
+            ["mine.toml"]
+        );
     }
 
     #[test]

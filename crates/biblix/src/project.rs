@@ -164,6 +164,87 @@ impl Project {
         Ok(removed)
     }
 
+    /// The `[settings]` table, made if it's missing
+    fn settings_table(&mut self) -> Result<&mut Table> {
+        self.doc
+            .entry("settings")
+            .or_insert(Item::Table(Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| BiblixError::Manifest(String::from("[settings] isn't a table")))
+    }
+
+    /**
+    Adds a catalog to search (a URL or a path relative to the project) to `[settings] catalogs`;
+    whether it wasn't searched already. A default one (eBible.org's or fetch.bible's) is only
+    written when the defaults are turned off
+    */
+    pub fn add_catalog(&mut self, location: &str) -> Result<bool> {
+        if self.manifest.catalogs().iter().any(|c| c == location) {
+            return Ok(false);
+        }
+        let settings = self.settings_table()?;
+        let catalogs = settings
+            .entry("catalogs")
+            .or_insert(value(Array::new()))
+            .as_array_mut()
+            .ok_or_else(|| BiblixError::Manifest(String::from("catalogs isn't a list")))?;
+        catalogs.push(location);
+        // Every default named again: back to `default-catalogs = true`, unwritten
+        let defaults = crate::catalog::DEFAULT_CATALOGS;
+        let named: Vec<String> = (catalogs.iter())
+            .filter_map(|c| c.as_str().map(String::from))
+            .collect();
+        if defaults.iter().all(|d| named.iter().any(|c| c == d)) {
+            catalogs.retain(|c| c.as_str().is_none_or(|c| !defaults.contains(&c)));
+            if catalogs.is_empty() {
+                settings.remove("catalogs");
+            }
+            settings.remove("default-catalogs");
+        }
+        self.drop_empty_settings();
+        self.reparse()?;
+        Ok(true)
+    }
+
+    /**
+    Stops searching a catalog; whether it was searched. Removing eBible.org's or fetch.bible's
+    list turns the defaults off (`default-catalogs = false`) and names the other one instead
+    */
+    pub fn remove_catalog(&mut self, location: &str) -> Result<bool> {
+        if !self.manifest.catalogs().iter().any(|c| c == location) {
+            return Ok(false);
+        }
+        let named = (self.manifest.settings.as_ref())
+            .map(|s| s.catalogs.clone())
+            .unwrap_or_default();
+        let defaults = crate::catalog::DEFAULT_CATALOGS;
+        let mut kept: Vec<String> = named.into_iter().filter(|c| c != location).collect();
+        let settings = self.settings_table()?;
+        if defaults.contains(&location) {
+            for other in defaults.into_iter().filter(|d| *d != location) {
+                if !kept.iter().any(|c| c == other) {
+                    kept.push(other.to_string());
+                }
+            }
+            settings.insert("default-catalogs", value(false));
+        }
+        if kept.is_empty() {
+            settings.remove("catalogs");
+        } else {
+            settings.insert("catalogs", value(kept.iter().collect::<Array>()));
+        }
+        self.drop_empty_settings();
+        self.reparse()?;
+        Ok(true)
+    }
+
+    /// Drops `[settings]` once nothing is left in it
+    fn drop_empty_settings(&mut self) {
+        if (self.doc.get("settings").and_then(Item::as_table)).is_some_and(Table::is_empty) {
+            self.doc.remove("settings");
+        }
+    }
+
     fn reparse(&mut self) -> Result<()> {
         self.manifest = Manifest::parse(&self.doc.to_string())?;
         Ok(())
@@ -220,5 +301,66 @@ impl Project {
             translations = cache.open(package)?.add_to(translations);
         }
         Ok(translations)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::{DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
+
+    #[test]
+    fn catalogs_are_added_and_removed_keeping_comments() {
+        let text = "# My vault\n[dependencies]\n\n[settings]\n# Mine\ndefault = \"bsb\"\n";
+        let mut project = Project::from_text("", Some(text), None).unwrap();
+        assert!(
+            project
+                .add_catalog("https://example.org/catalog.toml")
+                .unwrap()
+        );
+        assert!(!project.add_catalog(EBIBLE_CATALOG).unwrap());
+        assert!(
+            project
+                .manifest_text()
+                .contains("# Mine\ndefault = \"bsb\"")
+        );
+        assert_eq!(
+            project.manifest().catalogs(),
+            [
+                "https://example.org/catalog.toml",
+                EBIBLE_CATALOG,
+                FETCH_BIBLE_CATALOG
+            ]
+        );
+
+        // Removing a default keeps the other one, by name
+        assert!(project.remove_catalog(EBIBLE_CATALOG).unwrap());
+        assert_eq!(
+            project.manifest().catalogs(),
+            ["https://example.org/catalog.toml", FETCH_BIBLE_CATALOG]
+        );
+        assert!(project.manifest_text().contains("default-catalogs = false"));
+        // Added back: the defaults again, and nothing about them written
+        assert!(project.add_catalog(EBIBLE_CATALOG).unwrap());
+        assert!(!project.manifest_text().contains("default-catalogs"));
+        assert!(!project.manifest_text().contains(FETCH_BIBLE_CATALOG));
+        let mine = "https://example.org/catalog.toml";
+        assert!(project.remove_catalog(mine).unwrap());
+        assert!(!project.remove_catalog(mine).unwrap());
+        assert_eq!(project.manifest().catalogs(), DEFAULT_CATALOGS);
+        assert!(!project.manifest_text().contains("catalogs"));
+        assert!(
+            project
+                .manifest_text()
+                .contains("[settings]\n# Mine\ndefault")
+        );
+
+        // A manifest without [settings]
+        let mut new = Project::from_text("", None, None).unwrap();
+        new.add_catalog("catalog.toml").unwrap();
+        assert!(
+            new.manifest_text()
+                .contains("[settings]\ncatalogs = [\"catalog.toml\"]")
+        );
     }
 }

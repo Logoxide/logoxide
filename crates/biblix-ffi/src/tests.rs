@@ -475,6 +475,17 @@ fn catalogs_and_ebible_imports() {
     let project = biblix.parse_project(None, None).unwrap();
     assert_eq!(project.catalogs()[0], biblix.ebible_catalog_url());
     assert_eq!(project.catalogs().len(), 2);
+    let mine = project.add_catalog("catalog.toml".into()).unwrap();
+    assert_eq!(mine.catalogs()[0], "catalog.toml");
+    assert!(
+        mine.manifest_text()
+            .contains("catalogs = [\"catalog.toml\"]")
+    );
+    let ebible = biblix.ebible_catalog_url();
+    assert!(mine.is_default_catalog(ebible.clone()));
+    let fewer = mine.remove_catalog(ebible.clone()).unwrap();
+    assert_eq!(fewer.catalogs().len(), 2);
+    assert!(!fewer.catalogs().contains(&ebible));
 }
 
 #[test]

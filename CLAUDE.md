@@ -32,7 +32,9 @@ before changing the design.
     packages, eBible.org's `translations.csv` (its downloadable, redistributable rows), or
     fetch.bible's `manifest.json` (`https://v1.fetch.bible/manifest.json`, not
     `/bibles/manifest.json`, an older form)); `search` ranks exact abbreviations and ids first; a
-    vault's `[settings] catalogs`, else both of those (`DEFAULT_CATALOGS`)
+    vault's `[settings] catalogs`, then both of those (`DEFAULT_CATALOGS`) unless
+    `default-catalogs = false`. `Project::add_catalog`/`remove_catalog` edit them (removing a
+    default turns the defaults off and names the other; naming both again turns them back on)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
     `biblix.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
     date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
@@ -70,7 +72,7 @@ before changing the design.
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
 - `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog entry <git URL>`, `media add <file> --url`
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry`, `media add <file> --url`
   (lists a file by size and hash), `media check` (downloads and checks every listed file). Catalogs and
   imports come over HTTPS with ureq; packages through git. The project
   is `--project`, else the current folder if it has a `biblix.toml`, else the library's own

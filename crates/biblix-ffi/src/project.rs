@@ -179,10 +179,32 @@ impl BiblixProject {
             .unwrap_or_default()
     }
 
-    /// The catalogs to search (`[settings] catalogs`, else eBible.org's list): URLs or paths
-    /// relative to the project, for `Biblix::parse_catalog`
+    /// The catalogs to search (`[settings] catalogs`, then eBible.org's and fetch.bible's lists
+    /// unless `default-catalogs = false`): URLs or paths relative to the project, for
+    /// `Biblix::parse_catalog`
     pub fn catalogs(&self) -> Vec<String> {
         self.project.manifest().catalogs()
+    }
+
+    /// Whether a catalog is one of the defaults (eBible.org's or fetch.bible's list)
+    pub fn is_default_catalog(&self, location: String) -> bool {
+        biblix_core::catalog::DEFAULT_CATALOGS.contains(&location.as_str())
+    }
+
+    /// This project searching a catalog too (the same if it already does): a URL or a path
+    /// relative to the project. Parse it first (`Biblix::parse_catalog`) to check it
+    pub fn add_catalog(&self, location: String) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        project.add_catalog(&location)?;
+        Ok(Self { project })
+    }
+
+    /// This project without a catalog. Removing eBible.org's or fetch.bible's list turns the
+    /// defaults off and keeps the other one
+    pub fn remove_catalog(&self, location: String) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        project.remove_catalog(&location)?;
+        Ok(Self { project })
     }
 
     /// This project with a dependency added (or replaced); `name` is the package's id
