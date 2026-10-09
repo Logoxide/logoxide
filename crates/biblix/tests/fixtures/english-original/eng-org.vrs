@@ -1,0 +1,31 @@
+# English = Original (the Hebrew Bible's numbering, BHS), as Paratext's eng.vrs maps them:
+# a few of its lines, for biblix's tests. The left side is English, the right the Original.
+# Verse 0 is a psalm's title, which English Bibles don't number and the Hebrew counts as
+# its first verse (or two).
+
+# Psalms whose title is one verse in Hebrew
+PSA 3:0-8 = PSA 3:1-9
+PSA 4:0-8 = PSA 4:1-9
+PSA 18:0-50 = PSA 18:1-51
+PSA 34:0-22 = PSA 34:1-23
+
+# Psalms whose title is two verses in Hebrew: one English verse 0 to each
+PSA 51:0 = PSA 51:1
+PSA 51:0 = PSA 51:2
+PSA 51:1-19 = PSA 51:3-21
+PSA 52:0 = PSA 52:1
+PSA 52:0 = PSA 52:2
+PSA 52:1-9 = PSA 52:3-11
+PSA 54:0 = PSA 54:1
+PSA 54:0 = PSA 54:2
+PSA 54:1-7 = PSA 54:3-9
+PSA 60:0 = PSA 60:1
+PSA 60:0 = PSA 60:2
+PSA 60:1-12 = PSA 60:3-14
+
+# Joel: English 2:28-32 is the Hebrew's chapter 3, and English 3 its chapter 4
+JOL 2:28-32 = JOL 3:1-5
+JOL 3:1-21 = JOL 4:1-21
+
+# Malachi: English chapter 4 is the end of the Hebrew's chapter 3
+MAL 4:1-6 = MAL 3:19-24

@@ -48,6 +48,8 @@ pub struct CatalogRelease {
     /// What its files hash to, as a lock file has it
     pub checksum: Option<String>,
     pub size: Option<u64>,
+    /// Withdrawn: new installs pass over it (a lock file that has it still installs it)
+    pub yanked: bool,
 }
 
 impl From<&CoreRelease> for CatalogRelease {
@@ -58,6 +60,7 @@ impl From<&CoreRelease> for CatalogRelease {
             sha256: r.sha256.clone(),
             checksum: r.checksum.clone(),
             size: r.size,
+            yanked: r.yanked,
         }
     }
 }
@@ -70,6 +73,7 @@ impl From<CatalogRelease> for CoreRelease {
             sha256: r.sha256,
             checksum: r.checksum,
             size: r.size,
+            yanked: r.yanked,
         }
     }
 }

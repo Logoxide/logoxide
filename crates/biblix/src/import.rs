@@ -176,6 +176,7 @@ fn finish(
         homepage: Some(made.homepage),
         upstream: Some(made.upstream),
         versification: String::from("own"),
+        maps_to: None,
         include: vec![],
     };
     let manifest = Manifest {

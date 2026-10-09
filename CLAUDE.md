@@ -88,6 +88,8 @@ before changing the design.
     chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
     `diff` (removed, renumbered: old text at another number, bridged, reworded, added) and
     `Change` (patch/minor/major; before 1.0 the minor counts as major, like Cargo).
+    `book_hashes` hashes one book's verses the same way (`BiblixPackage.verseHashes`), which
+    hosts put in links (`&ver=…&vh=…`) to find a verse again after an update
     `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
     verses) change: a minor change. The passages a book cites go in `biblix.references.bin`
     (the summary counts its references)
@@ -105,11 +107,24 @@ before changing the design.
     releases before summaries), check the version, write, commit, tag `v{version}`. A package in
     a folder of its repository (`GitCli::package_in`) has its own tags, `<folder>/v{version}`,
     and its commits take only its folder (nothing new: the current commit is tagged)
+  - `titles.rs`: each file's title (a Bible book's or an EPUB's): `[titles]` in the manifest,
+    else the file's (`\toc2`, `\h`, `\toc1`; `dc:title`), else the book's English name (a file of
+    many books: the package's name). Summaries list them (`titles`); a changed title is a major
+    change (`Diff::retitled`); `bx check` and `bx release` refuse an untitled file. Hosts name
+    what they show by it (`BookFile.title`, `BiblixPackage.titles()`)
   - `publish.rs`: release archives for registries: `pack` (declared files, sorted, no times or
     owners, so the same files make the same bytes), `sha256`, `add_release` (a catalog.toml's
     `[[package.release]]`: version, url relative to the catalog, sha256, checksum, size; a
-    published version never changes). `CatalogSource::Registry { catalog }` and
+    published version never changes), `yank` (`yanked = true`: `CatalogEntry::release`
+    passes over it; locks still install it). `CatalogSource::Registry { catalog }` and
     `CatalogEntry::releases`/`release(req)`; `relative_url`
+  - `versification.rs`: versification maps (`kind = "versification-map"`: `[package]
+    versification` to `maps-to`, a `vrs` format of Paratext `.vrs` mapping lines, so `eng.vrs`
+    reads as it is; verse 0 is a psalm's title). Unnamed verses keep their number unless another
+    took it (then no counterpart); `Versifications::route` follows maps both ways and through
+    each other; `Project::numbering` turns a Bible's name into its versification and counts,
+    `Project::map_reference` maps. The summary counts `mappings`; any change is minor. Sample
+    package: `crates/biblix/tests/fixtures/english-original` (lines from Paratext's eng.vrs)
 - `crates/biblix-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on biblix). `bible.rs`'s `Bible` reads a package or a plain
   USX folder through biblix sources; `settings.rs` finds the project (the `project` setting, a
@@ -123,11 +138,13 @@ before changing the design.
   names it, like `cargo new`; then `bx release`), `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>` and `publish <package> --to …`
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
+  released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
   (`publish.rs`: a folder registry, or GitHub releases through `gh`, the catalog being release
   `index`'s file and each archive a release `<id>-v<version>`), `add --registry <catalog> <id>`,
   `media add <file> --url`
-  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Completion
+  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings), `map "<reference>" --from <bible or
+  versification> --to …` (`--with <map package>` adds one not in the project). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash bx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `bx add`
   installs and locks what it adds. Catalogs and
@@ -145,7 +162,9 @@ before changing the design.
   across. `BiblixCatalog` (`catalog.rs`) searches catalogs, and `Biblix.importEbible` and
   `importFetchBible` make downloads into a package's files. `create.rs`: `fileMetadata`,
   `newPackage` (a package's files from one file), `newCollection`, `parseReferences`, and
-  `BiblixPackage.references()` and `epubFiles()`. `BiblixProject.packages()` lists each package
+  `BiblixPackage.references()` and `epubFiles()`. `BiblixVersifications` (`versification.rs`,
+  from `Biblix.versifications()`, then `withMap(package)` or `withVrs`) maps references
+  (`MappedPassage`: text, OSIS, verses, missing). `BiblixProject.packages()` lists each package
   the manifest asks for followed by what it brings in (`LockedEntry.dependencyOf`), so hosts see
   a collection's packages. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given (`Download` requests, answered with `provideDownload`, are registries' catalogs and

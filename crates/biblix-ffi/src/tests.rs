@@ -5,8 +5,8 @@ use std::collections::HashMap;
 
 use crate::{
     Biblix, BiblixError, BiblixInstaller, BiblixProject, BookStyle, BookTextOptions, Dependency,
-    FetchRequest, InspectStep, InstallStep, OffsetUnit, PackageFeatures, PackageFile, PackageKind,
-    PackageLocation, Topos, ToposTranslations, UpdateMode, VerseTiming,
+    FetchRequest, InspectStep, InstallStep, MappedVerse, OffsetUnit, PackageFeatures, PackageFile,
+    PackageKind, PackageLocation, Topos, ToposTranslations, UpdateMode, VerseTiming,
 };
 
 const USX: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -68,7 +68,9 @@ fn a_package_from_its_files() {
         package.book_files(),
         [crate::BookFile {
             book_id: 43,
-            path: "usx/JHN.usx".into()
+            path: "usx/JHN.usx".into(),
+            // The file names no title: the book's name in English
+            title: Some("John".into()),
         }]
     );
     let usx = Biblix::new()
@@ -76,6 +78,17 @@ fn a_package_from_its_files() {
         .unwrap();
     assert!(usx.contains("<verse number=\"16\""), "{usx}");
     assert_eq!(package.chapter_verses(43), [0, 0, 18]);
+    // Each verse's words hashed: what links record to find a verse again
+    let hashes = package.verse_hashes(43).unwrap();
+    assert_eq!(
+        hashes
+            .iter()
+            .map(|v| (v.chapter, v.verse))
+            .collect::<Vec<_>>(),
+        [(3, 16), (3, 17), (3, 18)]
+    );
+    assert!(hashes.iter().all(|v| v.hash.len() == 16));
+    assert_ne!(hashes[0].hash, hashes[1].hash);
     assert!(package.chapter_verses(1).is_empty());
     assert!(package.checksum().unwrap().starts_with("sha256:"));
     let missing = vec![file("biblix.toml", MANIFEST)];
@@ -386,6 +399,7 @@ fn registry() -> (String, Vec<u8>) {
         sha256: publish::sha256(&bytes),
         checksum: Some(biblix_core::package::checksum(&storage).unwrap()),
         size: None,
+        yanked: false,
     };
     let text = publish::add_release(None, "r", &info, None, &release)
         .unwrap()
@@ -773,4 +787,81 @@ fn making_packages() {
         ("John.3.16", 3)
     );
     assert!(biblix.parse_references(b"not one".to_vec()).is_err());
+}
+
+#[test]
+fn versification_maps_map_references() {
+    let fixture = |name: &str| {
+        let dir = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../biblix/tests/fixtures/english-original/"
+        );
+        std::fs::read_to_string(format!("{dir}{name}")).unwrap()
+    };
+    let biblix = Biblix::new();
+    let files = vec![
+        file("biblix.toml", &fixture("biblix.toml")),
+        file("eng-org.vrs", &fixture("eng-org.vrs")),
+    ];
+    let map = biblix.open_package(files, defaults(), vec![]).unwrap();
+    let info = map.info();
+    assert_eq!(info.kind, PackageKind::VersificationMap);
+    assert_eq!(
+        (info.versification.as_str(), info.maps_to.as_deref()),
+        ("English", Some("Original"))
+    );
+    let maps = biblix.versifications().with_map(&map).unwrap();
+    assert_eq!(maps.names(), ["English", "Original"]);
+    let mapped = maps
+        .map(
+            "Psalm 51:1-2".into(),
+            "English".into(),
+            "Original".into(),
+            None,
+        )
+        .unwrap();
+    assert_eq!(
+        (mapped.text.as_str(), mapped.osis.as_str()),
+        ("Psalm 51:3-4", "Ps.51.3-Ps.51.4")
+    );
+    assert_eq!(
+        mapped.verses[0],
+        MappedVerse {
+            book: 19,
+            chapter: 51,
+            verse: 3
+        }
+    );
+    // Hebrew Malachi has no chapter 4
+    let none = maps
+        .map(
+            "Malachi 4:1".into(),
+            "Original".into(),
+            "English".into(),
+            None,
+        )
+        .unwrap();
+    assert!(none.verses.is_empty());
+    assert_eq!(none.missing_text, "Malachi 4:1");
+    // From a .vrs file's text, and through both maps
+    let maps = maps
+        .with_vrs(
+            "Vulgate".into(),
+            "Original".into(),
+            "PSA 50:1-21 = PSA 51:1-21".into(),
+        )
+        .unwrap();
+    let vulgate = maps
+        .map(
+            "Psalm 51:1".into(),
+            "english".into(),
+            "vulgate".into(),
+            None,
+        )
+        .unwrap();
+    assert_eq!(vulgate.text, "Psalm 50:3");
+    assert!(matches!(
+        maps.map("Psalm 51:1".into(), "English".into(), "LXX".into(), None),
+        Err(BiblixError::Versification { .. })
+    ));
 }

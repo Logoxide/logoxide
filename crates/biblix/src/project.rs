@@ -16,7 +16,20 @@ use crate::{
     manifest::{Dependency, DetailedDependency, MANIFEST, Manifest, PackageKind},
     resolve::{Resolver, Update},
 };
-use topos_bible::data::translations::Translations;
+use std::collections::BTreeMap;
+
+use topos_bible::data::{books::BookId, chapter_verses::ChapterVerses, translations::Translations};
+
+use crate::versification::{Mapped, VersificationMap, Versifications};
+
+/// What a Bible (or a versification named alone) numbers verses by: [`Project::numbering`]
+#[derive(Clone, Debug)]
+pub struct Numbering {
+    /// The versification's name (`English`)
+    pub versification: String,
+    /// A Bible's own verse counts, by book (none for a versification named alone)
+    pub counts: BTreeMap<BookId, ChapterVerses>,
+}
 
 /// A new project's `biblix.toml`
 const NEW_MANIFEST: &str = "# The Bibles this uses: `bx add --git URL`\n[dependencies]\n";
@@ -353,17 +366,12 @@ impl Project {
         Ok(self.lock.insert(lock))
     }
 
-    /**
-    The translations the manifest asks for (its Bibles, and those in its collections; not other
-    dependencies), for topos: each one's abbreviation, aliases, and verse counts, from the
-    library's cache
-    */
-    pub fn translations(&self, library: &Library) -> Result<Translations> {
-        let mut translations = Translations::default();
+    /// The Bibles the manifest asks for, and those in its collections, each opened
+    fn bibles(&self, library: &Library) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
+        let mut bibles = vec![];
         let Some(lock) = &self.lock else {
-            return Ok(translations);
+            return Ok(bibles);
         };
-        let cache = library.book_cache();
         // The manifest's packages, and what each collection among them brings in
         let mut todo: Vec<&crate::LockedPackage> = lock.roots().collect();
         todo.reverse();
@@ -378,15 +386,98 @@ impl Project {
                 todo.extend(inside.rev());
                 continue;
             }
-            if package.info().kind != PackageKind::Bible {
-                continue;
+            if package.info().kind == PackageKind::Bible {
+                bibles.push((locked, package));
             }
+        }
+        Ok(bibles)
+    }
+
+    /**
+    The translations the manifest asks for (its Bibles, and those in its collections; not other
+    dependencies), for topos: each one's abbreviation, aliases, and verse counts, from the
+    library's cache
+    */
+    pub fn translations(&self, library: &Library) -> Result<Translations> {
+        let mut translations = Translations::default();
+        let cache = library.book_cache();
+        for (locked, package) in self.bibles(library)? {
             let (abbreviation, aliases) = self.names(locked.dependency_name(), package.info());
             translations = cache
                 .open(package)?
                 .add_as(translations, &abbreviation, &aliases);
         }
         Ok(translations)
+    }
+
+    /// The versification maps in the lock (any package of it, so a Bible's own dependency on a
+    /// map counts too)
+    pub fn versifications(&self, library: &Library) -> Result<Versifications> {
+        let mut maps = Versifications::default();
+        for locked in self.lock.iter().flat_map(|lock| &lock.packages) {
+            let package = library.open(locked, &self.dir)?;
+            if package.info().kind == PackageKind::VersificationMap {
+                maps.add(VersificationMap::from_package(&package)?);
+            }
+        }
+        Ok(maps)
+    }
+
+    /**
+    What a name numbers verses by, for mapping: one of the project's Bibles (what the manifest
+    calls it, its abbreviation, or an alias, ignoring case) is its `versification`, with its own
+    verse counts; any other name is a versification's (`English`). A Bible numbered its own
+    way (`versification = "own"`) is an error: it says nothing a map can use
+    */
+    pub fn numbering(&self, library: &Library, name: &str) -> Result<Numbering> {
+        for (locked, package) in self.bibles(library)? {
+            let (abbreviation, aliases) = self.names(locked.dependency_name(), package.info());
+            let names = [locked.dependency_name(), abbreviation.as_str()];
+            let is = (names.into_iter().chain(aliases.iter().map(String::as_str)))
+                .any(|n| n.eq_ignore_ascii_case(name));
+            if !is {
+                continue;
+            }
+            let versification = package.info().versification.clone();
+            if versification == "own" {
+                return Err(BiblixError::Versification(format!(
+                    "{name} names no versification (`versification = \"own\"`): give its \
+                     [package] one (`versification = \"English\"`), or name a versification"
+                )));
+            }
+            let cached = library.book_cache().open(package)?;
+            let counts = (cached.manifest().books.iter())
+                .map(|(book, counts)| (*book, ChapterVerses::new(counts.clone())))
+                .collect();
+            return Ok(Numbering {
+                versification,
+                counts,
+            });
+        }
+        Ok(Numbering {
+            versification: name.to_string(),
+            counts: BTreeMap::new(),
+        })
+    }
+
+    /// Where a reference numbered by one Bible or versification is in another's numbering
+    /// (see [`Project::numbering`]), through the project's maps
+    pub fn map_reference(
+        &self,
+        library: &Library,
+        reference: &str,
+        from: &str,
+        to: &str,
+    ) -> Result<Mapped> {
+        let passage = crate::versification::parse_reference(reference)?;
+        let (from, to) = (self.numbering(library, from)?, self.numbering(library, to)?);
+        let counts = from.counts.get(&passage.book);
+        (self.versifications(library)?).map(
+            &passage,
+            &from.versification,
+            &to.versification,
+            counts,
+        )
     }
 
     /// What references name a dependency by here: its `abbreviation` and `aliases` in the

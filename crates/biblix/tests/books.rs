@@ -95,6 +95,10 @@ fn a_book_from_an_epub() {
         biblix::references::epub_files(&package).unwrap(),
         ["epub/Freely-Given.epub"]
     );
+    // Its title is the EPUB's own
+    let titles = biblix::titles::titles(&package).unwrap();
+    assert_eq!(titles.len(), 1);
+    assert!(titles[0].title.is_some(), "{titles:?}");
     let found = biblix::references::find(&package).unwrap();
     let passages: Vec<&str> = found.iter().map(|r| r.passage.as_str()).collect();
     assert_eq!(passages, ["Matt.10.8", "1Cor.9", "John.3.16-John.3.18"]);

@@ -179,6 +179,38 @@ pub fn add_release(
     Ok(Some(doc.to_string()))
 }
 
+/**
+A registry's `catalog.toml` with a release yanked (`yanked = true`: new installs pass over it,
+lock files that have it still install it), or put back. An error when the catalog has no such
+release
+*/
+pub fn yank(text: &str, id: &str, version: &str, yanked: bool) -> Result<String> {
+    let mut doc: toml_edit::DocumentMut = text
+        .parse()
+        .map_err(|e| BiblixError::Catalog(format!("catalog.toml: {e}")))?;
+    let release = (doc
+        .get_mut("package")
+        .and_then(|p| p.as_array_of_tables_mut()))
+    .and_then(|packages| {
+        (packages.iter_mut()).find(|t| t.get("id").and_then(|i| i.as_str()) == Some(id))
+    })
+    .and_then(|package| package.get_mut("release"))
+    .and_then(|r| r.as_array_of_tables_mut())
+    .and_then(|releases| {
+        (releases.iter_mut()).find(|r| r.get("version").and_then(|v| v.as_str()) == Some(version))
+    })
+    .ok_or_else(|| BiblixError::Catalog(format!("no release {id} {version} here")))?;
+    match yanked {
+        true => {
+            release.insert("yanked", toml_edit::value(true));
+        }
+        false => {
+            release.remove("yanked");
+        }
+    }
+    Ok(doc.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -230,6 +262,7 @@ mod tests {
             sha256: sha.into(),
             checksum: Some("sha256:00".into()),
             size: Some(10),
+            yanked: false,
         };
         let (_, one) = package("1.0.0");
         let (_, two) = package("1.1.0");
@@ -291,5 +324,13 @@ mod tests {
         );
         let req: semver::VersionReq = "~1.0".parse().unwrap();
         assert_eq!(entry.release(Some(&req)).unwrap().version, "1.0.0");
+
+        // Yanked: new installs take the newest release left, and it can be put back
+        let yanked = yank(&text, "romans", "1.1.0", true).unwrap();
+        let catalog = Catalog::parse("catalog.toml", &yanked).unwrap();
+        assert_eq!(catalog.entries[0].release(None).unwrap().version, "1.0.0");
+        let back = yank(&yanked, "romans", "1.1.0", false).unwrap();
+        assert_eq!(back, text);
+        assert!(yank(&text, "romans", "9.0.0", true).is_err());
     }
 }

@@ -60,6 +60,9 @@ pub struct Manifest {
     /// ([`crate::media`])
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub media: Option<crate::media::Media>,
+    /// Files' titles, by path, in place of what the files say ([`crate::titles`])
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub titles: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -100,6 +103,10 @@ pub struct Package {
     /// `own` (the text's verse markers say), or a named system: `KJV`, `NRSV`, `MT`, ...
     #[serde(default = "own", skip_serializing_if = "is_own")]
     pub versification: String,
+    /// For a versification map: the versification it maps `versification` to
+    /// ([`crate::versification`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maps_to: Option<String>,
     /// More files the package is made of, as patterns (`README.md`, `images/**`): besides
     /// these, only what the manifest names is (see [`crate::package::declared_files`])
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -165,6 +172,9 @@ pub enum Format {
     /// A book as an EPUB: kept and summarized as files, not read as verses (topos finds the
     /// references in it)
     Epub,
+    /// A versification map's lines, as Paratext's `.vrs` files write them
+    /// ([`crate::versification`])
+    Vrs,
 }
 
 impl Format {
@@ -178,6 +188,7 @@ impl Format {
             "thml" => Format::Thml,
             "zefania" => Format::Zefania,
             "epub" => Format::Epub,
+            "vrs" => Format::Vrs,
             _ => return None,
         })
     }
@@ -193,6 +204,7 @@ impl Format {
             Format::Thml => &["xml", "thml"],
             Format::Zefania => &["xml"],
             Format::Epub => &["epub"],
+            Format::Vrs => &["vrs"],
             Format::Sword => return None,
         })
     }
@@ -375,6 +387,25 @@ impl Manifest {
                     ));
                 }
                 _ => {}
+            }
+            // A map names both versifications
+            match (package.kind, &package.maps_to) {
+                (PackageKind::VersificationMap, None) => {
+                    return err(String::from(
+                        "a versification map names what it maps to: maps-to = \"Original\"",
+                    ));
+                }
+                (PackageKind::VersificationMap, Some(_)) if is_own(&package.versification) => {
+                    return err(String::from(
+                        "a versification map names what it maps from: versification = \"English\"",
+                    ));
+                }
+                (PackageKind::VersificationMap, _) | (_, None) => {}
+                (_, Some(_)) => {
+                    return err(String::from(
+                        "only a versification map has maps-to (kind = \"versification-map\")",
+                    ));
+                }
             }
         }
         for (name, format) in &self.formats {

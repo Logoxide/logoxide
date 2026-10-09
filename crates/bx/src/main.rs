@@ -258,10 +258,43 @@ enum Command {
         /// The registry: a folder, or `github:owner/repo` (its releases, through gh)
         #[arg(long)]
         to: String,
+        /// Every package in the folder and its folders whose version is released (a repository of
+        /// many): each not published yet is
+        #[arg(long)]
+        all: bool,
+    },
+    /// Withdraws a release from a registry: new installs and updates pass over it, while lock
+    /// files that have it still install it (nobody's text changes under them)
+    Yank {
+        /// The package's id
+        id: String,
+        /// The release's version
+        version: String,
+        /// The registry: a folder, or `github:owner/repo`
+        #[arg(long)]
+        from: String,
+        /// Put it back
+        #[arg(long)]
+        undo: bool,
     },
     /// A package's audio and video, listed by URL and hash
     #[command(subcommand)]
     Media(MediaCommand),
+    /// Where a reference numbered one way is in another numbering, through the project's
+    /// versification maps: `bx map "Psalm 51:1" --from English --to Original`. --from and --to
+    /// name Bibles here (by name, abbreviation, or alias: their `versification`) or
+    /// versifications
+    Map {
+        /// `Psalm 51:1`, `Joel 3`, `Malachi 4:1-6`
+        reference: String,
+        #[arg(long, add = ArgValueCompleter::new(complete::dependency))]
+        from: String,
+        #[arg(long, add = ArgValueCompleter::new(complete::dependency))]
+        to: String,
+        /// A map package's folder to use too (repeat for more), besides the project's
+        #[arg(long = "with", value_hint = clap::ValueHint::DirPath)]
+        with: Vec<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -547,10 +580,20 @@ fn main() -> ExitCode {
             name,
             private,
         }) => publish::init(&publish::Host::parse(host), name.as_deref(), *private),
-        Command::Publish { path, to } => {
+        Command::Publish { path, to, all } => {
             let library = cli.library();
-            publish::publish(path, &publish::Host::parse(to), &cli.fetcher(&library))
+            let (host, git) = (publish::Host::parse(to), cli.fetcher(&library));
+            match all {
+                true => publish::publish_all(path, &host, &git),
+                false => publish::publish(path, &host, &git),
+            }
         }
+        Command::Yank {
+            id,
+            version,
+            from,
+            undo,
+        } => publish::yank(&publish::Host::parse(from), id, version, *undo),
         Command::Catalog(CatalogCommand::Build {
             dir,
             output,
@@ -575,6 +618,12 @@ fn main() -> ExitCode {
             package,
         }) => media_add(file, url, book.as_deref(), package),
         Command::Media(MediaCommand::Check { package, offline }) => media_check(package, *offline),
+        Command::Map {
+            reference,
+            from,
+            to,
+            with,
+        } => map(&cli, reference, from, to, with),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -775,6 +824,11 @@ fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
     let package = args.open()?;
     let package_kind = package.info().kind;
     let timings = biblix::media::check_package_timings(&package)?;
+    let titles = biblix::titles::titles(&package)?;
+    // A map is read whole: its lines parse, name known books, and don't overlap
+    let map = (package_kind == biblix::manifest::PackageKind::VersificationMap)
+        .then(|| biblix::versification::VersificationMap::from_package(&package))
+        .transpose()?;
     let start = Instant::now();
     let (mut verses, mut books) = (0, 0);
     match cache {
@@ -803,8 +857,17 @@ fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
             }
         }
     }
-    match package_kind {
-        biblix::manifest::PackageKind::Collection => {
+    match (package_kind, map) {
+        (_, Some(map)) => {
+            println!(
+                "a versification map from {} to {}: {} lines, {} verses mapped",
+                map.from,
+                map.to,
+                map.mappings().len(),
+                map.len()
+            )
+        }
+        (biblix::manifest::PackageKind::Collection, _) => {
             println!("a collection: no text of its own, only its dependencies")
         }
         _ if books == 0 => {
@@ -815,7 +878,59 @@ fn check(args: &PackageArgs, cache: Option<PathBuf>) -> biblix::Result<()> {
             start.elapsed()
         ),
     }
-    timings_report(&timings)
+    // Each file's title: a few are listed, many counted
+    let untitled: Vec<&str> = (titles.iter())
+        .filter(|t| t.title.is_none())
+        .map(|t| t.path.as_str())
+        .collect();
+    let titled: Vec<String> = (titles.iter())
+        .filter_map(|t| Some(format!("{} ({})", t.title.as_deref()?, t.path)))
+        .collect();
+    match titled.len() {
+        0 => {}
+        1..=5 => println!("titles: {}", titled.join(", ")),
+        n => println!("{n} files titled: {} … {}", titled[0], titled[n - 1]),
+    }
+    timings_report(&timings)?;
+    if !untitled.is_empty() {
+        return Err(biblix::BiblixError::Manifest(format!(
+            "no title for {} (give one in biblix.toml's [titles])",
+            untitled.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+/// Prints where a reference is in another numbering, and its verses that have no counterpart
+fn map(cli: &Cli, reference: &str, from: &str, to: &str, with: &[PathBuf]) -> biblix::Result<()> {
+    use biblix::versification::{VersificationMap, parse_reference};
+    let library = cli.library();
+    let project = cli.project(&library)?;
+    let mut maps = project.versifications(&library)?;
+    for dir in with {
+        let package = Package::open(Arc::new(FsStorage::new(dir)), Features::default())?;
+        maps.add(VersificationMap::from_package(&package)?);
+    }
+    let passage = parse_reference(reference)?;
+    let (from, to) = (
+        project.numbering(&library, from)?,
+        project.numbering(&library, to)?,
+    );
+    let counts = from.counts.get(&passage.book);
+    let mapped = maps.map(&passage, &from.versification, &to.versification, counts)?;
+    match mapped.verses.is_empty() {
+        true => println!("(no counterpart in {})", to.versification),
+        false => println!("{} ({})", mapped.text(), to.versification),
+    }
+    if !mapped.missing.is_empty() {
+        println!(
+            "not in {}: {} ({})",
+            to.versification,
+            mapped.missing_text(),
+            from.versification
+        );
+    }
+    Ok(())
 }
 
 /// Prints a package's timing problems; an error if it has any

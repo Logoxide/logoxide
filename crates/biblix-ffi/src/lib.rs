@@ -16,6 +16,7 @@ mod package;
 mod project;
 #[cfg(test)]
 mod tests;
+mod versification;
 
 pub use catalog::*;
 pub use create::*;
@@ -23,6 +24,7 @@ pub use installer::*;
 pub use package::*;
 pub use project::*;
 pub use topos_bible::*;
+pub use versification::*;
 
 use boltffi::*;
 
@@ -47,6 +49,8 @@ pub enum BiblixError {
     Import { message: String },
     /// A package's media list or timings are wrong
     Media { message: String },
+    /// A versification map can't be read, or none leads where asked
+    Versification { message: String },
 }
 
 impl From<biblix_core::BiblixError> for BiblixError {
@@ -62,6 +66,7 @@ impl From<biblix_core::BiblixError> for BiblixError {
             E::Catalog(_) => BiblixError::Catalog { message },
             E::Import(_) => BiblixError::Import { message },
             E::Media(_) => BiblixError::Media { message },
+            E::Versification(_) => BiblixError::Versification { message },
             E::Io { .. }
             | E::BadPath(_)
             | E::ReadOnly
@@ -156,6 +161,12 @@ impl Biblix {
     /// project's `catalogs()` has it and fetch.bible's unless it names others)
     pub fn ebible_catalog_url(&self) -> String {
         biblix_core::catalog::EBIBLE_CATALOG.to_string()
+    }
+
+    /// No versification maps yet: add map packages with `withMap` (or `.vrs` text with
+    /// `withVrs`), then `map` references between the versifications they connect
+    pub fn versifications(&self) -> BiblixVersifications {
+        BiblixVersifications::default()
     }
 
     /// A catalog from its file's text: eBible.org's CSV when `location` ends in `.csv`, else a

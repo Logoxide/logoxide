@@ -234,6 +234,7 @@ pub fn publish(dir: &Path, host: &Host, git: &biblix::git::GitCli) -> biblix::Re
         sha256: sha256.clone(),
         checksum: Some(packed.checksum.clone()),
         size: Some(packed.bytes.len() as u64),
+        yanked: false,
     };
     let label = format!("{} {}", info.id, info.version);
     let size = packed.bytes.len() as f64 / 1_000_000.0;
@@ -340,5 +341,85 @@ pub fn publish(dir: &Path, host: &Host, git: &biblix::git::GitCli) -> biblix::Re
         host.catalog_location(),
         packed.path.as_deref().unwrap_or(&info.id)
     );
+    Ok(())
+}
+
+/**
+`bx publish --all`: every package in a folder (its own, and its folders' at any depth, not inside
+`.git`) whose version has a release tag, published (each already published is said so); one
+without a release is passed over
+*/
+pub fn publish_all(dir: &Path, host: &Host, git: &biblix::git::GitCli) -> biblix::Result<()> {
+    let mut found = vec![];
+    let mut pending = vec![dir.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        if folder.join(biblix::manifest::MANIFEST).is_file() {
+            found.push(folder.clone());
+        }
+        let entries = std::fs::read_dir(&folder).map_err(|e| io(&folder, e))?;
+        for entry in entries.flatten() {
+            let hidden = entry.file_name().to_string_lossy().starts_with('.');
+            if !hidden && entry.file_type().is_ok_and(|t| t.is_dir()) {
+                pending.push(entry.path());
+            }
+        }
+    }
+    found.sort();
+    for package in found {
+        match publish(&package, host, git) {
+            Err(BiblixError::Resolve(message)) if message.contains("bx release first") => {
+                println!("{}: not released yet, passed over", package.display())
+            }
+            // A vault's manifest, or a folder that isn't a package
+            Err(BiblixError::Manifest(message)) if message.contains("no [package]") => {}
+            result => result?,
+        }
+    }
+    Ok(())
+}
+
+/// `bx yank`: a release withdrawn from a registry (new installs pass over it), or put back
+pub fn yank(host: &Host, id: &str, version: &str, undo: bool) -> biblix::Result<()> {
+    let what = if undo { "Put back" } else { "Yanked" };
+    match host {
+        Host::Folder(registry) => {
+            let catalog = registry.join(CATALOG);
+            let text = std::fs::read_to_string(&catalog).map_err(|e| io(&catalog, e))?;
+            let updated = publish::yank(&text, id, version, !undo)?;
+            std::fs::write(&catalog, updated).map_err(|e| io(&catalog, e))?;
+            println!("{what} {id} {version} in {}", registry.display());
+        }
+        Host::GitHub(repo) => {
+            let work = scratch("yank")?;
+            gh(&[
+                "release",
+                "download",
+                INDEX,
+                "-R",
+                repo,
+                "-p",
+                CATALOG,
+                "-D",
+                &work.display().to_string(),
+                "--clobber",
+            ])?;
+            let catalog = work.join(CATALOG);
+            let text = std::fs::read_to_string(&catalog).map_err(|e| io(&catalog, e))?;
+            std::fs::write(&catalog, publish::yank(&text, id, version, !undo)?)
+                .map_err(|e| io(&catalog, e))?;
+            gh(&[
+                "release",
+                "upload",
+                INDEX,
+                &catalog.display().to_string(),
+                "-R",
+                repo,
+                "--clobber",
+            ])?;
+            let _ = std::fs::remove_dir_all(&work);
+            println!("{what} {id} {version} in github.com/{repo}");
+        }
+    }
+    println!("Lock files that have it still install it; new installs and updates pass over it");
     Ok(())
 }

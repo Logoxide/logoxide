@@ -81,8 +81,10 @@ pub struct PackageInfo {
     pub homepage: Option<String>,
     /// Where the text was imported from, if anywhere
     pub upstream: Option<String>,
-    /// `own` (the text's verse markers say), or a named system like `KJV`
+    /// `own` (the text's verse markers say), or a named system like `English`
     pub versification: String,
+    /// For a versification map: the versification it maps `versification` to
+    pub maps_to: Option<String>,
 }
 
 impl From<&manifest::Package> for PackageInfo {
@@ -104,6 +106,7 @@ impl From<&manifest::Package> for PackageInfo {
             homepage: info.homepage.clone(),
             upstream: info.upstream.clone(),
             versification: info.versification.clone(),
+            maps_to: info.maps_to.clone(),
         }
     }
 }
@@ -184,6 +187,29 @@ pub struct BookFile {
     pub book_id: u8,
     /// Relative to the package's folder: `usx/JHN.usx`
     pub path: String,
+    /// What readers see it as (`John`): its title in `[titles]`, else the file's, else the book's
+    /// name in English
+    pub title: Option<String>,
+}
+
+/// A verse of a book (a bridge, `4-5`, is one) and the hash of its words, as hex
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerseHashEntry {
+    pub chapter: u8,
+    pub verse: u8,
+    /// The last verse a bridge covers (`verse` otherwise)
+    pub last: u8,
+    pub hash: String,
+}
+
+/// A file a reader sees (a Bible book's, or an EPUB) and its title
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TitledFile {
+    pub path: String,
+    /// None when nothing gives one (`bx check` refuses that)
+    pub title: Option<String>,
 }
 
 /// A memory storage that remembers what was written to it, so the host can save it
@@ -300,6 +326,10 @@ impl BiblixPackage {
         let cached = Cache::new(cache_storage).open(package)?;
         Ok(Self { cached, cache })
     }
+
+    pub(crate) fn package(&self) -> &Package {
+        self.cached.package()
+    }
 }
 
 #[export]
@@ -362,11 +392,44 @@ impl BiblixPackage {
     /// Each book's file, relative to the package's folder (`usx/JHN.usx`), for hosts that open
     /// book files themselves
     pub fn book_files(&self) -> Vec<BookFile> {
+        let titles = self.titles();
         let files = self.cached.package().source().files();
         (files.iter())
             .map(|(id, path)| BookFile {
                 book_id: id.0,
                 path: path.clone(),
+                title: (titles.iter())
+                    .find(|t| t.path == *path)
+                    .and_then(|t| t.title.clone()),
+            })
+            .collect()
+    }
+
+    /**
+    Each verse of a book, with the hash of its words (notes and headings left out; the first 8
+    bytes of their SHA-256, as hex): a link made to a verse records it, and finds the verse again
+    in a later version by it (the same words renumbered), or knows they changed
+    */
+    pub fn verse_hashes(&self, book_id: u8) -> Result<Vec<VerseHashEntry>, BiblixError> {
+        let book = self.cached.book(BookId(book_id))?;
+        Ok((biblix_core::summary::book_hashes(&book).into_iter())
+            .map(|v| VerseHashEntry {
+                chapter: v.chapter,
+                verse: v.verse,
+                last: v.last,
+                hash: v.hash.iter().map(|b| format!("{b:02x}")).collect(),
+            })
+            .collect())
+    }
+
+    /// Each Bible book's file and each EPUB, with its title, in path order: what hosts name the
+    /// files they show by (a title changes only in a major release)
+    pub fn titles(&self) -> Vec<TitledFile> {
+        (biblix_core::titles::titles(self.cached.package()).unwrap_or_default())
+            .into_iter()
+            .map(|t| TitledFile {
+                path: t.path,
+                title: t.title,
             })
             .collect()
     }

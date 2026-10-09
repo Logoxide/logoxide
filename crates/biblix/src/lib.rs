@@ -30,6 +30,8 @@ pub mod resolve;
 pub mod source;
 pub mod storage;
 pub mod summary;
+pub mod titles;
+pub mod versification;
 
 use std::sync::LazyLock;
 

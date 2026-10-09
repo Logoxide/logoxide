@@ -404,6 +404,7 @@ fn publish(package: &Path, registry: &Path) {
         sha256: publish::sha256(&bytes),
         checksum: Some(biblix::package::checksum(&storage).unwrap()),
         size: Some(bytes.len() as u64),
+        yanked: false,
     };
     let text = publish::add_release(text.as_deref(), "test", &info, None, &release)
         .unwrap()

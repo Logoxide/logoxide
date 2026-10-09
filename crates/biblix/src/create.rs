@@ -273,6 +273,7 @@ pub fn new_from_file(
         homepage: given.homepage.clone(),
         upstream: None,
         versification: String::from("own"),
+        maps_to: None,
         include: vec![],
     };
     let manifest = Manifest {
@@ -316,6 +317,7 @@ pub fn new_collection(given: &NewPackage, dest: &dyn Storage) -> Result<Manifest
         homepage: given.homepage.clone(),
         upstream: None,
         versification: String::from("own"),
+        maps_to: None,
         include: vec![],
     };
     let manifest = Manifest {

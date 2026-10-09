@@ -272,12 +272,25 @@ bx add dorean:the-dorean-principle      # { registry = "https://…/catalog.toml
 bx add --registry https://…/catalog.toml the-dorean-principle   # without naming it
 ```
 
+`bx publish --all` publishes every package in the repository whose version is released and
+isn't published yet. A bad release can be yanked (`bx yank the-dorean-principle 1.0.3 --from
+github:MasterTemple/dorean-epubs`): new installs and updates pass over it, while lock files that
+have it still install it; `--undo` puts it back.
+
 The lock pins the release's archive and hash, so another device downloads that file alone (not
 even the catalog), and an archive that changed is refused. A published version never changes:
 publishing it again with other files is an error. A folder registry can be served by any static
 host (a web server, GitHub Pages, an S3 bucket). The Obsidian plugin installs from registries
 on the web too, phones included; a collection's packages can come from a registry
 (`{ registry = …, version = … }` in its `[dependencies]`).
+
+### Titles
+
+Each file a reader sees has a title, which apps name it by (the Obsidian plugin's
+`Biblix/bsb/John.bible`): a Bible book's short name in the file (`\toc2`, else `\h`), an EPUB's
+title, else the book's name in English. `[titles]` in `biblix.toml` gives one in its place
+(`"usx/JHN.usx" = "Juan"`). `bx check` lists them and refuses a file without one, and a changed
+title is a major change, since links name the file by it.
 
 ### Audio
 
@@ -405,6 +418,52 @@ the-doctrine-of-simony = { git = "https://github.com/someone/the-doctrine-of-sim
 
 ```sh
 bx add github:someone/dorean-collection -F simony --no-default-features
+```
+
+## Versification maps
+
+`Psalm 51:1` in an English Bible is `Psalm 51:3` in the Hebrew (whose psalm titles are
+numbered), and English Malachi 4:1 is Hebrew 3:19. A Bible names how it numbers verses
+(`[package] versification = "English"`; `own`, the default, names nothing a map can use), and a
+map package says where one numbering's verses are in another, in Paratext's `.vrs` form, so
+Paratext's own `eng.vrs` works as it is:
+
+```toml
+[package]
+id = "english-original"
+name = "English to Original versification"
+abbreviation = "ENG-ORG"
+version = "1.0.0"
+kind = "versification-map"
+language = "en"
+versification = "English"      # the left side of each line
+maps-to = "Original"           # the right side
+
+[formats]
+vrs = { path = "eng.vrs" }
+```
+
+```text
+PSA 51:0 = PSA 51:1            # verse 0: the title, which English Bibles don't number
+PSA 51:0 = PSA 51:2
+PSA 51:1-19 = PSA 51:3-21      # ranges within a chapter, verse by verse
+MAL 4:1-6 = MAL 3:19-24
+```
+
+`bx check` reads every line (known books, no verse on two lines of one side unless each names it
+alone), the summary counts the verses mapped, and any change to the lines is at least a minor
+release. Once a project has one (`bx add`, or a Bible's own dependency), references map between
+its Bibles, by name, abbreviation, or alias, or between versifications by name, both ways and
+through several maps:
+
+```sh
+bx map "Psalm 51:1" --from kjv --to Original
+# Psalm 51:3 (Original)
+bx map "Malachi 3:19-4:2" --from Original --to English
+# Malachi 4:1-6 (English)
+# not in English: Malachi 4:1-2 (Original)
+bx map "Joel 3" --from English --to Original --with ./english-original   # a map not added
+# Joel 4:1-21 (Original)
 ```
 
 ## Commentaries and other formats (a sketch)

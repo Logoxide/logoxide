@@ -84,6 +84,10 @@ pub struct CatalogRelease {
     /// The archive's size in bytes
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
+    /// Withdrawn (`bx yank`): new installs don't choose it, but a lock file that has it still
+    /// installs it, so nobody's text changes under them
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub yanked: bool,
 }
 
 impl CatalogSource {
@@ -145,10 +149,11 @@ pub struct CatalogEntry {
 impl CatalogEntry {
     /**
     The newest release `req` allows (without one, the newest that isn't a pre-release), from a
-    registry's archives
+    registry's archives; a yanked one never
     */
     pub fn release(&self, req: Option<&semver::VersionReq>) -> Option<&CatalogRelease> {
         (self.releases.iter())
+            .filter(|r| !r.yanked)
             .filter_map(|r| Some((r.version.parse::<semver::Version>().ok()?, r)))
             .filter(|(v, _)| match req {
                 Some(req) => req.matches(v),

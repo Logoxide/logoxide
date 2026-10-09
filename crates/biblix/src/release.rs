@@ -99,6 +99,13 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
             problems.join("; ")
         )));
     }
+    let untitled = crate::titles::untitled(&package)?;
+    if !untitled.is_empty() {
+        return Err(BiblixError::Manifest(format!(
+            "no title for {} (give one in biblix.toml's [titles])",
+            untitled.join(", ")
+        )));
+    }
     let (summary, verses) = summarize(&package)?;
     let tags = git.local_versions(repo)?;
     // The newest release (the version must be newer than it)
@@ -158,12 +165,21 @@ pub fn describe(d: &Diff) -> String {
     .filter(|(n, _)| *n > 0)
     .map(|(n, what)| format!("{n} verse{} {what}", if n == 1 { "" } else { "s" }))
     .collect();
-    if d.files_changed {
+    let what = if d.files_changed {
         String::from("its files changed (it has no verses to compare)")
     } else if parts.is_empty() {
         String::from("no verse changed")
     } else {
         parts.join(", ")
+    };
+    match d.retitled.as_slice() {
+        [] => what,
+        retitled => {
+            let titles: Vec<String> = (retitled.iter())
+                .map(|(path, old, new)| format!("{path}: “{old}” is “{new}”"))
+                .collect();
+            format!("{what}; retitled {}", titles.join(", "))
+        }
     }
 }
 

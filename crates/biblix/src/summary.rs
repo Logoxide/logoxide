@@ -60,9 +60,16 @@ pub struct Summary {
     /// `biblix.references.bin`
     #[serde(default, skip_serializing_if = "is_zero")]
     pub references: u64,
+    /// For a versification map: how many verses it maps ([`crate::versification`])
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub mappings: u64,
     /// The passages they cite, and how often (read from or written to `biblix.references.bin`)
     #[serde(skip)]
     pub cited: Vec<crate::references::Cited>,
+    /// Each file's title, by path ([`crate::titles`]): hosts name what they show by it, so a
+    /// changed title is a major change
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub titles: BTreeMap<String, String>,
 }
 
 fn is_zero(n: &u64) -> bool {
@@ -115,6 +122,27 @@ pub fn verse_text(nodes: &[Node]) -> String {
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/**
+Each verse of a book and the hash of its words (notes and headings left out), as
+`biblix.verses.bin` has them: what a link records, so it can find its verse again in a later
+version (renumbered: the same words at another number)
+*/
+pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
+    (book.spans.iter())
+        .map(|span| VerseHash {
+            book: book.id,
+            chapter: span.chapter,
+            verse: span.verse,
+            last: span.last,
+            hash: hash8(&verse_text(&slice(
+                &book.nodes,
+                &span.start,
+                Some(&span.end),
+            ))),
+        })
+        .collect()
 }
 
 fn hash8(text: &str) -> [u8; 8] {
@@ -182,16 +210,7 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
             .unwrap_or_else(|| id.0.to_string());
         books.insert(code, book.chapter_verses());
         count(&book.nodes, &mut contents);
-        for span in &book.spans {
-            let text = verse_text(&slice(&book.nodes, &span.start, Some(&span.end)));
-            hashes.push(VerseHash {
-                book: id,
-                chapter: span.chapter,
-                verse: span.verse,
-                last: span.last,
-                hash: hash8(&text),
-            });
-        }
+        hashes.extend(book_hashes(&book));
     }
     let storage = package.storage();
     // The package's files (not the summary's own, nor a reader's annotations), and each format's
@@ -219,6 +238,12 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
         }
     }
     let found = crate::references::find(package)?;
+    let mappings = match info.kind {
+        crate::manifest::PackageKind::VersificationMap => {
+            crate::versification::VersificationMap::from_package(package)?.len() as u64
+        }
+        _ => 0,
+    };
     let summary = Summary {
         summary: SUMMARY_VERSION,
         id: info.id.clone(),
@@ -239,7 +264,11 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
                 bytes: m.files.iter().map(|f| f.size).sum(),
             }),
         references: found.len() as u64,
+        mappings,
         cited: crate::references::cited(&found),
+        titles: (crate::titles::titles(package)?.into_iter())
+            .filter_map(|t| Some((t.path, t.title?)))
+            .collect(),
     };
     Ok((summary, hashes))
 }
@@ -345,6 +374,8 @@ pub struct Diff {
     pub bridged: Vec<VerseHash>,
     /// For packages without verses (books): their files changed, in ways verses can't show
     pub files_changed: bool,
+    /// Files whose title changed (hosts name what they show by it): `(path, old, new)`
+    pub retitled: Vec<(String, String, String)>,
 }
 
 /// What changed between two summaries, with their verses: [`diff`], and for packages without
@@ -355,6 +386,13 @@ pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash
         && new.1.is_empty()
         && (old.0.files_checksum.as_ref())
             .is_some_and(|c| Some(c) != new.0.files_checksum.as_ref());
+    // Summaries from before titles have none: nothing to compare
+    d.retitled = (old.0.titles.iter())
+        .filter_map(|(path, old)| {
+            let new = new.0.titles.get(path)?;
+            (new != old).then(|| (path.clone(), old.clone(), new.clone()))
+        })
+        .collect();
     d
 }
 
@@ -389,7 +427,11 @@ pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
 
 impl Diff {
     pub fn change(&self) -> Change {
-        if !self.removed.is_empty() || !self.moved.is_empty() || !self.bridged.is_empty() {
+        if !self.removed.is_empty()
+            || !self.moved.is_empty()
+            || !self.bridged.is_empty()
+            || !self.retitled.is_empty()
+        {
             Change::Major
         } else if !self.changed.is_empty() || !self.added.is_empty() || self.files_changed {
             Change::Minor
@@ -495,5 +537,33 @@ mod tests {
         assert_eq!(bytes.len(), 4 + 3 * 12);
         assert_eq!(decode_verses(&bytes).unwrap(), old);
         assert!(decode_verses(b"nope").is_err());
+    }
+
+    #[test]
+    fn a_changed_title_is_a_major_change() {
+        let summary = |title: &str| Summary {
+            summary: SUMMARY_VERSION,
+            id: "b".into(),
+            version: "1.0.0".parse().unwrap(),
+            text_checksum: "sha256:00".into(),
+            files_checksum: Some("sha256:00".into()),
+            verses: 0,
+            sizes: BTreeMap::new(),
+            books: IndexMap::new(),
+            contents: BTreeMap::new(),
+            media: None,
+            references: 0,
+            cited: vec![],
+            mappings: 0,
+            titles: [("epub/b.epub".to_string(), title.to_string())].into(),
+        };
+        let d = diff_summaries((&summary("Freely"), &[]), (&summary("Freely Given"), &[]));
+        assert_eq!(
+            d.retitled,
+            [("epub/b.epub".into(), "Freely".into(), "Freely Given".into())]
+        );
+        assert_eq!(d.change(), Change::Major);
+        let same = diff_summaries((&summary("Freely"), &[]), (&summary("Freely"), &[]));
+        assert_eq!(same.change(), Change::Patch);
     }
 }
