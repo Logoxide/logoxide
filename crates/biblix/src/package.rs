@@ -1,6 +1,6 @@
 /*!
 A package: a `biblix.toml` with `[package]`, and its text in one or more formats. Opening one
-picks the best format its enabled features turn on (USX, then USFM).
+picks the best format its enabled features turn on (USX, then USFM, OSIS, and ThML).
 */
 
 use std::sync::Arc;
@@ -11,7 +11,7 @@ use topos_bible::data::books::BookId;
 use crate::{
     error::{BiblixError, Result},
     manifest::{self, Enabled, Format, MANIFEST, Manifest},
-    source::{Source, UsfmSource, UsxSource},
+    source::{OsisSource, Source, ThmlSource, UsfmSource, UsxSource},
     storage::Storage,
 };
 
@@ -64,6 +64,8 @@ impl Package {
         let source: Box<dyn Source> = match format {
             Format::Usx => Box::new(UsxSource::open(storage.clone(), dir)?),
             Format::Usfm => Box::new(UsfmSource::open(storage.clone(), dir)?),
+            Format::Osis => Box::new(OsisSource::open(storage.clone(), dir)?),
+            Format::Thml => Box::new(ThmlSource::open(storage.clone(), dir)?),
             _ => unreachable!("only readable formats are chosen"),
         };
         Ok(Package {

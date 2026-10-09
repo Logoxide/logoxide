@@ -1,10 +1,14 @@
 /*!
 A package's text in one format, read a book at a time into topos-bible-markup's tree, the same
-whatever the format.
+whatever the format: USX and USFM (a book a file), OSIS and ThML (a whole Bible in one file, or a
+book a file).
 */
 
+mod osis;
+mod thml;
 mod usfm;
 mod usx;
+mod whole;
 
 use std::collections::BTreeMap;
 
@@ -15,6 +19,8 @@ use topos_bible_markup::{
     verses::{VerseSpan, chapter_verses},
 };
 
+pub use osis::OsisSource;
+pub use thml::ThmlSource;
 pub use usfm::{UsfmSource, usfm_to_usx};
 pub use usx::UsxSource;
 
@@ -38,7 +44,7 @@ impl Book {
 pub trait Source: Send + Sync {
     fn format(&self) -> Format;
 
-    /// The books it has, in order, and the file each is in
+    /// The books it has, in order, and the file each is in (several books can share one)
     fn files(&self) -> &BTreeMap<BookId, String>;
 
     fn book(&self, id: BookId) -> Result<Book>;

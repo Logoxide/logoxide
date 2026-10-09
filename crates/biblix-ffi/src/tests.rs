@@ -185,7 +185,7 @@ path = "bibles/mine"
         packages.iter().map(|p| &p.location).collect::<Vec<_>>(),
         [
             &PackageLocation::Library {
-                dir: "packages/bsb/1.2.0".into()
+                dir: "packages/bsb/1.2.0+g3f9c2a1b".into()
             },
             &PackageLocation::Path {
                 dir: "bibles/mine".into()
@@ -224,6 +224,8 @@ fn a_folder_natively() {
 
 const URL: &str = "https://example.org/someone/test";
 const COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+/// Where the test package's version goes in the library: its version and commit
+const TEST_DIR: &str = "packages/test/1.0.0+g01234567";
 
 /// A host with one repository (tag v1.0.0 at COMMIT) and a library of files
 struct Host {
@@ -356,13 +358,13 @@ fn installing_with_the_host_downloading() {
         Some(FetchRequest::Files { .. })
     ));
     assert_eq!(host.requests.len(), 3);
-    let mut paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    let mut paths: Vec<String> = files.iter().map(|f| f.path.clone()).collect();
     paths.sort();
     assert_eq!(
         paths,
         [
-            "packages/test/1.0.0/biblix.toml",
-            "packages/test/1.0.0/usx/JHN.usx"
+            format!("{TEST_DIR}/biblix.toml"),
+            format!("{TEST_DIR}/usx/JHN.usx")
         ]
     );
     let project = biblix
@@ -372,7 +374,7 @@ fn installing_with_the_host_downloading() {
     assert_eq!(entry.commit.as_deref(), Some(COMMIT));
     let package = biblix
         .open_package(
-            files_under(&files, "packages/test/1.0.0/"),
+            files_under(&files, &format!("{TEST_DIR}/")),
             entry.features.clone(),
             vec![],
         )
@@ -381,8 +383,8 @@ fn installing_with_the_host_downloading() {
 
     // Another device with the lock file: installed already, it's only checked
     host.library.insert(
-        "packages/test/1.0.0".into(),
-        files_under(&files, "packages/test/1.0.0/"),
+        TEST_DIR.into(),
+        files_under(&files, &format!("{TEST_DIR}/")),
     );
     host.requests.clear();
     let (again, files) = host.install(&biblix.installer(), &project);
@@ -394,7 +396,7 @@ fn installing_with_the_host_downloading() {
     let mut changed = files_under(&[], "");
     changed.push(file("biblix.toml", MANIFEST));
     changed.push(file("usx/JHN.usx", &USX.replace("loved", "LOVED")));
-    host.library.insert("packages/test/1.0.0".into(), changed);
+    host.library.insert(TEST_DIR.into(), changed);
     host.requests.clear();
     let installer = biblix.installer();
     let error = loop {

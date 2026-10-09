@@ -628,7 +628,7 @@ impl Settings {
         {
             let ids: Vec<String> = project
                 .lock()
-                .map(|l| l.roots().map(|p| p.id.clone()).collect())
+                .map(|l| l.roots().map(|p| p.dependency_name().to_string()).collect())
                 .unwrap_or_default();
             for id in ids.iter().filter(|id| bible_kind(&project, &library, id)) {
                 add(self.package_bible(&project, &library, id, data)?, &mut list);
@@ -695,7 +695,7 @@ impl Settings {
                 project.dir().display()
             )
         })?;
-        let locked = lock.roots().find(|p| p.id == id).ok_or_else(|| {
+        let locked = lock.get(id).ok_or_else(|| {
             format!(
                 "bibles: `{id}` isn't in {} (run `bx add`)",
                 project.dir().join(MANIFEST).display()
@@ -708,8 +708,14 @@ impl Settings {
             ));
         }
         let dir = library.package_dir(locked, project.dir());
-        Bible::load(&dir, None, data.clone(), self.markup.clone())
-            .map_err(|e| format!("bibles: {id}: {e}"))
+        let mut bible = Bible::load(&dir, None, data.clone(), self.markup.clone())
+            .map_err(|e| format!("bibles: {id}: {e}"))?;
+        // The project's own names for it, if it gives any (a fork named `KJVB`)
+        let package = library
+            .open(locked, project.dir())
+            .map_err(|e| format!("bibles: {id}: {e}"))?;
+        (bible.name, bible.aliases) = project.names(id, package.info());
+        Ok(bible)
     }
 }
 
@@ -717,7 +723,7 @@ impl Settings {
 fn bible_kind(project: &Project, library: &Library, id: &str) -> bool {
     let locked = project
         .lock()
-        .and_then(|l| l.roots().find(|p| p.id == id).cloned());
+        .and_then(|l| l.roots().find(|p| p.dependency_name() == id).cloned());
     locked
         .and_then(|locked| library.open(&locked, project.dir()).ok())
         .is_some_and(|package| package.info().kind == PackageKind::Bible)

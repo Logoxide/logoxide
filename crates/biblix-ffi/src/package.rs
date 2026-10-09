@@ -368,6 +368,20 @@ impl BiblixPackage {
         self.cached.add_to(translations).into()
     }
 
+    /// `translations` with this package added by the project's own names for it
+    /// (`LockedEntry.abbreviation` and `aliases`, when the manifest gives them)
+    pub fn add_to_as(
+        &self,
+        translations: &ToposTranslations,
+        abbreviation: String,
+        aliases: Vec<String>,
+    ) -> ToposTranslations {
+        let translations: Translations = translations.core().clone();
+        (self.cached)
+            .add_as(translations, &abbreviation, &aliases)
+            .into()
+    }
+
     /// The cache files written since this was last asked (paths relative to the cache's
     /// folder), for the host to save; empty for `Biblix::open_package_dir`, which writes its
     /// own

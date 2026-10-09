@@ -157,13 +157,18 @@ impl Format {
 
     /// Whether biblix reads it yet
     pub fn readable(self) -> bool {
-        matches!(self, Format::Usx | Format::Usfm)
+        matches!(
+            self,
+            Format::Usx | Format::Usfm | Format::Osis | Format::Thml
+        )
     }
 }
 
 /// A dependency: a version requirement alone, or where it comes from
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
+// A manifest has a few dependencies, so their size doesn't matter
+#[allow(clippy::large_enum_variant)]
 pub enum Dependency {
     /// `bsb = "1"`: from a registry (none exist yet)
     Version(semver::VersionReq),
@@ -193,6 +198,23 @@ pub struct DetailedDependency {
     pub features: Vec<String>,
     #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
     pub default_features: bool,
+    /// The package's id, when the dependency is named something else (`kjv-bob = { package =
+    /// "kjv", … }`), so two forks of a package can be used side by side
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package: Option<String>,
+    /// What references name it by here, in place of the package's own abbreviation (`KJVB`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abbreviation: Option<String>,
+    /// Its aliases here, in place of the package's own
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aliases: Option<Vec<String>>,
+}
+
+impl DetailedDependency {
+    /// The id of the package it names: `package`, else the dependency's own name
+    pub fn package_id<'a>(&'a self, name: &'a str) -> &'a str {
+        self.package.as_deref().unwrap_or(name)
+    }
 }
 
 fn yes() -> bool {

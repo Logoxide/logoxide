@@ -17,6 +17,28 @@ use crate::{
     storage::{MemoryStorage, Storage},
 };
 
+/// The git hosts a short name can name: `github:alice/kjv` is `https://github.com/alice/kjv`
+pub const HOSTS: [(&str, &str); 3] = [
+    ("github", "https://github.com"),
+    ("gitlab", "https://gitlab.com"),
+    ("codeberg", "https://codeberg.org"),
+];
+
+/**
+A repository's URL from a short name (`github:alice/kjv`, `gitlab:group/sub/kjv`,
+`codeberg:alice/kjv`); anything else is returned as it is. The path is the host's own, so GitLab's
+nested groups work. Manifests and lock files keep the full URL
+*/
+pub fn expand_url(url: &str) -> String {
+    let short = (url.split_once(':')).and_then(|(prefix, path)| {
+        let (_, base) = HOSTS.iter().find(|(name, _)| *name == prefix)?;
+        let path = path.trim_matches('/');
+        let path = path.strip_suffix(".git").unwrap_or(path);
+        (path.contains('/') && !path.starts_with('/')).then(|| format!("{base}/{path}"))
+    });
+    short.unwrap_or_else(|| url.to_string())
+}
+
 /// Which commit of a repository: a tag, a branch, a revision, or its default branch
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GitRef {
@@ -252,4 +274,35 @@ fn copy_into(from: &Path, prefix: &str, to: &dyn Storage) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expands_short_names() {
+        assert_eq!(
+            expand_url("github:alice/kjv"),
+            "https://github.com/alice/kjv"
+        );
+        assert_eq!(
+            expand_url("gitlab:group/sub/kjv.git"),
+            "https://gitlab.com/group/sub/kjv"
+        );
+        assert_eq!(
+            expand_url("codeberg:bob/kjv"),
+            "https://codeberg.org/bob/kjv"
+        );
+        // Not short names: other URLs, an unknown host, or no owner
+        for url in [
+            "https://github.com/alice/kjv",
+            "file:///tmp/kjv",
+            "ssh://git@github.com/alice/kjv",
+            "sourcehut:alice/kjv",
+            "github:kjv",
+        ] {
+            assert_eq!(expand_url(url), url);
+        }
+    }
 }

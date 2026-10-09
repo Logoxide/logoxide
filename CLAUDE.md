@@ -10,20 +10,29 @@ before changing the design.
 - `crates/biblix`: the library
   - `manifest.rs`: `biblix.toml`. One manifest name for packages and vaults (a vault's has no
     `[package]`), like `Cargo.toml`. "Index" means only a registry. Formats, Cargo-style features,
-    and `git`/`path` dependencies; no default registry
+    and `git`/`path` dependencies; no default registry. A dependency can name another package
+    (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
+    `aliases` (`Project::names`)
   - `storage.rs`: `Storage` (read, list, write) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`
   - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
     verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
-    between adjacent `\w` words; both gave the KJV's 31,102 verses)
+    between adjacent `\w` words; both gave the KJV's 31,102 verses). OSIS and ThML Bibles
+    through topos-bible-markup (`whole.rs`: a file can hold every book; it's scanned for the
+    books its verse markers name, cut into books, and its last parse kept). ThML's empty
+    `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers. Preference: USX,
+    USFM, OSIS, ThML
   - `package.rs`: opening a package picks the best readable format its enabled features turn on;
     `checksum()` hashes every file but `.git`
   - `cache.rs`: verse counts and parsed books (postcard) per `<id>/<version>-<checksum>`;
     `CachedPackage::add_to` gives topos's `Translations` the name, aliases, and counts
   - `lock.rs`: `biblix.lock` (each package's version, commit, checksum, features, and
-    dependencies; `dependencies` at the top are what the manifest asks for)
+    dependencies; `dependencies` at the top are what the manifest asks for, each named
+    `id version+g<commit>`, older lock files' `id version` still read; `rename` is the
+    manifest's name when it isn't the id; `get` finds by that name)
   - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).
-    `GitCli` runs `git`
+    `GitCli` runs `git`. `expand_url`: `github:owner/repo` (also `gitlab:`, `codeberg:`) to its
+    URL, wherever a URL is taken; manifests and locks keep the full URL
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
@@ -33,7 +42,9 @@ before changing the design.
     fetch.bible's `manifest.json` (`https://v1.fetch.bible/manifest.json`, not
     `/bibles/manifest.json`, an older form)); `search` ranks exact abbreviations and ids first; a
     vault's `[settings] catalogs`, then both of those (`DEFAULT_CATALOGS`) unless
-    `default-catalogs = false`. `Project::add_catalog`/`remove_catalog` edit them (removing a
+    `default-catalogs = false`. Each imported kind names its prefix (`CatalogSource::prefix`:
+    `ebible`, `fetch`), and `Catalog::find_import` finds `ebible:<id>` in a catalog; `bx import`
+    looks through the project's catalogs in order. `Project::add_catalog`/`remove_catalog` edit them (removing a
     default turns the defaults off and names the other; naming both again turns them back on)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
     `biblix.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
@@ -48,8 +59,8 @@ before changing the design.
     `parse_timings`, `timings`, and `check_package_timings` (verses the text lacks, another book,
     out of order, overlapping, missing or unlisted files), which `bx check`, `bx media check`, and
     `bx release` run. topos's subtitle parser isn't used: it only takes numbered cues
-  - `library.rs`: installed versions in `packages/<id>/<version>` (or `<version>+g<commit>` when
-    not from its release tag), without `.git`; path packages stay where they are.
+  - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
+    version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
     beside its folder, then renamed into place)
   - `resolve.rs`: manifest + previous lock → new lock, installing as it goes, through `Packages`
@@ -74,7 +85,8 @@ before changing the design.
   set by `main.rs`, and tests have none) and loads `bibles = ["id"]` or, with no Bible settings,
   the project's Bibles. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
-- `crates/bx`: `init`, `add`, `remove`, `install`, `update`, `list`, `show` (`--git` reads a
+- `crates/bx`: `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
+  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry`, `media add <file> --url`
   (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Catalogs and

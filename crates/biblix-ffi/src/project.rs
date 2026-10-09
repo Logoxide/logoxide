@@ -10,7 +10,7 @@ use crate::{BiblixError, PackageFeatures};
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PackageLocation {
-    /// In the library, under its folder: `packages/<id>/<version>`
+    /// In the library, under its folder: `packages/<id>/<version>+g<commit>`
     Library { dir: String },
     /// A path package, used where it is: relative to the project's folder
     Path { dir: String },
@@ -32,6 +32,13 @@ impl PackageLocation {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LockedEntry {
     pub id: String,
+    /// What the manifest calls it: its id, or another name (a second fork of a package)
+    pub name: String,
+    /// What references name it by here, when the manifest gives its own (else the package's
+    /// abbreviation: `BiblixPackage.addTo`; with these, `addToAs`)
+    pub abbreviation: Option<String>,
+    /// Its aliases here, when the manifest gives its own
+    pub aliases: Option<Vec<String>>,
     pub version: String,
     pub location: PackageLocation,
     /// The features to open it with
@@ -49,6 +56,9 @@ impl From<&LockedPackage> for LockedEntry {
     fn from(locked: &LockedPackage) -> Self {
         Self {
             id: locked.id.clone(),
+            name: locked.dependency_name().to_string(),
+            abbreviation: None,
+            aliases: None,
             version: locked.version.to_string(),
             location: PackageLocation::of(locked),
             features: PackageFeatures {
@@ -76,6 +86,12 @@ pub struct Dependency {
     pub rev: Option<String>,
     pub features: Vec<String>,
     pub default_features: bool,
+    /// The package's id, when the dependency is named something else (a second fork)
+    pub package: Option<String>,
+    /// What references name it by here, in place of the package's own abbreviation
+    pub abbreviation: Option<String>,
+    /// Its aliases here, in place of the package's own
+    pub aliases: Option<Vec<String>>,
 }
 
 impl TryFrom<Dependency> for DetailedDependency {
@@ -89,7 +105,8 @@ impl TryFrom<Dependency> for DetailedDependency {
                 message: format!("version: {e}"),
             })?;
         Ok(DetailedDependency {
-            git: d.git,
+            // `github:owner/repo` is kept as its URL
+            git: d.git.as_deref().map(biblix_core::git::expand_url),
             path: d.path,
             version,
             tag: d.tag,
@@ -97,6 +114,9 @@ impl TryFrom<Dependency> for DetailedDependency {
             rev: d.rev,
             features: d.features,
             default_features: d.default_features,
+            package: d.package,
+            abbreviation: d.abbreviation,
+            aliases: d.aliases,
             ..DetailedDependency::default()
         })
     }
@@ -152,14 +172,26 @@ impl BiblixProject {
         let Some(lock) = self.project.lock() else {
             return Vec::new();
         };
-        lock.roots().map(LockedEntry::from).collect()
+        let manifest = self.project.manifest();
+        (lock.roots())
+            .map(|locked| {
+                let mut entry = LockedEntry::from(locked);
+                if let Some(biblix_core::manifest::Dependency::Detailed(d)) =
+                    manifest.dependencies.get(&entry.name)
+                {
+                    entry.abbreviation = d.abbreviation.clone();
+                    entry.aliases = d.aliases.clone();
+                }
+                entry
+            })
+            .collect()
     }
 
     /// Dependencies the lock file doesn't have yet (added since it was written: install them)
     pub fn unlocked(&self) -> Vec<String> {
         let locked: Vec<&str> = (self.project.lock().iter())
             .flat_map(|lock| lock.roots())
-            .map(|p| p.id.as_str())
+            .map(|p| p.dependency_name())
             .collect();
         (self.project.manifest().dependencies.keys())
             .filter(|name| !locked.contains(&name.as_str()))

@@ -68,7 +68,7 @@ enum Command {
     Show {
         #[command(flatten)]
         package: PackageArgs,
-        /// A package's repository: show a release's published summary
+        /// A package's repository (or `github:owner/repo`): show a release's published summary
         #[arg(long)]
         git: Option<String>,
         /// The release (the newest by default)
@@ -163,7 +163,8 @@ enum Command {
         json: bool,
     },
     /// Makes a package from another publisher's download, puts it in the project's `imports/`,
-    /// and adds it as a path package: `ebible:<id>` or `fetch:<id>` (as `bx search` shows)
+    /// and adds it as a path package: `ebible:<id>` or `fetch:<id>` (as `bx search` shows), from
+    /// the project's catalogs
     Import {
         /// `ebible:eng-asv`, `fetch:eng_bsb`
         source: String,
@@ -216,14 +217,17 @@ enum CatalogCommand {
     Remove { location: String },
     /// A catalog.toml entry for a package's repository (its newest release's biblix.toml)
     Entry {
-        /// The package's git URL
+        /// The package's git URL (or `github:owner/repo`)
         git: String,
     },
 }
 
 #[derive(Args)]
 struct AddArgs {
-    /// A git repository's URL (or a local repository's path)
+    /// A git repository: `github:owner/repo` (also `gitlab:`, `codeberg:`), or its URL
+    #[arg(conflicts_with_all = ["git", "path"])]
+    repository: Option<String>,
+    /// A git repository's URL (or a local repository's path), or `github:owner/repo`
     #[arg(long, conflicts_with = "path")]
     git: Option<String>,
     /// A package's folder, used in place
@@ -243,6 +247,15 @@ struct AddArgs {
     features: Vec<String>,
     #[arg(long)]
     no_default_features: bool,
+    /// What this project calls it, when not its id (another fork of a package it has)
+    #[arg(long)]
+    name: Option<String>,
+    /// What references name it by here, in place of its own abbreviation
+    #[arg(long)]
+    abbreviation: Option<String>,
+    /// Its aliases here, in place of its own (repeat for more; `--alias ""` for none)
+    #[arg(long = "alias")]
+    aliases: Vec<String>,
 }
 
 #[derive(Args)]
@@ -282,7 +295,7 @@ fn main() -> ExitCode {
             git: Some(url),
             tag,
             ..
-        } => show_remote(&cli, url, tag.as_deref()),
+        } => show_remote(&cli, &biblix::git::expand_url(url), tag.as_deref()),
         Command::Release {
             path,
             set_version,
@@ -313,7 +326,9 @@ fn main() -> ExitCode {
             json,
         } => search(&cli, &query.join(" "), catalog, *limit, *json),
         Command::Import { source } => import(&cli, source),
-        Command::Catalog(CatalogCommand::Entry { git }) => catalog_entry(&cli, git),
+        Command::Catalog(CatalogCommand::Entry { git }) => {
+            catalog_entry(&cli, &biblix::git::expand_url(git))
+        }
         Command::Catalog(CatalogCommand::List) => catalog_list(&cli),
         Command::Catalog(CatalogCommand::Add { location }) => catalog_add(&cli, location),
         Command::Catalog(CatalogCommand::Remove { location }) => catalog_remove(&cli, location),
@@ -473,8 +488,10 @@ fn version_req(text: &str) -> biblix::Result<semver::VersionReq> {
 fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
+    let git =
+        (args.repository.as_ref().or(args.git.as_ref())).map(|url| biblix::git::expand_url(url));
     let mut dependency = DetailedDependency {
-        git: args.git.clone(),
+        git: git.clone(),
         path: args.path.clone(),
         version: args.version.as_deref().map(version_req).transpose()?,
         tag: args.tag.clone(),
@@ -485,7 +502,7 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
         ..DetailedDependency::default()
     };
     // The package's id names the dependency: read it from the package
-    let id = match (&args.git, &args.path) {
+    let info = match (&git, &args.path) {
         (Some(url), _) => {
             let fetcher = cli.fetcher(&library);
             let reference = match (&args.tag, &args.branch, &args.rev) {
@@ -517,27 +534,78 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
                     dependency.version = Some(version_req(&newest.to_string())?);
                 }
             }
-            info.id
+            info
         }
         (None, Some(path)) => {
             let storage = FsStorage::new(project.dir().join(path));
             let manifest = biblix::Manifest::parse(&storage.read_string(MANIFEST)?)?;
             manifest
                 .package
-                .map(|p| p.id)
                 .ok_or_else(|| biblix::BiblixError::Manifest(format!("{path}: no [package]")))?
         }
         (None, None) => {
             return Err(biblix::BiblixError::Manifest(String::from(
-                "give --git or --path",
+                "give a repository (github:owner/repo, or --git URL) or --path",
             )));
         }
     };
-    project.add(&id, &dependency)?;
+    let name = args.name.clone().unwrap_or_else(|| info.id.clone());
+    if name != info.id {
+        dependency.package = Some(info.id.clone());
+    }
+    dependency.abbreviation = args.abbreviation.clone();
+    if !args.aliases.is_empty() {
+        dependency.aliases = Some(
+            args.aliases
+                .iter()
+                .filter(|a| !a.is_empty())
+                .cloned()
+                .collect(),
+        );
+    }
+    // Another source under the same name would replace it: a fork needs its own name
+    if let Some(biblix::manifest::Dependency::Detailed(existing)) =
+        project.manifest().dependencies.get(&name)
+        && (existing.git.as_deref(), existing.path.as_deref())
+            != (dependency.git.as_deref(), dependency.path.as_deref())
+    {
+        let from = existing
+            .git
+            .as_deref()
+            .or(existing.path.as_deref())
+            .unwrap_or("?");
+        return Err(biblix::BiblixError::Manifest(format!(
+            "`{name}` is already {from}: give this one another name (--name {name}-2)"
+        )));
+    }
+    // References name each Bible by its abbreviation and aliases: two can't share one
+    if let Some(lock) = project.lock() {
+        let abbreviation =
+            (dependency.abbreviation.clone()).unwrap_or_else(|| info.abbreviation.clone());
+        let aliases = (dependency.aliases.clone()).unwrap_or_else(|| info.aliases.clone());
+        let ours: Vec<String> = std::iter::once(abbreviation.clone())
+            .chain(aliases)
+            .collect();
+        for other in lock.roots().filter(|p| p.dependency_name() != name) {
+            let Ok(package) = library.open(other, project.dir()) else {
+                continue;
+            };
+            let (theirs, their_aliases) = project.names(other.dependency_name(), package.info());
+            let clash = (std::iter::once(&theirs).chain(&their_aliases))
+                .find(|n| ours.iter().any(|o| o.eq_ignore_ascii_case(n)));
+            if let Some(clash) = clash {
+                return Err(biblix::BiblixError::Manifest(format!(
+                    "`{clash}` already names {} here: give this one another (--abbreviation {abbreviation}2, --alias)",
+                    other.dependency_name()
+                )));
+            }
+        }
+    }
+    project.add(&name, &dependency)?;
     project.save_manifest()?;
     let fetcher = cli.fetcher(&library);
-    let lock = project.install(&library, &fetcher, Update::Only([id.clone()].into()))?;
-    let locked = lock.get(&id).map(|p| p.name()).unwrap_or(id);
+    let lock = project.install(&library, &fetcher, Update::Only([name.clone()].into()))?;
+    let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
     println!(
         "added {locked} to {}",
         project.dir().join(MANIFEST).display()
@@ -573,7 +641,7 @@ fn install(cli: &Cli, update: Update) -> biblix::Result<()> {
         } else {
             " (new)"
         };
-        println!("{}{note}", package.name());
+        println!("{}{note}", package.label());
     }
     println!(
         "{} packages, locked in {}",
@@ -591,7 +659,7 @@ fn list(cli: &Cli) -> biblix::Result<()> {
         return Ok(());
     };
     for locked in &lock.packages {
-        let root = if lock.dependencies.contains(&locked.name()) {
+        let root = if lock.roots().any(|r| std::ptr::eq(r, locked)) {
             ""
         } else {
             "  (a dependency)"
@@ -615,16 +683,17 @@ fn list(cli: &Cli) -> biblix::Result<()> {
         };
         let about = library.open(locked, project.dir()).ok().map(|p| {
             let info = p.info();
+            let (abbreviation, _) = project.names(locked.dependency_name(), info);
             format!(
                 "{} ({}), {}",
-                info.abbreviation,
+                abbreviation,
                 info.name,
                 info.license.as_deref().unwrap_or("no license given")
             )
         });
         println!(
             "{}  {}  {}{root}{installed}",
-            locked.name(),
+            locked.label(),
             about.unwrap_or_default(),
             source.trim()
         );
@@ -849,6 +918,27 @@ fn get(url: &str) -> biblix::Result<Vec<u8>> {
 }
 
 /// A catalog from a URL or a path (relative to `base`)
+/// Each catalog that can be read, in order; one that can't is a warning, unless none can be
+fn load_catalogs(
+    locations: &[String],
+    base: &Path,
+) -> biblix::Result<Vec<biblix::catalog::Catalog>> {
+    let mut catalogs = vec![];
+    for location in locations {
+        match load_catalog(location, base) {
+            Ok(catalog) => catalogs.push(catalog),
+            Err(e) if locations.len() > 1 => eprintln!("warning: {e}"),
+            Err(e) => return Err(e),
+        }
+    }
+    if catalogs.is_empty() {
+        return Err(biblix::BiblixError::Catalog(String::from(
+            "no catalog could be read",
+        )));
+    }
+    Ok(catalogs)
+}
+
 fn load_catalog(location: &str, base: &Path) -> biblix::Result<biblix::catalog::Catalog> {
     let bytes = if location.starts_with("https://") || location.starts_with("http://") {
         get(location)?
@@ -915,39 +1005,18 @@ fn search(
         }
         false => (catalogs.to_vec(), PathBuf::from(".")),
     };
-    let mut all = biblix::catalog::Catalog::default();
-    let mut failed = 0;
-    for location in &catalogs {
-        // One catalog that can't be read doesn't stop the others
-        match load_catalog(location, &base) {
-            Ok(catalog) => all = all.merge(catalog),
-            Err(e) if catalogs.len() > 1 => {
-                eprintln!("warning: {e}");
-                failed += 1;
-            }
-            Err(e) => return Err(e),
-        }
-    }
-    if failed == catalogs.len() {
-        return Err(biblix::BiblixError::Catalog(String::from(
-            "no catalog could be read",
-        )));
-    }
+    let all = (load_catalogs(&catalogs, &base)?.into_iter())
+        .fold(biblix::catalog::Catalog::default(), |all, c| all.merge(c));
     let found = all.search(query);
     if json {
-        use biblix::catalog::CatalogSource;
         let entries: Vec<serde_json::Value> = (found.iter().take(limit))
             .map(|e| {
-                let install = match &e.source {
-                    CatalogSource::Git { url } => {
+                let install = match (&e.source, e.source.import_name()) {
+                    (_, Some(name)) => vec![String::from("import"), name],
+                    (biblix::catalog::CatalogSource::Git { url }, None) => {
                         vec![String::from("add"), String::from("--git"), url.clone()]
                     }
-                    CatalogSource::Ebible { id } => {
-                        vec![String::from("import"), format!("ebible:{id}")]
-                    }
-                    CatalogSource::FetchBible { id, .. } => {
-                        vec![String::from("import"), format!("fetch:{id}")]
-                    }
+                    (_, None) => vec![],
                 };
                 serde_json::json!({
                     "id": e.id,
@@ -964,12 +1033,10 @@ fn search(
     }
     for entry in found.iter().take(limit) {
         let language = entry.language_name.as_deref().unwrap_or(&entry.language);
-        let source = match &entry.source {
-            biblix::catalog::CatalogSource::Git { url } => format!("bx add --git {url}"),
-            biblix::catalog::CatalogSource::Ebible { id } => format!("bx import ebible:{id}"),
-            biblix::catalog::CatalogSource::FetchBible { id, .. } => {
-                format!("bx import fetch:{id}")
-            }
+        let source = match (&entry.source, entry.source.import_name()) {
+            (_, Some(name)) => format!("bx import {name}"),
+            (biblix::catalog::CatalogSource::Git { url }, None) => format!("bx add --git {url}"),
+            (_, None) => String::new(),
         };
         println!(
             "{} ({}): {}, {language}, {}\n    {source}",
@@ -994,25 +1061,28 @@ fn search(
 }
 
 fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
-    use biblix::catalog::{CatalogSource, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
-    let (catalog, id) = match source.split_once(':') {
-        Some(("ebible", id)) => (EBIBLE_CATALOG, id),
-        Some(("fetch", id)) => (FETCH_BIBLE_CATALOG, id),
-        _ => {
-            return Err(biblix::BiblixError::Import(format!(
-                "{source}: give ebible:<id> or fetch:<id> (see bx search)"
-            )));
-        }
-    };
-    let catalog = load_catalog(catalog, Path::new("."))?;
-    let entry = (catalog.entries.iter())
-        .find(|e| match &e.source {
-            CatalogSource::Ebible { id: i } | CatalogSource::FetchBible { id: i, .. } => i == id,
-            CatalogSource::Git { .. } => false,
-        })
-        .ok_or_else(|| biblix::BiblixError::Import(format!("{source}: not in its catalog")))?;
+    use biblix::catalog::CatalogSource;
+    let prefixes = CatalogSource::PREFIXES
+        .map(|p| format!("{p}:<id>"))
+        .join(" or ");
+    let known = (source.split_once(':'))
+        .is_some_and(|(prefix, _)| CatalogSource::PREFIXES.contains(&prefix));
+    if !known {
+        return Err(biblix::BiblixError::Import(format!(
+            "{source}: give {prefixes} (see bx search)"
+        )));
+    }
     let library = cli.library();
     let mut project = cli.project(&library)?;
+    // The project's catalogs, in order: the first that lists it is the one used
+    let catalogs = load_catalogs(&project.manifest().catalogs(), project.dir())?;
+    let entry = (catalogs.iter())
+        .find_map(|c| c.find_import(source))
+        .ok_or_else(|| {
+            biblix::BiblixError::Import(format!(
+                "{source}: in none of this project's catalogs (bx catalog list)"
+            ))
+        })?;
     let relative = format!("imports/{}", entry.id);
     let dir = project.dir().join(&relative);
     if dir.exists() {
@@ -1091,7 +1161,11 @@ fn info(cli: &Cli, id: &str) -> biblix::Result<()> {
     let dir = library.package_dir(&locked, project.dir());
     let package = library.open(&locked, project.dir())?;
     let i = package.info();
-    println!("{} {} ({}), {}", i.id, i.version, i.abbreviation, i.name);
+    let (abbreviation, aliases) = project.names(id, i);
+    println!("{} ({}), {}", locked.label(), abbreviation, i.name);
+    if !aliases.is_empty() {
+        println!("aliases: {}", aliases.join(", "));
+    }
     println!(
         "kind: {:?}, language: {}, license: {}",
         i.kind,
@@ -1159,18 +1233,20 @@ fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> biblix::Result<()> {
     for (id, key) in &unused {
         let dir = library.root().join("packages").join(id).join(key);
         if remove {
+            // Its parsed books are `<id>/<version>-<checksum>`: by the files' checksum, since
+            // forks share versions
+            let checksum = biblix::package::checksum(&FsStorage::new(&dir))?;
+            let short = checksum
+                .trim_start_matches("sha256:")
+                .get(..16)
+                .unwrap_or_default();
+            let version = key.split('+').next().unwrap_or(key);
             std::fs::remove_dir_all(&dir).map_err(|e| biblix::BiblixError::Io {
                 path: dir.display().to_string(),
                 message: e.to_string(),
             })?;
-            // Its parsed books: `<id>/<version>-<checksum>`
             let cache = library.cache_dir().join("books").join(id);
-            for entry in std::fs::read_dir(&cache).into_iter().flatten().flatten() {
-                let name = entry.file_name().to_string_lossy().into_owned();
-                if name.starts_with(&format!("{key}-")) {
-                    let _ = std::fs::remove_dir_all(entry.path());
-                }
-            }
+            let _ = std::fs::remove_dir_all(cache.join(format!("{version}-{short}")));
             // The id's folder too, once it has no versions (remove_dir only removes empty ones)
             let _ = std::fs::remove_dir(library.root().join("packages").join(id));
             println!("removed {id} {key}");

@@ -11,8 +11,9 @@ What works (steps 1 to 5 of the plan, and eBible.org's importer from 7, `doc/bib
 - `biblix.toml` for packages and vaults (a manifest without `[package]`): formats, Cargo-style
   features (including `dep:` and `name/feature`), and dependencies (`git =` with `version`,
   `tag`, `rev`, or `branch`; or `path =`). There's no default registry
-- Sources: a folder of USX books, and a folder of USFM books (read through
-  [`usfm3`](https://crates.io/crates/usfm3) into USX)
+- Sources: a folder of USX books, a folder of USFM books (read through
+  [`usfm3`](https://crates.io/crates/usfm3) into USX), and OSIS and ThML Bibles (a book a file,
+  or the whole Bible in one, as open-bibles' OSIS and CCEL's ThML are)
 - `Storage`: a folder, memory, or (later) a host's files, so the same code runs in WebAssembly
 - A cache of verse counts and parsed books, per package version and checksum
 - The library: installed versions side by side, as plain files; a project's `biblix.lock` pins
@@ -55,10 +56,14 @@ folder, added from its settings by searching the catalogs or by git URL.
 
 ## Using it
 
+[doc/workflow.md](doc/workflow.md) walks through a vault and a package of your own, start to
+finish.
+
 ```sh
 bx init                                    # a biblix.toml here (a vault); without one, bx uses the library's
-bx add --git https://example.org/bsb       # the newest release; --version 1, --tag, --branch, --rev
+bx add github:someone/bsb                  # the newest release; --version 1, --tag, --branch, --rev
 bx add --git https://example.org/kjv -F strongs
+bx add github:bob/kjv --name kjv-bob --abbreviation KJVB   # a fork beside the KJV
 bx add --path "Bibles/My Translation"      # used in place
 bx install                                 # what biblix.lock says, on a new device
 bx update [id]                             # newer versions the requirements allow

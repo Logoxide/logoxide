@@ -92,7 +92,14 @@ fn locked(project: &Project) -> Vec<String> {
         .unwrap()
         .packages
         .iter()
-        .map(|p| p.name())
+        .map(|p| p.label())
+        .collect()
+}
+
+/// Lock names (`id version+gcommit`) without their commits
+fn versions(names: &[String]) -> Vec<String> {
+    (names.iter())
+        .map(|n| n.split('+').next().unwrap_or(n).to_string())
         .collect()
 }
 
@@ -134,8 +141,11 @@ fn versions_locks_and_updates() {
     project.install(&library, &fetcher, Update::All).unwrap();
     assert_eq!(locked(&project), ["tb 1.2.0"]);
     // Both versions stay in the library, side by side
+    let installed: Vec<(String, String)> = (library.installed().into_iter())
+        .map(|(id, key)| (id, key.split('+').next().unwrap_or(&key).to_string()))
+        .collect();
     assert_eq!(
-        library.installed(),
+        installed,
         [("tb".into(), "1.1.0".into()), ("tb".into(), "1.2.0".into())]
     );
 
@@ -196,8 +206,11 @@ fn dependencies_features_and_paths() {
         .unwrap();
     assert_eq!(locked(&project), ["bible 1.0.0", "lexicon 2.0.0"]);
     let lock = project.lock().unwrap();
-    assert_eq!(lock.dependencies, ["bible 1.0.0"]);
-    assert_eq!(lock.get("bible").unwrap().dependencies, ["lexicon 2.0.0"]);
+    assert_eq!(versions(&lock.dependencies), ["bible 1.0.0"]);
+    assert_eq!(
+        versions(&lock.get("bible").unwrap().dependencies),
+        ["lexicon 2.0.0"]
+    );
 
     // A path package, used in place (not copied into the library)
     let mine = world.path("vault/Bibles/Mine");
@@ -233,4 +246,62 @@ fn dependencies_features_and_paths() {
         .install(&library, &fetcher, Update::Nothing)
         .unwrap_err();
     assert!(error.to_string().contains("name it `lexicon`"), "{error}");
+}
+
+#[test]
+fn forks_side_by_side() {
+    let world = World::new("forks");
+    let alice = world.path("repos/alice/kjv");
+    let bob = world.path("repos/bob/kjv");
+    std::fs::create_dir_all(&alice).unwrap();
+    std::fs::create_dir_all(&bob).unwrap();
+    // The same package and version, with different text
+    release(&alice, "kjv", "1.0.0", "alice's words", "");
+    release(&bob, "kjv", "1.0.0", "bob's words", "");
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("kjv", &git_dep(&alice, None)).unwrap();
+    // Bob's under another name, with another abbreviation and no aliases
+    let mut fork = git_dep(&bob, None);
+    fork.package = Some("kjv".into());
+    fork.abbreviation = Some("KJVB".into());
+    fork.aliases = Some(vec![]);
+    project.add("kjv-bob", &fork).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let mut labels = locked(&project);
+    labels.sort();
+    assert_eq!(labels, ["kjv 1.0.0", "kjv-bob (kjv) 1.0.0"]);
+
+    // Each in its own folder, with its own text
+    let lock = project.lock().unwrap();
+    let text = |name: &str| {
+        let package = library
+            .open(lock.get(name).unwrap(), project.dir())
+            .unwrap();
+        package.storage().read_string("usx/JHN.usx").unwrap()
+    };
+    assert!(text("kjv").contains("alice's words"));
+    assert!(text("kjv-bob").contains("bob's words"));
+    assert_eq!(library.installed().len(), 2);
+
+    // References name them apart
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("KJV"), Some("KJV"));
+    assert_eq!(translations.get("KJVB"), Some("KJVB"));
+
+    // Naming a fork as the package it isn't is caught
+    let mut wrong = git_dep(&bob, None);
+    wrong.package = Some("bsb".into());
+    project.add("bsb", &wrong).unwrap();
+    let error = project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("asks for the package `bsb`"),
+        "{error}"
+    );
 }

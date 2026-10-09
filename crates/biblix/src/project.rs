@@ -13,7 +13,7 @@ use crate::{
     git::Fetcher,
     library::Library,
     lock::{LOCKFILE, Lockfile},
-    manifest::{DetailedDependency, MANIFEST, Manifest, PackageKind},
+    manifest::{Dependency, DetailedDependency, MANIFEST, Manifest, PackageKind},
     resolve::{Resolver, Update},
 };
 use topos_bible::data::translations::Translations;
@@ -141,6 +141,16 @@ impl Project {
         }
         if !dependency.default_features {
             table.insert("default-features", false.into());
+        }
+        if let Some(package) = &dependency.package {
+            table.insert("package", package.as_str().into());
+        }
+        if let Some(abbreviation) = &dependency.abbreviation {
+            table.insert("abbreviation", abbreviation.as_str().into());
+        }
+        if let Some(aliases) = &dependency.aliases {
+            let aliases: Array = aliases.iter().map(String::as_str).collect();
+            table.insert("aliases", aliases.into());
         }
         let dependencies = self
             .doc
@@ -298,9 +308,30 @@ impl Project {
             if package.info().kind != PackageKind::Bible {
                 continue;
             }
-            translations = cache.open(package)?.add_to(translations);
+            let (abbreviation, aliases) = self.names(locked.dependency_name(), package.info());
+            translations = cache
+                .open(package)?
+                .add_as(translations, &abbreviation, &aliases);
         }
         Ok(translations)
+    }
+
+    /// What references name a dependency by here: its `abbreviation` and `aliases` in the
+    /// manifest, else the package's own
+    pub fn names(
+        &self,
+        dependency: &str,
+        info: &crate::manifest::Package,
+    ) -> (String, Vec<String>) {
+        let detailed = match self.manifest.dependencies.get(dependency) {
+            Some(Dependency::Detailed(d)) => Some(d),
+            _ => None,
+        };
+        let abbreviation = (detailed.and_then(|d| d.abbreviation.clone()))
+            .unwrap_or_else(|| info.abbreviation.clone());
+        let aliases =
+            (detailed.and_then(|d| d.aliases.clone())).unwrap_or_else(|| info.aliases.clone());
+        (abbreviation, aliases)
     }
 }
 

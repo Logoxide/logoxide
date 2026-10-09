@@ -84,6 +84,10 @@ pub fn tag_version(tag: &str) -> Option<semver::Version> {
 }
 
 fn relative_join(within: &str, path: &str) -> String {
+    // An absolute path is where it says, wherever it was named
+    if path.starts_with('/') {
+        return path.to_string();
+    }
     let mut parts: Vec<&str> = within.split('/').filter(|p| !p.is_empty()).collect();
     for part in path.split('/').filter(|p| !p.is_empty() && *p != ".") {
         if part == ".." && parts.last().is_some_and(|p| *p != "..") {
@@ -118,7 +122,11 @@ impl Resolver<'_> {
             });
         }
         while let Some(want) = todo.pop_front() {
-            let locked = self.resolve_one(&want)?;
+            let mut locked = self.resolve_one(&want)?;
+            // The manifest's own name for it, when that isn't its id
+            if want.parent.is_none() && want.name != locked.id {
+                locked.rename = Some(want.name.clone());
+            }
             let name = locked.name();
             let (index, changed) = match lock
                 .packages
@@ -128,6 +136,9 @@ impl Resolver<'_> {
                 Some(index) => {
                     // Asked for again, maybe with more features: one install with all of them
                     let existing = &mut lock.packages[index];
+                    if existing.rename.is_none() {
+                        existing.rename = locked.rename.clone();
+                    }
                     let before = (existing.features.clone(), existing.default_features);
                     let mut features: BTreeSet<String> =
                         existing.features.iter().cloned().collect();
@@ -224,9 +235,10 @@ impl Resolver<'_> {
             )
             .map_err(|e| BiblixError::Resolve(format!("{} ({relative}): {e}", want.name)))?;
             let info = package.info();
-            self.check_id(&want.name, &info.id)?;
+            self.check_id(&want.name, d, &info.id)?;
             return Ok(LockedPackage {
                 id: info.id.clone(),
+                rename: None,
                 version: info.version.clone(),
                 git: None,
                 tag: None,
@@ -243,6 +255,7 @@ impl Resolver<'_> {
         let url = d.git.as_deref().ok_or_else(|| {
             BiblixError::Resolve(format!("`{}`: give `git` or `path`", want.name))
         })?;
+        let url = &crate::git::expand_url(url);
         // What the previous lock file has, if the manifest still allows it and it isn't updating
         let kept = self
             .previous
@@ -261,7 +274,10 @@ impl Resolver<'_> {
                                 && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
                         }
                     };
-                    p.id == want.name && p.git.as_deref() == Some(url) && p.commit.is_some() && same
+                    p.id == d.package_id(&want.name)
+                        && p.git.as_deref() == Some(url.as_str())
+                        && p.commit.is_some()
+                        && same
                 })
             });
         let (reference, tag) = match kept {
@@ -271,7 +287,7 @@ impl Resolver<'_> {
             ),
             None => self.reference(&want.name, url, d)?,
         };
-        let mut locked = self.install(&want.name, url, &reference, kept)?;
+        let mut locked = self.install(&want.name, d, url, &reference, kept)?;
         locked.tag = tag;
         locked.branch = d.branch.clone();
         locked.rev = d.rev.clone();
@@ -319,6 +335,7 @@ impl Resolver<'_> {
     fn install(
         &self,
         name: &str,
+        d: &DetailedDependency,
         url: &str,
         reference: &GitRef,
         kept: Option<&LockedPackage>,
@@ -347,7 +364,7 @@ impl Resolver<'_> {
                 "`{name}`: {url} has a biblix.toml without [package]"
             ))
         })?;
-        self.check_id(name, &info.id)?;
+        self.check_id(name, d, &info.id)?;
         if let GitRef::Tag(tag) = reference
             && let Some(version) = tag_version(tag)
             && version != info.version
@@ -369,6 +386,7 @@ impl Resolver<'_> {
         }
         let locked = LockedPackage {
             id: info.id.clone(),
+            rename: None,
             version: info.version.clone(),
             git: Some(url.to_string()),
             tag: match reference {
@@ -411,13 +429,17 @@ impl Resolver<'_> {
         Ok(locked)
     }
 
-    fn check_id(&self, name: &str, id: &str) -> Result<()> {
-        if name != id {
-            return Err(BiblixError::Resolve(format!(
-                "dependency `{name}` is the package `{id}`: name it `{id}`"
-            )));
+    /// The package fetched is the one the dependency names (its name, or `package`)
+    fn check_id(&self, name: &str, d: &DetailedDependency, id: &str) -> Result<()> {
+        match &d.package {
+            None if name != id => Err(BiblixError::Resolve(format!(
+                "dependency `{name}` is the package `{id}`: name it `{id}`, or add `package = \"{id}\"`"
+            ))),
+            Some(package) if package != id => Err(BiblixError::Resolve(format!(
+                "dependency `{name}` asks for the package `{package}`, but it's `{id}`"
+            ))),
+            _ => Ok(()),
         }
-        Ok(())
     }
 }
 
@@ -432,5 +454,6 @@ mod tests {
         assert_eq!(tag_version("release"), None);
         assert_eq!(relative_join("", "Bibles/Mine"), "Bibles/Mine");
         assert_eq!(relative_join("Bibles/Mine", "../Lexicon"), "Bibles/Lexicon");
+        assert_eq!(relative_join("Bibles/Mine", "/srv/Lexicon"), "/srv/Lexicon");
     }
 }

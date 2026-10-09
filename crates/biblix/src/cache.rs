@@ -150,8 +150,19 @@ impl CachedPackage {
     /// verse counts (references naming it are checked against them)
     pub fn add_to(&self, translations: Translations) -> Translations {
         let info = self.package.info();
-        let name = info.abbreviation.clone();
-        let mut translations = (info.aliases.iter()).fold(
+        self.add_as(translations, &info.abbreviation, &info.aliases)
+    }
+
+    /// `translations` with this package added by another abbreviation and aliases (a project's
+    /// own names for it, `abbreviation = "KJVB"` on its dependency)
+    pub fn add_as(
+        &self,
+        translations: Translations,
+        abbreviation: &str,
+        aliases: &[String],
+    ) -> Translations {
+        let name = abbreviation.to_string();
+        let mut translations = (aliases.iter()).fold(
             translations.alias(name.clone(), name.clone()),
             |t, alias| t.alias(alias.clone(), name.clone()),
         );

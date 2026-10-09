@@ -56,6 +56,34 @@ pub enum CatalogSource {
     FetchBible { id: String, books: Vec<String> },
 }
 
+impl CatalogSource {
+    /// Every kind's import prefix: what `ebible:<id>` and `fetch:<id>` start with
+    pub const PREFIXES: [&'static str; 2] = ["ebible", "fetch"];
+
+    /// The prefix that names this kind's imports (`ebible`, `fetch`); a git package has none,
+    /// since it's added by its URL
+    pub fn prefix(&self) -> Option<&'static str> {
+        match self {
+            CatalogSource::Git { .. } => None,
+            CatalogSource::Ebible { .. } => Some("ebible"),
+            CatalogSource::FetchBible { .. } => Some("fetch"),
+        }
+    }
+
+    /// The publisher's own id, for the kinds that are imported
+    pub fn import_id(&self) -> Option<&str> {
+        match self {
+            CatalogSource::Git { .. } => None,
+            CatalogSource::Ebible { id } | CatalogSource::FetchBible { id, .. } => Some(id),
+        }
+    }
+
+    /// What `bx import` takes for it: `ebible:eng-asv`, `fetch:eng_asv`
+    pub fn import_name(&self) -> Option<String> {
+        Some(format!("{}:{}", self.prefix()?, self.import_id()?))
+    }
+}
+
 /// One package a catalog lists
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
@@ -245,7 +273,10 @@ impl Catalog {
                 version: e.version,
                 kind: e.kind,
                 direction: e.direction,
-                source: CatalogSource::Git { url: e.git },
+                // `github:owner/repo` is listed by its URL
+                source: CatalogSource::Git {
+                    url: crate::git::expand_url(&e.git),
+                },
             })
             .collect();
         Ok(Catalog {
@@ -367,6 +398,12 @@ impl Catalog {
             .collect();
         found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(&b.1.name)));
         found.into_iter().map(|(_, e)| e).collect()
+    }
+
+    /// The entry an import name (`ebible:eng-asv`, as [`CatalogSource::import_name`] writes it)
+    /// names, if this catalog lists it
+    pub fn find_import(&self, name: &str) -> Option<&CatalogEntry> {
+        (self.entries.iter()).find(|e| e.source.import_name().as_deref() == Some(name))
     }
 
     /// This catalog with another's entries after its own (an id listed twice keeps the first)
@@ -575,6 +612,34 @@ mod tests {
         assert_eq!(
             wlc.description.as_deref(),
             Some("The \"WLC\", with vowels, and a comma, here")
+        );
+    }
+
+    #[test]
+    fn finds_imports_by_prefix() {
+        let catalog = Catalog::parse(EBIBLE_CATALOG, EBIBLE).unwrap();
+        let asv = catalog.find_import("ebible:eng-asv").unwrap();
+        assert_eq!(asv.source.import_name().as_deref(), Some("ebible:eng-asv"));
+        // Another kind's prefix, or none, finds nothing
+        assert!(catalog.find_import("fetch:eng-asv").is_none());
+        assert!(catalog.find_import("eng-asv").is_none());
+        let git = CatalogSource::Git {
+            url: "https://example.org/bsb".into(),
+        };
+        assert_eq!(git.import_name(), None);
+    }
+
+    #[test]
+    fn lists_short_names_by_url() {
+        let catalog = Catalog::parse_toml(
+            "[[package]]\nid = \"kjv\"\nname = \"KJV\"\nabbreviation = \"KJV\"\nlanguage = \"en\"\ngit = \"github:someone/kjv\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            catalog.entries[0].source,
+            CatalogSource::Git {
+                url: "https://github.com/someone/kjv".into()
+            }
         );
     }
 
