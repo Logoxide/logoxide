@@ -53,6 +53,9 @@ pub enum FetchRequest {
         commit: String,
         urls: Vec<String>,
     },
+    /// GET `url` (a registry's catalog, or a release's archive) and give the answer to
+    /// `provideDownload(url, bytes)`
+    Download { url: String },
     /// Read every file under the folder (in the library, or the project's for a path package)
     /// and give them to `provideFiles(location, files)`, or `provideMissing(location)` if it
     /// isn't there
@@ -101,6 +104,7 @@ struct Given {
     refs: HashMap<String, Refs>,
     archives: HashMap<(String, String), Arc<MemoryStorage>>,
     files: HashMap<PackageLocation, Option<Arc<MemoryStorage>>>,
+    downloads: HashMap<String, Vec<u8>>,
     /// Versions installed by this installer, by their folder in the library
     installed: BTreeMap<String, Arc<MemoryStorage>>,
 }
@@ -180,6 +184,15 @@ impl Round<'_> {
 impl Fetcher for Round<'_> {
     fn tags(&self, url: &str) -> biblix_core::Result<Vec<(String, String)>> {
         Ok(self.refs(url)?.tags)
+    }
+
+    fn download(&self, url: &str) -> biblix_core::Result<Vec<u8>> {
+        let given = self.given.borrow().downloads.get(url).cloned();
+        given.ok_or_else(|| {
+            self.ask(FetchRequest::Download {
+                url: url.to_string(),
+            })
+        })
     }
 
     fn fetch(
@@ -389,6 +402,13 @@ impl BiblixInstaller {
             Ok(inspected) => InspectStep::Found { inspected },
             Err(request) => InspectStep::Fetch { request },
         })
+    }
+
+    /// The answer to a `Download` request
+    pub fn provide_download(&self, url: String, bytes: Vec<u8>) {
+        if let Ok(mut given) = self.given.lock() {
+            given.downloads.insert(url, bytes);
+        }
     }
 
     /// The answer to a `Refs` request

@@ -23,6 +23,7 @@ pub mod manifest;
 pub mod media;
 pub mod package;
 pub mod project;
+pub mod publish;
 pub mod references;
 pub mod release;
 pub mod resolve;

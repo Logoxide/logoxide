@@ -72,6 +72,14 @@ pub struct LockedPackage {
     /// A folder used in place (not copied into the library), relative to the manifest
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /// The registry's catalog it was chosen from, for a release downloaded as an archive
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<String>,
+    /// That release's archive, and the SHA-256 of its bytes (`sha256:` and hex)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
     /// The checksum of every file (not for path packages, whose files change as they're written)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum: Option<String>,
@@ -92,13 +100,18 @@ fn yes() -> bool {
 impl LockedPackage {
     /**
     Its folder's name in the library: the version and its commit (`1.2.0+g3f9c2a1b`), so forks
-    of a package at the same version, and a moved branch, never share a folder; a path package's
-    is its version
+    of a package at the same version, and a moved branch, never share a folder; a registry
+    archive's, the version and its hash (`1.2.0+a9f86d081`); a path package's, its version
     */
     pub fn key(&self) -> String {
-        match &self.commit {
-            Some(commit) => format!("{}+g{}", self.version, &commit[..commit.len().min(8)]),
-            None => self.version.to_string(),
+        match (&self.commit, &self.sha256) {
+            (Some(commit), _) => format!("{}+g{}", self.version, &commit[..commit.len().min(8)]),
+            // A registry's archive: by its hash, so two registries' releases never share one
+            (None, Some(sha256)) => {
+                let hex = sha256.strip_prefix("sha256:").unwrap_or(sha256);
+                format!("{}+a{}", self.version, &hex[..hex.len().min(8)])
+            }
+            (None, None) => self.version.to_string(),
         }
     }
 
@@ -173,6 +186,9 @@ mod tests {
             rev: None,
             commit: Some("3f9c2a1b77".into()),
             path: None,
+            registry: None,
+            archive: None,
+            sha256: None,
             checksum: Some("sha256:00".into()),
             features: vec!["sword".into()],
             default_features: true,
@@ -193,6 +209,15 @@ mod tests {
             ..package.clone()
         };
         assert_eq!(path.key(), "1.2.0");
+        let archive = LockedPackage {
+            git: None,
+            commit: None,
+            registry: Some("https://example.org/catalog.toml".into()),
+            archive: Some("https://example.org/bsb/bsb-1.2.0.tar.gz".into()),
+            sha256: Some("sha256:9f86d081884c7d65".into()),
+            ..package.clone()
+        };
+        assert_eq!(archive.key(), "1.2.0+a9f86d081");
         let lock = Lockfile {
             packages: vec![package, branch],
             ..Lockfile::default()

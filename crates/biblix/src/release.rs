@@ -24,20 +24,49 @@ pub fn summary_at(
     url: &str,
     tag: &str,
 ) -> Result<(Summary, Vec<VerseHash>)> {
+    summary_in(fetcher, url, tag, "")
+}
+
+/// [`summary_at`] for a package in a folder of the repository (`prefix`, `romans/`)
+pub fn summary_in(
+    fetcher: &dyn Fetcher,
+    url: &str,
+    tag: &str,
+    prefix: &str,
+) -> Result<(Summary, Vec<VerseHash>)> {
     let reference = GitRef::Tag(tag.to_string());
-    let published = MemoryStorage::new();
-    fetcher.fetch_files(
-        url,
-        &reference,
-        &[SUMMARY, VERSES, crate::references::REFERENCES],
-        &published,
-    )?;
-    if let Ok(published) = Summary::read(&published) {
+    let paths: Vec<String> = [SUMMARY, VERSES, crate::references::REFERENCES]
+        .iter()
+        .map(|p| format!("{prefix}{p}"))
+        .collect();
+    let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
+    let fetched = MemoryStorage::new();
+    fetcher.fetch_files(url, &reference, &paths, &fetched)?;
+    if let Ok(published) = Summary::read(&within(&fetched, prefix)?) {
         return Ok(published);
     }
-    let text = Arc::new(MemoryStorage::new());
-    fetcher.fetch(url, &reference, text.as_ref())?;
-    summarize(&Package::open(text, Features::default())?)
+    let all = MemoryStorage::new();
+    fetcher.fetch(url, &reference, &all)?;
+    summarize(&Package::open(
+        Arc::new(within(&all, prefix)?),
+        Features::default(),
+    )?)
+}
+
+/// The files under a folder (`prefix`, with its slash), as if it were the root
+pub fn within(storage: &dyn Storage, prefix: &str) -> Result<MemoryStorage> {
+    let out = MemoryStorage::new();
+    for path in storage.walk("")? {
+        if let Some(inside) = path.strip_prefix(prefix) {
+            out.write(inside, &storage.read(&path)?)?;
+        }
+    }
+    Ok(out)
+}
+
+/// A package's release tag: `v1.2.0`, or `romans/v1.2.0` for one in a folder of its repository
+pub fn tag_for(prefix: &str, version: &semver::Version) -> String {
+    format!("{prefix}v{version}")
 }
 
 /// What a release would be
@@ -81,13 +110,10 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
             minimum: None,
         });
     };
-    // Absolute: git runs in a scratch folder
-    let url = repo
-        .canonicalize()
-        .map_err(|e| BiblixError::io(&repo.display().to_string(), e))?
-        .display()
-        .to_string();
-    let (old_summary, old_verses) = summary_at(git, &url, &tag)?;
+    // The repository's folder (absolute: git runs in a scratch folder), and the package's in it
+    let (root, prefix) = git.package_in(repo)?;
+    let url = root.display().to_string();
+    let (old_summary, old_verses) = summary_in(git, &url, &tag, &prefix)?;
     let d = diff_summaries((&old_summary, &old_verses), (&summary, &verses));
     let minimum = Some(next_version(&old_version, d.change()));
     Ok(Plan {
@@ -141,10 +167,15 @@ pub fn describe(d: &Diff) -> String {
     }
 }
 
-/// Writes the summary into the repository, then commits and tags it `v{version}`
-pub fn release(repo: &Path, plan: &Plan, git: &GitCli) -> Result<String> {
+/**
+Writes the summary into the package's folder, then commits it (only that folder) and tags it
+`v{version}` (`romans/v{version}` for a package in a folder of its repository); the tag and commit
+*/
+pub fn release(repo: &Path, plan: &Plan, git: &GitCli) -> Result<(String, String)> {
     check(plan)?;
     plan.summary.write(&plan.verses, &FsStorage::new(repo))?;
-    let tag = format!("v{}", plan.summary.version);
-    git.commit_and_tag(repo, &format!("Release {tag}"), &tag)
+    let (_, prefix) = git.package_in(repo)?;
+    let tag = tag_for(&prefix, &plan.summary.version);
+    let commit = git.commit_and_tag(repo, &format!("Release {tag}"), &tag)?;
+    Ok((tag, commit))
 }

@@ -17,6 +17,7 @@ use clap::{Args, CommandFactory, Parser, Subcommand};
 use clap_complete::engine::ArgValueCompleter;
 
 mod complete;
+mod publish;
 
 #[derive(Parser)]
 #[command(
@@ -57,9 +58,51 @@ impl Cli {
         Project::open(dir)
     }
 
-    fn fetcher(&self, library: &Library) -> GitCli {
-        GitCli {
+    fn fetcher(&self, library: &Library) -> Web {
+        Web(GitCli {
             scratch: Some(library.git_dir()),
+        })
+    }
+}
+
+/// Git through the `git` command, and downloads (registries' catalogs and archives) over HTTPS
+struct Web(GitCli);
+
+impl std::ops::Deref for Web {
+    type Target = GitCli;
+    fn deref(&self) -> &GitCli {
+        &self.0
+    }
+}
+
+impl biblix::git::Fetcher for Web {
+    fn tags(&self, url: &str) -> biblix::Result<Vec<(String, String)>> {
+        self.0.tags(url)
+    }
+
+    fn fetch(
+        &self,
+        url: &str,
+        reference: &biblix::git::GitRef,
+        dest: &dyn Storage,
+    ) -> biblix::Result<String> {
+        self.0.fetch(url, reference, dest)
+    }
+
+    fn fetch_files(
+        &self,
+        url: &str,
+        reference: &biblix::git::GitRef,
+        paths: &[&str],
+        dest: &dyn Storage,
+    ) -> biblix::Result<String> {
+        self.0.fetch_files(url, reference, paths, dest)
+    }
+
+    fn download(&self, url: &str) -> biblix::Result<Vec<u8>> {
+        match url.starts_with("https://") || url.starts_with("http://") {
+            true => get(url),
+            false => biblix::git::read_local(url),
         }
     }
 }
@@ -201,6 +244,21 @@ enum Command {
     /// Catalogs: lists of packages anyone can host
     #[command(subcommand)]
     Catalog(CatalogCommand),
+    /// Registries of archives: each package release is one file, so a registry of thousands of
+    /// books needs no repository for each, and any static host (or GitHub's releases) serves it
+    #[command(subcommand)]
+    Registry(RegistryCommand),
+    /// Adds a package's release to a registry: its files at its release tag (bx release first),
+    /// as an archive, and its entry in the registry's catalog.toml. A published version never
+    /// changes
+    Publish {
+        /// The package's folder (in its repository, or a folder of it)
+        #[arg(default_value = ".", value_hint = clap::ValueHint::DirPath)]
+        path: PathBuf,
+        /// The registry: a folder, or `github:owner/repo` (its releases, through gh)
+        #[arg(long)]
+        to: String,
+    },
     /// A package's audio and video, listed by URL and hash
     #[command(subcommand)]
     Media(MediaCommand),
@@ -231,6 +289,23 @@ enum MediaCommand {
         /// Only the timings: nothing is downloaded
         #[arg(long)]
         offline: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum RegistryCommand {
+    /// Sets up a registry to publish to: a folder (catalog.toml and a README on hosting it), or
+    /// `github:owner/repo` (the repository, made if it isn't there, and a release named `index`
+    /// holding the catalog; each package release becomes a release of its own)
+    Init {
+        /// A folder, or `github:owner/repo`
+        host: String,
+        /// The registry's name in its catalog (the folder's or repository's by default)
+        #[arg(long)]
+        name: Option<String>,
+        /// Make the GitHub repository private (readers then need access to it)
+        #[arg(long)]
+        private: bool,
     },
 }
 
@@ -295,6 +370,10 @@ struct AddArgs {
     /// A package's folder, used in place
     #[arg(long, value_hint = clap::ValueHint::DirPath)]
     path: Option<String>,
+    /// A registry's catalog (a URL, or a file) to add the package from by its id or path there,
+    /// without naming the registry first: `bx add --registry https://…/catalog.toml romans`
+    #[arg(long, conflicts_with_all = ["git", "path"])]
+    registry: Option<String>,
     /// A version requirement (`1`, `^1.2`); the newest matching tag is used
     #[arg(long, conflicts_with_all = ["tag", "branch", "rev"])]
     version: Option<String>,
@@ -463,6 +542,15 @@ fn main() -> ExitCode {
             catalog_entry(&cli, &biblix::git::expand_url(git))
         }
         Command::Catalog(CatalogCommand::List) => catalog_list(&cli),
+        Command::Registry(RegistryCommand::Init {
+            host,
+            name,
+            private,
+        }) => publish::init(&publish::Host::parse(host), name.as_deref(), *private),
+        Command::Publish { path, to } => {
+            let library = cli.library();
+            publish::publish(path, &publish::Host::parse(to), &cli.fetcher(&library))
+        }
         Command::Catalog(CatalogCommand::Build {
             dir,
             output,
@@ -567,7 +655,11 @@ fn show(args: &PackageArgs, references: Option<(&str, bool)>) -> biblix::Result<
             Dependency::Version(req) => println!("dependency {name}: {req}"),
             Dependency::Detailed(d) => println!(
                 "dependency {name}: {}{}",
-                d.git.as_deref().or(d.path.as_deref()).unwrap_or_default(),
+                (d.git
+                    .as_deref()
+                    .or(d.registry.as_deref())
+                    .or(d.path.as_deref()))
+                .unwrap_or_default(),
                 d.version
                     .as_ref()
                     .map(|v| format!(" ({v})"))
@@ -748,9 +840,21 @@ fn version_req(text: &str) -> biblix::Result<semver::VersionReq> {
 fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
-    let git = (args.repository.as_ref().or(args.git.as_ref()))
-        .map(|url| registry_url(&project, url))
-        .transpose()?;
+    let named = args.repository.as_ref().or(args.git.as_ref());
+    // A registry's package published as archives: added with `registry`, not `git`
+    let archive = match (&args.registry, named) {
+        (Some(_), None) => {
+            return Err(biblix::BiblixError::Manifest(String::from(
+                "name the package: bx add --registry <catalog> <id or path>",
+            )));
+        }
+        (registry, Some(text)) => archive_entry(&project, text, registry.as_deref())?,
+        (None, None) => None,
+    };
+    let git = match archive {
+        Some(_) => None,
+        None => named.map(|url| registry_url(&project, url)).transpose()?,
+    };
     let mut dependency = DetailedDependency {
         git: git.clone(),
         path: args.path.clone(),
@@ -763,8 +867,21 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
         ..DetailedDependency::default()
     };
     // The package's id names the dependency: read it from the package
-    let info = match (&git, &args.path) {
-        (Some(url), _) => {
+    let info: Named = match (archive, &git, &args.path) {
+        (Some((catalog, entry)), _, _) => {
+            if dependency.version.is_none()
+                && let Some(newest) = entry.release(None)
+            {
+                dependency.version = Some(version_req(&newest.version)?);
+            }
+            dependency.registry = Some(catalog);
+            Named {
+                id: entry.id,
+                abbreviation: entry.abbreviation,
+                aliases: entry.aliases,
+            }
+        }
+        (None, Some(url), _) => {
             let fetcher = cli.fetcher(&library);
             let reference = match (&args.tag, &args.branch, &args.rev) {
                 (Some(t), _, _) => biblix::git::GitRef::Tag(t.clone()),
@@ -795,16 +912,17 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
                     dependency.version = Some(version_req(&newest.to_string())?);
                 }
             }
-            info
+            info.into()
         }
-        (None, Some(path)) => {
+        (None, None, Some(path)) => {
             let storage = FsStorage::new(project.dir().join(path));
             let manifest = biblix::Manifest::parse(&storage.read_string(MANIFEST)?)?;
             manifest
                 .package
                 .ok_or_else(|| biblix::BiblixError::Manifest(format!("{path}: no [package]")))?
+                .into()
         }
-        (None, None) => {
+        (None, None, None) => {
             return Err(biblix::BiblixError::Manifest(String::from(
                 "give a repository (github:owner/repo, or --git URL) or --path",
             )));
@@ -827,12 +945,18 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
     // Another source under the same name would replace it: a fork needs its own name
     if let Some(biblix::manifest::Dependency::Detailed(existing)) =
         project.manifest().dependencies.get(&name)
-        && (existing.git.as_deref(), existing.path.as_deref())
-            != (dependency.git.as_deref(), dependency.path.as_deref())
+        && (
+            existing.git.as_deref(),
+            existing.registry.as_deref(),
+            existing.path.as_deref(),
+        ) != (
+            dependency.git.as_deref(),
+            dependency.registry.as_deref(),
+            dependency.path.as_deref(),
+        )
     {
-        let from = existing
-            .git
-            .as_deref()
+        let from = (existing.git.as_deref())
+            .or(existing.registry.as_deref())
             .or(existing.path.as_deref())
             .unwrap_or("?");
         return Err(biblix::BiblixError::Manifest(format!(
@@ -873,6 +997,56 @@ fn add(cli: &Cli, args: &AddArgs) -> biblix::Result<()> {
         biblix::lock::LOCKFILE
     );
     Ok(())
+}
+
+/// What a package being added is called: its id, abbreviation, and aliases
+struct Named {
+    id: String,
+    abbreviation: String,
+    aliases: Vec<String>,
+}
+
+impl From<biblix::manifest::Package> for Named {
+    fn from(info: biblix::manifest::Package) -> Named {
+        Named {
+            id: info.id,
+            abbreviation: info.abbreviation,
+            aliases: info.aliases,
+        }
+    }
+}
+
+/**
+A package a registry publishes as archives, and the registry's catalog (as a dependency names
+it): through one of the project's registries (`dorean:the-dorean-principle`), or in the catalog
+`--registry` gives. None when `text` names no such package (a git URL, or a registry's git package)
+*/
+fn archive_entry(
+    project: &biblix::Project,
+    text: &str,
+    catalog: Option<&str>,
+) -> biblix::Result<Option<(String, biblix::catalog::CatalogEntry)>> {
+    let registries = project.manifest().registries();
+    let (registry, location, name) = match catalog {
+        Some(catalog) => ("--registry", catalog.to_string(), text),
+        None => match biblix::catalog::split_registry_name(text, &registries) {
+            Some((registry, name)) => (registry, registries[registry].clone(), name),
+            None => return Ok(None),
+        },
+    };
+    let loaded = load_registry(registry, &location, project.dir(), true)?;
+    let entry = loaded.find(name)?.ok_or_else(|| {
+        biblix::BiblixError::Catalog(format!("{location} has no package `{name}`"))
+    })?;
+    match &entry.source {
+        biblix::catalog::CatalogSource::Registry { catalog } => {
+            Ok(Some((catalog.clone(), entry.clone())))
+        }
+        _ if catalog.is_some() => Err(biblix::BiblixError::Catalog(format!(
+            "`{name}` in {location} isn't published as archives"
+        ))),
+        _ => Ok(None),
+    }
 }
 
 fn new(args: &NewArgs) -> biblix::Result<()> {
@@ -1068,7 +1242,10 @@ fn list(cli: &Cli) -> biblix::Result<()> {
                     .unwrap_or("")
             ),
             (_, Some(path)) => format!("path {path}"),
-            _ => String::new(),
+            _ => match &locked.registry {
+                Some(registry) => format!("registry {registry}"),
+                None => String::new(),
+            },
         };
         let installed = if library.is_installed(locked, project.dir()) {
             ""
@@ -1236,32 +1413,29 @@ fn release(
     }
     biblix::release::check(&plan)?;
     if dry_run {
-        println!("would release v{}", plan.summary.version);
+        let (_, prefix) = git.package_in(path)?;
+        let tag = biblix::release::tag_for(&prefix, &plan.summary.version);
+        println!("would release {tag}");
         return Ok(());
     }
-    let commit = biblix::release::release(path, &plan, &git)?;
-    println!(
-        "released v{} ({})",
-        plan.summary.version,
-        &commit[..commit.len().min(12)]
-    );
+    let (tag, commit) = biblix::release::release(path, &plan, &git)?;
+    println!("released {tag} ({})", &commit[..commit.len().min(12)]);
     Ok(())
 }
 
 fn diff(cli: &Cli, path: &std::path::Path, from: &str, to: Option<&str>) -> biblix::Result<()> {
     let library = cli.library();
     let git = cli.fetcher(&library);
-    let url = path
-        .canonicalize()
-        .map_err(|e| biblix::BiblixError::Io {
-            path: path.display().to_string(),
-            message: e.to_string(),
-        })?
-        .display()
-        .to_string();
-    let old = biblix::release::summary_at(&git, &url, from)?;
+    // A package in a folder of its repository: its tags are `<folder>/v…`
+    let (root, prefix) = git.package_in(path)?;
+    let url = root.display().to_string();
+    let tag = |t: &str| match t.starts_with(&prefix) {
+        true => t.to_string(),
+        false => format!("{prefix}{t}"),
+    };
+    let old = biblix::release::summary_in(&git, &url, &tag(from), &prefix)?;
     let new = match to {
-        Some(tag) => biblix::release::summary_at(&git, &url, tag)?,
+        Some(to) => biblix::release::summary_in(&git, &url, &tag(to), &prefix)?,
         None => {
             let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(path));
             biblix::summary::summarize(&Package::open(storage, Features::default())?)?
@@ -1387,6 +1561,9 @@ fn registry_url(project: &biblix::Project, text: &str) -> biblix::Result<String>
     })?;
     match &entry.source {
         biblix::catalog::CatalogSource::Git { url } => Ok(url.clone()),
+        biblix::catalog::CatalogSource::Registry { .. } => Err(biblix::BiblixError::Catalog(
+            format!("{text} is published as archives, not in a git repository"),
+        )),
         other => Err(biblix::BiblixError::Catalog(format!(
             "{text} is imported, not added: bx import {}",
             other.import_name().unwrap_or_default()
@@ -1425,7 +1602,8 @@ fn load_registry(
     if is_url || !folder.is_dir() {
         let mut catalog = match is_url {
             true => load_catalog(location, base)?,
-            false => load_catalog(&folder.display().to_string(), Path::new(""))?,
+            // By its whole path, so a dependency names it from anywhere
+            false => load_catalog(&canonical(&folder)?.display().to_string(), Path::new(""))?,
         };
         catalog.name = name.to_string();
         return Ok(catalog);
@@ -1726,6 +1904,15 @@ fn catalog_remove(cli: &Cli, location: &str) -> biblix::Result<()> {
     Ok(())
 }
 
+/// What a catalog entry is, wherever it's listed: its repository, or its registry and id
+fn source_key(entry: &biblix::catalog::CatalogEntry) -> String {
+    match &entry.source {
+        biblix::catalog::CatalogSource::Git { url } => url.clone(),
+        biblix::catalog::CatalogSource::Registry { catalog } => format!("{catalog}#{}", entry.id),
+        other => other.import_name().unwrap_or_default(),
+    }
+}
+
 fn search(
     cli: &Cli,
     query: &str,
@@ -1768,10 +1955,8 @@ fn search(
     let mut through: std::collections::HashMap<String, String> = Default::default();
     for catalog in &registries {
         for entry in &catalog.entries {
-            if let biblix::catalog::CatalogSource::Git { url } = &entry.source {
-                let path = entry.path.as_deref().unwrap_or(&entry.id);
-                through.insert(url.clone(), format!("{}:{path}", catalog.name));
-            }
+            let path = entry.path.as_deref().unwrap_or(&entry.id);
+            through.insert(source_key(entry), format!("{}:{path}", catalog.name));
         }
     }
     let searched = registries.len() + catalogs.len();
@@ -1789,10 +1974,18 @@ fn search(
             .map(|e| {
                 let install = match (&e.source, e.source.import_name()) {
                     (_, Some(name)) => vec![String::from("import"), name],
-                    (biblix::catalog::CatalogSource::Git { url }, None) => match through.get(url) {
-                        Some(name) => vec![String::from("add"), name.clone()],
-                        None => vec![String::from("add"), String::from("--git"), url.clone()],
-                    },
+                    _ if through.contains_key(&source_key(e)) => {
+                        vec![String::from("add"), through[&source_key(e)].clone()]
+                    }
+                    (biblix::catalog::CatalogSource::Git { url }, None) => {
+                        vec![String::from("add"), String::from("--git"), url.clone()]
+                    }
+                    (biblix::catalog::CatalogSource::Registry { catalog }, None) => vec![
+                        String::from("add"),
+                        String::from("--registry"),
+                        catalog.clone(),
+                        e.id.clone(),
+                    ],
                     (_, None) => vec![],
                 };
                 serde_json::json!({
@@ -1812,10 +2005,13 @@ fn search(
         let language = entry.language_name.as_deref().unwrap_or(&entry.language);
         let source = match (&entry.source, entry.source.import_name()) {
             (_, Some(name)) => format!("bx import {name}"),
-            (biblix::catalog::CatalogSource::Git { url }, None) => match through.get(url) {
-                Some(name) => format!("bx add {name}"),
-                None => format!("bx add --git {url}"),
-            },
+            _ if through.contains_key(&source_key(entry)) => {
+                format!("bx add {}", through[&source_key(entry)])
+            }
+            (biblix::catalog::CatalogSource::Git { url }, None) => format!("bx add --git {url}"),
+            (biblix::catalog::CatalogSource::Registry { catalog }, None) => {
+                format!("bx add --registry {catalog} {}", entry.id)
+            }
             (_, None) => String::new(),
         };
         println!(
@@ -1887,7 +2083,9 @@ fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
             }
             biblix::import::fetch_bible(entry, &files, &dest)?;
         }
-        CatalogSource::Git { .. } => unreachable!("only imports are found"),
+        CatalogSource::Git { .. } | CatalogSource::Registry { .. } => {
+            unreachable!("only imports are found")
+        }
     }
     let dependency = DetailedDependency {
         path: Some(relative),

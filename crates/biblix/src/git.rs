@@ -39,6 +39,21 @@ pub fn expand_url(url: &str) -> String {
     short.unwrap_or_else(|| url.to_string())
 }
 
+/// A local file named by a path or a `file://` URL (anything else isn't local: an error)
+pub fn read_local(url: &str) -> Result<Vec<u8>> {
+    if url.contains("://") && !url.starts_with("file://") {
+        return Err(BiblixError::Fetch {
+            url: url.to_string(),
+            message: String::from("no way to download here"),
+        });
+    }
+    let path = url.strip_prefix("file://").unwrap_or(url);
+    std::fs::read(path).map_err(|e| BiblixError::Fetch {
+        url: url.to_string(),
+        message: e.to_string(),
+    })
+}
+
 /// Which commit of a repository: a tag, a branch, a revision, or its default branch
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GitRef {
@@ -51,6 +66,12 @@ pub enum GitRef {
 pub trait Fetcher {
     /// Each tag and the commit it names
     fn tags(&self, url: &str) -> Result<Vec<(String, String)>>;
+
+    /// A file's bytes: a registry's catalog, or a release's archive. A path or `file://` URL is
+    /// read from disk ([`read_local`]); fetchers that can reach the web download the rest
+    fn download(&self, url: &str) -> Result<Vec<u8>> {
+        read_local(url)
+    }
 
     /// The repository's files at `reference` into `dest` (without `.git`), and the commit
     /// they're from
@@ -228,20 +249,45 @@ impl Fetcher for GitCli {
 impl GitCli {
     /// A local repository's tags that are versions (`v1.2.0`), newest last
     pub fn local_versions(&self, repo: &Path) -> Result<Vec<(semver::Version, String)>> {
+        let (_, prefix) = self.package_in(repo)?;
         let out = git(&["tag", "--list"], Some(repo), &repo.display().to_string())?;
         let mut versions: Vec<(semver::Version, String)> = out
             .lines()
-            .filter_map(|tag| Some((crate::resolve::tag_version(tag)?, tag.to_string())))
+            .filter_map(|tag| {
+                // A package in a folder of the repository has its own tags (`romans/v1.0.0`)
+                let own = tag.strip_prefix(prefix.as_str())?;
+                if own.contains('/') {
+                    return None;
+                }
+                Some((crate::resolve::tag_version(own)?, tag.to_string()))
+            })
             .collect();
         versions.sort();
         Ok(versions)
     }
 
-    /// Commits everything in a local repository and tags it
+    /**
+    The repository a folder is in, and the folder's path in it with a slash after
+    (`the-dorean-principle/`; `""` at its root). A package's release tags start with that path,
+    so one repository can hold many packages, each released on its own
+    */
+    pub fn package_in(&self, dir: &Path) -> Result<(PathBuf, String)> {
+        let at = dir.display().to_string();
+        let root = git(&["rev-parse", "--show-toplevel"], Some(dir), &at)?;
+        let prefix = git(&["rev-parse", "--show-prefix"], Some(dir), &at)?;
+        Ok((PathBuf::from(root.trim()), prefix.trim().to_string()))
+    }
+
+    /// Commits everything in a folder of a local repository (only that folder: other packages in
+    /// the repository are left as they are) and tags it
     pub fn commit_and_tag(&self, repo: &Path, message: &str, tag: &str) -> Result<String> {
         let at = repo.display().to_string();
-        git(&["add", "-A"], Some(repo), &at)?;
-        git(&["commit", "-q", "-m", message], Some(repo), &at)?;
+        git(&["add", "-A", "--", "."], Some(repo), &at)?;
+        // Nothing new (the summary written is the one committed): the commit there is tagged
+        let staged = git(&["status", "--porcelain", "--", "."], Some(repo), &at)?;
+        if !staged.trim().is_empty() {
+            git(&["commit", "-q", "-m", message, "--", "."], Some(repo), &at)?;
+        }
         git(&["tag", tag], Some(repo), &at)?;
         Ok(git(&["rev-parse", "HEAD"], Some(repo), &at)?
             .trim()

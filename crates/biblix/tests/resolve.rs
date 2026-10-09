@@ -384,3 +384,120 @@ fn annotations_stay_and_edits_are_repaired() {
         .install(&library, &fetcher, Update::Nothing)
         .unwrap();
 }
+
+/// Publishes a package's folder into a registry folder: its archive, and its release in the
+/// registry's catalog.toml (as `bx publish` does)
+fn publish(package: &Path, registry: &Path) {
+    use biblix::{FsStorage, Storage, catalog::CatalogRelease, publish};
+    let storage = FsStorage::new(package);
+    let manifest = biblix::Manifest::parse(&storage.read_string("biblix.toml").unwrap()).unwrap();
+    let info = manifest.package.unwrap();
+    let bytes = publish::pack(&storage, &info).unwrap();
+    let file = format!("{}/{}", info.id, publish::archive_name(&info));
+    std::fs::create_dir_all(registry.join(&info.id)).unwrap();
+    std::fs::write(registry.join(&file), &bytes).unwrap();
+    let catalog = registry.join("catalog.toml");
+    let text = std::fs::read_to_string(&catalog).ok();
+    let release = CatalogRelease {
+        version: info.version.to_string(),
+        url: file,
+        sha256: publish::sha256(&bytes),
+        checksum: Some(biblix::package::checksum(&storage).unwrap()),
+        size: Some(bytes.len() as u64),
+    };
+    let text = publish::add_release(text.as_deref(), "test", &info, None, &release)
+        .unwrap()
+        .unwrap();
+    std::fs::write(catalog, text).unwrap();
+}
+
+#[test]
+fn registry_releases_are_archives() {
+    let world = World::new("registry");
+    let repo = world.path("authoring/tb");
+    let registry = world.path("registry");
+    std::fs::create_dir_all(&repo).unwrap();
+    release(&repo, "tb", "1.0.0", "one", "");
+    publish(&repo, &registry);
+    release(&repo, "tb", "1.1.0", "one point one", "");
+    publish(&repo, &registry);
+    // The authoring repository is gone: only the registry's files are used
+    std::fs::remove_dir_all(world.path("authoring")).unwrap();
+
+    let catalog = registry.join("catalog.toml").display().to_string();
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    let dependency = |version: &str| DetailedDependency {
+        registry: Some(catalog.clone()),
+        version: Some(version.parse().unwrap()),
+        default_features: true,
+        ..DetailedDependency::default()
+    };
+    project.add("tb", &dependency("~1.0")).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap();
+    let tb = lock.get("tb").unwrap();
+    assert_eq!(tb.version.to_string(), "1.0.0");
+    assert!(tb.key().starts_with("1.0.0+a"));
+    assert!(
+        tb.archive
+            .as_deref()
+            .unwrap()
+            .ends_with("tb/tb-1.0.0.tar.gz")
+    );
+    assert_eq!(tb.registry.as_deref(), Some(catalog.as_str()));
+    let installed = library.open(tb, project.dir()).unwrap();
+    assert!(
+        installed
+            .storage()
+            .read_string("usx/JHN.usx")
+            .unwrap()
+            .contains("one")
+    );
+
+    // A newer release the requirement allows only comes with an update
+    project.add("tb", &dependency("1")).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(
+        project
+            .lock()
+            .unwrap()
+            .get("tb")
+            .unwrap()
+            .version
+            .to_string(),
+        "1.0.0"
+    );
+    project.install(&library, &fetcher, Update::All).unwrap();
+    assert_eq!(
+        project
+            .lock()
+            .unwrap()
+            .get("tb")
+            .unwrap()
+            .version
+            .to_string(),
+        "1.1.0"
+    );
+
+    // Another device installs from the lock alone; an archive that changed is refused
+    project.save_manifest().unwrap();
+    std::fs::remove_file(registry.join("catalog.toml")).unwrap();
+    let third = world.library("third");
+    let mut again = Project::open(world.path("vault")).unwrap();
+    again.install(&third, &fetcher, Update::Nothing).unwrap();
+    assert_eq!(third.installed().len(), 1);
+    let other = world.library("other");
+    std::fs::write(registry.join("tb/tb-1.1.0.tar.gz"), b"something else").unwrap();
+    let result = again.install(&other, &fetcher, Update::Nothing).map(|_| ());
+
+    assert!(
+        matches!(result, Err(BiblixError::Checksum { .. })),
+        "{result:?}"
+    );
+}

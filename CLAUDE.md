@@ -71,7 +71,12 @@ before changing the design.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
     beside its folder, then renamed into place)
   - `resolve.rs`: manifest + previous lock → new lock, installing as it goes, through `Packages`
-    (where installed versions and path packages are) and a `Fetcher`. A lock entry is kept
+    (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
+    registries: paths and `file://` by default, HTTPS in bx and through the host in the
+    bindings). A `registry` dependency (a catalog's URL) gets the newest release its catalog lists
+    that the requirement allows, or the locked one (whose archive URL and hash the lock has, so
+    no catalog is read); the archive must hash to `sha256` and its files to `checksum`; lock
+    entries have `registry`, `archive`, `sha256`, and its library folder is `<version>+a<hash>`. A lock entry is kept
     while the manifest still allows it (unless updating); fetched text is checked against the
     locked checksum; a tag's version must match its `biblix.toml`; git packages can't have path
     dependencies
@@ -97,7 +102,14 @@ before changing the design.
     globs); `checksum` hashes only those, so a reader's annotations beside a book never change
     it. `other_files` are kept by repairs and stop `bx clean`
   - `release.rs`: summarize, compare with the newest release tag's summary (or its text, for
-    releases before summaries), check the version, write, commit, tag `v{version}`
+    releases before summaries), check the version, write, commit, tag `v{version}`. A package in
+    a folder of its repository (`GitCli::package_in`) has its own tags, `<folder>/v{version}`,
+    and its commits take only its folder (nothing new: the current commit is tagged)
+  - `publish.rs`: release archives for registries: `pack` (declared files, sorted, no times or
+    owners, so the same files make the same bytes), `sha256`, `add_release` (a catalog.toml's
+    `[[package.release]]`: version, url relative to the catalog, sha256, checksum, size; a
+    published version never changes). `CatalogSource::Registry { catalog }` and
+    `CatalogEntry::releases`/`release(req)`; `relative_url`
 - `crates/biblix-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on biblix). `bible.rs`'s `Bible` reads a package or a plain
   USX folder through biblix sources; `settings.rs` finds the project (the `project` setting, a
@@ -111,7 +123,10 @@ before changing the design.
   names it, like `cargo new`; then `bx release`), `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `media add <file> --url`
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>` and `publish <package> --to …`
+  (`publish.rs`: a folder registry, or GitHub releases through `gh`, the catalog being release
+  `index`'s file and each archive a release `<id>-v<version>`), `add --registry <catalog> <id>`,
+  `media add <file> --url`
   (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash bx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `bx add`
@@ -133,7 +148,9 @@ before changing the design.
   `BiblixPackage.references()` and `epubFiles()`. `BiblixProject.packages()` lists each package
   the manifest asks for followed by what it brings in (`LockedEntry.dependencyOf`), so hosts see
   a collection's packages. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
-  given; whatever is missing (refs, an archive, an installed package's files) stops the round and
+  given (`Download` requests, answered with `provideDownload`, are registries' catalogs and
+  archives; `BiblixProject.registries()`, `addRegistry`, `removeRegistry`;
+  `Dependency.registry`); whatever is missing (refs, an archive, an installed package's files) stops the round and
   is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `libbiblix.rlib`. Build with
   `npm install && npm run pack:wasm` or `npm run pack:python`; the examples open and install the

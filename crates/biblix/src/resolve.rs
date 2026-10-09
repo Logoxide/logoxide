@@ -1,7 +1,8 @@
 /*!
 Resolving a manifest's dependencies into a lock file, and installing what it names: each git
 dependency's version (the newest tag matching its requirement, or the tag, branch, or revision it
-names), its files in the library, and its own dependencies, with the features asked for.
+names), each registry dependency's release (the newest matching archive its catalog lists), its
+files in the library, and its own dependencies, with the features asked for.
 
 What the previous lock file says is kept unless it's being updated or the manifest asks for
 something else, so installing on another device gets the same commits, checked by checksum.
@@ -116,7 +117,7 @@ impl Resolver<'_> {
                 Dependency::Detailed(d) => d.clone(),
                 Dependency::Version(req) => {
                     return Err(BiblixError::Resolve(format!(
-                        "{name} = \"{req}\": there's no default registry; give `git` or `path`"
+                        "{name} = \"{req}\": there's no default registry; give `git`, `registry`, or `path`"
                     )));
                 }
             };
@@ -198,7 +199,7 @@ impl Resolver<'_> {
                     name: dep_name.clone(),
                     dependency,
                     within: within.clone(),
-                    from_git: locked.git.is_some(),
+                    from_git: locked.git.is_some() || locked.registry.is_some(),
                     parent: Some(index),
                 });
             }
@@ -226,7 +227,7 @@ impl Resolver<'_> {
         if let Some(path) = &d.path {
             if want.from_git {
                 return Err(BiblixError::Resolve(format!(
-                    "`{}`: a git package can't have path dependencies",
+                    "`{}`: a git or registry package can't have path dependencies",
                     want.name
                 )));
             }
@@ -253,14 +254,32 @@ impl Resolver<'_> {
                 rev: None,
                 commit: None,
                 path: Some(relative),
+                registry: None,
+                archive: None,
+                sha256: None,
                 checksum: None,
                 features,
                 default_features: d.default_features,
                 dependencies: vec![],
             });
         }
+        if let Some(registry) = &d.registry {
+            if d.git.is_some() {
+                return Err(BiblixError::Resolve(format!(
+                    "`{}`: give `git` or `registry`, not both",
+                    want.name
+                )));
+            }
+            let mut locked = self.registry_release(want, registry)?;
+            locked.features = features;
+            locked.default_features = d.default_features;
+            return Ok(locked);
+        }
         let url = d.git.as_deref().ok_or_else(|| {
-            BiblixError::Resolve(format!("`{}`: give `git` or `path`", want.name))
+            BiblixError::Resolve(format!(
+                "`{}`: give `git`, `registry`, or `path`",
+                want.name
+            ))
         })?;
         let url = &crate::git::expand_url(url);
         // What the previous lock file has, if the manifest still allows it and it isn't updating
@@ -414,6 +433,9 @@ impl Resolver<'_> {
             rev: None,
             commit: Some(commit),
             path: None,
+            registry: None,
+            archive: None,
+            sha256: None,
             checksum: Some(checksum),
             features: vec![],
             default_features: true,
@@ -441,6 +463,128 @@ impl Resolver<'_> {
                     self.packages.repair(&locked, &storage)?;
                 }
             }
+            None => self.packages.install(&locked, &storage)?,
+        }
+        Ok(locked)
+    }
+
+    /**
+    A registry dependency: the release the lock file has (while the manifest allows it and it
+    isn't updating), else the newest its catalog lists that the requirement allows. Its archive
+    is downloaded only when that version isn't installed, and must hash to what the catalog (or
+    the lock) says, as its files must
+    */
+    fn registry_release(&self, want: &Want, registry: &str) -> Result<LockedPackage> {
+        let d = &want.dependency;
+        let id = d.package_id(&want.name);
+        let kept = self
+            .previous
+            .filter(|_| !self.update.allows(&want.name))
+            .and_then(|previous| {
+                previous.packages.iter().find(|p| {
+                    p.id == id
+                        && p.registry.as_deref() == Some(registry)
+                        && p.archive.is_some()
+                        && p.sha256.is_some()
+                        && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+                })
+            });
+        let mut locked = match kept {
+            Some(kept) => kept.clone(),
+            None => {
+                let text = self.fetcher.download(registry)?;
+                let catalog =
+                    crate::catalog::Catalog::parse(registry, &String::from_utf8_lossy(&text))?;
+                let entry = catalog.find(id)?.ok_or_else(|| {
+                    BiblixError::Resolve(format!("`{}`: {registry} has no `{id}`", want.name))
+                })?;
+                let release = entry.release(d.version.as_ref()).ok_or_else(|| {
+                    let wanted = (d.version.as_ref()).map_or(String::from("a release"), |r| {
+                        format!("a release matching {r}")
+                    });
+                    BiblixError::Resolve(format!(
+                        "`{}`: {registry} has no {wanted} of `{id}`",
+                        want.name
+                    ))
+                })?;
+                LockedPackage {
+                    id: id.to_string(),
+                    rename: None,
+                    version: release.version.parse().map_err(|e| {
+                        BiblixError::Resolve(format!("{id} {}: {e}", release.version))
+                    })?,
+                    git: None,
+                    tag: None,
+                    branch: None,
+                    rev: None,
+                    commit: None,
+                    path: None,
+                    registry: Some(registry.to_string()),
+                    archive: Some(release.url.clone()),
+                    sha256: Some(release.sha256.clone()),
+                    checksum: release.checksum.clone(),
+                    features: vec![],
+                    default_features: true,
+                    dependencies: vec![],
+                }
+            }
+        };
+        locked.rename = None;
+        locked.dependencies = vec![];
+        // Installed already: still the same text
+        let installed = self.packages.installed(&locked)?;
+        if let Some(installed) = &installed {
+            let checksum = crate::package::checksum(installed.as_ref())?;
+            let changed = locked.checksum.as_ref().is_some_and(|c| *c != checksum);
+            if changed && !self.repair {
+                return Err(BiblixError::Changed {
+                    id: locked.label(),
+                    dir: crate::library::library_dir(&locked),
+                    expected: locked.checksum.clone().unwrap_or_default(),
+                    actual: checksum,
+                });
+            }
+            if !changed {
+                locked.checksum = Some(checksum);
+                return Ok(locked);
+            }
+        }
+        let url = locked.archive.clone().unwrap_or_default();
+        let bytes = self.fetcher.download(&url)?;
+        let sha256 = crate::publish::sha256(&bytes);
+        if Some(&sha256) != locked.sha256.as_ref() {
+            return Err(BiblixError::Checksum {
+                id: format!("{} ({url})", locked.label()),
+                expected: locked.sha256.clone().unwrap_or_default(),
+                actual: sha256,
+            });
+        }
+        let unpacked = MemoryStorage::new();
+        crate::archive::unpack(&bytes, &unpacked)?;
+        let storage = crate::package::only_declared(&unpacked)?;
+        let manifest =
+            crate::manifest::Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?;
+        let info = manifest.package.ok_or_else(|| {
+            BiblixError::Resolve(format!("`{}`: {url} has no [package]", want.name))
+        })?;
+        self.check_id(&want.name, d, &info.id)?;
+        if info.version != locked.version {
+            return Err(BiblixError::Resolve(format!(
+                "`{}`: {url} is version {}, listed as {}",
+                want.name, info.version, locked.version
+            )));
+        }
+        let checksum = crate::package::checksum(&storage)?;
+        if locked.checksum.as_ref().is_some_and(|c| *c != checksum) {
+            return Err(BiblixError::Checksum {
+                id: locked.label(),
+                expected: locked.checksum.clone().unwrap_or_default(),
+                actual: checksum,
+            });
+        }
+        locked.checksum = Some(checksum);
+        match installed {
+            Some(_) => self.packages.repair(&locked, &storage)?,
             None => self.packages.install(&locked, &storage)?,
         }
         Ok(locked)

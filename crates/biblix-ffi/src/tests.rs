@@ -344,6 +344,14 @@ impl Host {
                     .provide_archive(repository, commit, Self::archive())
                     .unwrap();
             }
+            FetchRequest::Download { url } => {
+                let bytes = match url.as_str() {
+                    REGISTRY => registry().0.into_bytes(),
+                    _ if url == format!("{REGISTRY_DIR}/test/test-1.0.0.tar.gz") => registry().1,
+                    _ => panic!("no {url}"),
+                };
+                installer.provide_download(url, bytes);
+            }
             FetchRequest::Files { location } => {
                 let PackageLocation::Library { dir } = &location else {
                     panic!("no path packages here");
@@ -355,6 +363,97 @@ impl Host {
             }
         }
     }
+}
+
+const REGISTRY_DIR: &str = "https://example.org/registry";
+const REGISTRY: &str = "https://example.org/registry/catalog.toml";
+
+/// A registry publishing the test package: its catalog's text, and the release's archive
+fn registry() -> (String, Vec<u8>) {
+    use biblix_core::{Storage, catalog::CatalogRelease, publish};
+    let storage = biblix_core::MemoryStorage::new();
+    for f in files() {
+        storage.write(&f.path, &f.bytes).unwrap();
+    }
+    let info = biblix_core::Manifest::parse(MANIFEST)
+        .unwrap()
+        .package
+        .unwrap();
+    let bytes = publish::pack(&storage, &info).unwrap();
+    let release = CatalogRelease {
+        version: "1.0.0".into(),
+        url: "test/test-1.0.0.tar.gz".into(),
+        sha256: publish::sha256(&bytes),
+        checksum: Some(biblix_core::package::checksum(&storage).unwrap()),
+        size: None,
+    };
+    let text = publish::add_release(None, "r", &info, None, &release)
+        .unwrap()
+        .unwrap();
+    (text, bytes)
+}
+
+#[test]
+fn installing_from_a_registry_of_archives() {
+    let biblix = Biblix::new();
+    let catalog = biblix.parse_catalog(REGISTRY.into(), registry().0).unwrap();
+    let entry = &catalog.search("TB".into(), 5)[0];
+    assert_eq!(
+        entry.source,
+        crate::CatalogSource::Registry {
+            catalog: REGISTRY.into()
+        }
+    );
+    assert_eq!(
+        entry.releases[0].url,
+        format!("{REGISTRY_DIR}/test/test-1.0.0.tar.gz")
+    );
+
+    let project = biblix.parse_project(None, None).unwrap();
+    let dependency = Dependency {
+        registry: Some(REGISTRY.into()),
+        version: Some("1".into()),
+        default_features: true,
+        ..Dependency::default()
+    };
+    let project = project.add_dependency("test".into(), dependency).unwrap();
+    let mut host = Host {
+        library: HashMap::new(),
+        requests: vec![],
+    };
+    let installer = biblix.installer();
+    let (lock, files) = host.install(&installer, &project);
+    // The catalog, whether it's installed, then the release's archive: nothing else
+    assert!(matches!(
+        host.requests.as_slice(),
+        [
+            FetchRequest::Download { url: catalog },
+            FetchRequest::Files { .. },
+            FetchRequest::Download { url: archive },
+        ] if catalog == REGISTRY && archive.ends_with(".tar.gz")
+    ));
+    assert!(lock.contains("archive = \"https://example.org/registry/test/test-1.0.0.tar.gz\""));
+    let dir = files[0]
+        .path
+        .split('/')
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("/");
+    assert!(dir.starts_with("packages/test/1.0.0+a"), "{dir}");
+
+    // Another device with the lock: the archive alone, by the lock's URL and hash
+    let locked = biblix
+        .parse_project(Some(project.manifest_text()), Some(lock))
+        .unwrap();
+    let mut other = Host {
+        library: HashMap::new(),
+        requests: vec![],
+    };
+    other.install(&biblix.installer(), &locked);
+    assert!(matches!(
+        other.requests.as_slice(),
+        [FetchRequest::Files { .. }, FetchRequest::Download { url }] if url.ends_with(".tar.gz")
+    ));
 }
 
 fn added(project: &BiblixProject) -> BiblixProject {

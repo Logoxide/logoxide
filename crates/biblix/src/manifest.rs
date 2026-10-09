@@ -222,6 +222,10 @@ pub enum Dependency {
 pub struct DetailedDependency {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git: Option<String>,
+    /// A registry's catalog (its URL, or a file's path) whose releases are archives: the newest
+    /// release matching `version` is downloaded ([`crate::publish`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registry: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
     /// The newest tag matching this requirement (`v1.2.0` matches `1`)
@@ -406,8 +410,11 @@ impl Manifest {
             let Dependency::Detailed(d) = dependency else {
                 continue;
             };
-            if d.git.is_some() == d.path.is_some() {
-                return err(format!("dependency `{name}`: give `git` or `path`"));
+            let sources = [d.git.is_some(), d.path.is_some(), d.registry.is_some()];
+            if sources.iter().filter(|s| **s).count() != 1 {
+                return err(format!(
+                    "dependency `{name}`: give one of `git`, `registry`, or `path`"
+                ));
             }
             let pins = [&d.tag, &d.rev, &d.branch]
                 .iter()
@@ -593,7 +600,10 @@ compare = ["mine"]
                 .unwrap_err()
                 .to_string()
         };
-        assert!(bad("x = { path = \"a\", git = \"b\" }").contains("give `git` or `path`"));
+        assert!(
+            bad("x = { path = \"a\", git = \"b\" }")
+                .contains("give one of `git`, `registry`, or `path`")
+        );
         assert!(bad("y = { path = \"a\", tag = \"v1\" }").contains("with `git`"));
         let wrong_dep = BSB.replace("dep:strongs-greek", "dep:tsk");
         assert!(

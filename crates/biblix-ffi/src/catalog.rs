@@ -1,7 +1,10 @@
 //! Catalogs: packages to search by name or language instead of by URL (see biblix's `catalog`).
 
 use biblix_core::{
-    catalog::{Catalog, CatalogEntry as CoreEntry, CatalogSource as CoreSource},
+    catalog::{
+        Catalog, CatalogEntry as CoreEntry, CatalogRelease as CoreRelease,
+        CatalogSource as CoreSource,
+    },
     import::{ebible_zip_url, fetch_bible_book_url},
     manifest::Direction,
 };
@@ -15,6 +18,9 @@ use crate::PackageKind;
 pub enum CatalogSource {
     /// A biblix package: add it with `{ git: url }` and install it
     Git { url: String },
+    /// A package a registry publishes as archives (the entry's `releases`): add it with
+    /// `{ registry: catalog, version }` and install it
+    Registry { catalog: String },
     /// A translation eBible.org publishes: download `zip_url`, then `Biblix::import_ebible`
     Ebible { id: String, zip_url: String },
     /// A translation fetch.bible publishes: download each of `books`, then
@@ -29,6 +35,43 @@ pub struct FetchBook {
     /// Its USFM code as fetch.bible writes it (`jhn`)
     pub code: String,
     pub url: String,
+}
+
+/// One release a registry publishes: its archive, and what it hashes to
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CatalogRelease {
+    pub version: String,
+    pub url: String,
+    /// The SHA-256 of the archive (`sha256:` and hex)
+    pub sha256: String,
+    /// What its files hash to, as a lock file has it
+    pub checksum: Option<String>,
+    pub size: Option<u64>,
+}
+
+impl From<&CoreRelease> for CatalogRelease {
+    fn from(r: &CoreRelease) -> Self {
+        Self {
+            version: r.version.clone(),
+            url: r.url.clone(),
+            sha256: r.sha256.clone(),
+            checksum: r.checksum.clone(),
+            size: r.size,
+        }
+    }
+}
+
+impl From<CatalogRelease> for CoreRelease {
+    fn from(r: CatalogRelease) -> Self {
+        Self {
+            version: r.version,
+            url: r.url,
+            sha256: r.sha256,
+            checksum: r.checksum,
+            size: r.size,
+        }
+    }
 }
 
 /// One package a catalog lists
@@ -53,6 +96,8 @@ pub struct CatalogEntry {
     pub source: CatalogSource,
     /// Its path in a registry folder (`books/romans`), which names it there as its id does
     pub path: Option<String>,
+    /// A registry's releases of it, oldest first (none for other sources)
+    pub releases: Vec<CatalogRelease>,
 }
 
 impl From<&CoreEntry> for CatalogEntry {
@@ -72,6 +117,9 @@ impl From<&CoreEntry> for CatalogEntry {
             right_to_left: e.direction == Direction::Rtl,
             source: match &e.source {
                 CoreSource::Git { url } => CatalogSource::Git { url: url.clone() },
+                CoreSource::Registry { catalog } => CatalogSource::Registry {
+                    catalog: catalog.clone(),
+                },
                 CoreSource::Ebible { id } => CatalogSource::Ebible {
                     id: id.clone(),
                     zip_url: ebible_zip_url(id),
@@ -87,6 +135,7 @@ impl From<&CoreEntry> for CatalogEntry {
                 },
             },
             path: e.path.clone(),
+            releases: e.releases.iter().map(Into::into).collect(),
         }
     }
 }
@@ -111,6 +160,7 @@ impl From<CatalogEntry> for CoreEntry {
             },
             source: match e.source {
                 CatalogSource::Git { url } => CoreSource::Git { url },
+                CatalogSource::Registry { catalog } => CoreSource::Registry { catalog },
                 CatalogSource::Ebible { id, .. } => CoreSource::Ebible { id },
                 CatalogSource::FetchBible { id, books } => CoreSource::FetchBible {
                     id,
@@ -118,6 +168,7 @@ impl From<CatalogEntry> for CoreEntry {
                 },
             },
             path: e.path,
+            releases: e.releases.into_iter().map(Into::into).collect(),
         }
     }
 }

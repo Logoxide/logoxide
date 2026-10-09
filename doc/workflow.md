@@ -248,6 +248,37 @@ manifest keeps the package's full `file://` URL, so the name is only for typing.
 also be a `catalog.toml` (`--name mine https://example.org/catalog.toml`), whose packages are
 named by id. Registries are in `[settings.registries]`, searched before the catalogs.
 
+### Publishing many packages: a registry of archives
+
+A repository per package doesn't scale to thousands of books that rarely change. Instead, keep
+them together in one repository (a folder each) and publish each release as an archive: one
+file, its SHA-256 in the registry's `catalog.toml`, downloaded alone when installed.
+
+```sh
+# One repository, a folder per package; each is released on its own
+cd dorean-epubs/the-dorean-principle && bx release       # tags the-dorean-principle/v1.0.2
+
+# Once: a registry, on GitHub's releases (the repository holds no files) or in a folder
+bx registry init github:MasterTemple/dorean-epubs        # or: bx registry init ~/registry
+# Each release: its files at its tag, packed (the same files always make the same archive)
+bx publish the-dorean-principle --to github:MasterTemple/dorean-epubs
+```
+
+`bx registry init` prints the catalog's URL. Readers name the registry once and add by id:
+
+```sh
+bx catalog add https://github.com/MasterTemple/dorean-epubs/releases/download/index/catalog.toml --name dorean
+bx add dorean:the-dorean-principle      # { registry = "https://…/catalog.toml", version = "1.0.2" }
+bx add --registry https://…/catalog.toml the-dorean-principle   # without naming it
+```
+
+The lock pins the release's archive and hash, so another device downloads that file alone (not
+even the catalog), and an archive that changed is refused. A published version never changes:
+publishing it again with other files is an error. A folder registry can be served by any static
+host (a web server, GitHub Pages, an S3 bucket). The Obsidian plugin installs from registries
+on the web too, phones included; a collection's packages can come from a registry
+(`{ registry = …, version = … }` in its `[dependencies]`).
+
 ### Audio
 
 Recordings are listed, never stored: each file's URL, size, and SHA-256, and a WebVTT file of

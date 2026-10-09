@@ -27,6 +27,14 @@ impl PackageLocation {
     }
 }
 
+/// A registry a project names
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Registry {
+    pub name: String,
+    pub location: String,
+}
+
 /// One package the project asks for, exactly as its lock file has it
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,6 +91,8 @@ impl From<&LockedPackage> for LockedEntry {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Dependency {
     pub git: Option<String>,
+    /// A registry's catalog whose releases are archives (`CatalogSource::Registry`'s `catalog`)
+    pub registry: Option<String>,
     pub path: Option<String>,
     /// A version requirement, like Cargo's: `1.2` allows 1.2.0 up to 2.0.0
     pub version: Option<String>,
@@ -113,6 +123,7 @@ impl TryFrom<Dependency> for DetailedDependency {
         Ok(DetailedDependency {
             // `github:owner/repo` is kept as its URL
             git: d.git.as_deref().map(biblix_core::git::expand_url),
+            registry: d.registry,
             path: d.path,
             version,
             tag: d.tag,
@@ -237,6 +248,33 @@ impl BiblixProject {
     /// `Biblix::parse_catalog`
     pub fn catalogs(&self) -> Vec<String> {
         self.project.manifest().catalogs()
+    }
+
+    /// The registries the project names (`[settings.registries]`), by name: each a catalog (a URL,
+    /// or a path relative to the project), or a folder of repositories (which only `bx` reads)
+    pub fn registries(&self) -> Vec<Registry> {
+        (self.project.manifest().registries().into_iter())
+            .map(|(name, location)| Registry { name, location })
+            .collect()
+    }
+
+    /// This project naming a registry (replacing one of that name): `name:<id>` then names its
+    /// packages
+    pub fn add_registry(
+        &self,
+        name: String,
+        location: String,
+    ) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        project.add_registry(&name, &location)?;
+        Ok(Self { project })
+    }
+
+    /// This project without a registry
+    pub fn remove_registry(&self, name: String) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        project.remove_registry(&name)?;
+        Ok(Self { project })
     }
 
     /// Whether a catalog is one of the defaults (eBible.org's or fetch.bible's list)

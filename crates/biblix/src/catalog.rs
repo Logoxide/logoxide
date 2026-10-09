@@ -65,6 +65,25 @@ pub enum CatalogSource {
     /// A translation fetch.bible publishes as USX: each of `books` (lowercase USFM codes),
     /// imported into a package
     FetchBible { id: String, books: Vec<String> },
+    /// A package a registry publishes as archives (its entry's `releases`): `catalog` is the
+    /// registry's catalog, which a dependency names as its `registry`
+    Registry { catalog: String },
+}
+
+/// One release a registry publishes: its archive and what it hashes to
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CatalogRelease {
+    pub version: String,
+    /// Its `.tar.gz` (relative to the catalog in its file; whole once read)
+    pub url: String,
+    /// The SHA-256 of the archive's bytes (`sha256:` and hex)
+    pub sha256: String,
+    /// What the package's files hash to (`Package::checksum`), as a lock file has it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<String>,
+    /// The archive's size in bytes
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 impl CatalogSource {
@@ -75,7 +94,7 @@ impl CatalogSource {
     /// since it's added by its URL
     pub fn prefix(&self) -> Option<&'static str> {
         match self {
-            CatalogSource::Git { .. } => None,
+            CatalogSource::Git { .. } | CatalogSource::Registry { .. } => None,
             CatalogSource::Ebible { .. } => Some("ebible"),
             CatalogSource::FetchBible { .. } => Some("fetch"),
         }
@@ -84,7 +103,7 @@ impl CatalogSource {
     /// The publisher's own id, for the kinds that are imported
     pub fn import_id(&self) -> Option<&str> {
         match self {
-            CatalogSource::Git { .. } => None,
+            CatalogSource::Git { .. } | CatalogSource::Registry { .. } => None,
             CatalogSource::Ebible { id } | CatalogSource::FetchBible { id, .. } => Some(id),
         }
     }
@@ -119,6 +138,25 @@ pub struct CatalogEntry {
     pub source: CatalogSource,
     /// Its path in a registry folder (`books/romans`), which names it there as its id does
     pub path: Option<String>,
+    /// The releases a registry publishes as archives, oldest first (none for other sources)
+    pub releases: Vec<CatalogRelease>,
+}
+
+impl CatalogEntry {
+    /**
+    The newest release `req` allows (without one, the newest that isn't a pre-release), from a
+    registry's archives
+    */
+    pub fn release(&self, req: Option<&semver::VersionReq>) -> Option<&CatalogRelease> {
+        (self.releases.iter())
+            .filter_map(|r| Some((r.version.parse::<semver::Version>().ok()?, r)))
+            .filter(|(v, _)| match req {
+                Some(req) => req.matches(v),
+                None => v.pre.is_empty(),
+            })
+            .max_by(|a, b| a.0.cmp(&b.0))
+            .map(|(_, r)| r)
+    }
 }
 
 /// The `[[package]]` tables of a `catalog.toml`
@@ -143,7 +181,11 @@ struct TomlEntry {
     direction: Direction,
     #[serde(default)]
     version: Option<String>,
-    git: String,
+    #[serde(default)]
+    git: Option<String>,
+    /// A registry's archives (`[[package.release]]`)
+    #[serde(default, rename = "release")]
+    releases: Vec<CatalogRelease>,
     /// Its path in the folder the catalog was built from (`bx catalog build`), which names it
     /// as its id does
     #[serde(default)]
@@ -179,7 +221,7 @@ impl Catalog {
         } else if path.ends_with(".json") {
             Catalog::parse_fetch_bible(text)
         } else {
-            Catalog::parse_toml(text)
+            Catalog::parse_toml_at(Some(name), text)
         }
     }
 
@@ -265,6 +307,7 @@ impl Catalog {
                     books,
                 },
                 path: None,
+                releases: vec![],
             });
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
@@ -275,10 +318,43 @@ impl Catalog {
     }
 
     pub fn parse_toml(text: &str) -> Result<Catalog> {
+        Catalog::parse_toml_at(None, text)
+    }
+
+    /**
+    A `catalog.toml` read from `location` (a URL or a path), which its relative archive URLs
+    are relative to. A package needs `git` or releases
+    */
+    pub fn parse_toml_at(location: Option<&str>, text: &str) -> Result<Catalog> {
         let catalog: TomlCatalog =
             toml::from_str(text).map_err(|e| BiblixError::Catalog(e.to_string()))?;
-        let entries = (catalog.packages.into_iter())
-            .map(|e| CatalogEntry {
+        let mut entries = vec![];
+        for e in catalog.packages {
+            let source = match &e.git {
+                // `github:owner/repo` is listed by its URL
+                Some(git) => CatalogSource::Git {
+                    url: crate::git::expand_url(git),
+                },
+                None if e.releases.is_empty() => {
+                    return Err(BiblixError::Catalog(format!(
+                        "{}: no `git` and no releases",
+                        e.id
+                    )));
+                }
+                None => CatalogSource::Registry {
+                    catalog: location.unwrap_or_default().to_string(),
+                },
+            };
+            let releases = (e.releases.into_iter())
+                .map(|r| CatalogRelease {
+                    url: match location {
+                        Some(base) => relative_url(base, &r.url),
+                        None => r.url.clone(),
+                    },
+                    ..r
+                })
+                .collect();
+            entries.push(CatalogEntry {
                 id: e.id,
                 name: e.name,
                 abbreviation: e.abbreviation,
@@ -291,13 +367,11 @@ impl Catalog {
                 version: e.version,
                 kind: e.kind,
                 direction: e.direction,
-                // `github:owner/repo` is listed by its URL
-                source: CatalogSource::Git {
-                    url: crate::git::expand_url(&e.git),
-                },
+                source,
                 path: e.path,
-            })
-            .collect();
+                releases,
+            });
+        }
         Ok(Catalog {
             name: catalog.name.unwrap_or_default(),
             entries,
@@ -400,6 +474,7 @@ impl Catalog {
                 },
                 source: CatalogSource::Ebible { id: ebible_id },
                 path: None,
+                releases: vec![],
             });
         }
         Ok(Catalog {
@@ -457,6 +532,7 @@ impl Catalog {
                         url: format!("{base}/{path}"),
                     },
                     path: Some(path),
+                    releases: vec![],
                 })
             })
             .collect();
@@ -554,6 +630,21 @@ impl Catalog {
         }
         table.insert("git", toml_edit::value(git));
         table
+    }
+}
+
+/**
+`url` as seen from a catalog at `base`: a URL or an absolute path stays as it is; a relative one
+is beside the catalog (`https://example.org/r/catalog.toml` and `bsb/bsb-1.0.0.tar.gz` are
+`https://example.org/r/bsb/bsb-1.0.0.tar.gz`)
+*/
+pub fn relative_url(base: &str, url: &str) -> String {
+    if url.contains("://") || url.starts_with('/') {
+        return url.to_string();
+    }
+    match base.rfind('/') {
+        Some(slash) => format!("{}/{url}", &base[..slash]),
+        None => url.to_string(),
     }
 }
 
