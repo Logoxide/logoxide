@@ -220,7 +220,7 @@ pub fn timings(package: &Package, file: &MediaFile) -> Result<Option<Vec<VerseTi
 }
 
 /**
-Every listed file's timings checked against the package's text ([`check_timings`]), with a
+Every listed file's timings checked against the package's text (logoxide-text's `check_timings`), with a
 problem for a file whose timings aren't where they should be (in the timings folder, or at its
 own `timings`), and for a timings file anywhere under the folder that no listed file has. Empty
 when all is well. For a recording whose `[media] text` names a dependency, see
@@ -253,7 +253,7 @@ pub fn check_package_timings_with(
         (None, true, _) => Verses::Unchecked,
         (None, false, true) => Verses::Text(package),
         (None, false, false) => match media.versification.as_deref() {
-            Some(name) => match sword_modules::Versification::get(name) {
+            Some(name) => match logoxide_text::versification::system(name) {
                 Some(system) => Verses::Counts(system),
                 None => {
                     problems.push(format!(
@@ -327,7 +327,7 @@ enum Verses<'a> {
     /// A text: its own, or the one `[media] text` names
     Text(&'a Package),
     /// A versification's verse counts (`[media] versification`)
-    Counts(&'static sword_modules::Versification),
+    Counts(&'static logoxide_text::versification::System),
     /// Nothing: only the timings' order and files are checked
     Unchecked,
 }

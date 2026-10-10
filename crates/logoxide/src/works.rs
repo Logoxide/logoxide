@@ -54,7 +54,7 @@ pub fn of_import(name: &str) -> Option<&'static Work> {
 
 /// The work an entry's import is known to be, by its id: what an import writes as its `work`
 pub fn of_source(source: &crate::catalog::CatalogSource) -> Option<String> {
-    of_import(&source.import_name()?).map(|w| w.id.clone())
+    of_import(source.import_name()?).map(|w| w.id.clone())
 }
 
 /// A package's work and edition in words (``King James Version (`kjv`), edition 1769-oxford
@@ -97,8 +97,9 @@ mod tests {
             }
             for import in &work.imports {
                 let (prefix, id) = import.split_once(':').unwrap();
+                // The publishers logoxide-import reads (its `PREFIXES`)
                 assert!(
-                    crate::catalog::CatalogSource::PREFIXES.contains(&prefix) && !id.is_empty(),
+                    ["ebible", "fetch", "ccel", "sword"].contains(&prefix) && !id.is_empty(),
                     "{import}"
                 );
                 assert!(imports.insert(import), "{import} is two works");

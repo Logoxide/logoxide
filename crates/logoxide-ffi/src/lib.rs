@@ -95,13 +95,32 @@ impl From<logoxide_core::LogoxideError> for LogoxideError {
     }
 }
 
-/// A file an import needs (`Logoxide.importDownloads`): `name` is what to give its bytes as
+/// A file an import needs (`CatalogSource::External`'s `downloads`, `Logoxide.importDownloads`):
+/// `name` is what to give its bytes as
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ImportDownload {
     pub name: String,
     /// Tried in order: the first that answers has it
     pub urls: Vec<String>,
+}
+
+impl From<&logoxide_core::catalog::Download> for ImportDownload {
+    fn from(d: &logoxide_core::catalog::Download) -> Self {
+        Self {
+            name: d.name.clone(),
+            urls: d.urls.clone(),
+        }
+    }
+}
+
+impl From<ImportDownload> for logoxide_core::catalog::Download {
+    fn from(d: ImportDownload) -> Self {
+        Self {
+            name: d.name,
+            urls: d.urls,
+        }
+    }
 }
 
 /// A file and its bytes, relative to a package's folder (or to the cache's)
@@ -232,24 +251,43 @@ impl Logoxide {
         logoxide_core::git::is_insecure(&url)
     }
 
-    /// What importing `entry` downloads (each from the first of its `urls` that answers), the
-    /// same for every source: give their bytes, by `name`, to `import_downloaded`
+    /// The publishers packages can be imported from, as import names prefix them (`ebible`,
+    /// `fetch`, `ccel`, `sword`: `ebible:eng-asv`)
+    pub fn import_prefixes(&self) -> Vec<String> {
+        logoxide_import::PREFIXES
+            .iter()
+            .map(|p| p.to_string())
+            .collect()
+    }
+
+    /// The catalog (`mods.d.tar.gz`, bytes: `parse_catalog_bytes`) of a SWORD repository
+    /// CrossWire lists, by its name (`crosswire`, `crosswire-beta`, `ebible`, …), so
+    /// `sword:<repository>/<module>` can be found when no catalog of the project's lists it;
+    /// none for a name it doesn't know
+    pub fn sword_catalog_url(&self, name: String) -> Option<String> {
+        logoxide_import::sword::catalog_url(&name)
+    }
+
+    /// What importing `entry` (an `External` source) downloads (each from the first of its
+    /// `urls` that answers), the same for every publisher: give their bytes, by `name`, to
+    /// `import_downloaded`
     pub fn import_downloads(
         &self,
         entry: CatalogEntry,
     ) -> Result<Vec<ImportDownload>, LogoxideError> {
-        Ok(logoxide_core::import::downloads(&entry.into())?
-            .into_iter()
-            .map(|d| ImportDownload {
-                name: d.name,
-                urls: d.urls,
-            })
+        Ok(logoxide_import::downloads(&entry.into())?
+            .iter()
+            .map(ImportDownload::from)
             .collect())
     }
 
     /// The package `entry`'s import makes from its downloads (`import_downloads`; each file's
-    /// `path` its `name`): its files, relative to the folder to write them in, like
-    /// `import_ebible`
+    /// `path` its `name`): its files, relative to the folder to write them in (`imports/<id>/`
+    /// beside the vault's `logoxide.toml`, then `addDependency(id, { path: "imports/<id>" })`).
+    /// Each publisher's download becomes its format's files (eBible.org's zip the USFM books,
+    /// fetch.bible's books USX, CCEL's file ThML, a SWORD module's zip a file a book in the
+    /// module's markup, OSIS or ThML) with `logoxide.toml` and the license file; a page in a
+    /// download's place (a work CCEL restricts) is an error
     pub fn import_downloaded(
         &self,
         entry: CatalogEntry,
@@ -258,7 +296,7 @@ impl Logoxide {
         let downloads: Vec<(String, Vec<u8>)> =
             downloads.into_iter().map(|d| (d.path, d.bytes)).collect();
         let files = logoxide_core::MemoryStorage::new();
-        logoxide_core::import::build(&entry.into(), &downloads, &files)?;
+        logoxide_import::build(&entry.into(), &downloads, &files)?;
         create::files_of(&files)
     }
 
@@ -277,7 +315,7 @@ impl Logoxide {
         text: String,
     ) -> Result<LogoxideCatalog, LogoxideError> {
         Ok(LogoxideCatalog {
-            catalog: logoxide_core::catalog::Catalog::parse(&location, &text)?,
+            catalog: logoxide_import::catalog::parse_text(&location, &text)?,
         })
     }
 
@@ -289,62 +327,8 @@ impl Logoxide {
         bytes: Vec<u8>,
     ) -> Result<LogoxideCatalog, LogoxideError> {
         Ok(LogoxideCatalog {
-            catalog: logoxide_core::catalog::Catalog::parse_bytes(&location, &bytes)?,
+            catalog: logoxide_import::catalog::parse(&location, &bytes)?,
         })
-    }
-
-    /// A package made from a SWORD module's zip (the first of its entry's `zipUrls` that
-    /// answers): its files, relative to the folder to write them in, like `import_ebible`. Each
-    /// book is a file in the module's markup (OSIS or ThML); its conf gives the version, license,
-    /// and language. A Bible or a commentary
-    pub fn import_sword(
-        &self,
-        entry: CatalogEntry,
-        zip: Vec<u8>,
-    ) -> Result<Vec<PackageFile>, LogoxideError> {
-        let files = logoxide_core::MemoryStorage::new();
-        logoxide_core::import::sword(&entry.into(), &zip, &files)?;
-        create::files_of(&files)
-    }
-
-    /// A package made from eBible.org's download of a catalog entry (`zipUrl`'s bytes): its
-    /// files, relative to the folder to write them in (`imports/<id>/` beside the vault's
-    /// `logoxide.toml`, then `addDependency(id, { path: "imports/<id>" })`)
-    pub fn import_ebible(
-        &self,
-        entry: CatalogEntry,
-        zip: Vec<u8>,
-    ) -> Result<Vec<PackageFile>, LogoxideError> {
-        let files = logoxide_core::MemoryStorage::new();
-        logoxide_core::import::ebible(&entry.into(), &zip, &files)?;
-        create::files_of(&files)
-    }
-
-    /// A package made from fetch.bible's books (each `FetchBook`'s bytes, its `code` as the
-    /// path): its files, relative to the folder to write them in, like `import_ebible`
-    pub fn import_fetch_bible(
-        &self,
-        entry: CatalogEntry,
-        books: Vec<PackageFile>,
-    ) -> Result<Vec<PackageFile>, LogoxideError> {
-        let books: Vec<(String, Vec<u8>)> = books.into_iter().map(|b| (b.path, b.bytes)).collect();
-        let files = logoxide_core::MemoryStorage::new();
-        logoxide_core::import::fetch_bible(&entry.into(), &books, &files)?;
-        create::files_of(&files)
-    }
-
-    /// A package made from a Bible CCEL publishes (the ThML at its entry's `url`): its files,
-    /// relative to the folder to write them in, like `import_ebible`. The file's head names it
-    /// and gives its language, rights, and version; a page in its place (a work CCEL restricts)
-    /// is an error
-    pub fn import_ccel(
-        &self,
-        entry: CatalogEntry,
-        xml: Vec<u8>,
-    ) -> Result<Vec<PackageFile>, LogoxideError> {
-        let files = logoxide_core::MemoryStorage::new();
-        logoxide_core::import::ccel(&entry.into(), &xml, &files)?;
-        create::files_of(&files)
     }
 
     /**
@@ -354,12 +338,12 @@ impl Logoxide {
     don't, so those are always `false` (download, then `update_import`)
     */
     pub fn import_is_current(&self, entry: CatalogEntry, upstream_version: Option<String>) -> bool {
-        logoxide_core::import::import_is_current(&entry.into(), upstream_version.as_deref())
+        logoxide_import::import_is_current(&entry.into(), upstream_version.as_deref())
     }
 
     /**
     How an imported package (`current`: its folder's files) differs from the same import made
-    again (`fresh`: what `import_ebible` and the others return for its entry, from
+    again (`fresh`: what `import_downloaded` returns for its entry, from
     `LogoxideCatalog.find_upstream`); none when nothing changed. Write `files` and delete
     `removed`, then install with `UpdateMode.Only` for it. The version is raised by what changed,
     whatever the publisher numbers it, so one version never names two texts
@@ -374,7 +358,7 @@ impl Logoxide {
         };
         let current = std::sync::Arc::new(memory(current));
         let fresh = std::sync::Arc::new(memory(fresh));
-        let Some(update) = logoxide_core::import::compare_import(
+        let Some(update) = logoxide_import::compare_import(
             current.clone(),
             &fresh,
             &logoxide_core::reader::DefaultReader,
@@ -389,7 +373,7 @@ impl Logoxide {
             description: logoxide_core::release::describe(&update.diff),
             upstream_from: update.upstream_from,
             upstream_to: update.upstream_to,
-            removed: logoxide_core::import::import_removals(current.as_ref(), fresh.as_ref())?,
+            removed: logoxide_import::import_removals(current.as_ref(), fresh.as_ref())?,
             files: create::files_of(&fresh)?,
         }))
     }

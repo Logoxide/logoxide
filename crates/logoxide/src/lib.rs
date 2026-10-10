@@ -3,9 +3,10 @@ logoxide: Bibles, commentaries, lexicons, books, and media as versioned packages
 
 A package is a git repository (or a registry's archive) with a `logoxide.toml` ([`manifest`]) and
 its text in one or more formats. Bibles are read as verses from USX, USFM (through `usfm3`), OSIS,
-and ThML ([`source`]: a book a file, or a whole Bible in one file); books are kept as EPUBs, whose
-Bible references topos finds ([`references`]); versification maps are Paratext `.vrs` lines
-([`versification`]); audio and video are listed by URL and hash, never stored ([`media`]).
+and ThML (by the `logoxide-text` crate, behind the `read` feature: a book a file, or a whole Bible
+in one file); books are kept as EPUBs, whose Bible references topos finds ([`references`]);
+versification maps are Paratext `.vrs` lines (logoxide-text's `versification`); audio and video
+are listed by URL and hash, never stored ([`media`]).
 
 - [`Package::open`] reads a package from any [`Storage`] (a folder, memory, or a host's files in
   WebAssembly), choosing the best readable format its features turn on; [`Cache`] keeps its
@@ -14,8 +15,8 @@ Bible references topos finds ([`references`]); versification maps are Paratext `
 - [`Project`] is a folder with a `logoxide.toml` (a vault's has no `[package]`) and its
   `logoxide.lock` ([`lock`]): [`Project::install`] resolves its dependencies (git, registry
   archives, or paths) into the [`Library`], pinned by commit and checksum
-- [`catalog`] searches catalogs (`catalog.toml`, eBible.org, fetch.bible, CCEL, SWORD
-  repositories) and [`import`] turns those publishers' downloads into packages
+- [`catalog`] searches catalogs (`catalog.toml`; other publishers' lists, read by the
+  `logoxide-import` crate, which turns their downloads into packages)
 - [`summary`] says what a version holds (verse counts, a hash of every verse) and how much a new
   version changed, which [`release`] checks against its version number
 
@@ -72,8 +73,6 @@ pub mod config;
 pub mod create;
 pub mod error;
 pub mod git;
-#[cfg(feature = "read")]
-pub mod import;
 pub mod language;
 pub mod library;
 pub mod license;

@@ -4,13 +4,12 @@ use boltffi::*;
 use logoxide_core::{
     catalog::{
         Catalog, CatalogEntry as CoreEntry, CatalogRelease as CoreRelease,
-        CatalogSource as CoreSource,
+        CatalogSource as CoreSource, Download as CoreDownload,
     },
-    import::{ccel_url, ebible_zip_url, fetch_bible_book_url, sword_zip_urls},
     manifest::Direction,
 };
 
-use crate::PackageKind;
+use crate::{ImportDownload, PackageKind};
 
 /// Where a listed package comes from
 #[data]
@@ -21,31 +20,29 @@ pub enum CatalogSource {
     /// A package a registry publishes as archives (the entry's `releases`): add it with
     /// `{ registry: catalog, version }` and install it
     Registry { catalog: String },
-    /// A translation eBible.org publishes: download `zip_url`, then `Logoxide::import_ebible`
-    Ebible { id: String, zip_url: String },
-    /// A translation fetch.bible publishes: download each of `books`, then
-    /// `Logoxide::import_fetch_bible`
-    FetchBible { id: String, books: Vec<FetchBook> },
-    /// A Bible CCEL publishes as ThML: download `url`, then `Logoxide::import_ccel` (its file's
-    /// head gives the language and rights the catalog doesn't)
-    Ccel { id: String, url: String },
-    /// A module a SWORD repository publishes (`id` is `<repository>/<module>`, as `sword:` names
-    /// it): download the first of `zip_urls` that answers, then `Logoxide::import_sword`
-    Sword {
-        id: String,
-        repository: String,
-        module: String,
-        zip_urls: Vec<String>,
+    /// Another publisher's download (eBible.org, fetch.bible, CCEL, a SWORD repository), made
+    /// into a package by importing it, the same way for every publisher: fetch each of
+    /// `downloads` (`Logoxide::import_downloads` lists them too), then give their bytes, by
+    /// name, to `Logoxide::import_downloaded` for the package's files
+    External {
+        /// Its import name, as `lx import` takes it: the publisher's prefix (`ebible`, `fetch`,
+        /// `ccel`, `sword`), a colon, and the publisher's own id (`ebible:eng-asv`,
+        /// `sword:crosswire/KJV`)
+        import: String,
+        /// The download the import is made from (the first of a SWORD module's zips), which the
+        /// import keeps as `Upstream.url`, so `LogoxideCatalog.findUpstream` finds the entry by
+        /// it
+        upstream: Option<String>,
+        /// Whether a newer download always has a newer `version` in the catalog, so an import at
+        /// the catalog's version needn't be downloaded again to know it's current
+        /// (`Logoxide::import_is_current`): eBible.org's dates and SWORD modules' versions do;
+        /// fetch.bible's and CCEL's don't
+        tracks_versions: bool,
+        /// Each file the import needs, by name, with the URLs to try in turn: one `zip` for
+        /// eBible.org and SWORD, one `thml` for CCEL, and each book by its lowercase code
+        /// (`jhn`) for fetch.bible
+        downloads: Vec<ImportDownload>,
     },
-}
-
-/// A book fetch.bible publishes, and where
-#[data]
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FetchBook {
-    /// Its USFM code as fetch.bible writes it (`jhn`)
-    pub code: String,
-    pub url: String,
 }
 
 /// One release a registry publishes: its archive, and what it hashes to
@@ -168,32 +165,16 @@ impl From<&CoreEntry> for CatalogEntry {
                 CoreSource::Registry { catalog } => CatalogSource::Registry {
                     catalog: catalog.clone(),
                 },
-                CoreSource::Ebible { id } => CatalogSource::Ebible {
-                    id: id.clone(),
-                    zip_url: ebible_zip_url(id),
-                },
-                CoreSource::FetchBible { id, books } => CatalogSource::FetchBible {
-                    id: id.clone(),
-                    books: (books.iter())
-                        .map(|code| FetchBook {
-                            code: code.clone(),
-                            url: fetch_bible_book_url(id, code),
-                        })
-                        .collect(),
-                },
-                CoreSource::Ccel { id } => CatalogSource::Ccel {
-                    id: id.clone(),
-                    url: ccel_url(id),
-                },
-                CoreSource::Sword {
-                    id,
-                    repository,
-                    module,
-                } => CatalogSource::Sword {
-                    id: id.clone(),
-                    repository: repository.clone(),
-                    module: module.clone(),
-                    zip_urls: sword_zip_urls(repository, module),
+                CoreSource::External {
+                    import,
+                    upstream,
+                    tracks_versions,
+                    downloads,
+                } => CatalogSource::External {
+                    import: import.clone(),
+                    upstream: upstream.clone(),
+                    tracks_versions: *tracks_versions,
+                    downloads: downloads.iter().map(ImportDownload::from).collect(),
                 },
             },
             path: e.path.clone(),
@@ -231,21 +212,16 @@ impl From<CatalogEntry> for CoreEntry {
             source: match e.source {
                 CatalogSource::Git { url } => CoreSource::Git { url },
                 CatalogSource::Registry { catalog } => CoreSource::Registry { catalog },
-                CatalogSource::Ebible { id, .. } => CoreSource::Ebible { id },
-                CatalogSource::FetchBible { id, books } => CoreSource::FetchBible {
-                    id,
-                    books: books.into_iter().map(|b| b.code).collect(),
-                },
-                CatalogSource::Ccel { id, .. } => CoreSource::Ccel { id },
-                CatalogSource::Sword {
-                    id,
-                    repository,
-                    module,
-                    ..
-                } => CoreSource::Sword {
-                    id,
-                    repository,
-                    module,
+                CatalogSource::External {
+                    import,
+                    upstream,
+                    tracks_versions,
+                    downloads,
+                } => CoreSource::External {
+                    import,
+                    upstream,
+                    tracks_versions,
+                    downloads: downloads.into_iter().map(CoreDownload::from).collect(),
                 },
             },
             path: e.path,

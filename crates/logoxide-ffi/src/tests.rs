@@ -707,11 +707,17 @@ fn catalogs_and_ebible_imports() {
         (groups.len(), groups[0].name.as_deref()),
         (1, Some("American Standard Version"))
     );
+    let zip_url = "https://ebible.org/Scriptures/eng-asv_usfm.zip";
     assert_eq!(
         entry.source,
-        crate::CatalogSource::Ebible {
-            id: "eng-asv".into(),
-            zip_url: "https://ebible.org/Scriptures/eng-asv_usfm.zip".into()
+        crate::CatalogSource::External {
+            import: "ebible:eng-asv".into(),
+            upstream: Some(zip_url.into()),
+            tracks_versions: true,
+            downloads: vec![ImportDownload {
+                name: "zip".into(),
+                urls: vec![zip_url.into()]
+            }],
         }
     );
     assert!(matches!(
@@ -730,13 +736,14 @@ fn catalogs_and_ebible_imports() {
         .write_all(b"\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n")
         .unwrap();
     let zip = writer.finish().unwrap().into_inner();
-    // The same through the import of any source: what it downloads, then its bytes by name
+    // The import of any publisher: what it downloads (the entry's own list), then its bytes by
+    // name
     let downloads = logoxide.import_downloads(entry.clone()).unwrap();
     assert_eq!(
         downloads,
         [ImportDownload {
             name: "zip".into(),
-            urls: vec!["https://ebible.org/Scriptures/eng-asv_usfm.zip".into()]
+            urls: vec![zip_url.into()]
         }]
     );
     let built = (logoxide.import_downloaded(entry.clone(), vec![file("zip", "")]))
@@ -744,10 +751,11 @@ fn catalogs_and_ebible_imports() {
     assert!(matches!(built, LogoxideError::Import { .. }), "{built:?}");
     let by_name = vec![PackageFile {
         path: "zip".into(),
-        bytes: zip.clone(),
+        bytes: zip,
     }];
-    let files = logoxide.import_downloaded(entry.clone(), by_name).unwrap();
-    assert_eq!(files, logoxide.import_ebible(entry, zip).unwrap());
+    let files = logoxide.import_downloaded(entry, by_name).unwrap();
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["logoxide.toml", "usfm/73-JHNeng-asv.usfm"]);
     let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
     assert_eq!(
         (package.info().abbreviation.as_str(), package.books()),
@@ -780,17 +788,25 @@ fn ccel_catalog_and_import() {
         .parse_catalog("https://ccel.org/ccel/bible/".into(), page.into())
         .unwrap();
     let entry = catalog.search("king james".into(), 0)[0].clone();
+    let url = "https://ccel.org/ccel/bible/kjv.xml";
     assert_eq!(
         entry.source,
-        crate::CatalogSource::Ccel {
-            id: "kjv".into(),
-            url: "https://ccel.org/ccel/bible/kjv.xml".into()
+        crate::CatalogSource::External {
+            import: "ccel:kjv".into(),
+            upstream: Some(url.into()),
+            tracks_versions: false,
+            downloads: vec![ImportDownload {
+                name: "thml".into(),
+                urls: vec![url.into()]
+            }],
         }
     );
     let xml = r#"<?xml version="1.0"?><ThML><ThML.head><electronicEdInfo><version>1.0</version>
 <DC><DC.Title>The King James Version</DC.Title><DC.Language>eng</DC.Language><DC.Rights>Public Domain</DC.Rights></DC>
 </electronicEdInfo></ThML.head><ThML.body><div1><p><scripture passage="John 3.16" parsed="|John|3|16|0|0" osisRef="Bible:John.3.16" />For God so loved the world.</p></div1></ThML.body></ThML>"#;
-    let files = logoxide.import_ccel(entry.clone(), xml.into()).unwrap();
+    let files = logoxide
+        .import_downloaded(entry.clone(), vec![file("thml", xml)])
+        .unwrap();
     let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(paths, ["COPYRIGHT.txt", "logoxide.toml", "thml/kjv.xml"]);
     let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
@@ -803,9 +819,10 @@ fn ccel_catalog_and_import() {
         ),
         ("en", "1.0.0", vec![43])
     );
+    // A page in the file's place (a work CCEL restricts)
     assert!(
         logoxide
-            .import_ccel(entry, b"<!DOCTYPE html><html></html>".to_vec())
+            .import_downloaded(entry, vec![file("thml", "<!DOCTYPE html><html></html>")])
             .is_err()
     );
 }
@@ -832,14 +849,23 @@ fn sword_catalog_and_import() {
         .parse_catalog_bytes(location.into(), gz.finish().unwrap())
         .unwrap();
     let entry = catalog.search("test".into(), 0)[0].clone();
-    let crate::CatalogSource::Sword { id, zip_urls, .. } = &entry.source else {
+    let crate::CatalogSource::External {
+        import,
+        upstream,
+        tracks_versions,
+        downloads,
+    } = &entry.source
+    else {
         panic!("{:?}", entry.source)
     };
-    assert_eq!(id, "crosswire/Test");
-    assert_eq!(
-        zip_urls[0],
-        "https://crosswire.org/ftpmirror/pub/sword/raw/packages/Test.zip"
-    );
+    let zip_url = "https://crosswire.org/ftpmirror/pub/sword/raw/packages/Test.zip";
+    assert_eq!(import, "sword:crosswire/Test");
+    assert_eq!(upstream.as_deref(), Some(zip_url));
+    assert!(tracks_versions);
+    // The module's zip, by its name or lowercase: the first that answers
+    assert_eq!((downloads.len(), downloads[0].name.as_str()), (1, "zip"));
+    assert_eq!(downloads[0].urls[0], zip_url);
+    assert_eq!(downloads[0].urls.len(), 2);
 
     // The module's zip: a RawText module with John 3:16
     let v11n = Versification::kjv();
@@ -861,7 +887,15 @@ fn sword_catalog_and_import() {
         writer.write_all(bytes).unwrap();
     }
     let zip = writer.finish().unwrap().into_inner();
-    let files = logoxide.import_sword(entry, zip).unwrap();
+    let files = logoxide
+        .import_downloaded(
+            entry,
+            vec![PackageFile {
+                path: "zip".into(),
+                bytes: zip,
+            }],
+        )
+        .unwrap();
     let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
     assert_eq!(paths, ["COPYRIGHT.txt", "logoxide.toml", "osis/John.xml"]);
     let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
@@ -908,16 +942,22 @@ fn updating_an_import() {
     };
     let john = |text: &str| format!("\\id JHN\n\\c 3\n\\p\n\\v 16 {text}\n");
     let entry = catalog.search("asv".into(), 1)[0].clone();
+    let downloaded = |bytes: Vec<u8>| {
+        vec![PackageFile {
+            path: "zip".into(),
+            bytes,
+        }]
+    };
     let current = logoxide
-        .import_ebible(
+        .import_downloaded(
             entry.clone(),
-            zip(&[
+            downloaded(zip(&[
                 ("73-JHNeng-asv.usfm", &john("For God so loved the world.")),
                 (
                     "44-ACTeng-asv.usfm",
                     "\\id ACT\n\\c 1\n\\p\n\\v 1 The former.\n",
                 ),
-            ]),
+            ])),
         )
         .unwrap();
     // The installed import names its entry
@@ -938,12 +978,12 @@ fn updating_an_import() {
         None
     );
     let fresh = logoxide
-        .import_ebible(
+        .import_downloaded(
             entry,
-            zip(&[(
+            downloaded(zip(&[(
                 "73-JHNeng-asv.usfm",
                 &john("For God so much loved the world."),
-            )]),
+            )])),
         )
         .unwrap();
     let update = logoxide.update_import(current, fresh).unwrap().unwrap();

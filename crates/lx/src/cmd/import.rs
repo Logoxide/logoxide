@@ -21,12 +21,11 @@ use crate::{
 };
 
 pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
-    use logoxide::catalog::CatalogSource;
-    let prefixes = CatalogSource::PREFIXES
+    let prefixes = logoxide_import::PREFIXES
         .map(|p| format!("{p}:<id>"))
         .join(" or ");
     let known = (source.split_once(':'))
-        .is_some_and(|(prefix, _)| CatalogSource::PREFIXES.contains(&prefix));
+        .is_some_and(|(prefix, _)| logoxide_import::PREFIXES.contains(&prefix));
     if !known {
         return Err(logoxide::LogoxideError::Import(format!(
             "{source}: give {prefixes} (see lx search)"
@@ -41,7 +40,7 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     if !catalogs.iter().any(|c| c.find_import(source).is_some())
         && let Some(url) = (source.strip_prefix("sword:"))
             .and_then(|rest| rest.split_once('/'))
-            .and_then(|(repository, _)| logoxide::catalog::sword_catalog_url(repository))
+            .and_then(|(repository, _)| logoxide_import::sword::catalog_url(repository))
     {
         catalogs.push(load_catalog(&url, project.dir())?);
     }
@@ -129,7 +128,7 @@ fn import_files(
     dest: &dyn Storage,
 ) -> logoxide::Result<()> {
     let mut files = vec![];
-    for download in logoxide::import::downloads(entry)? {
+    for download in logoxide_import::downloads(entry)? {
         // The first of its URLs that has it
         let mut bytes = Err(logoxide::LogoxideError::Import(format!(
             "{}: no URL for {}",
@@ -144,7 +143,7 @@ fn import_files(
         }
         files.push((download.name, bytes?));
     }
-    logoxide::import::build(entry, &files, dest)
+    logoxide_import::build(entry, &files, dest)
 }
 
 /**
@@ -214,7 +213,7 @@ pub(crate) fn import_update(
         found += 1;
         let mut report = ImportReport {
             dependency: dep.clone(),
-            import: import_name.clone(),
+            import: import_name.to_string(),
             status: "current",
             from: package.info().version.to_string(),
             to: None,
@@ -316,7 +315,7 @@ fn update_import(
     report: &mut ImportReport,
     options: UpdateOptions,
 ) -> logoxide::Result<()> {
-    use logoxide::import::{apply_import, compare_import, import_removals};
+    use logoxide_import::{apply_import, compare_import, import_removals};
     let UpdateOptions { dry_run, yes, json } = options;
     let (dep, from, import_name) = (
         report.dependency.clone(),
@@ -328,7 +327,7 @@ fn update_import(
             outln!("{text}");
         }
     };
-    if logoxide::import::import_is_current(entry, report.upstream_from.as_deref()) {
+    if logoxide_import::import_is_current(entry, report.upstream_from.as_deref()) {
         say(format!("{dep} {from}: up to date ({import_name})"));
         return Ok(());
     }

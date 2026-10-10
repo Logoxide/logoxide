@@ -14,15 +14,13 @@ categories = ["text-processing", "parser-implementations"]
 [features]
 default = ["read"]
 ## The reader built in (`reader::DefaultReader`), on logoxide-text (the formats, hashes, titles,
-## maps, timings, and an EPUB's citations), and imports through sword-modules. Without it the
-## crate is the package manager alone, which reads no text: it takes a `reader::TextReader` from
-## whoever runs it
-read = ["dep:logoxide-text", "dep:sword-modules"]
+## maps, timings, and an EPUB's citations). Without it the crate is the package manager alone,
+## which reads no text: it takes a `reader::TextReader` from whoever runs it
+read = ["dep:logoxide-text"]
 
 [dependencies]
 topos-bible.workspace = true
 logoxide-text = { workspace = true, optional = true }
-sword-modules = { workspace = true, optional = true }
 serde.workspace = true
 toml = { version = "0.9", features = ["preserve_order"] }
 semver = { version = "1", features = ["serde"] }
@@ -42,5 +40,5 @@ spdx = "0.13.6"
 
 [dev-dependencies]
 logoxide-text.workspace = true
-# Building the downloads the import tests read
+# Building the EPUBs the tests read
 zip = { version = "2", default-features = false, features = ["deflate"] }

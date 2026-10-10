@@ -5,6 +5,7 @@ members = [
     "crates/lx",
     "crates/logoxide-lsp",
     "crates/logoxide-text",
+    "crates/logoxide-import",
 ]
 # The bindings build against a topos checkout (BoltFFI only exports path dependencies' items), so
 # they are a workspace of their own and the rest builds from crates.io alone
@@ -28,10 +29,12 @@ topos-bible = "0.6.0"
 # from topos; its HTML is a feature nothing here needs yet
 logoxide-markup = { path = "crates/logoxide-markup", version = "0.1.0", default-features = false, features = ["serde"] }
 logoxide-text = { path = "crates/logoxide-text", version = "0.1.0" }
+logoxide-import = { path = "crates/logoxide-import", version = "0.1.0" }
 topos-bible-index = { version = "0.6.0", default-features = false, features = ["files"] }
 # Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
 topos-bible-formats = { version = "0.6.0", default-features = false, features = ["epub"] }
-# SWORD modules (read from memory, so WebAssembly too)
-sword-modules = { version = "0.1.0", default-features = false, features = ["zip", "bzip2", "xz"] }
+# SWORD's versification systems (logoxide-text); its modules, read from memory so WebAssembly
+# too, are logoxide-import's (which turns on the compression features)
+sword-modules = { version = "0.1.0", default-features = false }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }

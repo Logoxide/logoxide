@@ -130,7 +130,7 @@ pub struct Summary {
     /// `logoxide.references.bin`
     #[serde(default, skip_serializing_if = "is_zero")]
     pub references: u64,
-    /// For a versification map: how many verses it maps ([`crate::versification`])
+    /// For a versification map: how many verses it maps (logoxide-text's `versification`)
     #[serde(default, skip_serializing_if = "is_zero")]
     pub mappings: u64,
     /// The passages they cite, and how often (read from or written to `logoxide.references.bin`)
