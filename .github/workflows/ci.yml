@@ -7,11 +7,20 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
-  # The topos tag the bindings build against (logoxide-ffi needs a checkout: BoltFFI only exports
-  # path dependencies' items). Keep it at the topos-bible version the workspace depends on.
-  TOPOS_REF: v0.6.0
+  # The topos tag the bindings build against comes from topos-bible's version in Cargo.toml
+  # (scripts/topos-ref.sh), so it's written in one place. sword-modules has no public repository
+  # yet: until it's on crates.io, set the SWORD_MODULES_REPO repository variable to a git URL
+  # CI can clone (see scripts/patch-unpublished.sh), or the jobs that build it fail saying so.
+  SWORD_MODULES_REPO: ${{ vars.SWORD_MODULES_REPO }}
 
 jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: The workspace, its logoxide dependency, and logoxide-ffi have one version
+        run: scripts/check-versions.sh
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -19,10 +28,29 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      # Until topos 0.6 and sword-modules 0.1 are on crates.io, build against checkouts of them
+      # (a generated .cargo/config.toml, in CI only). Does nothing once they're published.
+      - name: Patch in unpublished dependencies
+        run: scripts/patch-unpublished.sh . topos sword-modules
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo test --workspace
-      - run: cargo clippy --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # The oldest Rust the crates support (`rust-version` in Cargo.toml)
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Read rust-version
+        run: echo "MSRV=$(sed -n 's/^rust-version = "\(.*\)"/\1/p' Cargo.toml)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.MSRV }}
+      - name: Patch in unpublished dependencies
+        run: scripts/patch-unpublished.sh . topos sword-modules
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace
 
   bindings:
     runs-on: ubuntu-latest
@@ -30,6 +58,8 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: logoxide
+      - name: The topos tag to build against
+        run: echo "TOPOS_REF=$(logoxide/scripts/topos-ref.sh)" >> "$GITHUB_ENV"
       - uses: actions/checkout@v5
         with:
           repository: MasterTemple/topos-bible
@@ -38,6 +68,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      # The bindings patch topos in their own Cargo.toml; sword-modules still comes from crates.io
+      - name: Patch in unpublished dependencies
+        run: logoxide/scripts/patch-unpublished.sh logoxide sword-modules
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: logoxide/crates/logoxide-ffi
@@ -45,4 +78,4 @@ jobs:
         run: |
           cargo fmt --check
           cargo test
-          cargo clippy --all-targets
+          cargo clippy --all-targets -- -D warnings

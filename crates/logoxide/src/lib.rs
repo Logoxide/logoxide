@@ -1,13 +1,64 @@
 /*!
 logoxide: Bibles, commentaries, lexicons, books, and media as versioned packages.
 
-A package is a git repository with a `logoxide.toml` ([`manifest`]) and its text in one or more
-formats ([`source`]: USX, USFM). [`Package::open`] reads one from any [`Storage`] (a folder,
-memory, or a host's files in WebAssembly), [`Cache`] keeps its parsed books, and
-[`CachedPackage::add_to`] gives topos the translation's name, aliases, and verse counts.
+A package is a git repository (or a registry's archive) with a `logoxide.toml` ([`manifest`]) and
+its text in one or more formats. Bibles are read as verses from USX, USFM (through `usfm3`), OSIS,
+and ThML ([`source`]: a book a file, or a whole Bible in one file); books are kept as EPUBs, whose
+Bible references topos finds ([`references`]); versification maps are Paratext `.vrs` lines
+([`versification`]); audio and video are listed by URL and hash, never stored ([`media`]).
 
-The plan, with what comes next (the library, `lx`, git sources, summaries, and versioning), is
-`doc/logoxide.md` in topos.
+- [`Package::open`] reads a package from any [`Storage`] (a folder, memory, or a host's files in
+  WebAssembly), choosing the best readable format its features turn on; [`Cache`] keeps its
+  parsed books, and [`CachedPackage::add_to`] gives topos the translation's name, aliases, and
+  verse counts, so `John 3:16 KJV` is checked against that translation
+- [`Project`] is a folder with a `logoxide.toml` (a vault's has no `[package]`) and its
+  `logoxide.lock` ([`lock`]): [`Project::install`] resolves its dependencies (git, registry
+  archives, or paths) into the [`Library`], pinned by commit and checksum
+- [`catalog`] searches catalogs (`catalog.toml`, eBible.org, fetch.bible, CCEL, SWORD
+  repositories) and [`import`] turns those publishers' downloads into packages
+- [`summary`] says what a version holds (verse counts, a hash of every verse) and how much a new
+  version changed, which [`release`] checks against its version number
+
+```no_run
+use std::sync::Arc;
+
+use logoxide::{Cache, Features, FsStorage, Package, topos_bible::data::translations::Translations};
+
+fn main() -> logoxide::Result<()> {
+    // A package's folder: its logoxide.toml and its text
+    let package = Package::open(Arc::new(FsStorage::new("bibles/kjv")), Features::default())?;
+    let info = package.info();
+    println!("{} {}: {}", info.abbreviation, info.version, package.checksum()?);
+
+    // Parsed books and verse counts are kept in a cache folder, by version and checksum
+    let cache = Cache::new(Arc::new(FsStorage::new("cache")));
+    let kjv = cache.open(package)?;
+    if let Some(john) = logoxide::bible_data().books().search_usfm("JHN") {
+        println!("John has {} chapters", kjv.book(john)?.chapter_verses().len());
+    }
+
+    // topos checks references naming the translation against its own verse counts
+    let _translations = kjv.add_to(Translations::default());
+    Ok(())
+}
+```
+
+A vault's Bibles, installed as its lock file says (fetching runs the `git` command):
+
+```no_run
+use logoxide::{Library, Project, git::GitCli, resolve::Update};
+
+fn main() -> logoxide::Result<()> {
+    let mut project = Project::open("notes")?;
+    let library = Library::new("library", "cache");
+    project.install(&library, &GitCli::default(), Update::Nothing)?;
+    let _translations = project.translations(&library)?;
+    Ok(())
+}
+```
+
+The file formats (`logoxide.toml`, `catalog.toml`, `logoxide.lock`, summaries) and the trust
+model are specified in the repository's `doc/` folder, for other implementations.
 */
 
 pub mod archive;
