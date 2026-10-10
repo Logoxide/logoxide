@@ -62,7 +62,7 @@ words-of-jesus = 2038
 | `books` | table of arrays | Each book's verse count per chapter, by USFM code, in the text's book order: the translation's own versification. A chapter's count is the highest verse number its markers give (a bridge `4-5` counts to 5); a chapter without verses is 0 |
 | `contents` | table of integers | How many of each kind of element the text has, by kebab-case kind (`note`, `title`, `words-of-jesus`, `divine-name`, …), leaving out markers and containers (verse, chapter, metadata, paragraph, line break, milestone, division, other); plus `strongs`, the words tagged with Strong's numbers |
 | `media` | table | `files` and `bytes`: how many media files `[media]` lists, and their total size. Absent without media |
-| `references` | integer | How many Bible references the package's EPUBs have (absent when 0) |
+| `references` | integer | How many Bible references the package's books have: its EPUBs, and a book's (`kind = "book"`) ThML files (absent when 0) |
 | `mappings` | integer | For a versification map, how many verses it maps (absent when 0) |
 | `entries` | integer | For a dictionary or cross-references, how many entries `logoxide.entries.bin` has: each key once, or each passage lines are for (absent when 0) |
 | `titles` | table of strings | Each file's title, by path ([manifest.md](manifest.md#titles)) |
@@ -159,7 +159,7 @@ hash as 8 hex digits, its first 4 bytes) so a link can find its words again in a
 
 ## `logoxide.references.bin` (`LXR1`)
 
-For packages with EPUBs (books): which passages they cite and how often, so which books cite a
+For packages with EPUBs or a book's ThML (books): which passages they cite and how often, so which books cite a
 passage is known without downloading them (2.6 KB for 937 references). Written only when there is
 at least one reference.
 

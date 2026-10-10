@@ -620,4 +620,43 @@ mod tests {
         let error = import(entry, scan.as_bytes(), &MemoryStorage::new()).unwrap_err();
         assert!(error.to_string().contains("no books"), "{error}");
     }
+
+    #[test]
+    fn imports_a_book() {
+        let catalog = named_catalog("ccel:calvin/institutes").unwrap();
+        let entry = catalog.find_import("ccel:calvin/institutes").unwrap();
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ThML><ThML.head><electronicEdInfo><DC>
+<DC.Title>The Institutes of the Christian Religion</DC.Title>
+<DC.Type>Text.Monograph</DC.Type><DC.Language scheme="ISO639-3">eng</DC.Language>
+<DC.Rights>Public Domain</DC.Rights></DC></electronicEdInfo></ThML.head>
+<ThML.body><div1 title="Book First"><div2 title="Chapter 1.">
+<p>Without vision the people perish (<scripRef passage="Prov. 29:18" parsed="|Prov|29|18|0|0">Prov. 29:18</scripRef>).</p>
+</div2></div1></ThML.body></ThML>"#;
+        let dest = MemoryStorage::new();
+        crate::build(entry, &[("thml".into(), xml.as_bytes().to_vec())], &dest).unwrap();
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        assert_eq!(package.info().kind, PackageKind::Book);
+        assert_eq!(
+            package.info().name,
+            "The Institutes of the Christian Religion"
+        );
+        // Not read as verses: its references are found in it, as an EPUB's are
+        assert!(package.books().is_empty() && package.text_format().is_none());
+        assert_eq!(
+            logoxide::references::book_files(&package).unwrap(),
+            ["thml/institutes.xml"]
+        );
+        let found = logoxide::references::find(&package).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (found[0].passage.as_str(), found[0].chapter.as_deref()),
+            ("Prov.29.18", Some("Chapter 1."))
+        );
+        let titles = logoxide::titles::titles(&package).unwrap();
+        assert_eq!(
+            titles[0].title.as_deref(),
+            Some("The Institutes of the Christian Religion")
+        );
+    }
 }

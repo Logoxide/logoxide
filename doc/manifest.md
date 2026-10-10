@@ -138,7 +138,7 @@ its `id` (a fork, added with `package = "kjv"`, is its original's work).
 | `lexicon` | A dictionary: Strong's numbers or headwords and their entries (the `dictionary` format, [entries.md](entries.md)) |
 | `cross-references` | Links between passages (the `xref` format, [entries.md](entries.md)) |
 | `versification-map` | How one versification's verses map to another's (a `vrs` format) |
-| `book` | Any other book, kept as files (an EPUB); its Bible references are found in it |
+| `book` | Any other book, kept as files (an EPUB, or ThML like CCEL's books); its Bible references are found in it. A book's formats are never read as verses, even one that could be (`thml`) |
 | `collection` | Other packages, as its dependencies, and no text of its own |
 
 Only `bible` requires a format logoxide reads as verses. Other kinds may have none; they are

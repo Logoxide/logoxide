@@ -112,8 +112,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `lx import --update` (`apply_import`)
   - `package.rs`: opening a package picks the best readable format its enabled features turn on
     (`Format::text_format`, opened by logoxide-text's `source::open` under `read`); a package
-    that isn't a Bible (a book, a collection) may have none and opens with `NoText` (no books,
-    so no verses in its summary). `checksum()` hashes every file but `.git`
+    that isn't a Bible (a collection) may have none and opens with `NoText` (no books, so no
+    verses in its summary), and a book (`kind = "book"`) always does, so its ThML isn't read as
+    verses. `checksum()` hashes every file but `.git`
   - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard; the
     counts and references also per logoxide version) per `<id>/<version>-<checksum>-<format>`
     (a package read as USX and then USFM shares nothing). The books are logoxide-text's
@@ -292,8 +293,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `diff_entries` (an entry removed is major, reworded or added minor: `Diff::entries_removed`,
     `entries_changed`, `entries_added`, which `release::describe` names) runs in `diff_summaries`,
     and `files_changed` only counts when neither side has verses or entries
-  - `references.rs`: the Bible references in a package's EPUBs, found by logoxide-text's
-    `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly too). `find`
+  - `references.rs`: the Bible references in a package's books (`book_files`: its EPUBs, as
+    `epub_files` gives them, and a book's ThML files; the cache and titles use it), found by
+    logoxide-text's `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly
+    too; ThML through logoxide-markup and topos's matcher). `find`
     (`read`) reads the books: each reference's OSIS passage, file, CFI, chapter, UTF-16 range,
     line, column, spine item, and paragraph (about 0.1 s a book natively, 0.25 s in
     WebAssembly). Only `cited` is published
@@ -308,9 +311,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     releases before summaries), check the version, write, commit, tag `v{version}`. A package in
     a folder of its repository (`GitCli::package_in`) has its own tags, `<folder>/v{version}`,
     and its commits take only its folder (nothing new: the current commit is tagged)
-  - `titles.rs` (`read`): each file's title (a Bible book's or an EPUB's): `[titles]` in the
-    manifest, else the file's own as logoxide-text's `titles` reads it (`\toc2`, `\h`, `\toc1`;
-    `dc:title`), else the book's English name (a file of many books: the package's name).
+  - `titles.rs` (`read`): each file's title (a Bible book's, an EPUB's, a book's ThML): `[titles]`
+    in the manifest, else the file's own as logoxide-text's `titles` reads it (`\toc2`, `\h`,
+    `\toc1`; `dc:title`; `DC.Title`, `thml_title`), else the book's English name (a file of many books: the package's name).
     Summaries list them (`titles`); a changed title is a minor
     change (`Diff::retitled`, the owner's choice); `lx check` and `lx release` refuse an untitled file. Hosts name
     what they show by it (`BookFile.title`, `LogoxidePackage.titles()`)
@@ -387,7 +390,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   (`dictionary_keys`); stored keys in normal form, `00025` → `G25` (`import_key`); a TEI entry's
   first `<orth>` as its headword; `@LINK` aliases as `link` entries), `Made.keys` writes the
   manifest's `keys`, and `finish` refuses one with no entries as it refuses a Bible with no
-  books; the repository root is read back from the entry's first download URL; the
+  books (a book, `kind = "book"`, needs neither: CCEL's books, `DC.Type` `Text.Monograph`, are
+  ThML whose references are found); the repository root is read back from the entry's first download URL; the
   conf's `Versification` is kept (`sword::versification`: SWORD's names as SWORD spells them,
   `KJV` when absent; other imports say `own`); the conf gives version, license
   (`sword::license`) and rights (`sword::rights`: permission given to CrossWire or only in
@@ -459,7 +463,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
   label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
   templates, `width` to `wrap` at), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
-  `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats. `versification::system(name)`:
+  `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats, and a ThML book's (`is_thml`: `.xml`, `.thml`): parsed by logoxide-markup, its text nodes joined with `\n` as topos's XML search does (the head left out), searched by `BibleMatcher::search`, each `Citation` with no CFI, spine 0, UTF-16 offsets and line and column in that text, and the innermost titled `divN`'s title as its chapter. `versification::system(name)`:
   SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
   chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's
   `FileMetadata` (`epub_metadata`, `opf_metadata`, `elements`); `archive::unzip` (limits);

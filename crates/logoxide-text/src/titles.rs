@@ -1,7 +1,7 @@
 /*!
 Each file's own title: a Bible book's short name (USFM's `\toc2`, else `\h`, else `\toc1`, in USX
 the paragraphs of those styles), else its name in English; an EPUB's `dc:title`. The package
-manager lays what a manifest says over these.
+manager lays what a manifest says over these. A ThML book's is its head's `DC.Title`.
 */
 
 use std::collections::BTreeMap;
@@ -45,6 +45,16 @@ pub fn book_file_titles(source: &dyn Source, files: &dyn Files) -> Result<Vec<Fi
         });
     }
     Ok(out)
+}
+
+/// A ThML book's title: its head's first `DC.Title` that isn't a short form (`sub="short"`), if
+/// it has one
+pub fn thml_title(text: &str) -> Option<String> {
+    let head = &text[..text.find("</ThML.head>")?];
+    (crate::metadata::elements(head).into_iter())
+        .filter(|e| e.name == "DC.Title" && e.attr("sub").is_none())
+        .map(|e| e.text.split_whitespace().collect::<Vec<_>>().join(" "))
+        .find(|t| !t.is_empty())
 }
 
 /// An EPUB's title (`dc:title`), if it has one

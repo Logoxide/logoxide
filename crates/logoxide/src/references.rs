@@ -1,5 +1,6 @@
 /*!
-The Bible references in a package's books, found by topos in each EPUB its enabled formats hold.
+The Bible references in a package's books, found by topos in each EPUB its enabled formats hold,
+and in a book's ThML ([`book_files`]).
 
 - [`find`] reads the books: every reference, with where it is (an EPUB CFI readers open straight
   to, its place in the book's text, its chapter, its paragraph). For anyone with the book: it
@@ -19,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     error::{LogoxideError, Result},
-    manifest::Format,
+    manifest::{Format, PackageKind},
     package::Package,
 };
 
@@ -79,12 +80,37 @@ pub fn epub_files(package: &Package) -> Result<Vec<String>> {
         .collect())
 }
 
-/// Every reference in the EPUBs the package's enabled formats hold, file by file in path order,
-/// each file's in the order they're in it. Empty for a package without EPUBs
+/**
+The books whose references are found ([`find`]), in path order: the EPUBs the package's enabled
+formats hold, and a book's (`kind = "book"`) ThML files, which aren't read as verses
+(`thml/institutes.xml`)
+*/
+pub fn book_files(package: &Package) -> Result<Vec<String>> {
+    let mut files = epub_files(package)?;
+    if package.info().kind == PackageKind::Book {
+        let declared = crate::package::declared_files(package.storage().as_ref())?;
+        let formats = package.manifest().formats(package.enabled());
+        files.extend(declared.into_iter().filter(|f| {
+            let lower = f.to_ascii_lowercase();
+            (lower.ends_with(".xml") || lower.ends_with(".thml"))
+                && formats.iter().any(|(name, entry)| {
+                    let dir = entry.path.trim_end_matches('/');
+                    Format::from_name(name) == Some(Format::Thml)
+                        && (f.as_str() == dir || f.starts_with(&format!("{dir}/")))
+                })
+        }));
+        files.sort();
+    }
+    Ok(files)
+}
+
+/// Every reference in the package's books ([`book_files`]: its EPUBs, and a book's ThML), file
+/// by file in path order, each file's in the order they're in it. Empty for a package without
+/// them
 #[cfg(feature = "read")]
 pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
     let files = crate::reader::StorageFiles(package.storage().clone());
-    let found = logoxide_text::citations::find(&files, &epub_files(package)?)?;
+    let found = logoxide_text::citations::find(&files, &book_files(package)?)?;
     Ok((found.into_iter())
         .map(|c| FoundReference {
             passage: c.passage,

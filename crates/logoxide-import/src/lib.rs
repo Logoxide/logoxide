@@ -180,7 +180,8 @@ pub(crate) struct Made {
     pub(crate) keys: Option<Keys>,
 }
 
-/// Writes the package's `logoxide.toml`, checks it opens with books, and copies it into `dest`
+/// Writes the package's `logoxide.toml`, checks it opens with books (a Bible's or a commentary's)
+/// or entries (a dictionary's; a book needs neither), and copies it into `dest`
 pub(crate) fn finish(
     entry: &CatalogEntry,
     made: Made,
@@ -254,10 +255,12 @@ pub(crate) fn finish(
     let staged = std::sync::Arc::new(staged);
     let package = Package::open(staged.clone(), Features::default())?;
     let verses = (package.text_format()).is_some_and(|(f, _)| f.is_verse_text());
+    // A book (CCEL's ThML) isn't read as verses or entries: its references are found in it
+    let book = entry.kind == logoxide::manifest::PackageKind::Book;
     if verses && package.books().is_empty() {
         return Err(LogoxideError::Import(format!("{}: no books", entry.id)));
     }
-    if !verses && package.source().keys().is_empty() {
+    if !verses && !book && package.source().keys().is_empty() {
         return Err(LogoxideError::Import(format!("{}: no entries", entry.id)));
     }
     for path in staged.walk("")? {
