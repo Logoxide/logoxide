@@ -63,6 +63,9 @@ sources. To keep a fetched manifest from reaching into the machine it is install
 - git URLs and refs (tags, branches, revisions) that `git` would read as **command-line options**
   (starting with `-`) are refused, since `lx` runs the `git` command (which also runs with the
   `ext::` transport off, and never follows a symlink in a checkout)
+- git has a **deadline**: a fetch is stopped after 10 minutes and listing a repository's tags
+  after 60 seconds (`git-timeout` and `git-list-timeout`, in seconds, in logoxide's config), so a
+  host that never answers can't hold `lx` forever
 
 What a package can still do is name other public repositories and catalogs, which are then
 trusted on first use like your own dependencies. `lx` never runs anything a package contains:

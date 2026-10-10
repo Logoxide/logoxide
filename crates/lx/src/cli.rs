@@ -4,9 +4,7 @@ use std::{path::PathBuf, sync::Arc};
 
 use clap::{Args, Parser, Subcommand};
 use clap_complete::engine::ArgValueCompleter;
-use logoxide::{
-    Features, FsStorage, Library, Package, Project, Storage, git::GitCli, manifest::MANIFEST,
-};
+use logoxide::{Features, FsStorage, Library, Package, Project, Storage, manifest::MANIFEST};
 
 use crate::{complete, config, net::Web};
 
@@ -78,9 +76,7 @@ impl Cli {
     }
 
     pub(crate) fn fetcher(&self, library: &Library) -> Web {
-        Web(GitCli {
-            scratch: Some(library.git_dir()),
-        })
+        Web(config().git(Some(library.git_dir())))
     }
 }
 

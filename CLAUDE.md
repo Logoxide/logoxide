@@ -9,7 +9,7 @@ before changing the design.
 
 - `crates/logoxide`: the library
   - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
-    `library`, `cache`, `catalogs`, `[registries]`, machine-wide (flags and env win over
+    `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`, machine-wide (flags and env win over
     library/cache; a project's catalogs come first and its registry names win). lx reads it once
     at start (a bad file is an error), logoxide-lsp for its library. The owner chose no `[topos]`
     table: topos's settings stay in topos's config, and no `lx refs`/`lx topos` command
@@ -68,7 +68,10 @@ before changing the design.
     `GitCli` runs `git`. `expand_url`: `github:owner/repo` (also `gitlab:`, `codeberg:`) to its
     URL, wherever a URL is taken; manifests and locks keep the full URL. `GitCli` refuses
     arguments starting with `-`, puts `--` before repositories, runs with `protocol.ext.allow=never`
-    and `GIT_PROTOCOL_FROM_USER=0`, and never follows a symlink in a checkout. `is_insecure`
+    and `GIT_PROTOCOL_FROM_USER=0`, and never follows a symlink in a checkout. Every git command
+    has a deadline (`run`: spawned, waited on, killed): `fetch_timeout` (`FETCH_TIMEOUT`, 10
+    minutes) and `list_timeout` for `ls-remote` (`LIST_TIMEOUT`, 60 s), set from the config's
+    `git-timeout`/`git-list-timeout` (`Config::git`); the error names the limit. `is_insecure`
     (`http://`, `git://`, `ftp://`: warned of) and `is_local`
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
