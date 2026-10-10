@@ -119,3 +119,20 @@ enforces them: it will install, cache, and read a text whatever its license says
 know whether a catalog's claim is true. **You must check that you have the right to use, and
 especially to redistribute, a text** (in a published vault, a registry, a mirror, or an app)
 before you do. Many Bible translations are under copyright and allow only personal use.
+
+`license` must be an SPDX expression (read leniently, `LicenseRef-<name>` for the rest), and
+`[package.rights]` says what it allows in four words (`redistributable`, `derivatives`,
+`commercial`, `attribution`; [manifest.md](manifest.md#packagerights)), derived for licenses
+logoxide knows. Importers read them from the publisher: eBible.org's license from the Creative
+Commons link or name in its `copr.htm`, fetch.bible's terms, and SWORD's `DistributionLicense`
+(permission given to CrossWire, or only in SWORD's format, is `redistributable = false` and
+`derivatives = "none"`). A statement that denies the public domain ("not public domain") is never
+read as it.
+
+`lx publish` says what may keep a package from being shared (`logoxide::license::assess`, which
+the bindings give as `LogoxidePackage.licenseConcerns()`): no license, one not known to be free,
+and an import whose markup was converted when the license allows no derivatives (logoxide
+doesn't count converting markup, its words unchanged, as a derivative, but the publisher might).
+When the rights say a package isn't redistributable, it warns loudly and asks before publishing
+(`--yes` answers; outside a terminal it must be given). This is still a warning, not
+enforcement: the choice, and the responsibility, are the publisher's.

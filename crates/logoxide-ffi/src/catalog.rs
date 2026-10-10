@@ -109,6 +109,8 @@ pub struct CatalogEntry {
     pub script: Option<String>,
     pub description: Option<String>,
     pub license: Option<String>,
+    /// What its license allows: as the catalog says, with the rest derived from `license`
+    pub rights: crate::Rights,
     pub copyright: Option<String>,
     /// The newest version, when the catalog says: for an import, the publisher's own as it gives
     /// it (`2026-10-08`), which the import keeps as `Upstream.version`
@@ -139,6 +141,7 @@ impl From<&CoreEntry> for CatalogEntry {
             script: e.script.clone(),
             description: e.description.clone(),
             license: e.license.clone(),
+            rights: e.text_rights().into(),
             copyright: e.copyright.clone(),
             version: e.version.clone(),
             kind: e.kind.into(),
@@ -197,6 +200,7 @@ impl From<CatalogEntry> for CoreEntry {
             script: e.script,
             description: e.description,
             license: e.license,
+            rights: e.rights.into(),
             copyright: e.copyright,
             version: e.version,
             kind: e.kind.into(),

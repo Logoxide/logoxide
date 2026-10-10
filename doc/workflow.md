@@ -113,8 +113,10 @@ changes, like any package's, so a dependency on `^1` is safe across the publishe
 publisher's version, as it gives it (eBible.org's update date `2026-10-08`, CCEL's edition `1.0`
 or else the file's date, a SWORD module's `Version` `3.1`), is kept in `[package.upstream]` with
 the download's URL and the import's name (`ebible:eng-asv`). Its license is shown as
-the publisher states it (public domain, a Creative Commons license, the GPL), else
-`LicenseRef-<publisher>` with the statement in the package's license file. Locked SWORD modules
+the publisher states it (public domain, a Creative Commons license, eBible.org's read from its
+`copr.htm`, the GPL), else `LicenseRef-<publisher>` with the statement in the package's license
+file, and what the publisher says beyond it in `[package.rights]` (a SWORD module only CrossWire
+may distribute isn't redistributable: `lx publish` asks before publishing it). Locked SWORD modules
 and those in GBF or plain text aren't listed: logoxide reads OSIS and ThML.
 
 The manifest now reads:

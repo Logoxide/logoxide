@@ -53,6 +53,10 @@ pub(crate) fn show(
             .or(info.license_file.as_deref())
             .unwrap_or("none given")
     );
+    let rights = info.text_rights();
+    if !rights.is_empty() {
+        outln!("rights: {}", rights.describe());
+    }
     if let Some(media) = manifest.media.as_ref().filter(|m| !m.files.is_empty()) {
         let bytes: u64 = media.files.iter().map(|f| f.size).sum();
         outln!(

@@ -222,6 +222,10 @@ pub struct CatalogEntry {
     pub script: Option<String>,
     pub description: Option<String>,
     pub license: Option<String>,
+    /// What its license allows, as the catalog says it (a `catalog.toml`'s `rights`, a
+    /// publisher's terms); what's derived from `license` isn't here (see
+    /// [`CatalogEntry::text_rights`])
+    pub rights: crate::license::Rights,
     /// A copyright statement, when the catalog gives one
     pub copyright: Option<String>,
     /**
@@ -245,6 +249,11 @@ pub struct CatalogEntry {
 }
 
 impl CatalogEntry {
+    /// What its license allows: its `rights`, with what they don't say derived from its license
+    pub fn text_rights(&self) -> crate::license::Rights {
+        (self.rights).or(crate::license::derived_rights(self.license.as_deref()))
+    }
+
     /// Whether it's mainly about the book with this USFM code (`ROM`), as its `about-books` says
     pub fn is_about(&self, book: &str) -> bool {
         self.about_books.iter().any(|b| b == book)
@@ -285,6 +294,8 @@ struct TomlEntry {
     description: Option<String>,
     #[serde(default)]
     license: Option<String>,
+    #[serde(default)]
+    rights: crate::license::Rights,
     #[serde(default)]
     kind: PackageKind,
     /// Without one, its script's
@@ -463,10 +474,11 @@ impl Catalog {
             let language = languages.and_then(|l| l.get(&code));
             let (tag, raw) = crate::language::normalize_language(&code);
             let copyright = bible.get("copyright");
-            let license = (copyright.and_then(|c| c.get("licenses")))
+            let (license, rights) = (copyright.and_then(|c| c.get("licenses")))
                 .and_then(Value::as_array)
                 .and_then(|l| l.first())
-                .map(|l| fetch_bible_license(l.get("license"), text_of(l.get("url"))));
+                .map(|l| fetch_bible_license(l.get("license"), text_of(l.get("url"))))
+                .map_or((None, Default::default()), |(l, r)| (Some(l), r));
             let abbreviation = name_of("english_abbrev")
                 .or_else(|| name_of("local_abbrev"))
                 .unwrap_or_else(|| id.to_uppercase());
@@ -489,6 +501,7 @@ impl Catalog {
                 language: tag,
                 description: None,
                 license,
+                rights,
                 copyright: text_of(copyright.and_then(|c| c.get("attribution"))),
                 version: (bible.get("year").and_then(Value::as_u64)).map(|y| y.to_string()),
                 kind: PackageKind::Bible,
@@ -563,6 +576,7 @@ impl Catalog {
                 script: None,
                 description: None,
                 license: None,
+                rights: Default::default(),
                 copyright: None,
                 version: None,
                 kind: PackageKind::Bible,
@@ -675,6 +689,7 @@ impl Catalog {
                 script,
                 description: e.description,
                 license: e.license,
+                rights: e.rights,
                 copyright: None,
                 version: e.version,
                 kind: e.kind,
@@ -763,9 +778,11 @@ impl Catalog {
             };
             let (tag, raw) = crate::language::normalize_language(&code);
             let copyright = get(&row, copyright).filter(|c| !c.is_empty());
-            let public = copyright
-                .as_deref()
-                .is_some_and(|c| c.to_ascii_lowercase().contains("public domain"));
+            // The list gives only a statement (the license is in the download's copr.htm, which
+            // its import reads), and lists only what may be redistributed
+            let license = (copyright.as_deref())
+                .and_then(crate::license::license_from_text)
+                .unwrap_or_else(|| String::from("LicenseRef-eBible"));
             let name = get(&row, title)
                 .filter(|t| !t.is_empty())
                 .or_else(|| get(&row, short_title))
@@ -783,11 +800,11 @@ impl Catalog {
                     .or_else(|| crate::language::script_of_tag(&tag)),
                 language: tag,
                 description: get(&row, description).filter(|d| !d.is_empty()),
-                license: Some(String::from(if public {
-                    "LicenseRef-PublicDomain"
-                } else {
-                    "LicenseRef-eBible"
-                })),
+                license: Some(license),
+                rights: crate::license::Rights {
+                    redistributable: Some(true),
+                    ..Default::default()
+                },
                 copyright,
                 version: get(&row, updated).filter(|d| !d.is_empty()),
                 kind: PackageKind::Bible,
@@ -868,6 +885,7 @@ impl Catalog {
                     language_name: info.language_name,
                     description: info.description,
                     license: info.license,
+                    rights: info.rights.unwrap_or_default(),
                     copyright: None,
                     version: Some(info.version.to_string()),
                     kind: info.kind,
@@ -998,6 +1016,19 @@ impl Catalog {
         if let Some(license) = &info.license {
             table.insert("license", toml_edit::value(license));
         }
+        if let Some(rights) = info.rights.filter(|r| !r.is_empty())
+            && let Ok(toml::Value::Table(said)) = toml::Value::try_from(rights)
+        {
+            let mut inline = toml_edit::InlineTable::new();
+            for (key, value) in said {
+                let value = match value {
+                    toml::Value::Boolean(b) => toml_edit::Value::from(b),
+                    other => toml_edit::Value::from(other.as_str().unwrap_or_default()),
+                };
+                inline.insert(&key, value);
+            }
+            table.insert("rights", toml_edit::value(inline));
+        }
         if info.kind != PackageKind::Bible {
             let kind = toml::Value::try_from(info.kind)
                 .ok()
@@ -1071,10 +1102,41 @@ pub fn split_registry_name<'a>(
     (registries.contains_key(registry) && !name.is_empty()).then_some((registry, name))
 }
 
-/// A fetch.bible license as SPDX: `cc-by-sa` with its URL's version is `CC-BY-SA-4.0`, `public`
-/// is public domain, and its own terms (an object of restrictions) are `LicenseRef-fetch.bible`
-fn fetch_bible_license(license: Option<&serde_json::Value>, url: Option<String>) -> String {
-    match license.and_then(serde_json::Value::as_str) {
+/**
+A fetch.bible license as SPDX: `cc-by-sa` with its URL's version is `CC-BY-SA-4.0`, `public` is
+public domain, and its own terms (an object of restrictions: `forbid_commercial`,
+`forbid_derivatives` (`true`, or `same-license`), `forbid_attributionless`) are
+`LicenseRef-fetch.bible`, with the rights they give
+*/
+fn fetch_bible_license(
+    license: Option<&serde_json::Value>,
+    url: Option<String>,
+) -> (String, crate::license::Rights) {
+    use crate::license::{Derivatives, Rights};
+    let license = match license {
+        Some(serde_json::Value::Object(terms)) => {
+            let forbids = |key: &str| terms.get(key).and_then(serde_json::Value::as_bool);
+            let derivatives = match terms.get("forbid_derivatives") {
+                Some(serde_json::Value::Bool(true)) => Some(Derivatives::None),
+                Some(serde_json::Value::Bool(false)) => Some(Derivatives::Allowed),
+                Some(serde_json::Value::String(s)) if s == "same-license" => {
+                    Some(Derivatives::ShareAlike)
+                }
+                _ => None,
+            };
+            let rights = Rights {
+                // fetch.bible publishes only what may be shared
+                redistributable: Some(true),
+                derivatives,
+                commercial: forbids("forbid_commercial").map(|f| !f),
+                attribution: forbids("forbid_attributionless"),
+            };
+            return (String::from("LicenseRef-fetch.bible"), rights);
+        }
+        Some(license) => license.as_str(),
+        None => None,
+    };
+    let license = match license {
         Some("public") => String::from("LicenseRef-PublicDomain"),
         Some(cc) if cc.starts_with("cc-") => {
             let version = (url.as_deref())
@@ -1085,7 +1147,8 @@ fn fetch_bible_license(license: Option<&serde_json::Value>, url: Option<String>)
             format!("{}-{version}", cc.to_uppercase())
         }
         _ => String::from("LicenseRef-fetch.bible"),
-    }
+    };
+    (license, Rights::default())
 }
 
 /// What an import names a SWORD repository by (its root URL): its name in
@@ -1153,6 +1216,7 @@ pub(crate) fn sword_entry(
                 .find(|p| !p.is_empty())
         }),
         license: Some(sword_license(conf.get("DistributionLicense"))),
+        rights: sword_rights(conf.get("DistributionLicense")),
         copyright,
         version: (conf.version().map(str::trim))
             .filter(|v| !v.is_empty())
@@ -1176,16 +1240,17 @@ pub(crate) fn sword_entry(
 }
 
 /**
-A SWORD module's `DistributionLicense` as SPDX: public domain, a Creative Commons license
-(`Creative Commons: BY-SA 4.0` is `CC-BY-SA-4.0`), the GPL; anything else (`Copyrighted; Free
-non-commercial distribution`) is `LicenseRef-SWORD`, its statement in the package's license file
+A SWORD module's `DistributionLicense` as SPDX: public domain (when it doesn't deny it), a
+Creative Commons license (`Creative Commons: BY-SA 4.0` is `CC-BY-SA-4.0`), the GPL; anything
+else (`Copyrighted; Free non-commercial distribution`) is `LicenseRef-SWORD`, its statement in the
+package's license file, with what it allows in [`sword_rights`]
 */
 pub(crate) fn sword_license(license: Option<&str>) -> String {
     let Some(license) = license.map(str::trim) else {
         return String::from("LicenseRef-SWORD");
     };
     let lower = license.to_ascii_lowercase();
-    if lower.contains("public domain") {
+    if crate::license::says_public_domain(&lower) {
         return String::from("LicenseRef-PublicDomain");
     }
     if let Some(cc) = lower.strip_prefix("creative commons:") {
@@ -1202,6 +1267,46 @@ pub(crate) fn sword_license(license: Option<&str>) -> String {
         "gpl" | "gplv2" | "gpl v2" => String::from("GPL-2.0-only"),
         "gplv3" | "gpl v3" => String::from("GPL-3.0-only"),
         _ => String::from("LicenseRef-SWORD"),
+    }
+}
+
+/**
+What a SWORD module's `DistributionLicense` allows, where it's a statement rather than a license
+SPDX names (whose rights are derived from it): permission given to CrossWire alone, or only in
+SWORD's format (`Copyrighted; Permission to distribute granted to CrossWire`, `…to distribute
+non-commercially in SWORD format`) isn't anyone's to redistribute, nor to convert; `Free
+non-commercial distribution` and `Freely distributable` are redistributable, without
+derivatives (and not commercially, for the first). Others say nothing
+*/
+pub(crate) fn sword_rights(license: Option<&str>) -> crate::license::Rights {
+    use crate::license::{Derivatives, Rights};
+    let Some(license) = license.map(|l| l.trim().to_lowercase()) else {
+        return Rights::default();
+    };
+    let commercial = !(license.contains("non-commercial")
+        || license.contains("noncommercial")
+        || license.contains("non commercial"));
+    let to_crosswire = license.contains("crosswire")
+        || license.contains("sword format")
+        || license.contains("no other distribution");
+    if to_crosswire {
+        return Rights {
+            redistributable: Some(false),
+            derivatives: Some(Derivatives::None),
+            commercial: (!commercial).then_some(false),
+            attribution: None,
+        };
+    }
+    let free = license.contains("free non-commercial distribution")
+        || license.contains("freely distributable");
+    match free {
+        true => Rights {
+            redistributable: Some(true),
+            derivatives: Some(Derivatives::None),
+            commercial: (!commercial).then_some(false),
+            attribution: None,
+        },
+        false => Rights::default(),
     }
 }
 
@@ -1358,6 +1463,8 @@ mod tests {
             (Some("Latn"), Some("Hebr"))
         );
         assert_eq!(wlc.license.as_deref(), Some("LicenseRef-eBible"));
+        // The list has only what may be redistributed
+        assert_eq!(wlc.rights.redistributable, Some(true));
         assert_eq!(
             wlc.description.as_deref(),
             Some("The \"WLC\", with vowels, and a comma, here")
@@ -1577,6 +1684,20 @@ usx = { path = "usx/" }
             (y.license.as_deref(), y.direction),
             (Some("LicenseRef-fetch.bible"), Direction::Rtl)
         );
+        // Its own terms, as rights
+        assert_eq!(
+            y.rights,
+            crate::license::Rights {
+                redistributable: Some(true),
+                derivatives: None,
+                commercial: Some(false),
+                attribution: None
+            }
+        );
+        assert_eq!(
+            x.text_rights().derivatives,
+            Some(crate::license::Derivatives::ShareAlike)
+        );
     }
 
     #[test]
@@ -1773,6 +1894,38 @@ usx = { path = "usx/" }
             sword_license(Some("Copyrighted; Free non-commercial distribution")),
             "LicenseRef-SWORD"
         );
+        // A denial isn't the public domain
+        assert_eq!(
+            sword_license(Some("Copyrighted; not public domain")),
+            "LicenseRef-SWORD"
+        );
+        use crate::license::{Derivatives, Rights};
+        let to_crosswire = sword_rights(Some(
+            "Copyrighted; Permission to distribute granted to CrossWire",
+        ));
+        assert_eq!(
+            (to_crosswire.redistributable, to_crosswire.derivatives),
+            (Some(false), Some(Derivatives::None))
+        );
+        let sword_format = sword_rights(Some(
+            "Copyrighted; Permission granted to distribute non-commercially in SWORD format",
+        ));
+        assert_eq!(
+            (sword_format.redistributable, sword_format.commercial),
+            (Some(false), Some(false))
+        );
+        assert_eq!(
+            sword_rights(Some("Copyrighted; Free non-commercial distribution")),
+            Rights {
+                redistributable: Some(true),
+                derivatives: Some(Derivatives::None),
+                commercial: Some(false),
+                attribution: None
+            }
+        );
+        assert!(sword_rights(Some("Public Domain")).is_empty());
+        // Derived where SPDX names it
+        assert_eq!(kjv.text_rights().derivatives, Some(Derivatives::ShareAlike));
     }
 
     const ENTRY: &str =

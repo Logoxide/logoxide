@@ -68,8 +68,10 @@ pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
 /**
 An eBible.org translation's `<id>_usfm.zip` (from [`ebible_zip_url`]) as a package in `dest`:
 `logoxide.toml`, `usfm/` (every book's file), and `copr.htm` (its copyright, the license file). The
-package's id, name, language, and license come from `entry`, and eBible.org's update date is the
-upstream version. Checked by opening it: a zip without books is an error
+package's id, name, and language come from `entry`, and eBible.org's update date is the upstream
+version. Its license is read from `copr.htm` (a Creative Commons license by its link or name, or
+the public domain; [`crate::license::license_from_text`]), else the entry's. Checked by opening
+it: a zip without books is an error
 */
 pub fn ebible(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()> {
     let CatalogSource::Ebible { id } = &entry.source else {
@@ -91,6 +93,13 @@ pub fn ebible(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
             license_file = Some(name.to_string());
         }
     }
+    let mut entry = entry.clone();
+    if let Some(license) = (license_file.as_deref())
+        .and_then(|file| staged.read_string(file).ok())
+        .and_then(|text| crate::license::license_from_text(&text))
+    {
+        entry.license = Some(license);
+    }
     let made = Made {
         format: "usfm",
         license_file,
@@ -98,7 +107,7 @@ pub fn ebible(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
         homepage: format!("https://ebible.org/{id}/"),
         versification: None,
     };
-    finish(entry, made, staged, dest)
+    finish(&entry, made, staged, dest)
 }
 
 /// Where fetch.bible serves a translation's book as USX (`code` as its catalog lists it: `jhn`)
@@ -264,8 +273,7 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
     let script = crate::language::dominant_script(body);
     entry.script = script.map(String::from);
     entry.direction = crate::language::script_direction(script);
-    let public =
-        (head.rights.as_deref()).is_some_and(|r| r.to_ascii_lowercase().contains("public domain"));
+    let public = (head.rights.as_deref()).is_some_and(crate::license::says_public_domain);
     entry.license = Some(String::from(match public {
         true => "LicenseRef-PublicDomain",
         false => "LicenseRef-CCEL",
@@ -612,6 +620,9 @@ pub fn upstream(entry: &CatalogEntry) -> Option<Upstream> {
         url: upstream_url(entry)?,
         import: entry.source.import_name(),
         version: entry.version.clone(),
+        // A SWORD module's entries are made into OSIS or ThML files; the other publishers'
+        // files are kept as they are
+        converted: matches!(entry.source, CatalogSource::Sword { .. }),
     })
 }
 
@@ -851,7 +862,14 @@ fn finish(
         language_name: entry.language_name.clone(),
         script: entry.script.clone(),
         direction: (entry.direction != implied).then_some(entry.direction),
-        license: entry.license.clone(),
+        // A license SPDX can't read (a publisher's odd version) is the publisher's own
+        license: (entry.license.clone()).map(|license| {
+            match crate::license::check_license(&license) {
+                Ok(()) => license,
+                Err(_) => format!("LicenseRef-{}", made.publisher.replace(' ', "-")),
+            }
+        }),
+        rights: (!entry.rights.is_empty()).then_some(entry.rights),
         license_file: made.license_file,
         publisher: Some(made.publisher.to_string()),
         homepage: Some(made.homepage),
@@ -966,8 +984,38 @@ mod tests {
             )
         );
         assert_eq!(info.license_file.as_deref(), Some("copr.htm"));
+        assert_eq!(info.license.as_deref(), Some("LicenseRef-PublicDomain"));
         assert_eq!(package.books().len(), 1);
         assert!(ebible(entry, &zip(&[("copr.htm", "")]), &MemoryStorage::new()).is_err());
+        // The license is read from copr.htm, as its link gives it; eBible.org's list says it may
+        // be redistributed, and the license says the rest
+        let licensed = MemoryStorage::new();
+        let copr = "<p>Copyright © 2009 Someone. This translation is made available to you under the terms of the <a href='http://creativecommons.org/licenses/by-nc-nd/4.0/'>Creative Commons Attribution-Noncommercial-No Derivatives license 4.0.</a></p>";
+        let book = "\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n";
+        ebible(
+            entry,
+            &zip(&[("73-JHNeng-asv.usfm", book), ("copr.htm", copr)]),
+            &licensed,
+        )
+        .unwrap();
+        let package = Package::open(std::sync::Arc::new(licensed), Features::default()).unwrap();
+        let info = package.info();
+        assert_eq!(info.license.as_deref(), Some("CC-BY-NC-ND-4.0"));
+        let rights = info.text_rights();
+        assert_eq!(
+            (
+                rights.redistributable,
+                rights.commercial,
+                rights.derivatives
+            ),
+            (
+                Some(true),
+                Some(false),
+                Some(crate::license::Derivatives::None)
+            )
+        );
+        // Not converted: eBible.org's USFM is kept as it is
+        assert!(!info.upstream.as_ref().unwrap().converted);
 
         // fetch.bible: a book's USX, and its attribution
         let mut from_fetch = entry.clone();
@@ -1199,6 +1247,8 @@ mod tests {
             ("1.0.0".to_string(), Some("CC-BY-SA-4.0"))
         );
         let upstream = info.upstream.as_ref().unwrap();
+        // Its entries were made into OSIS files
+        assert!(upstream.converted);
         assert_eq!(
             (
                 upstream.url.as_str(),
@@ -1243,6 +1293,32 @@ mod tests {
                 &MemoryStorage::new()
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn a_module_crosswire_may_distribute_isnt_redistributable() {
+        let conf = SWORD_CONF.replace(
+            "Creative Commons: BY-SA 4.0",
+            "Copyrighted; Permission to distribute granted to CrossWire",
+        );
+        let zip = sword_zip(&conf, &[("John", 1, 1, "In the beginning.")]);
+        let dest = MemoryStorage::new();
+        sword(&sword_test_entry(), &zip, &dest).unwrap();
+        let manifest = dest.read_string(MANIFEST).unwrap();
+        assert!(manifest.contains("[package.rights]"), "{manifest}");
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        let info = package.info();
+        assert_eq!(info.license.as_deref(), Some("LicenseRef-SWORD"));
+        let kinds: Vec<_> = (crate::license::assess(info).into_iter())
+            .map(|c| c.kind)
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                crate::license::ConcernKind::NotRedistributable,
+                crate::license::ConcernKind::Converted
+            ]
         );
     }
 

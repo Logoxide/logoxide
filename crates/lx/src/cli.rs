@@ -289,6 +289,10 @@ pub(crate) enum Command {
         /// many): each not published yet is
         #[arg(long)]
         all: bool,
+        /// Publishes a package whose rights say it isn't redistributable without asking
+        /// (licenses are shown, never enforced: the warning is still printed)
+        #[arg(long, short)]
+        yes: bool,
     },
     /// Withdraws a release from a registry: new installs and updates pass over it, while lock
     /// files that have it still install it (nobody's text changes under them)

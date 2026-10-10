@@ -684,3 +684,40 @@ fn diff_names_joined_and_split_verses() {
     assert_eq!(d["split"], serde_json::json!(["JHN 3:16"]));
     assert_eq!(d["added"], serde_json::json!([]));
 }
+
+#[test]
+fn publishing_what_isnt_redistributable_is_confirmed() {
+    let world = World::new("publish-rights");
+    let dir = world.path("not-mine");
+    package(&dir, "not-mine", "1.0.0");
+    append_manifest(&dir, "\n[package.rights]\nredistributable = false\n");
+    tagged(&dir, "v1.0.0");
+    let registry = world.path("registry");
+    world.ok(&["registry", "init", registry.to_str().unwrap()]);
+    let publish = [
+        "publish",
+        dir.to_str().unwrap(),
+        "--to",
+        registry.to_str().unwrap(),
+    ];
+    // Not in a terminal, it must be allowed
+    let out = world.lx(&publish);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("WARNING: not-mine's rights say it isn't redistributable")
+            && stderr.contains("--yes"),
+        "{stderr}"
+    );
+    // Still shown, never enforced: --yes publishes it, with the warning
+    let out = world.lx(&[&publish[..], &["--yes"]].concat());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(stderr.contains("isn't redistributable"), "{stderr}");
+    let catalog = std::fs::read_to_string(registry.join("catalog.toml")).unwrap();
+    // Its entry carries its rights
+    assert!(
+        catalog.contains("rights = { redistributable = false }"),
+        "{catalog}"
+    );
+}

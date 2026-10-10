@@ -70,6 +70,7 @@ size = 1834201
 | `script` | string | no | ISO 15924 (`Latn`, `Hebr`). Absent, the language tag's script subtag, if any |
 | `description` | string | no | |
 | `license` | string | no | SPDX expression, shown, never enforced |
+| `rights` | table | no | What the license allows, where said rather than derived (`redistributable`, `derivatives`, `commercial`, `attribution`), as in the manifest's [`[package.rights]`](manifest.md#packagerights) |
 | `kind` | string | no | As in the manifest; `bible` when absent |
 | `direction` | string | no | `ltr` or `rtl`. Absent, the script's (as in the manifest), else `ltr` |
 | `version` | string | no | The newest version, for display |

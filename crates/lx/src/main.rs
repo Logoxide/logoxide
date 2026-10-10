@@ -194,12 +194,12 @@ fn main() -> ExitCode {
             name,
             private,
         }) => publish::init(&publish::Host::parse(host), name.as_deref(), *private),
-        Command::Publish { path, to, all } => {
+        Command::Publish { path, to, all, yes } => {
             let library = cli.library();
             let (host, git) = (publish::Host::parse(to), cli.fetcher(&library));
             match all {
-                true => publish::publish_all(path, &host, &git),
-                false => publish::publish(path, &host, &git),
+                true => publish::publish_all(path, &host, &git, *yes),
+                false => publish::publish(path, &host, &git, *yes),
             }
         }
         Command::Yank {

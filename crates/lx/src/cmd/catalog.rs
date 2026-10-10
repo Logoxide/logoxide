@@ -454,6 +454,7 @@ pub(crate) fn search(
                     "languageTag": e.language,
                     "script": e.script,
                     "license": e.license,
+                    "rights": e.text_rights(),
                     "keywords": e.keywords,
                     "categories": e.categories,
                     "aboutBooks": e.about_books,

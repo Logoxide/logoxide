@@ -72,6 +72,7 @@ pub mod git;
 pub mod import;
 pub mod language;
 pub mod library;
+pub mod license;
 pub mod lock;
 pub mod manifest;
 pub mod media;

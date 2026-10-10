@@ -45,6 +45,17 @@ before changing the design.
     text kept in `language-name`), eBible.org's `script` column by name (`script_code`), and
     CCEL's script judged from its letters (`dominant_script`), which sets the direction. An
     import writes `direction` only where the script doesn't imply it
+  - `license.rs`: `license` is checked as an SPDX expression (`spdx`, lax; `LicenseRef-*`);
+    `[package.rights]` (`Rights`: `redistributable`, `derivatives` allowed/share-alike/none,
+    `commercial`, `attribution`), with `derived_rights` for a single known license (CC, public
+    domain, permissive, copyleft) and what's said winning (`Package::text_rights`,
+    `CatalogEntry::text_rights`). `says_public_domain` refuses negations ("not public domain");
+    `license_from_text` reads a Creative Commons link or name (eBible.org's `copr.htm`, which its
+    import reads). `assess(info) -> Vec<Concern>` (moved from lx's publish.rs): no license, not
+    free, not redistributable (`is_serious`), and `Converted` (`upstream.converted`, set by SWORD
+    imports, when derivatives are "none": not a derivative to logoxide, the owner's D7, but
+    said). Catalog entries carry `rights` (eBible.org's list: redistributable; fetch.bible's
+    terms objects; SWORD's; `catalog.toml`'s `rights`, which `entry_table` writes)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
     `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
@@ -150,7 +161,9 @@ before changing the design.
     milestones, making linked verses bridges (`n="16-17"`), and leaving out introductions that
     are another verse's entry; the conf's `Versification` is kept (`sword_versification`: SWORD's
     names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
-    version, license (`sword_license`), language, and
+    version, license (`sword_license`) and rights (`sword_rights`: permission given to CrossWire
+    or only in SWORD's format is `redistributable = false`, `derivatives = "none"`), language,
+    and
     `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Versions
     (the owner's D1): a new import is `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's
     version as it gives it (`2026-10-08`, `3.1`) goes in `[package.upstream] version`
@@ -307,8 +320,10 @@ before changing the design.
   naming where it was redirected); packages through git. The
   project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
   own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
-  import --update, show --references; others refuse it). `lx publish` warns of a license that
-  isn't free or the public domain. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
+  import --update, show --references; others refuse it). `lx publish` prints
+  `license::assess`'s concerns, and for a package whose rights say it isn't redistributable
+  warns loudly and asks (`--yes` answers; required outside a terminal: the owner's D8, still
+  never enforced); `lx info` prints the rights. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
   `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
   folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
   Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
@@ -328,7 +343,8 @@ before changing the design.
   try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,
   for any source) and `importDownloaded`; `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
-  `Files`; `parseCatalogBytes` reads any catalog,
+  `Files`; `PackageInfo` and `CatalogEntry` carry `rights` (said and derived),
+  `LogoxidePackage.licenseConcerns()` gives `license::assess`'s concerns; `parseCatalogBytes` reads any catalog,
   and a SWORD repository's `.tar.gz` only that way. Updating an import: `LogoxideCatalog.findUpstream`
   (its entry, from `PackageInfo.upstream`, an `Upstream` record), `Logoxide.importIsCurrent(entry,
   upstream.version)` (skip the download), and

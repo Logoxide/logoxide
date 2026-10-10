@@ -101,6 +101,10 @@ pub struct Package {
     /// An SPDX expression (`CC0-1.0`, `LicenseRef-PublicDomain`); shown, never enforced
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
+    /// What the license allows, where it's said rather than derived from `license`
+    /// (`[package.rights]`; see [`Package::text_rights`] and [`crate::license`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rights: Option<crate::license::Rights>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license_file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -164,6 +168,11 @@ pub struct Upstream {
     /// update date `2026-10-08`, a SWORD module's `3.1`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// The import rewrote the publisher's markup (a SWORD module's entries made into OSIS
+    /// files), its words unchanged. logoxide doesn't count that as a derivative (the owner's D7),
+    /// but `lx publish` says so when the license allows none
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub converted: bool,
 }
 
 impl Package {
@@ -607,6 +616,9 @@ impl Manifest {
             if let Some(script) = &package.script {
                 crate::language::check_script(script)?;
             }
+            if let Some(license) = &package.license {
+                crate::license::check_license(license)?;
+            }
             // A collection is only its dependencies
             match (
                 package.kind == PackageKind::Collection,
@@ -723,6 +735,10 @@ impl Manifest {
                     if let Some(upstream) = value.get("upstream") {
                         let fields = fields_of::<Upstream>();
                         check("package.upstream", upstream, fields, &mut unknown);
+                    }
+                    if let Some(rights) = value.get("rights") {
+                        let fields = fields_of::<crate::license::Rights>();
+                        check("package.rights", rights, fields, &mut unknown);
                     }
                 }
                 "formats" | "dependencies" => {

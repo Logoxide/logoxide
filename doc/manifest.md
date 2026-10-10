@@ -51,7 +51,8 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `description` | string | no | A sentence or two (a book's subtitle) |
 | `aliases` | array of strings | no | Other names references may use (`AV`, `King James`) |
 | `direction` | string | no | `ltr` or `rtl`. Without it, the script's: `rtl` for the scripts written right to left (`Arab`, `Hebr`, `Syrc`, `Thaa`, `Nkoo`, `Adlm`, `Samr`, `Mand`, and the other historic ones Unicode gives that class), else `ltr` |
-| `license` | string | no | An SPDX expression (`CC0-1.0`, `CC-BY-SA-4.0`, `LicenseRef-PublicDomain`). Shown to users, never enforced |
+| `license` | string | no | An SPDX expression (`CC0-1.0`, `CC-BY-SA-4.0`, `MIT OR Apache-2.0`, `LicenseRef-PublicDomain`), checked as one (leniently: `GPL-2.0+`, `/` for `OR`, deprecated ids), with `LicenseRef-<name>` for a license SPDX has no id for. Shown to users, never enforced |
+| `rights` | table | no | What the license allows, where it's said rather than derived: see [`[package.rights]`](#packagerights) |
 | `license-file` | string | no | The license's path in the package. It is part of the package |
 | `publisher` | string | no | Who publishes the text |
 | `homepage` | string | no | A URL |
@@ -79,6 +80,34 @@ Esther's lettered chapters (A to F, the Greek additions some Bibles number apart
 format: chapters are numbers. No import makes them (SWORD numbers chapters by its versification,
 and eBible.org and fetch.bible give Greek Esther, `ESG`, numbered chapters). In OSIS and ThML, a
 verse marker with a lettered chapter (`Esth.A.1`, `|Esth|A|1|`) is passed over with a warning.
+
+### `[package.rights]`
+
+What the license allows, in four words, each optional:
+
+```toml
+[package.rights]
+redistributable = false   # may be shared as it is, by anyone
+derivatives = "none"      # "allowed", "share-alike" (under the same terms), or "none"
+commercial = false        # may be sold or used commercially
+attribution = true        # sharing it must name its source
+```
+
+For a license logoxide knows they're derived from `license`: the public domain
+(`LicenseRef-PublicDomain`, `CC0-1.0`, `CC-PDDC`, `PDDL-1.0`, `Unlicense`, `0BSD`, `MIT-0`,
+`WTFPL`: everything allowed, no attribution), Creative Commons (`CC-BY-*`: redistributable with
+attribution; `-NC` no commercial use, `-ND` no derivatives, `-SA` derivatives under the same
+terms), permissive licenses (`MIT`, `ISC`, `Zlib`, `BSL-1.0`, `Apache-*`, `BSD-*`, …: everything
+allowed, with attribution), and copyleft ones (`GPL-*`, `LGPL-*`, `AGPL-*`, `GFDL-*`, `MPL-*`,
+`EUPL-*`, `EPL-*`, `OFL-*`, `ODbL-*`: derivatives under the same terms). Only a single license is
+derived from (not an expression of several). What's said here wins over what's derived; what
+neither says is unknown. Importers write what a publisher says beyond its license (a SWORD module
+CrossWire alone may distribute is `redistributable = false`, `derivatives = "none"`).
+
+Like the license, rights are shown, never enforced. `lx publish` warns of a package that has no
+license or one not known to be free (unless `redistributable = true` is said), and when its
+rights say it isn't redistributable, warns loudly and asks first (`--yes` answers);
+see [trust.md](trust.md#licenses).
 
 ### Kinds
 
@@ -333,6 +362,7 @@ version = "2026-10-08"
 | `url` | string | yes | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books) |
 | `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `sword:crosswire/KJV`) |
 | `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year) |
+| `converted` | boolean | no | The import rewrote the publisher's markup, its words unchanged (a SWORD module's entries made into OSIS or ThML files). Not a derivative to logoxide, but `lx publish` says so when the license allows no derivatives. Default `false` |
 
 An update finds the catalog entry again by `import`, else by `url`. The package's own `version`
 follows the rules above like any package's: a new import is `1.0.0`, and each update raises it by

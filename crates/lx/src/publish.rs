@@ -222,79 +222,54 @@ fn pack(dir: &Path, git: &logoxide::git::GitCli) -> logoxide::Result<Packed> {
     })
 }
 
-/// SPDX licenses that allow anyone to redistribute what they cover (with their terms)
-const FREE_LICENSES: &[&str] = &[
-    "0BSD",
-    "AFL-3.0",
-    "Artistic-2.0",
-    "BSL-1.0",
-    "CC-PDDC",
-    "CC0-1.0",
-    "ISC",
-    "MIT",
-    "MIT-0",
-    "ODbL-1.0",
-    "ODC-By-1.0",
-    "OFL-1.1",
-    "PDDL-1.0",
-    "Unlicense",
-    "WTFPL",
-    "Zlib",
-];
-
-/// Prefixes of SPDX families that allow redistribution (`CC-BY-4.0`, `GPL-3.0-or-later`)
-const FREE_PREFIXES: &[&str] = &[
-    "AGPL-", "Apache-", "BSD-", "CC-BY-", "EUPL-", "GFDL-", "GPL-", "LGPL-", "MPL-",
-];
-
-/// Whether one SPDX id allows redistribution: a free license, or the public domain said in words
-fn free_license(id: &str) -> bool {
-    let words = id.to_lowercase().replace(['-', '_'], " ");
-    // Creative Commons' noncommercial and no-derivatives licenses aren't free to share on
-    let restricted = id.starts_with("CC-BY-") && (id.contains("-NC") || id.contains("-ND"));
-    words.contains("public domain")
-        || words.contains("publicdomain")
-        || FREE_LICENSES.iter().any(|l| l.eq_ignore_ascii_case(id))
-        || (!restricted && FREE_PREFIXES.iter().any(|p| id.starts_with(p)))
-}
-
 /**
-Why a package's license may not allow publishing it: none given, or an SPDX expression no
-alternative of which is a free license (each of its `AND`ed ids free) or the public domain
-(`LicenseRef-…`, a noncommercial license, an unknown id). Licenses are shown, never enforced, so
-this only warns
+Says what may keep a package from being shared ([`logoxide::license::assess`]) before publishing
+it: a warning for each, and for a serious one (its rights say it isn't redistributable) a loud
+one and a question, the owner's D8 (`yes` answers it; elsewhere than a terminal, it must).
+Licenses are shown, never enforced: whether to publish is the user's. False when they decline
 */
-fn license_warning(info: &logoxide::manifest::Package) -> Option<String> {
-    let check = "licenses are shown, never enforced: check that you may redistribute it";
-    let Some(license) = info.license.as_deref().filter(|l| !l.trim().is_empty()) else {
-        let file = (info.license_file.as_deref())
-            .map(|f| format!(" (only the file {f})"))
-            .unwrap_or_default();
-        return Some(format!("{} gives no SPDX license{file}: {check}", info.id));
-    };
-    let free = license.split(" OR ").any(|alternative| {
-        alternative
-            .replace(['(', ')'], " ")
-            .split(" AND ")
-            // `GPL-2.0 WITH Classpath-exception-2.0`: the license, not its exception
-            .filter_map(|id| id.split(" WITH ").next().map(str::trim))
-            .all(|id| free_license(id.trim_end_matches('+')))
-    });
-    match free {
-        true => None,
-        false => Some(format!(
-            "{}'s license, {license}, isn't a free or open license logoxide knows: {check}",
-            info.id
-        )),
+fn confirm_license(info: &logoxide::manifest::Package, yes: bool) -> logoxide::Result<bool> {
+    let concerns = logoxide::license::assess(info);
+    for concern in concerns.iter().filter(|c| !c.is_serious()) {
+        errln!("warning: {}", concern.message);
     }
+    let Some(serious) = concerns.iter().find(|c| c.is_serious()) else {
+        return Ok(true);
+    };
+    errln!("");
+    errln!("WARNING: {}", serious.message);
+    errln!("");
+    if yes {
+        return Ok(true);
+    }
+    use std::io::IsTerminal;
+    if !std::io::stdin().is_terminal() {
+        return Err(LogoxideError::Catalog(format!(
+            "{} {} wasn't published: pass --yes to publish it anyway",
+            info.id, info.version
+        )));
+    }
+    eprint!("Publish {} {} anyway? [y/N] ", info.id, info.version);
+    let mut answer = String::new();
+    let _ = std::io::stdin().read_line(&mut answer);
+    let publish = matches!(answer.trim(), "y" | "Y" | "yes");
+    if !publish {
+        outln!("{} {}: not published", info.id, info.version);
+    }
+    Ok(publish)
 }
 
 /// `lx publish`: a package's release (its archive) added to a registry
-pub fn publish(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide::Result<()> {
+pub fn publish(
+    dir: &Path,
+    host: &Host,
+    git: &logoxide::git::GitCli,
+    yes: bool,
+) -> logoxide::Result<()> {
     let packed = pack(dir, git)?;
     let info = &packed.info;
-    if let Some(warning) = license_warning(info) {
-        errln!("warning: {warning}");
+    if !confirm_license(info, yes)? {
+        return Ok(());
     }
     let file = publish::archive_name(info);
     let sha256 = publish::sha256(&packed.bytes);
@@ -420,7 +395,12 @@ pub fn publish(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide
 `.git`) whose version has a release tag, published (each already published is said so); one
 without a release is passed over
 */
-pub fn publish_all(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide::Result<()> {
+pub fn publish_all(
+    dir: &Path,
+    host: &Host,
+    git: &logoxide::git::GitCli,
+    yes: bool,
+) -> logoxide::Result<()> {
     let mut found = vec![];
     let mut pending = vec![dir.to_path_buf()];
     while let Some(folder) = pending.pop() {
@@ -437,7 +417,7 @@ pub fn publish_all(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logo
     }
     found.sort();
     for package in found {
-        match publish(&package, host, git) {
+        match publish(&package, host, git, yes) {
             Err(LogoxideError::Resolve(message)) if message.contains("lx release first") => {
                 outln!("{}: not released yet, passed over", package.display())
             }
@@ -493,49 +473,4 @@ pub fn yank(host: &Host, id: &str, version: &str, undo: bool) -> logoxide::Resul
     }
     outln!("Lock files that have it still install it; new installs and updates pass over it");
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn package(license: Option<&str>) -> logoxide::manifest::Package {
-        let license = license
-            .map(|l| format!("license = \"{l}\"\n"))
-            .unwrap_or_default();
-        let text = format!(
-            "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n{license}\n[formats]\nusx = {{ path = \"usx/\" }}\n"
-        );
-        logoxide::Manifest::parse(&text).unwrap().package.unwrap()
-    }
-
-    #[test]
-    fn licenses_that_may_not_allow_publishing_are_warned_of() {
-        for free in [
-            "CC0-1.0",
-            "CC-BY-SA-4.0",
-            "MIT OR Apache-2.0",
-            "GPL-2.0-or-later WITH Classpath-exception-2.0",
-            "(MIT AND CC-BY-4.0)",
-            "Public Domain",
-            "LicenseRef-PublicDomain",
-            "CC-BY-NC-4.0 OR CC0-1.0",
-        ] {
-            assert_eq!(license_warning(&package(Some(free))), None, "{free}");
-        }
-        for restricted in [
-            None,
-            Some("LicenseRef-Copyrighted"),
-            Some("CC-BY-NC-ND-4.0"),
-            Some("CC-BY-ND-4.0"),
-            Some("MIT AND LicenseRef-Proprietary"),
-            Some("unknown"),
-        ] {
-            let warning = license_warning(&package(restricted));
-            assert!(
-                warning.is_some_and(|w| w.contains("never enforced")),
-                "{restricted:?}"
-            );
-        }
-    }
 }

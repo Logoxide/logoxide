@@ -869,6 +869,11 @@ fn sword_catalog_and_import() {
     );
     let upstream = info.upstream.clone().unwrap();
     assert_eq!(upstream.version.as_deref(), Some("2.1"));
+    // Converted into OSIS files; public domain, so nothing to say before sharing it
+    assert!(upstream.converted);
+    assert_eq!(info.rights.redistributable, Some(true));
+    assert_eq!(info.rights.derivatives, Some(crate::Derivatives::Allowed));
+    assert_eq!(package.license_concerns(), vec![]);
     // A text catalog reads as bytes too
     let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n";
     let ebible =
