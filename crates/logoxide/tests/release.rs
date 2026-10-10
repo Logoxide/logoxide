@@ -147,3 +147,49 @@ fn releases_follow_what_changed() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A release whose verse hashes are in the layout from before hash rules (`LXV1`, no
+/// `verse-hash` in its summary) is built again from its text: hashes made another way are never
+/// taken for rewording
+#[test]
+fn an_older_hash_rule_is_built_again() {
+    let root = std::env::temp_dir().join(format!("logoxide-rule-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let repo = root.join("tb");
+    std::fs::create_dir_all(&repo).unwrap();
+    let cli = GitCli::default();
+    write(
+        &repo,
+        "1.0.0",
+        &[(16, "For God so lo\u{AD}ved"), (17, "For God sent")],
+    );
+    git(&repo, &["init", "-q", "-b", "main"]);
+    let first = plan(&repo, &cli).unwrap();
+    release(&repo, &first, &cli).unwrap();
+    // Made as an older lx would have: 8 bytes of another hash a verse, no header
+    let summary = std::fs::read_to_string(repo.join(SUMMARY)).unwrap();
+    assert!(summary.contains("verse-hash = 1"), "{summary}");
+    let old: String = (summary.lines())
+        .filter(|l| !l.starts_with("verse-hash"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    std::fs::write(repo.join(SUMMARY), old).unwrap();
+    let mut bin = b"LXV1".to_vec();
+    for verse in [16u8, 17] {
+        bin.extend_from_slice(&[43, 3, verse, verse, 1, 2, 3, 4, 5, 6, 7, 8]);
+    }
+    std::fs::write(repo.join(VERSES), bin).unwrap();
+    git(&repo, &["commit", "-qam", "old layout"]);
+    git(&repo, &["tag", "-f", "v1.0.0"]);
+    assert!(Summary::read(&FsStorage::new(&repo)).is_err());
+
+    // Nothing but the layout changed: a patch, not every verse reworded
+    write(
+        &repo,
+        "1.0.1",
+        &[(16, "For God so lo\u{AD}ved"), (17, "For God sent")],
+    );
+    let p = plan(&repo, &cli).unwrap();
+    assert_eq!(p.change(), Change::Patch);
+    let _ = std::fs::remove_dir_all(&root);
+}

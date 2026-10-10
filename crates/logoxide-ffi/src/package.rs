@@ -236,6 +236,10 @@ pub struct VerseHashEntry {
     pub verse: u8,
     /// The last verse a bridge covers (`verse` otherwise)
     pub last: u8,
+    /// Which part of the verse (1 for `20a`, 2 for `20b`), 0 for the whole verse
+    pub part: u8,
+    /// The first 7 bytes of the SHA-256 of its words (verse-hash rule 1), as 14 hex digits; links
+    /// keep the first 8 digits
     pub hash: String,
 }
 
@@ -482,8 +486,8 @@ impl LogoxidePackage {
     }
 
     /**
-    Each verse of a book, with the hash of its words (notes and headings left out; the first 8
-    bytes of their SHA-256, as hex): a link made to a verse records it, and finds the verse again
+    Each verse of a book, with the hash of its words (notes and headings left out, normalized as
+    verse-hash rule 1 says; the first 7 bytes of their SHA-256, as hex): a link made to a verse records it, and finds the verse again
     in a later version by it (the same words renumbered), or knows they changed
     */
     pub fn verse_hashes(&self, book_id: u8) -> Result<Vec<VerseHashEntry>, LogoxideError> {
@@ -493,6 +497,7 @@ impl LogoxidePackage {
                 chapter: v.chapter,
                 verse: v.verse,
                 last: v.last,
+                part: v.part,
                 hash: v.hash.iter().map(|b| format!("{b:02x}")).collect(),
             })
             .collect())

@@ -12,8 +12,8 @@ use crate::{
     package::{Features, Package},
     storage::{FsStorage, MemoryStorage, Storage},
     summary::{
-        Change, Diff, SUMMARY, Summary, VERSES, VerseHash, diff_summaries, next_version, summarize,
-        version_change,
+        Change, Diff, HashRule, SUMMARY, Summary, VERSES, VerseHash, diff_summaries, next_version,
+        summarize, version_change,
     },
 };
 
@@ -42,7 +42,11 @@ pub fn summary_in(
     let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
     let fetched = MemoryStorage::new();
     fetcher.fetch_files(url, &reference, &paths, &fetched)?;
-    if let Ok(published) = Summary::read(&within(&fetched, prefix)?) {
+    // Hashes made by another rule (or in the layout from before rules) would differ in every
+    // verse: built again from the text, as for a release without them
+    if let Ok(published) = Summary::read(&within(&fetched, prefix)?)
+        && published.0.verse_hash == HashRule::CURRENT.number()
+    {
         return Ok(published);
     }
     let all = MemoryStorage::new();

@@ -66,7 +66,7 @@ impl From<logoxide_core::LogoxideError> for LogoxideError {
         let message = error.to_string();
         match error {
             E::NotFound(_) => LogoxideError::NotFound { message },
-            E::Manifest(_) => LogoxideError::Manifest { message },
+            E::Manifest(_) | E::Newer(_) => LogoxideError::Manifest { message },
             E::Lock(_) => LogoxideError::Lock { message },
             E::NoReadableFormat(_) | E::Book { .. } => LogoxideError::Text { message },
             E::Cache(_) => LogoxideError::Cache { message },

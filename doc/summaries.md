@@ -16,6 +16,7 @@ they can't contain.
 ```toml
 # Written by `lx release`: what this version holds. `lx verify` checks it.
 summary = 1
+verse-hash = 1
 id = "kjv"
 version = "1.0.3"
 text-checksum = "sha256:8497…"
@@ -44,6 +45,7 @@ words-of-jesus = 2038
 | Key | Type | Meaning |
 |---|---|---|
 | `summary` | integer | The summary format's version: `1`. A reader must refuse any other |
+| `verse-hash` | integer | The [hash rule](#the-verses-text-hash-rules) `logoxide.verses.bin` was made with, which its header names too: the two must agree. A reader refuses a rule it doesn't know (written by a newer lx). Absent in summaries from before rules, whose verse file is `LXV1` |
 | `id` | string | The package's id |
 | `version` | string | The package's version |
 | `text-checksum` | string | The [checksum](catalog.md#checksums) of the package's declared files other than the three summary files |
@@ -60,23 +62,36 @@ words-of-jesus = 2038
 The element kinds are topos-bible-markup's (`Kind`); a reader should treat `contents` as
 informational and accept kinds it doesn't know.
 
-## `logoxide.verses.bin` (`LXV1`)
+## `logoxide.verses.bin` (`LXV2`)
 
-A short hash of every verse's words, in the text's order (373 KB for the KJV):
+A short hash of every verse's words, in the text's order (373 KB for the KJV): an 8-byte header,
+then a record a verse.
 
 ```text
 offset  size  field
-0       4     magic: the ASCII bytes "LXV1"
-4       12*n  n records, one per verse marker:
+0       4     magic: the ASCII bytes "LXV2"
+4       2     hash rule: the rule the hashes were made with (u16, little-endian; 1)
+6       1     record length: bytes a record (u8; 12)
+7       1     reserved (0)
+8       r*n   n records of r bytes, one per verse marker:
   +0    1     book: logoxide's book number (u8; the table below)
   +1    1     chapter (u8)
   +2    1     verse (u8; 0 is a psalm's title where the text numbers one)
   +3    1     last: the bridge's last verse (u8; the same as verse when not a bridge)
-  +4    8     the first 8 bytes of SHA-256(verse text)
+  +4    1     part: which part of the verse (u8; 0 the whole verse, 1 for `20a`, 2 for `20b`, …)
+  +5    7     the first 7 bytes of SHA-256(verse text, as the rule makes it)
 ```
 
-The file's length minus 4 must be a multiple of 12. There is no count or other header; `LXV1`
-names this layout for good, and a change would be a new magic.
+The file's length minus 8 must be a multiple of the record length. A reader takes the fields it
+knows from the start of each record and skips the rest, so later versions can add fields at a
+record's end (with a longer record length) without a new magic; a record length below 12 is an
+error. A reader refuses a hash rule it doesn't know: the file was written by a newer logoxide.
+
+The verse is found by book, chapter, verse, and part: `20a` and `20b` are two verses.
+
+`LXV1` was the layout before hash rules (no header, no part, 8 bytes of a hash of text that
+wasn't normalized). It's recognized only to be built again: a reader comparing versions builds an
+`LXV1` release's hashes from its text, as for a release without a summary.
 
 **Book numbers** are logoxide's own, fixed for good: a number is never changed or given to
 another book, and new books take reserved numbers. They're matched to a book by its USFM code,
@@ -99,18 +114,36 @@ a book; 70 and 78 (topos's Additions to Esther and to Daniel, which have no USFM
 | 104–199 | reserved |
 | 200–214 | `FRT` `INT` `BAK` `CNC` `GLO` `TDX` `NDX` `OTH` `XXA` `XXB` `XXC` `XXD` `XXE` `XXF` `XXG` |
 
+### The verse's text: hash rules
+
 **The verse's text**, as hashed: the plain text of everything between the verse's start and its
 end (from right after the previous verse to the next verse's or chapter's marker, so a heading
 between two verses belongs to the second), with notes, titles (headings), and metadata elements
-left out, then split on whitespace and joined with single spaces (no leading or trailing space),
-as UTF-8. Changing a note, a heading, or markup therefore never changes a verse's hash. The
-reference for the plain text (how words in nested elements join) is topos-bible-markup's
-`plain_text` with `Filter::text()`; another implementation that renders text differently will
-compute different hashes, so it should compare hashes only with its own, or with logoxide's
-files.
+left out, then normalized as the file's hash rule says, as UTF-8. Changing a note, a heading, or
+markup therefore never changes a verse's hash.
+
+**Rule 1** (the only one so far):
+
+1. topos-bible-markup's `plain_text` with `Filter::text()` (how words in nested elements join,
+   what a note inside a word leaves behind)
+2. Unicode NFC (not NFKC, which would fold away distinctions a text makes), so text typed with
+   its marks in another order, or decomposed, hashes the same
+3. U+200B (zero-width space), U+FEFF (byte-order mark), U+00AD (soft hyphen), and U+2060 (word
+   joiner) removed; zero-width joiners and non-joiners (U+200D, U+200C) are kept, since they
+   change how words are written in some scripts
+4. Split on Unicode whitespace (`White_Space`, so a no-break space too) and joined with single
+   spaces, no leading or trailing space
+
+A rule never changes once published. Anything that would change the text a rule hashes (another
+normalization, or a topos-bible-markup that renders markup differently, which golden tests in
+`crates/logoxide/tests/verse_hash.rs` catch) is a new rule with the next number. Hashes are
+compared only when made by one rule: `lx diff` and `lx release` build an older rule's side again
+from its tag's text, so a rule change is never reported as rewording, and `lx verify` says to
+release again. Another implementation that renders text differently will compute different
+hashes, so it should compare hashes only with its own, or with logoxide's files.
 
 Hosts put a verse's hash in links (`&ver=1.0.2&vh=9f86d081`: the version, and the first verse's
-hash as 8 hex digits) so a link can find its words again in a later version.
+hash as 8 hex digits, its first 4 bytes) so a link can find its words again in a later version.
 
 ## `logoxide.references.bin` (`LXR1`)
 
@@ -133,8 +166,10 @@ it again.
 
 ## Changes and versions
 
-Two releases' verse hashes are compared by verse number (book, chapter, verse), the range each
-verse covers (its `last`) before its words: a split verse's words are taken to change with it.
+Two releases' verse hashes are compared by verse number (book, chapter, verse, part), the range
+each verse covers (its `last`) before its words: a split verse's words are taken to change with
+it. A whole verse cut into parts (`20` became `20a` and `20b`) is split; parts made one whole verse
+are joined into it.
 
 | Change | Meaning | Kind |
 |---|---|---|

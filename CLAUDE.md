@@ -64,9 +64,9 @@ before changing the design.
     `.git`
   - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard; the
     counts and references also per logoxide version) per `<id>/<version>-<checksum>-<format>`
-    (a package read as USX and then USFM shares nothing); each book file starts
-    with a line naming `CACHE_FORMAT` and the logoxide version (`book_header`), else it's parsed
-    again, since postcard can't tell a stale layout; `Cache::references`
+    (a package read as USX and then USFM shares nothing); each book file starts with a line
+    naming `CACHE_FORMAT` (3: topos's `VerseSpan` has a part) and the logoxide version
+    (`book_header`), else it's parsed again, since postcard can't tell a stale layout; `Cache::references`
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
     aliases, and counts
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
@@ -192,19 +192,28 @@ before changing the design.
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
     and `lx add` warn of
   - `summary.rs`: `logoxide.summary.toml` (verse counts in book order, sizes, element counts
-    without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book
-    (`books.rs`'s `Book`: logoxide's own fixed numbers, matched to topos's `BookId` by USFM code;
-    1–66 as topos's, 67–90 topos 0.6's, 91–103 the other USFM books, 200–214 peripherals, a
-    snapshot test so none changes), chapter, verse, last, 8 bytes of SHA-256 of its words with
-    notes and headings left out); `diff` (removed, renumbered: old text at another number,
-    joined: a number now inside another verse's bridge, split: a bridge narrowed with each number
-    still there (minor), bridged: one that lost a number, reworded, added; ranges are compared
-    before hashes, the owner's D2) and
+    without structural markers; `verse-hash = 1`) and `logoxide.verses.bin` (`LXV2`: a header
+    of the hash rule (u16), the record length (12; readers skip bytes past what they know), and a
+    reserved byte, then a record a verse: book (`books.rs`'s `Book`: logoxide's own fixed numbers,
+    matched to topos's `BookId` by USFM code; 1–66 as topos's, 67–90 topos 0.6's, 91–103 the
+    other USFM books, 200–214 peripherals, a snapshot test so none changes), chapter, verse,
+    last, part (`20a` is 1; `VerseHash::key` includes it), 7 bytes of SHA-256 of its words with
+    notes and headings left out). `HashRule` (the owner's D3): rule 1 is topos's `plain_text`,
+    NFC, U+200B/FEFF/00AD/2060 dropped (ZWJ/ZWNJ kept), Unicode whitespace collapsed; a rule never
+    changes (`tests/verse_hash.rs` pins topos's text on USFM, USX, and OSIS: if a topos upgrade
+    breaks it, add rule 2). `Summary::read` checks the summary and the `.bin` agree and refuses a
+    newer rule (`LogoxideError::Newer`, which `lx verify` passes on); `release::summary_in`
+    builds an older rule's side (or an `LXV1` one) again from its tag's text, so a rule change
+    is never rewording. `diff` (removed, renumbered: old text at another number,
+    joined: a number now inside another verse's bridge, or parts made whole, split: a bridge
+    narrowed with each number still there, or a verse cut into parts (minor), bridged: one that
+    lost a number, reworded, added; ranges are compared before hashes, the owner's D2) and
     `Change` (patch/minor/major; before 1.0 the minor counts as major, and before 0.1 every change
     is, like Cargo). Text counts as moved only to a number that held other text (a psalm's
     repeated refrain reworded is a rewording), and empty verses never move.
-    `book_hashes` hashes one book's verses the same way (`LogoxidePackage.verseHashes`), which
-    hosts put in links (`&ver=…&vh=…`) to find a verse again after an update
+    `book_hashes` hashes one book's verses the same way (`LogoxidePackage.verseHashes`: part,
+    and 14 hex digits), which hosts put in links (`&ver=…&vh=…`, the first 8 digits) to find a
+    verse again after an update.
     `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
     verses) change: a minor change. The passages a book cites go in `logoxide.references.bin`
     (the summary counts its references)

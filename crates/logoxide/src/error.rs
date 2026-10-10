@@ -19,6 +19,9 @@ pub enum LogoxideError {
     /// `logoxide.toml` can't be read or doesn't make sense
     #[error("logoxide.toml: {0}")]
     Manifest(String),
+    /// A file written by a newer logoxide, in a form this one doesn't know (a verse-hash rule)
+    #[error("{0}: written by a newer lx (update lx to read it)")]
+    Newer(String),
     /// None of the formats the enabled features turn on can be read
     #[error("no format logoxide reads is enabled (enabled: {0})")]
     NoReadableFormat(String),

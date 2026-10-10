@@ -37,7 +37,7 @@ use crate::{
 };
 
 /// Bumped when what the cache holds changes shape, so older caches are built again
-pub const CACHE_FORMAT: u32 = 2;
+pub const CACHE_FORMAT: u32 = 3;
 
 /// What a package version's cache was built from, and its verse counts
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

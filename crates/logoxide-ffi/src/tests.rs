@@ -88,7 +88,7 @@ fn a_package_from_its_files() {
             .collect::<Vec<_>>(),
         [(3, 16), (3, 17), (3, 18)]
     );
-    assert!(hashes.iter().all(|v| v.hash.len() == 16));
+    assert!(hashes.iter().all(|v| v.hash.len() == 14 && v.part == 0));
     assert_ne!(hashes[0].hash, hashes[1].hash);
     assert!(package.chapter_verses(1).is_empty());
     assert!(package.checksum().unwrap().starts_with("sha256:"));

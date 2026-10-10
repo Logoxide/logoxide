@@ -621,6 +621,7 @@ pub(crate) fn show_remote(
                 print_cited(&summary.cited, format)?;
             }
         }
+        Err(e @ logoxide::LogoxideError::Newer(_)) => outln!("{tag}'s summary: {e}"),
         Err(_) => outln!(
             "{tag} has no summary (released before `lx release`): install it to see what it holds"
         ),
@@ -811,16 +812,24 @@ pub(crate) fn verify(args: &PackageArgs, json: bool) -> logoxide::Result<()> {
     let package = args.open()?;
     let (built, verses) = logoxide::summary::summarize(&package)?;
     let (published, published_verses) =
-        logoxide::summary::Summary::read(package.storage().as_ref()).map_err(|e| {
-            logoxide::LogoxideError::Manifest(format!(
+        logoxide::summary::Summary::read(package.storage().as_ref()).map_err(|e| match e {
+            // Written by a newer lx: this one can't say whether it matches
+            e @ logoxide::LogoxideError::Newer(_) => e,
+            e => logoxide::LogoxideError::Manifest(format!(
                 "no published summary ({e}): run `lx release`"
-            ))
+            )),
         })?;
     let mut problems = vec![];
-    if built != published {
+    if published.verse_hash != built.verse_hash {
+        // An older rule's hashes differ in every verse: comparing them says nothing
+        problems.push(format!(
+            "its verse hashes were made with rule {}, before this lx's {}: run `lx release` to write them again",
+            published.verse_hash, built.verse_hash
+        ));
+    } else if built != published {
         problems.push(String::from("logoxide.summary.toml doesn't match the text"));
     }
-    if verses != published_verses {
+    if published.verse_hash == built.verse_hash && verses != published_verses {
         let d = logoxide::summary::diff(&published_verses, &verses);
         problems.push(format!(
             "logoxide.verses.bin doesn't match the text: {}",

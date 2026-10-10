@@ -1172,7 +1172,11 @@ mod tests {
         let span = &book.spans[1];
         let words = topos_bible_markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
         assert_eq!(
-            (span.verse, span.last, crate::summary::verse_text(&words)),
+            (
+                span.verse,
+                span.last,
+                crate::summary::verse_text(&words, crate::summary::HashRule::CURRENT)
+            ),
             (
                 16,
                 17,

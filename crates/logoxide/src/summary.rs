@@ -6,9 +6,11 @@ What a package version holds, published with it so it can be known without downl
 builds them again and compares, and two versions' summaries say what changed between them
 ([`diff`]), which says how the version number must change ([`Change`]).
 
-`logoxide.verses.bin`: `LXV1`, then 12 bytes a verse (373 KB for the KJV): book (logoxide's
-number, [`crate::books`]), chapter, verse, last verse (of a bridge like 4-5), and the first 8 bytes of the SHA-256 of its text (its words, with whitespace collapsed;
-notes and headings left out, since changing them can't break a link).
+`logoxide.verses.bin`: `LXV2`, the [`HashRule`] (u16), the record length (12), and a reserved
+byte, then 12 bytes a verse (373 KB for the KJV): book (logoxide's number, [`crate::books`]),
+chapter, verse, last verse (of a bridge like 4-5), part (1 for `20a`, 0 for a whole verse), and the
+first 7 bytes of the SHA-256 of its text as the rule gives it (its words, normalized, with
+whitespace collapsed; notes and headings left out, since changing them can't break a link).
 */
 
 use std::collections::{BTreeMap, HashMap};
@@ -17,6 +19,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use topos_bible_markup::{Filter, Kind, Node, TextOptions, plain_text, verses::slice};
+use unicode_normalization::UnicodeNormalization;
 
 use crate::{
     books::Book,
@@ -30,12 +33,72 @@ pub const VERSES: &str = "logoxide.verses.bin";
 
 /// The summary format's version
 const SUMMARY_VERSION: u32 = 1;
-const MAGIC: &[u8; 4] = b"LXV1";
+const MAGIC: &[u8; 4] = b"LXV2";
+/// The magic of the layout before hash rules (8 bytes of hash, no header, no parts)
+const OLD_MAGIC: &[u8; 4] = b"LXV1";
+/// Bytes before the first record: magic, rule, record length, reserved
+const HEADER: usize = 8;
+/// Bytes of a record as this logoxide writes it; a reader takes the fields it knows and skips the
+/// rest of a longer one
+const RECORD: usize = 12;
+/// Bytes of SHA-256 kept per verse
+pub const HASH_BYTES: usize = 7;
+
+/**
+How a verse's words become the text that's hashed. A rule never changes once published: what
+changes how the text is rendered or normalized (a topos upgrade that renders markup differently
+included, which `tests/verse_hash.rs` pins) is a new rule, so two versions' hashes are compared only
+when made by one rule. `logoxide.summary.toml` (`verse-hash`) and `logoxide.verses.bin`'s header
+both name it
+*/
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum HashRule {
+    /**
+    topos-bible-markup's `plain_text` with `Filter::text()` (notes, headings, and metadata left
+    out), in Unicode NFC (not NFKC, which would fold away distinctions a text makes), without
+    the invisible U+200B (zero-width space), U+FEFF (byte-order mark), U+00AD (soft hyphen), and
+    U+2060 (word joiner), split on Unicode whitespace (NBSP included) and joined with single
+    spaces. Zero-width joiners and non-joiners (U+200D, U+200C) are kept: they change how a word
+    is written in some scripts
+    */
+    One,
+}
+
+impl HashRule {
+    /// The rule this logoxide writes
+    pub const CURRENT: HashRule = HashRule::One;
+
+    /// Its number, as files give it
+    pub fn number(self) -> u16 {
+        match self {
+            HashRule::One => 1,
+        }
+    }
+
+    /// The rule a file names, if this logoxide knows it
+    pub fn from_number(number: u16) -> Option<HashRule> {
+        match number {
+            1 => Some(HashRule::One),
+            _ => None,
+        }
+    }
+}
+
+/// What a file written with a hash rule this logoxide doesn't know says
+fn newer_rule(file: &str, number: u16) -> LogoxideError {
+    LogoxideError::Newer(format!(
+        "{file}: verse-hash rule {number} (this lx knows rule {})",
+        HashRule::CURRENT.number()
+    ))
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct Summary {
     pub summary: u32,
+    /// The [`HashRule`] its verse hashes were made with (0: from before rules, in the old layout)
+    #[serde(default)]
+    pub verse_hash: u16,
     pub id: String,
     pub version: semver::Version,
     /// The checksum of every file but the summary's own two
@@ -91,41 +154,61 @@ pub struct VerseHash {
     pub chapter: u8,
     pub verse: u8,
     pub last: u8,
-    pub hash: [u8; 8],
+    /// Which part of the verse (1 for `20a`, 2 for `20b`), 0 for the whole verse
+    pub part: u8,
+    pub hash: [u8; HASH_BYTES],
 }
 
 impl VerseHash {
-    pub fn key(&self) -> (Book, u8, u8) {
+    /// What a verse is found by: `20a` and `20b` are two verses
+    pub fn key(&self) -> (Book, u8, u8, u8) {
+        (self.book, self.chapter, self.verse, self.part)
+    }
+
+    /// Its number in its chapter, whatever its part
+    fn number(&self) -> (Book, u8, u8) {
         (self.book, self.chapter, self.verse)
     }
 
-    /// `JHN 3:16` (or `JHN 3:4-5` for a bridge)
+    /// `JHN 3:16` (`JHN 3:4-5` for a bridge, `JHN 3:20a` for a part)
     pub fn reference(&self) -> String {
         let code = self.book.name();
+        let part = match self.part {
+            1..=26 => char::from(b'a' + self.part - 1).to_string(),
+            0 => String::new(),
+            n => format!("({n})"),
+        };
         match self.last > self.verse {
-            true => format!("{code} {}:{}-{}", self.chapter, self.verse, self.last),
-            false => format!("{code} {}:{}", self.chapter, self.verse),
+            true => format!("{code} {}:{}{part}-{}", self.chapter, self.verse, self.last),
+            false => format!("{code} {}:{}{part}", self.chapter, self.verse),
         }
     }
 }
 
-/// A verse's text as hashed: its words, with whitespace collapsed
-pub fn verse_text(nodes: &[Node]) -> String {
+/// The characters [`HashRule::One`] drops: zero-width space, byte-order mark, soft hyphen, and
+/// word joiner
+const INVISIBLE: [char; 4] = ['\u{200B}', '\u{FEFF}', '\u{00AD}', '\u{2060}'];
+
+/// A verse's text as hashed by `rule`: its words, normalized, with whitespace collapsed
+pub fn verse_text(nodes: &[Node], rule: HashRule) -> String {
     let options = TextOptions {
         filter: Filter::text(),
         ..TextOptions::default()
     };
-    plain_text(nodes, &options)
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+    let text = plain_text(nodes, &options);
+    match rule {
+        HashRule::One => {
+            let normalized: String = (text.nfc()).filter(|c| !INVISIBLE.contains(c)).collect();
+            normalized.split_whitespace().collect::<Vec<_>>().join(" ")
+        }
+    }
 }
 
 /**
 Each verse of a book and the hash of its words (notes and headings left out), as
 `logoxide.verses.bin` has them: what a link records, so it can find its verse again in a later
 version (renumbered: the same words at another number). A book without a number in logoxide's
-table has none (every book topos knows has one)
+table has none (every book topos knows has one). Made with [`HashRule::CURRENT`]
 */
 pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
     let Some(number) = Book::from_book_id(book.id) else {
@@ -137,19 +220,20 @@ pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
             chapter: span.chapter,
             verse: span.verse,
             last: span.last,
-            hash: hash8(&verse_text(&slice(
-                &book.nodes,
-                &span.start,
-                Some(&span.end),
-            ))),
+            part: span.part,
+            hash: verse_hash(&verse_text(
+                &slice(&book.nodes, &span.start, Some(&span.end)),
+                HashRule::CURRENT,
+            )),
         })
         .collect()
 }
 
-fn hash8(text: &str) -> [u8; 8] {
+/// The first [`HASH_BYTES`] bytes of a text's SHA-256
+pub fn verse_hash(text: &str) -> [u8; HASH_BYTES] {
     let full = Sha256::digest(text.as_bytes());
-    let mut hash = [0; 8];
-    hash.copy_from_slice(&full[..8]);
+    let mut hash = [0; HASH_BYTES];
+    hash.copy_from_slice(&full[..HASH_BYTES]);
     hash
 }
 
@@ -247,6 +331,7 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
     };
     let summary = Summary {
         summary: SUMMARY_VERSION,
+        verse_hash: HashRule::CURRENT.number(),
         id: info.id.clone(),
         version: info.version.clone(),
         text_checksum: crate::package::checksum_of(storage.as_ref(), &text_files)?,
@@ -284,6 +369,9 @@ impl Summary {
                 summary.summary
             )));
         }
+        if HashRule::from_number(summary.verse_hash).is_none() && summary.verse_hash != 0 {
+            return Err(newer_rule(SUMMARY, summary.verse_hash));
+        }
         Ok(summary)
     }
 
@@ -295,10 +383,22 @@ impl Summary {
         ))
     }
 
-    /// Reads a package's published summary and verse hashes
+    /**
+    Reads a package's published summary and verse hashes, which must name one hash rule. An older
+    rule's are read (`verse_hash` says which; comparing them with this rule's would see every
+    verse reworded, so [`crate::release::summary_in`] builds them again from the text); a newer
+    one's, or the layout from before rules, are an error
+    */
     pub fn read(storage: &dyn Storage) -> Result<(Summary, Vec<VerseHash>)> {
         let mut summary = Summary::parse(&storage.read_string(SUMMARY)?)?;
-        let verses = decode_verses(&storage.read(VERSES)?)?;
+        let (rule, verses) = decode_verses(&storage.read(VERSES)?)?;
+        if rule.number() != summary.verse_hash {
+            return Err(LogoxideError::Manifest(format!(
+                "{SUMMARY} says verse-hash rule {}, but {VERSES} was written with rule {}",
+                summary.verse_hash,
+                rule.number()
+            )));
+        }
         if summary.references > 0 {
             let bytes = storage.read(crate::references::REFERENCES)?;
             summary.cited = crate::references::decode(&bytes)?;
@@ -308,8 +408,10 @@ impl Summary {
 
     /// Writes the summary and verse hashes into a package, and its references when it has any
     pub fn write(&self, verses: &[VerseHash], storage: &dyn Storage) -> Result<()> {
+        let rule = HashRule::from_number(self.verse_hash)
+            .ok_or_else(|| newer_rule(SUMMARY, self.verse_hash))?;
         storage.write(SUMMARY, self.to_toml()?.as_bytes())?;
-        storage.write(VERSES, &encode_verses(verses))?;
+        storage.write(VERSES, &encode_verses(rule, verses))?;
         if !self.cited.is_empty() {
             let bytes = crate::references::encode(&self.cited)?;
             storage.write(crate::references::REFERENCES, &bytes)?;
@@ -318,35 +420,52 @@ impl Summary {
     }
 }
 
-pub fn encode_verses(verses: &[VerseHash]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(4 + verses.len() * 12);
+/// `logoxide.verses.bin`'s bytes: its header, then a record a verse
+pub fn encode_verses(rule: HashRule, verses: &[VerseHash]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(HEADER + verses.len() * RECORD);
     out.extend_from_slice(MAGIC);
+    out.extend_from_slice(&rule.number().to_le_bytes());
+    out.extend_from_slice(&[RECORD as u8, 0]);
     for v in verses {
-        out.extend_from_slice(&[v.book.0, v.chapter, v.verse, v.last]);
+        out.extend_from_slice(&[v.book.0, v.chapter, v.verse, v.last, v.part]);
         out.extend_from_slice(&v.hash);
     }
     out
 }
 
-pub fn decode_verses(bytes: &[u8]) -> Result<Vec<VerseHash>> {
-    let body = bytes
-        .strip_prefix(MAGIC.as_slice())
-        .filter(|b| b.len() % 12 == 0)
-        .ok_or_else(|| LogoxideError::Manifest(format!("{VERSES}: not a verse hash file")))?;
-    Ok(body
-        .chunks_exact(12)
+/// The hash rule and verses of `logoxide.verses.bin`. Records longer than this logoxide's have
+/// fields it doesn't know at their end, which are skipped
+pub fn decode_verses(bytes: &[u8]) -> Result<(HashRule, Vec<VerseHash>)> {
+    let bad = |why: &str| LogoxideError::Manifest(format!("{VERSES}: {why}"));
+    if bytes.starts_with(OLD_MAGIC) {
+        return Err(bad("in the layout from before verse-hash rules (LXV1)"));
+    }
+    let (header, body) = (bytes.split_at_checked(HEADER))
+        .filter(|(h, _)| h.starts_with(MAGIC))
+        .ok_or_else(|| bad("not a verse hash file"))?;
+    let number = u16::from_le_bytes([header[4], header[5]]);
+    let rule = HashRule::from_number(number).ok_or_else(|| newer_rule(VERSES, number))?;
+    let record = usize::from(header[6]);
+    if record < RECORD || body.len() % record != 0 {
+        return Err(bad(&format!(
+            "records of {record} bytes don't fit (at least {RECORD}, and the file a whole number of them)"
+        )));
+    }
+    let verses = (body.chunks_exact(record))
         .map(|c| {
-            let mut hash = [0; 8];
-            hash.copy_from_slice(&c[4..]);
+            let mut hash = [0; HASH_BYTES];
+            hash.copy_from_slice(&c[5..RECORD]);
             VerseHash {
                 book: Book(c[0]),
                 chapter: c[1],
                 verse: c[2],
                 last: c[3],
+                part: c[4],
                 hash,
             }
         })
-        .collect())
+        .collect();
+    Ok((rule, verses))
 }
 
 /// How much a change can break links, which says how a version must change
@@ -415,25 +534,37 @@ fn bridged_numbers(verses: &[VerseHash]) -> HashMap<(Book, u8, u8), &VerseHash> 
     covered
 }
 
+/// The verses at each number, whatever their part (`20a` and `20b` are both at 20)
+fn by_number(verses: &[VerseHash]) -> HashMap<(Book, u8, u8), Vec<&VerseHash>> {
+    let mut numbers: HashMap<_, Vec<_>> = HashMap::new();
+    for v in verses {
+        numbers.entry(v.number()).or_default().push(v);
+    }
+    numbers
+}
+
 /**
 What changed from `old` to `new`. The range a verse covers is compared before its words: a
 number now inside another verse's bridge has been joined into it, a bridge split into verses
 (each of its numbers still somewhere) is minor, and one that lost a number is major; a split
-verse's words are taken to change with it. A verse whose text is gone from its number has moved
-when that text is now at a number that held other text before: identical verses (Psalm 107's
-refrain, or empty verses) reworded or removed aren't moves to their twins, and empty text never
-moves
+verse's words are taken to change with it. Parts are verses of their own (`20a`, `20b`): a whole
+verse cut into parts is split, and parts made one whole verse are joined into it. A verse whose
+text is gone from its number has moved when that text is now at a number that held other text
+before: identical verses (Psalm 107's refrain, or empty verses) reworded or removed aren't moves
+to their twins, and empty text never moves
 */
 pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
     let new_by_key: HashMap<_, _> = new.iter().map(|v| (v.key(), v)).collect();
     let old_by_key: HashMap<_, _> = old.iter().map(|v| (v.key(), v)).collect();
+    let new_numbers = by_number(new);
+    let old_numbers = by_number(old);
     let new_bridged = bridged_numbers(new);
     let old_bridged = bridged_numbers(old);
     let mut new_by_hash: HashMap<_, Vec<_>> = HashMap::new();
     for v in new {
         new_by_hash.entry(v.hash).or_default().push(v);
     }
-    let empty = hash8("");
+    let empty = verse_hash("");
     // Where a verse's text went: a number that didn't hold that text before
     let moved_to = |v: &VerseHash| {
         if v.hash == empty {
@@ -446,25 +577,38 @@ pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
             })
             .copied()
     };
-    // Whether a number of a verse's chapter is a verse, or inside a bridge, in `by_key`/`bridged`
-    let present = |by_key: &HashMap<(Book, u8, u8), &VerseHash>,
+    // Whether a number of a verse's chapter is a verse (any part of one), or inside a bridge
+    let present = |numbers: &HashMap<(Book, u8, u8), Vec<&VerseHash>>,
                    bridged: &HashMap<(Book, u8, u8), &VerseHash>,
                    v: &VerseHash,
                    n: u8| {
-        let key = (v.book, v.chapter, n);
-        by_key.contains_key(&key) || bridged.contains_key(&key)
+        let number = (v.book, v.chapter, n);
+        numbers.contains_key(&number) || bridged.contains_key(&number)
+    };
+    // The verses at a number other than `v` itself: a whole verse for a part, parts for a whole
+    let other_parts = |numbers: &HashMap<(Book, u8, u8), Vec<&'_ VerseHash>>, v: &VerseHash| {
+        (numbers.get(&v.number()).into_iter().flatten())
+            .find(|o| (o.part == 0) != (v.part == 0))
+            .map(|o| **o)
     };
     let mut diff = Diff::default();
     for v in old {
         match new_by_key.get(&v.key()) {
-            None => match (new_bridged.get(&v.key()), moved_to(v)) {
-                (Some(by), _) => diff.joined.push((*v, **by)),
-                (None, Some(to)) => diff.moved.push((*v, *to)),
-                (None, None) => diff.removed.push(*v),
+            None => match (
+                new_bridged.get(&v.number()),
+                other_parts(&new_numbers, v),
+                moved_to(v),
+            ) {
+                (Some(by), _, _) => diff.joined.push((*v, **by)),
+                // A whole verse cut into parts: split; parts made whole: joined
+                (None, Some(part), _) if v.part == 0 => diff.split.push(part),
+                (None, Some(whole), _) => diff.joined.push((*v, whole)),
+                (None, None, Some(to)) => diff.moved.push((*v, *to)),
+                (None, None, None) => diff.removed.push(*v),
             },
             // Narrowed: split when each number it no longer covers is still in the text
             Some(n) if n.last < v.last => {
-                match (n.last + 1..=v.last).all(|k| present(&new_by_key, &new_bridged, v, k)) {
+                match (n.last + 1..=v.last).all(|k| present(&new_numbers, &new_bridged, v, k)) {
                     true => diff.split.push(**n),
                     false => diff.bridged.push(**n),
                 }
@@ -473,7 +617,7 @@ pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
             // had, only its words can have changed
             Some(n) if n.last > v.last => {
                 let took_in =
-                    (v.last + 1..=n.last).any(|k| present(&old_by_key, &old_bridged, v, k));
+                    (v.last + 1..=n.last).any(|k| present(&old_numbers, &old_bridged, v, k));
                 if !took_in && n.hash != v.hash {
                     diff.changed.push(**n);
                 }
@@ -486,10 +630,15 @@ pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
             Some(_) => {}
         }
     }
-    // A split bridge's later verses are part of the split, not added
+    // A split bridge's later verses, and the parts a whole verse was cut into (or the whole verse
+    // parts were joined into), are listed above, not added
     diff.added = new
         .iter()
-        .filter(|v| !old_by_key.contains_key(&v.key()) && !old_bridged.contains_key(&v.key()))
+        .filter(|v| {
+            !old_by_key.contains_key(&v.key())
+                && !old_bridged.contains_key(&v.number())
+                && other_parts(&old_numbers, v).is_none()
+        })
         .copied()
         .collect();
     diff
@@ -562,7 +711,8 @@ mod tests {
             chapter,
             verse,
             last: verse,
-            hash: hash8(text),
+            part: 0,
+            hash: verse_hash(text),
         }
     }
 
@@ -680,9 +830,13 @@ mod tests {
         assert_eq!(next_version(&v("1.2.3"), Change::Minor), v("1.3.0"));
         assert_eq!(next_version(&v("0.2.3"), Change::Major), v("0.3.0"));
 
-        let bytes = encode_verses(&old);
-        assert_eq!(bytes.len(), 4 + 3 * 12);
-        assert_eq!(decode_verses(&bytes).unwrap(), old);
+        let bytes = encode_verses(HashRule::One, &old);
+        assert_eq!(bytes.len(), 8 + 3 * 12);
+        assert_eq!(&bytes[..8], b"LXV2\x01\x00\x0c\x00");
+        assert_eq!(
+            decode_verses(&bytes).unwrap(),
+            (HashRule::One, old.to_vec())
+        );
         assert!(decode_verses(b"nope").is_err());
     }
 
@@ -744,6 +898,7 @@ mod tests {
     fn a_changed_title_is_a_minor_change() {
         let summary = |title: &str| Summary {
             summary: SUMMARY_VERSION,
+            verse_hash: 1,
             id: "b".into(),
             version: "1.0.0".parse().unwrap(),
             text_checksum: "sha256:00".into(),
@@ -766,5 +921,79 @@ mod tests {
         assert_eq!(d.change(), Change::Minor);
         let same = diff_summaries((&summary("Freely"), &[]), (&summary("Freely"), &[]));
         assert_eq!(same.change(), Change::Patch);
+    }
+
+    fn part(chapter: u8, verse: u8, part: u8, text: &str) -> VerseHash {
+        VerseHash {
+            part,
+            ..self::verse(chapter, verse, text)
+        }
+    }
+
+    #[test]
+    fn parts_are_verses_of_their_own() {
+        // 20a and 20b are two verses: a change to one is a change to it alone
+        let old = [part(3, 20, 1, "a"), part(3, 20, 2, "b"), verse(3, 21, "c")];
+        let d = diff(&old, &old);
+        assert_eq!(d.change(), Change::Patch);
+        let reworded = [part(3, 20, 1, "a"), part(3, 20, 2, "b!"), verse(3, 21, "c")];
+        let d = diff(&old, &reworded);
+        assert_eq!(d.changed, [part(3, 20, 2, "b!")]);
+        assert_eq!(d.changed[0].reference(), "JHN 3:20b");
+        // A whole verse cut into parts is split (minor); the parts aren't added
+        let whole = [verse(3, 20, "a b"), verse(3, 21, "c")];
+        let d = diff(&whole, &old);
+        assert_eq!(
+            (d.split.len(), d.added.len(), d.change()),
+            (1, 0, Change::Minor)
+        );
+        // Parts made whole are joined into it (a link to 20b finds 20a's words too)
+        let d = diff(&old, &whole);
+        assert_eq!(
+            (d.joined.len(), d.added.len(), d.change()),
+            (2, 0, Change::Major)
+        );
+        // A part lost is removed
+        let d = diff(&old, &[part(3, 20, 1, "a"), verse(3, 21, "c")]);
+        assert_eq!((d.removed.len(), d.change()), (1, Change::Major));
+    }
+
+    #[test]
+    fn rule_one_normalizes() {
+        let text = |s: &str| {
+            let nodes = [Node::Text(s.to_string())];
+            verse_text(&nodes, HashRule::One)
+        };
+        // NFD and NFC, invisible characters, and kinds of space all hash alike
+        assert_eq!(text("e\u{301}"), "\u{e9}");
+        assert_eq!(
+            text(" in\u{200B} the\u{a0}be\u{AD}gin\u{2060}ning\u{FEFF} \n"),
+            "in the beginning"
+        );
+        // Joiners stay
+        assert_eq!(text("a\u{200D}b\u{200C}c"), "a\u{200D}b\u{200C}c");
+    }
+
+    #[test]
+    fn the_verse_file_header() {
+        let verses = [part(3, 20, 1, "a"), bridge(3, 21, 22, "b")];
+        let bytes = encode_verses(HashRule::One, &verses);
+        // A longer record's extra bytes are skipped
+        let mut longer = bytes[..8].to_vec();
+        longer[6] = 14;
+        for record in bytes[8..].chunks(12) {
+            longer.extend_from_slice(record);
+            longer.extend_from_slice(&[0xff, 0xff]);
+        }
+        assert_eq!(decode_verses(&longer).unwrap().1, verses);
+        // A rule this logoxide doesn't know, the old layout, or a short record is refused
+        let mut newer = bytes.clone();
+        newer[4] = 2;
+        let error = decode_verses(&newer).unwrap_err().to_string();
+        assert!(error.contains("newer lx"), "{error}");
+        assert!(decode_verses(b"LXV1\x2b\x03\x10\x10abcdefgh").is_err());
+        let mut short = bytes.clone();
+        short[6] = 11;
+        assert!(decode_verses(&short).is_err());
     }
 }

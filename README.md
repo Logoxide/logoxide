@@ -103,7 +103,7 @@ For anyone writing another implementation, or publishing packages and catalogs b
 - [doc/catalog.md](doc/catalog.md): `catalog.toml`, registries, `[[package.release]]`, how
   release archives are packed, and the checksum
 - [doc/lock.md](doc/lock.md): `logoxide.lock`
-- [doc/summaries.md](doc/summaries.md): `logoxide.summary.toml`, `logoxide.verses.bin` (`LXV1`),
+- [doc/summaries.md](doc/summaries.md): `logoxide.summary.toml`, `logoxide.verses.bin` (`LXV2`),
   `logoxide.references.bin` (`LXR1`), and how changes decide version numbers
 - [doc/trust.md](doc/trust.md): what is checked, what is trusted on first use, and what isn't
 

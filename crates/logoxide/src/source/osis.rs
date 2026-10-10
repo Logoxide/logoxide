@@ -80,7 +80,7 @@ pub(crate) mod tests {
     use crate::{
         package::{Features, Package},
         storage::MemoryStorage,
-        summary::verse_text,
+        summary::{HashRule, verse_text},
     };
     use topos_bible_markup::verses::slice;
 
@@ -107,7 +107,10 @@ pub(crate) mod tests {
         let book = package.source().book(id).unwrap();
         (book.spans.iter())
             .map(|s| {
-                let text = verse_text(&slice(&book.nodes, &s.start, Some(&s.end)));
+                let text = verse_text(
+                    &slice(&book.nodes, &s.start, Some(&s.end)),
+                    HashRule::CURRENT,
+                );
                 (s.chapter, s.verse, text)
             })
             .collect()
@@ -159,7 +162,7 @@ pub(crate) mod tests {
             ]
         );
         let exodus = package.source().book(exo).unwrap();
-        assert!(!verse_text(&exodus.nodes).contains("beginning"));
+        assert!(!verse_text(&exodus.nodes, HashRule::CURRENT).contains("beginning"));
     }
 
     #[test]
