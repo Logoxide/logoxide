@@ -165,6 +165,10 @@ Any order, as they're reachable; each in `logoxide-import`.
 4. **Links that follow rewording** (step 9): a link's text fragment found again when a verse's
    words changed a little (`passage::text` plus a diff of words; the hash says it changed, the
    words say where). Lowest priority.
+   **Done** (2026-10-11): `logoxide_text::passage::find_fragment` (the longest run of the
+   fragment's words in order, case, accents, and punctuation ignored, three in five of them
+   needed) and `LogoxideBook.findFragment` in the bindings; the plugin's `verse-locator.ts` can
+   call it when a `:~:text=` fragment isn't found as written.
 
 ## Phase M: bindings and front ends
 

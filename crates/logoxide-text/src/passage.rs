@@ -333,6 +333,98 @@ pub fn wrap(text: &str, width: usize) -> String {
     String::from_utf8(bytes).unwrap_or_else(|_| text.to_string())
 }
 
+/**
+Where `fragment` (a link's exact words, as a text fragment `:~:text=…` carries them) is in
+`text` now, when the words changed a little since the link was made: the run of words that
+matches it best, by its words in order (case, accents, and punctuation ignored), if at least
+three in five of the fragment's words are found in order (two in three for a fragment of one
+or two words). None when the words are gone. Byte offsets, from the first matched word to the
+end of the last, so a host can highlight them
+*/
+pub fn find_fragment(text: &str, fragment: &str) -> Option<Range<usize>> {
+    let wanted: Vec<String> = words(fragment).into_iter().map(|(_, w)| w).collect();
+    if wanted.is_empty() {
+        return None;
+    }
+    let have = words(text);
+    let needed = match wanted.len() {
+        1 | 2 => wanted.len(),
+        n => (n * 3).div_ceil(5),
+    };
+    // Each start in the text: the longest run of the fragment's words in order from there,
+    // within a window a little longer than the fragment (a few words added or removed)
+    let window = wanted.len() + wanted.len() / 2 + 2;
+    let mut best: Option<(usize, Range<usize>)> = None;
+    for start in 0..have.len() {
+        let end = (start + window).min(have.len());
+        let (count, first, last) = in_order(&wanted, &have[start..end]);
+        if count >= needed && best.as_ref().is_none_or(|(c, _)| count > *c) {
+            best = Some((count, have[start + first].0.start..have[start + last].0.end));
+        }
+    }
+    best.map(|(_, range)| range)
+}
+
+/// The words of `text` and where each is: runs of letters and digits, lowercased, their
+/// accents dropped, so a changed accent or capital doesn't lose the word
+fn words(text: &str) -> Vec<(Range<usize>, String)> {
+    use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
+    let mut out = vec![];
+    let mut start = None;
+    for (i, c) in text.char_indices() {
+        match (c.is_alphanumeric(), start) {
+            (true, None) => start = Some(i),
+            (false, Some(from)) => {
+                out.push((from..i, fold(&text[from..i])));
+                start = None;
+            }
+            _ => {}
+        }
+    }
+    if let Some(from) = start {
+        out.push((from..text.len(), fold(&text[from..])));
+    }
+    fn fold(word: &str) -> String {
+        word.to_lowercase()
+            .nfd()
+            .filter(|c| !is_combining_mark(*c))
+            .collect()
+    }
+    out
+}
+
+/// How many of `wanted` appear in `have` in order (the longest common subsequence), and the
+/// first and last positions in `have` that are part of it
+fn in_order(wanted: &[String], have: &[(Range<usize>, String)]) -> (usize, usize, usize) {
+    let (n, m) = (wanted.len(), have.len());
+    // lcs[i][j]: the longest common subsequence of wanted[i..] and have[j..]
+    let mut lcs = vec![vec![0usize; m + 1]; n + 1];
+    for i in (0..n).rev() {
+        for j in (0..m).rev() {
+            lcs[i][j] = match wanted[i] == have[j].1 {
+                true => lcs[i + 1][j + 1] + 1,
+                false => lcs[i + 1][j].max(lcs[i][j + 1]),
+            };
+        }
+    }
+    // Walk one subsequence to find where it starts and ends in `have`
+    let (mut i, mut j) = (0, 0);
+    let (mut first, mut last) = (None, 0);
+    while i < n && j < m {
+        if wanted[i] == have[j].1 {
+            first.get_or_insert(j);
+            last = j;
+            i += 1;
+            j += 1;
+        } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+            i += 1;
+        } else {
+            j += 1;
+        }
+    }
+    (lcs[0][0], first.unwrap_or(0), last)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -462,6 +554,29 @@ mod tests {
         assert!(rendered.text[ranges[0].clone()].starts_with("[17]"));
         assert!(rendered.text[ranges[0].clone()].ends_with("knew."));
         assert!(rendered.marks.iter().any(|(_, k)| *k == Kind::Title));
+    }
+
+    #[test]
+    fn a_links_words_are_found_again() {
+        let text = "For God so loved the world, that he gave his only begotten Son.";
+        let at = |fragment: &str| find_fragment(text, fragment).map(|r| &text[r]);
+        // The same words, and the same words differently cased and punctuated
+        assert_eq!(at("so loved the world"), Some("so loved the world"));
+        assert_eq!(at("SO LOVED, the World"), Some("so loved the world"));
+        // A word changed in the middle, or added
+        assert_eq!(at("so loved this world"), Some("so loved the world"));
+        assert_eq!(
+            at("gave his one and only begotten Son"),
+            Some("gave his only begotten Son")
+        );
+        // Too few of the words: nothing
+        assert_eq!(at("gave them bread"), None);
+        assert_eq!(at(""), None);
+        // Accents don't lose a word
+        assert_eq!(
+            find_fragment("Dios amó al mundo", "dios amo al mundo").map(|r| r.start),
+            Some(0)
+        );
     }
 
     #[test]

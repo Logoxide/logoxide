@@ -172,6 +172,14 @@ pub struct TextMark {
     pub kind: NodeKind,
 }
 
+/// A run of text, by byte offsets
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextRange {
+    pub start: u32,
+    pub end: u32,
+}
+
 /// A passage as text in a [`BookTextStyle`], its parts a blank line apart, and its marks
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -342,6 +350,16 @@ impl LogoxideBook {
     /// markers alone: fast enough to count a whole Bible without parsing it
     pub fn usx_chapter_verses(usx: String) -> Vec<u8> {
         usx_chapter_verses(&usx)
+    }
+
+    /// Where a link's exact words (`:~:text=…`) are in a verse's text now, when the words
+    /// changed a little since the link was made: byte offsets of the run of words that matches
+    /// best, or none when the words are gone (logoxide-text's `passage::find_fragment`)
+    pub fn find_fragment(text: String, fragment: String) -> Option<TextRange> {
+        logoxide_text::passage::find_fragment(&text, &fragment).map(|r| TextRange {
+            start: r.start as u32,
+            end: r.end as u32,
+        })
     }
 
     /// The book (1 for Genesis through 66 for Revelation with the default data), if the markup
@@ -688,6 +706,13 @@ mod tests {
             .styled_text(parse("John 3:16-17"), cut, "John".into())
             .unwrap();
         assert!(short.text.ends_with(" …"), "{}", short.text);
+        assert_eq!(
+            LogoxideBook::find_fragment(
+                "For God so loved the world.".into(),
+                "so loved this world".into()
+            ),
+            Some(TextRange { start: 8, end: 26 })
+        );
         assert!(
             book.styled_text(
                 parse("Romans 8"),
