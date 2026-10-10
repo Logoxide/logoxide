@@ -447,14 +447,19 @@ before changing the design.
   (Rust-only). topos-ffi comes without its `markup` feature, so it exports no `ToposBook`,
   `BookVerse`, or `BookTextOptions` to clash with these. `ToposTranslations::from`/`core`
   (Rust-only, in topos-ffi) carry logoxide's counts across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
-  `PackageInfo`, carries `script` and the language's name), and `Logoxide.importEbible`,
-  `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
-  try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,
-  for any source) and `importDownloaded`; `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
+  `PackageInfo`, carries `script` and the language's name; its `CatalogSource` is `Git`,
+  `Registry`, or `External` with `import` (emitted `_import`, as `Upstream`'s is), `upstream`,
+  `tracksVersions`, and `downloads`, each an `ImportDownload` with its `urls` to try in order),
+  and one pair of methods imports from every publisher: `Logoxide.importDownloads(entry)` (what
+  to fetch) and `importDownloaded(entry, files)` (the package's files), through logoxide-import
+  (phase D: `importEbible`, `importFetchBible`, `importCcel`, and `importSword` are gone);
+  `importPrefixes` (`ebible`, `fetch`, `ccel`, `sword`), `swordCatalogUrl(name)` (a
+  CrossWire-listed repository's `mods.d.tar.gz`), `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
   `Files`; `PackageInfo` and `CatalogEntry` carry `rights` (said and derived),
-  `LogoxidePackage.licenseConcerns()` gives `license::assess`'s concerns; `parseCatalogBytes` reads any catalog,
-  and a SWORD repository's `.tar.gz` only that way. Updating an import: `LogoxideCatalog.findUpstream`
+  `LogoxidePackage.licenseConcerns()` gives `license::assess`'s concerns; `parseCatalog` and `parseCatalogBytes` read
+  publishers' lists and `catalog.toml` through `logoxide_import::catalog` (`parse_text`, `parse`);
+  a SWORD repository's `.tar.gz` only as bytes. Updating an import: `LogoxideCatalog.findUpstream`
   (its entry, from `PackageInfo.upstream`, an `Upstream` record), `Logoxide.importIsCurrent(entry,
   upstream.version)` (skip the download), and
   `Logoxide.updateImport(current, fresh)` (`ImportUpdate`: versions, the publisher's
