@@ -48,8 +48,11 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
 - Sources: USX and USFM (through [`usfm3`](https://crates.io/crates/usfm3)) a book a file, and OSIS
   and ThML Bibles (a book a file, or the whole Bible in one, as open-bibles' OSIS and CCEL's ThML
   are). Books are kept as EPUBs, and topos finds the Bible references in them
-- Kinds: Bibles, commentaries, books, **collections** (packages of packages), and **versification
-  maps** (Paratext `.vrs` lines; `lx map "Psalm 51:1" --from English --to Original`)
+- Kinds: Bibles, commentaries (OSIS or ThML, their notes by passage: `lx show --notes`),
+  dictionaries (`entries/*.xml`, Strong's or headwords: `lx show --entry G25`, `--keys`),
+  cross-references (`xref/*.tsv`: `lx show --xref "John 3:16"`), books, **collections**
+  (packages of packages), and **versification maps** (Paratext `.vrs` lines; `lx map "Psalm
+  51:1" --from English --to Original`)
 - `Storage`: a folder, memory, or a host's files, so the same code runs in WebAssembly
 - A cache of verse counts and parsed books, per package version and checksum
 - The library: installed versions side by side, as plain files; `logoxide.lock` pins each
@@ -159,6 +162,9 @@ usfm = []
 lx show path/to/kjv                  # what it is, the format read, its books, its checksum
 lx check path/to/kjv --cache ~/.cache/logoxide   # read every book (through the cache)
 lx show path/to/kjv -F usx --no-default-features
+lx show path/to/mhcc --notes "John 3:16"    # a commentary's notes on a passage (--format json too)
+lx show path/to/strongs --entry G25         # a dictionary's entry; --keys lists its keys
+lx show path/to/tsk --xref "John 3:16"      # a verse's cross-references, with their weights
 ```
 
 Every key is in [doc/manifest.md](doc/manifest.md).

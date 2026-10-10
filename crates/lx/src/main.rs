@@ -42,7 +42,7 @@ use cmd::{
     import::{import, import_update},
     map::map,
     media::{media_add, media_check},
-    package::{check, diff, new, release, show, show_remote, verify},
+    package::{Lookup, check, diff, lookup, new, release, show, show_remote, verify},
     project::{add, clean, info, install, is_enabled, list, remove, repair, set_enabled},
 };
 
@@ -89,6 +89,31 @@ fn main() -> ExitCode {
     net::set_quiet(json || matches!(cli.command, Command::Search { json: true, .. }));
     let format = cli.format.name();
     let result = match &cli.command {
+        Command::Show {
+            package,
+            git: None,
+            notes: Some(reference),
+            ..
+        } => lookup(package, Lookup::Notes(reference), json),
+        Command::Show {
+            package,
+            git: None,
+            entry: Some(key),
+            ..
+        } => lookup(package, Lookup::Entry(key), json),
+        Command::Show {
+            package,
+            git: None,
+            keys: true,
+            limit,
+            ..
+        } => lookup(package, Lookup::Keys(*limit), json),
+        Command::Show {
+            package,
+            git: None,
+            xref: Some(reference),
+            ..
+        } => lookup(package, Lookup::CrossReferences(reference), json),
         Command::Show {
             package,
             git: None,
@@ -268,7 +293,16 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
             ..
         }
     );
+    // A commentary's notes, a dictionary's entry or keys, a verse's cross-references
+    let lookup = matches!(
+        cli.command,
+        Command::Show { notes: Some(_), .. }
+            | Command::Show { entry: Some(_), .. }
+            | Command::Show { keys: true, .. }
+            | Command::Show { xref: Some(_), .. }
+    );
     let json = references
+        || lookup
         || matches!(
             cli.command,
             Command::List { .. }
@@ -285,7 +319,7 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
         Format::Json if json => Ok(()),
         Format::Tsv if references => Ok(()),
         Format::Json => Err(logoxide::LogoxideError::Manifest(String::from(
-            "--format json: only for list, info, check, diff, verify, search, catalog list, import --update, and show --references",
+            "--format json: only for list, info, check, diff, verify, search, catalog list, import --update, and show --references, --notes, --entry, --keys, or --xref",
         ))),
         Format::Tsv => Err(logoxide::LogoxideError::Manifest(String::from(
             "--format tsv: only for show --references",
