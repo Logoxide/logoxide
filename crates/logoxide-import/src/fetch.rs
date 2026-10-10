@@ -142,6 +142,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
             work: None,
             edition: None,
             edition_year: None,
+            keys: None,
         });
     }
     entries.sort_by(|a, b| a.id.cmp(&b.id));

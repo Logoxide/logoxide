@@ -139,6 +139,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
             work: None,
             edition: None,
             edition_year: None,
+            keys: None,
         });
     }
     logoxide::catalog::known_works(&mut entries);

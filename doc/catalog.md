@@ -77,6 +77,7 @@ size = 1834201
 | `version` | string | no | The newest version, for display |
 | `keywords`, `categories`, `about-books` | arrays of strings | no | As in the manifest; searches match them (a word naming a book of the Bible matches what's about it) |
 | `work`, `edition`, `edition-year` | string, string, integer | no | As in the manifest ([works and editions](manifest.md#works-and-editions)): searches match the work's names, and `lx search` gathers a work's editions (`--flat` doesn't). Imports from other publishers' lists are given the work logoxide's table knows their import name to be |
+| `keys` | string | no | A dictionary's (`kind = "lexicon"`) `[package] keys`, as in the manifest: `strongs-greek`, `strongs-hebrew`, or `headword`. SWORD dictionaries' entries say it from their conf's features |
 | `git` | string | one of `git` or `release` | The package's git repository (`github:owner/repo` is accepted and expanded) |
 | `release` | array of tables | | The archives a registry publishes, oldest first (below) |
 | `path` | string | no | Its path in the folder the catalog was built from (`books/romans`), which names it there as its id does |

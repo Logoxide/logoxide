@@ -220,6 +220,8 @@ pub fn entry(
         work: logoxide::works::of_source(&source),
         edition: None,
         edition_year: None,
+        // A dictionary's, as its conf's features say (what the import writes)
+        keys: (kind == PackageKind::Lexicon).then(|| dictionary_keys(conf)),
         source,
     }
 }

@@ -87,6 +87,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
             work: None,
             edition: None,
             edition_year: None,
+            keys: None,
         });
     }
     if entries.is_empty() {
