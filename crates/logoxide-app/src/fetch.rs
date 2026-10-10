@@ -20,7 +20,7 @@ use logoxide::{
 use crate::{Note, Notes, http::Http};
 
 /// The `git` command where it runs, else [`NetFetcher`]
-pub fn fetcher(git: GitCli, http: Arc<dyn Http>, notes: Notes) -> Box<dyn Fetcher + Send + Sync> {
+pub fn fetcher(git: GitCli, http: Arc<dyn Http>, notes: Notes) -> Box<dyn Fetcher> {
     match logoxide::git::git_available() {
         true => Box::new(GitFetcher::new(git, http, notes)),
         false => Box::new(NetFetcher::new(http, notes)),

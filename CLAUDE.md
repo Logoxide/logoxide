@@ -154,8 +154,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     dependencies can't use `git://` (resolve.rs); lx warns of the project's own. `is_insecure`
     (`http://`, `git://`, `ftp://`: warned of) and `is_local`. `git_available()` (`git --version`
     answers, asked once) is how logoxide-app's `fetch::fetcher` picks `git` or HTTP. `Fetcher`
-    isn't `Send + Sync` (the FFI's rounds hold `RefCell`s); logoxide-app asks it of its own
-    (`Box<dyn Fetcher + Send + Sync>`)
+    is `Send + Sync` (the FFI's rounds hold mutexes), so logoxide-app boxes any
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
@@ -635,7 +634,16 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
   that answers, are registries' catalogs and archives, with their mirrors; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;
   `Dependency.registry`); whatever is missing (refs, an archive, an installed package's files) stops the round and
-  is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
+  is asked for (`FetchRequest`), and the host calls again. A round (`Round`, behind mutexes, so
+  it's a `Fetcher`, `Send + Sync`) is also logoxide-app's `Http` (`HostHttp`, over the downloads
+  given), so `LogoxideInstaller.loadCatalogs(project)` (`CatalogsStep`: `Fetch`, else `Done`
+  with warnings; `catalog()` is them merged) reads the project's catalogs through
+  `logoxide_app::catalogs::load_catalogs` as lx does, `provideDownloadFailed(url, message)`
+  making one a warning (paths aren't read there: warned). Natively (like `openPackageDir`),
+  `Logoxide.readPassage(projectDir, libraryDir, cacheDir, reference, BookTextStyle)` and
+  `comparePassage(…, bibles, style)` are logoxide-app's `read` (`read.rs`: `ReadPassage`,
+  `ComparedPassage` with topos-ffi's `Passage`s and `StyledText` cut at the style's `limit`).
+  It depends on logoxide-app without `ureq`. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `liblogoxide.rlib`. Build with
   `npm install && npm run pack:wasm` or `npm run pack:python`; the examples open and install the
   real packages (`examples/node/install.ts`, whose lock and library `lx install` accepts)

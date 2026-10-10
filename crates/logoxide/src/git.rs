@@ -88,7 +88,7 @@ pub enum GitRef {
     Head,
 }
 
-pub trait Fetcher {
+pub trait Fetcher: Send + Sync {
     /// Each tag and the commit it names
     fn tags(&self, url: &str) -> Result<Vec<(String, String)>>;
 

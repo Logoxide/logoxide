@@ -96,7 +96,7 @@ pub struct Logoxide {
     config: Config,
     library: Library,
     http: Arc<dyn http::Http>,
-    fetcher: Box<dyn Fetcher + Send + Sync>,
+    fetcher: Box<dyn Fetcher>,
     reader: Box<dyn TextReader>,
 }
 
@@ -105,7 +105,7 @@ impl Logoxide {
         config: Config,
         library: Library,
         http: Arc<dyn http::Http>,
-        fetcher: Box<dyn Fetcher + Send + Sync>,
+        fetcher: Box<dyn Fetcher>,
         reader: Box<dyn TextReader>,
     ) -> Logoxide {
         Logoxide {
@@ -158,7 +158,7 @@ impl Logoxide {
         self.http.clone()
     }
 
-    pub fn fetcher(&self) -> &(dyn Fetcher + Send + Sync) {
+    pub fn fetcher(&self) -> &dyn Fetcher {
         self.fetcher.as_ref()
     }
 
