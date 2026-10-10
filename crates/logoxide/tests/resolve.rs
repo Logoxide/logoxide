@@ -307,6 +307,61 @@ fn forks_side_by_side() {
 }
 
 #[test]
+fn two_names_for_one_commit_stay_two() {
+    let world = World::new("two-names");
+    let repo = world.path("repos/kjv");
+    std::fs::create_dir_all(&repo).unwrap();
+    release(&repo, "kjv", "1.0.0", "words", "");
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("kjv", &git_dep(&repo, None)).unwrap();
+    let mut two = git_dep(&repo, None);
+    two.package = Some("kjv".into());
+    two.abbreviation = Some("KJV2".into());
+    two.aliases = Some(vec![]);
+    project.add("kjv-two", &two).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap().clone();
+    assert_eq!(lock.packages.len(), 2);
+    assert_eq!(lock.dependencies.len(), 2);
+    let (kjv, kjv_two) = (lock.get("kjv").unwrap(), lock.get("kjv-two").unwrap());
+    assert_eq!(kjv.commit, kjv_two.commit);
+    assert!(kjv_two.name().starts_with("kjv-two (kjv) 1.0.0+g"));
+    // One folder for both
+    assert_eq!(library.installed().len(), 1);
+    assert_eq!(
+        library.package_dir(kjv, project.dir()),
+        library.package_dir(kjv_two, project.dir())
+    );
+
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("KJV"), Some("KJV"));
+    assert_eq!(translations.get("KJV2"), Some("KJV2"));
+
+    // Turning one off leaves the other on
+    project.set_enabled("kjv", false).unwrap();
+    let in_use: Vec<&str> = project
+        .in_use()
+        .iter()
+        .map(|p| p.dependency_name())
+        .collect();
+    assert_eq!(in_use, ["kjv-two"]);
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("KJV"), None);
+    assert_eq!(translations.get("KJV2"), Some("KJV2"));
+
+    // Installing again keeps both, as they were
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(project.lock().unwrap(), &lock);
+}
+
+#[test]
 fn collections_bring_in_their_packages() {
     let world = World::new("collections");
     let bible = world.path("repos/tb");

@@ -60,8 +60,9 @@ before changing the design.
     aliases, and counts
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
-    `id version+g<commit>`, older lock files' `id version` still read; `rename` is the
-    manifest's name when it isn't the id; `get` finds by that name). `LockedPackage::check`
+    `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one
+    commit are two entries sharing a folder; older lock files' `id version` still read; `rename`
+    is the manifest's name when it isn't the id; `get` finds by that name). `LockedPackage::check`
     refuses a commit or sha256 that isn't hex and an id that isn't one, so a lock can't name a
     folder outside the library
   - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).

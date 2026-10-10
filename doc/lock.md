@@ -71,10 +71,14 @@ A locked package's **key** is its version with what pins it, as semver build met
 - registry archive: `<version>+a<first 8 hex digits of the sha256>` (`1.2.0+a9f86d081`)
 - path: `<version>`
 
-Its **name** is `<id> <key>`, which `dependencies` lists. Lock files from before forks were
-supported name packages `<id> <version>`; readers should still accept that, matching by id and
-version. The key is also the package's folder in the library (`packages/<id>/<key>/`), so forks
-of a package at one version, or two registries' releases of it, never share a folder.
+Its **name** is `<id> <key>`, which `dependencies` lists; a package the manifest calls something
+else (`rename`) is `<rename> (<id>) <key>` (`kjv-two (kjv) 1.0.0+g3f9c2a1b`). Two names for one
+commit are two entries, each turned on and off and named in references apart, sharing one folder.
+Lock files from before forks were supported name packages `<id> <version>`, and those from before
+renames had their own names `<id> <key>`; readers should still accept both, matching by id and
+key, then by id and version. The key is also the package's folder in the library
+(`packages/<id>/<key>/`), so forks of a package at one version, or two registries' releases of it,
+never share a folder.
 
 ## Resolving and installing
 

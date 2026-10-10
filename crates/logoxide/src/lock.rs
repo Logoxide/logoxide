@@ -160,9 +160,15 @@ impl LockedPackage {
         Ok(())
     }
 
-    /// `id key`, how the lock file's `dependencies` name it
+    /**
+    How the lock file's `dependencies` name it: `id key`, or `rename (id) key` when the manifest
+    calls it something else, so two names for one commit stay two entries (sharing one folder)
+    */
     pub fn name(&self) -> String {
-        format!("{} {}", self.id, self.key())
+        match &self.rename {
+            Some(rename) => format!("{rename} ({}) {}", self.id, self.key()),
+            None => format!("{} {}", self.id, self.key()),
+        }
     }
 
     /// What the manifest calls it: its rename, else its id
@@ -207,9 +213,13 @@ impl Lockfile {
         self.roots().find(|p| p.dependency_name() == name)
     }
 
-    /// A package by its name in `dependencies` (`id key`, or `id version` in older lock files)
+    /**
+    A package by its name in `dependencies` (`id key`, or `rename (id) key`); older lock files'
+    `id key` for a renamed package, and `id version`, are still found
+    */
     pub fn named(&self, name: &str) -> Option<&LockedPackage> {
         (self.packages.iter().find(|p| p.name() == name))
+            .or_else(|| (self.packages.iter()).find(|p| format!("{} {}", p.id, p.key()) == name))
             .or_else(|| (self.packages.iter()).find(|p| format!("{} {}", p.id, p.version) == name))
     }
 
@@ -247,6 +257,12 @@ mod tests {
         };
         assert_eq!(package.key(), "1.2.0+g3f9c2a1b");
         assert_eq!(package.name(), "bsb 1.2.0+g3f9c2a1b");
+        let renamed = LockedPackage {
+            rename: Some("bsb-two".into()),
+            ..package.clone()
+        };
+        assert_eq!(renamed.key(), "1.2.0+g3f9c2a1b");
+        assert_eq!(renamed.name(), "bsb-two (bsb) 1.2.0+g3f9c2a1b");
         let branch = LockedPackage {
             tag: None,
             branch: Some("main".into()),

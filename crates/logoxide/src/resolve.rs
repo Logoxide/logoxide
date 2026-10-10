@@ -166,17 +166,12 @@ impl Resolver<'_> {
                 locked.rename = Some(want.name.clone());
             }
             let name = locked.name();
-            let (index, changed) = match lock
-                .packages
-                .iter()
-                .position(|p| p.id == locked.id && p.key() == locked.key())
-            {
+            // Two names for one commit (`kjv` and `kjv-two`) are two entries sharing a folder:
+            // each is turned on and off, and named in references, apart
+            let (index, changed) = match lock.packages.iter().position(|p| p.name() == name) {
                 Some(index) => {
                     // Asked for again, maybe with more features: one install with all of them
                     let existing = &mut lock.packages[index];
-                    if existing.rename.is_none() {
-                        existing.rename = locked.rename.clone();
-                    }
                     let before = (existing.features.clone(), existing.default_features);
                     let mut features: BTreeSet<String> =
                         existing.features.iter().cloned().collect();
@@ -236,7 +231,7 @@ impl Resolver<'_> {
             }
         }
         lock.packages
-            .sort_by(|a, b| (&a.id, &a.version).cmp(&(&b.id, &b.version)));
+            .sort_by(|a, b| (&a.id, &a.version, &a.rename).cmp(&(&b.id, &b.version, &b.rename)));
         // Indexes changed with the sort; dependencies are named, so they still hold
         Ok(lock)
     }
