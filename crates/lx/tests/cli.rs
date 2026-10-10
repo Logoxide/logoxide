@@ -1153,6 +1153,10 @@ fn a_passage_is_read_from_the_bible_it_names() {
             "osis": "John.3.17", "versification": "own", "text": "[17] He sent his Son."
         })
     );
+    // A name no Bible answers to is an error, not the first Bible
+    let out = world.lx(&["read", "John 3:16 three"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no Bible `three`"));
     // Not a reference (the Bibles' John 3 ends at verse 17)
     let out = world.lx(&["read", "John 3:18 ONE"]);
     assert_eq!(out.status.code(), Some(1));

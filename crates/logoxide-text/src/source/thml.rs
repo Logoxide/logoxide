@@ -247,8 +247,11 @@ The tree with CCEL's verse markers as verse and chapter markers (see [`ThmlSourc
 */
 fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node> {
     let mut out = Vec::with_capacity(nodes.len());
+    // Just after a verse marker, where a Bible prints its chapter and verse numbers
+    let mut numbers = false;
     for node in nodes {
         let Node::Element(mut e) = node else {
+            numbers &= matches!(&node, Node::Text(text) if text.trim().is_empty());
             out.push(node);
             continue;
         };
@@ -256,6 +259,11 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
         if name == "sup" && e.attr("class").is_some_and(|c| c == "verse") {
             continue;
         }
+        // The ASV's are `<span class="chap">1</span> <sup>1</sup>`, with no class on the verse's
+        if numbers && is_printed_number(&e, &name) {
+            continue;
+        }
+        numbers = false;
         let marker = is_marker(&e);
         let place = marker.then(|| tag_place(|n| e.attr(n))).flatten();
         // A lettered chapter's marker (`|Esth|A|1|0|0`): a verse marker, so its verses are left
@@ -310,8 +318,22 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
             continue;
         }
         out.push(verse_marker(e, &place));
+        numbers = true;
     }
     out
+}
+
+/// Whether an element right after a verse marker is the number a Bible prints for readers: a
+/// `<span class="chap">` or a `<sup>` holding only a verse number or range
+fn is_printed_number(e: &Element, name: &str) -> bool {
+    let text = e.text();
+    let number = text.trim();
+    let digits = !number.is_empty() && number.chars().all(|c| c.is_ascii_digit() || c == '-');
+    match name {
+        "span" => e.attr("class").is_some_and(|c| c == "chap") && digits,
+        "sup" => digits,
+        _ => false,
+    }
 }
 
 /// A marker element made a verse marker for its place
@@ -390,6 +412,25 @@ The vision of Obadiah. <scripRef passage="Ruth 1:1">Ruth 1:1</scripRef></p>
         let texts = verse_texts(&*package, oba);
         assert_eq!(texts.len(), 1);
         assert!(texts[0].2.starts_with("The vision of Obadiah. Ruth 1:1"));
+    }
+
+    #[test]
+    fn printed_numbers_without_a_class() {
+        // The ASV's numbers, as CCEL prints them
+        let asv = r#"<ThML><ThML.body><div2 title="Genesis" id="Gen"><div3 title="Genesis 1" id="Gen.1">
+<p id="Gen.1-p1">
+<scripture passage="Gen 1.1" parsed="|Gen|1|1|0|0" osisRef="Bible:Gen.1.1" /><span class="chap" id="Gen.1-p1.1">1</span> <sup>1</sup>In the beginning.
+<scripture passage="Gen 1.2" parsed="|Gen|1|2|0|0" osisRef="Bible:Gen.1.2" /><sup>2</sup>And the earth<sup>3</sup>.
+</p></div3></div2></ThML.body></ThML>"#;
+        let package = package("thml", &[("bible.xml", asv)]);
+        // A number later in the verse (a note's mark) stays
+        assert_eq!(
+            verse_texts(&*package, book("GEN")),
+            [
+                (1, 1, "In the beginning.".into()),
+                (1, 2, "And the earth3.".into())
+            ]
+        );
     }
 
     #[test]

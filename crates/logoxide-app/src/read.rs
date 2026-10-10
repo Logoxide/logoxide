@@ -147,7 +147,23 @@ fn parse(
     let translations = project.translations(library, reader)?;
     let found = (bible_data().parse_with_translation(reference, &translations))
         .ok_or_else(|| LogoxideError::Resolve(format!("`{reference}` isn't a Bible reference")))?;
-    Ok((found.passage, found.translation.map(|t| t.name)))
+    if let Some(translation) = found.translation {
+        return Ok((found.passage, Some(translation.name)));
+    }
+    // A last word that isn't part of the passage names a Bible topos doesn't know by that name
+    // (a package id like `ccel-kjv`, or one not in the project), which the caller looks for
+    // among the Bibles rather than reading the first instead
+    let trimmed = reference.trim_end();
+    if let Some((before, last)) = trimmed.rsplit_once(char::is_whitespace) {
+        let last = last.trim_matches(|c| c == '(' || c == ')');
+        let without = bible_data().parse_with_translation(before, &translations);
+        if last.chars().any(char::is_alphabetic)
+            && without.is_some_and(|w| w.passage == found.passage)
+        {
+            return Ok((found.passage, Some(last.to_string())));
+        }
+    }
+    Ok((found.passage, None))
 }
 
 /**
@@ -165,7 +181,9 @@ pub fn read(
     let (passage, named) = parse(project, library, reader, reference)?;
     let mut bibles = bibles(project, library, reader)?;
     let index = match &named {
-        Some(name) => (bibles.iter().position(|b| b.is(name))).unwrap_or_default(),
+        Some(name) => (bibles.iter().position(|b| b.is(name))).ok_or_else(|| {
+            LogoxideError::Resolve(format!("no Bible `{name}` in this project (lx list)"))
+        })?,
         None => 0,
     };
     let bible = bibles.swap_remove(index);
@@ -210,7 +228,9 @@ pub fn compare(
         chosen = all.iter().collect();
     }
     let source = match &named {
-        Some(name) => (all.iter().find(|b| b.is(name))).unwrap_or(chosen[0]),
+        Some(name) => (all.iter().find(|b| b.is(name))).ok_or_else(|| {
+            LogoxideError::Resolve(format!("no Bible `{name}` in this project (lx list)"))
+        })?,
         None => chosen[0],
     };
     // The first Bible's verse counts, which a whole chapter needs to be mapped
