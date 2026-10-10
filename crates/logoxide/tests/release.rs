@@ -196,3 +196,85 @@ fn an_older_hash_rule_is_built_again() {
     assert_eq!(p.change(), Change::Patch);
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// A dictionary package's `<entries>` file with these entries
+fn write_dictionary(repo: &Path, version: &str, entries: &[(&str, &str)]) {
+    let body: String = (entries.iter())
+        .map(|(key, text)| format!("<entry key=\"{key}\">{text}</entry>\n"))
+        .collect();
+    std::fs::create_dir_all(repo.join("entries")).unwrap();
+    std::fs::write(
+        repo.join("entries/greek.xml"),
+        format!("<entries keys=\"strongs-greek\" markup=\"plain\">\n{body}</entries>\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        repo.join("logoxide.toml"),
+        format!("[package]\nid = \"strongs\"\nname = \"Strong's\"\nabbreviation = \"STR\"\nversion = \"{version}\"\nlanguage = \"grc\"\nkind = \"lexicon\"\nkeys = \"strongs-greek\"\n\n[formats]\ndictionary = {{ path = \"entries/\" }}\n"),
+    )
+    .unwrap();
+}
+
+/// A dictionary's release writes `logoxide.entries.bin`, and the next release is judged by
+/// its entries: reworded or added minor, removed major
+#[test]
+fn a_dictionarys_entries_are_released_and_compared() {
+    use logoxide::summary::ENTRIES;
+    let root = std::env::temp_dir().join(format!("logoxide-entries-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let repo = root.join("strongs");
+    std::fs::create_dir_all(&repo).unwrap();
+    let cli = GitCli::default();
+    write_dictionary(&repo, "1.0.0", &[("G0025", "to love"), ("G26", "love")]);
+    git(&repo, &["init", "-q", "-b", "main"]);
+    let first = plan(&repo, &cli, &DefaultReader).unwrap();
+    assert_eq!((first.summary.entries, first.verses.len()), (2, 0));
+    release(&repo, &first, &cli).unwrap();
+    let bytes = std::fs::read(repo.join(ENTRIES)).unwrap();
+    assert!(bytes.starts_with(b"LXE1"));
+    assert_eq!(bytes.len(), 8 + 2 * 15);
+    let (summary, _) = Summary::read(&FsStorage::new(&repo)).unwrap();
+    assert_eq!(summary.entry_hashes.len(), 2);
+    assert_eq!(
+        summary.sizes["dictionary"] as usize,
+        std::fs::read(repo.join("entries/greek.xml")).unwrap().len()
+    );
+
+    // Reworded (the key in another form is the same key): minor
+    write_dictionary(
+        &repo,
+        "1.0.1",
+        &[("G25", "to love, cherish"), ("G26", "love")],
+    );
+    let second = plan(&repo, &cli, &DefaultReader).unwrap();
+    let (_, d) = second.previous.as_ref().unwrap();
+    assert_eq!((d.entries_changed.len(), d.change()), (1, Change::Minor));
+    assert_eq!(logoxide::release::describe(d), "1 entry reworded");
+    assert!(check(&second).unwrap_err().to_string().contains("1.1.0"));
+    write_dictionary(
+        &repo,
+        "1.1.0",
+        &[("G25", "to love, cherish"), ("G26", "love")],
+    );
+    let second = plan(&repo, &cli, &DefaultReader).unwrap();
+    release(&repo, &second, &cli).unwrap();
+
+    // Removed: major; added: minor
+    write_dictionary(
+        &repo,
+        "1.2.0",
+        &[("G25", "to love, cherish"), ("G27", "beloved")],
+    );
+    let third = plan(&repo, &cli, &DefaultReader).unwrap();
+    let (_, d) = third.previous.as_ref().unwrap();
+    assert_eq!(
+        (d.entries_removed.len(), d.entries_added.len(), d.change()),
+        (1, 1, Change::Major)
+    );
+    assert_eq!(
+        logoxide::release::describe(d),
+        "1 entry removed, 1 entry added"
+    );
+    assert!(check(&third).is_err());
+    let _ = std::fs::remove_dir_all(&root);
+}

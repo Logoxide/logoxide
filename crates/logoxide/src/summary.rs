@@ -1,16 +1,22 @@
 /*!
 What a package version holds, published with it so it can be known without downloading the text:
 `logoxide.summary.toml` (its books' verse counts, how big each format is, how many of each element),
-`logoxide.verses.bin` (a short hash of every verse's text), and for books,
-`logoxide.references.bin` (the passages they cite, [`crate::references`]). `lx release` writes them, `lx verify`
-builds them again and compares, and two versions' summaries say what changed between them
-([`diff`]), which says how the version number must change ([`Change`]).
+`logoxide.verses.bin` (a short hash of every verse's text), for books,
+`logoxide.references.bin` (the passages they cite, [`crate::references`]), and for dictionaries
+and cross-references, `logoxide.entries.bin` (a hash of every entry's key and text). `lx release`
+writes them, `lx verify` builds them again and compares, and two versions' summaries say what
+changed between them ([`diff`], [`diff_entries`]), which says how the version number must change
+([`Change`]).
 
 `logoxide.verses.bin`: `LXV2`, the [`HashRule`] (u16), the record length (12), and a reserved
 byte, then 12 bytes a verse (373 KB for the KJV): book (logoxide's number, [`crate::books`]),
 chapter, verse, last verse (of a bridge like 4-5), part (1 for `20a`, 0 for a whole verse), and the
 first 7 bytes of the SHA-256 of its text as the rule gives it (its words, normalized, with
 whitespace collapsed; notes and headings left out, since changing them can't break a link).
+
+`logoxide.entries.bin`: `LXE1`, the same header (the rule, a record length of 15, a reserved
+byte), then 15 bytes an entry: the first 8 bytes of the SHA-256 of its key's normal form, and
+the first 7 of its text's by the rule ([`EntryHash`]).
 */
 
 use std::collections::{BTreeMap, HashMap};
@@ -29,6 +35,7 @@ use crate::{
 
 pub const SUMMARY: &str = "logoxide.summary.toml";
 pub const VERSES: &str = "logoxide.verses.bin";
+pub const ENTRIES: &str = "logoxide.entries.bin";
 
 /// The summary format's version
 const SUMMARY_VERSION: u32 = 1;
@@ -40,6 +47,9 @@ const HEADER: usize = 8;
 /// Bytes of a record as this logoxide writes it; a reader takes the fields it knows and skips the
 /// rest of a longer one
 const RECORD: usize = 12;
+const ENTRIES_MAGIC: &[u8; 4] = b"LXE1";
+/// Bytes of an entry's record: its key's hash and its text's
+const ENTRY_RECORD: usize = KEY_HASH_BYTES + HASH_BYTES;
 /// Bytes of SHA-256 kept per verse
 pub const HASH_BYTES: usize = 7;
 /// Bytes of SHA-256 kept of an entry's key
@@ -144,9 +154,16 @@ pub struct Summary {
     /// For a versification map: how many verses it maps (logoxide-text's `versification`)
     #[serde(default, skip_serializing_if = "is_zero")]
     pub mappings: u64,
+    /// For a dictionary or cross-references: how many entries it has (each key once; the
+    /// passages lines are for), whose hashes are in `logoxide.entries.bin`
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub entries: u64,
     /// The passages they cite, and how often (read from or written to `logoxide.references.bin`)
     #[serde(skip)]
     pub cited: Vec<crate::references::Cited>,
+    /// Each entry's key and text hash (read from or written to `logoxide.entries.bin`)
+    #[serde(skip)]
+    pub entry_hashes: Vec<EntryHash>,
     /// Each file's title, by path ([`crate::titles`]): hosts name what they show by it, so a
     /// changed title is a minor change
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -216,7 +233,7 @@ pub fn book_hashes(book: &logoxide_text::Book) -> Result<Vec<VerseHash>> {
 
 /// The files a summary leaves out of its checksum (itself)
 pub fn is_summary_file(path: &str) -> bool {
-    path == SUMMARY || path == VERSES || path == crate::references::REFERENCES
+    path == SUMMARY || path == VERSES || path == ENTRIES || path == crate::references::REFERENCES
 }
 
 /// A package's summary and verse hashes: what `reader` finds in its text
@@ -276,7 +293,9 @@ pub fn summarize_facts(package: &Package, facts: TextFacts) -> Result<(Summary, 
             }),
         references: facts.references,
         mappings: facts.mappings,
+        entries: facts.entries.len() as u64,
         cited: facts.cited,
+        entry_hashes: facts.entries,
         titles: facts.titles,
     };
     Ok((summary, facts.verses))
@@ -326,6 +345,24 @@ impl Summary {
             let bytes = storage.read(crate::references::REFERENCES)?;
             summary.cited = crate::references::decode(&bytes)?;
         }
+        if summary.entries > 0 {
+            let (entries_rule, entries) = decode_entries(&storage.read(ENTRIES)?)?;
+            if entries_rule != rule {
+                return Err(LogoxideError::Manifest(format!(
+                    "{ENTRIES} was written with rule {}, but {VERSES} with rule {}",
+                    entries_rule.number(),
+                    rule.number()
+                )));
+            }
+            if entries.len() as u64 != summary.entries {
+                return Err(LogoxideError::Manifest(format!(
+                    "{SUMMARY} says {} entries, but {ENTRIES} has {}",
+                    summary.entries,
+                    entries.len()
+                )));
+            }
+            summary.entry_hashes = entries;
+        }
         Ok((summary, verses))
     }
 
@@ -339,8 +376,52 @@ impl Summary {
             let bytes = crate::references::encode(&self.cited)?;
             storage.write(crate::references::REFERENCES, &bytes)?;
         }
+        if !self.entry_hashes.is_empty() {
+            storage.write(ENTRIES, &encode_entries(rule, &self.entry_hashes))?;
+        }
         Ok(())
     }
+}
+
+/// `logoxide.entries.bin`'s bytes: the header `LXV2`'s layout has, with its own magic, then a
+/// record an entry
+pub fn encode_entries(rule: HashRule, entries: &[EntryHash]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(HEADER + entries.len() * ENTRY_RECORD);
+    out.extend_from_slice(ENTRIES_MAGIC);
+    out.extend_from_slice(&rule.number().to_le_bytes());
+    out.extend_from_slice(&[ENTRY_RECORD as u8, 0]);
+    for e in entries {
+        out.extend_from_slice(&e.key);
+        out.extend_from_slice(&e.hash);
+    }
+    out
+}
+
+/// The hash rule and entries of `logoxide.entries.bin`; a longer record's later bytes are
+/// skipped, as a verse record's are
+pub fn decode_entries(bytes: &[u8]) -> Result<(HashRule, Vec<EntryHash>)> {
+    let bad = |why: &str| LogoxideError::Manifest(format!("{ENTRIES}: {why}"));
+    let (header, body) = (bytes.split_at_checked(HEADER))
+        .filter(|(h, _)| h.starts_with(ENTRIES_MAGIC))
+        .ok_or_else(|| bad("not an entry hash file"))?;
+    let number = u16::from_le_bytes([header[4], header[5]]);
+    let rule = HashRule::from_number(number).ok_or_else(|| newer_rule(ENTRIES, number))?;
+    let record = usize::from(header[6]);
+    if record < ENTRY_RECORD || body.len() % record != 0 {
+        return Err(bad(&format!(
+            "records of {record} bytes don't fit (at least {ENTRY_RECORD}, and the file a whole number of them)"
+        )));
+    }
+    let entries = (body.chunks_exact(record))
+        .map(|c| {
+            let mut key = [0; KEY_HASH_BYTES];
+            key.copy_from_slice(&c[..KEY_HASH_BYTES]);
+            let mut hash = [0; HASH_BYTES];
+            hash.copy_from_slice(&c[KEY_HASH_BYTES..ENTRY_RECORD]);
+            EntryHash { key, hash }
+        })
+        .collect();
+    Ok((rule, entries))
 }
 
 /// `logoxide.verses.bin`'s bytes: its header, then a record a verse
@@ -422,18 +503,28 @@ pub struct Diff {
     pub split: Vec<VerseHash>,
     /// Verses whose bridge narrowed and lost a number (`4-5` became `4`, with no `5`)
     pub bridged: Vec<VerseHash>,
-    /// For packages without verses (books): their files changed, in ways verses can't show
+    /// For packages without verses or entries (books): their files changed, in ways verses
+    /// can't show
     pub files_changed: bool,
     /// Files whose title changed (hosts name what they show by it): `(path, old, new)`
     pub retitled: Vec<(String, String, String)>,
+    /// Entries (by key) the new version doesn't have: a link to one finds nothing
+    pub entries_removed: Vec<EntryHash>,
+    /// Entries the old version didn't have
+    pub entries_added: Vec<EntryHash>,
+    /// Entries whose text changed (the new hash)
+    pub entries_changed: Vec<EntryHash>,
 }
 
-/// What changed between two summaries, with their verses: [`diff`], and for packages without
-/// verses (books), whether their files did
+/// What changed between two summaries, with their verses: [`diff`], their entries
+/// ([`diff_entries`]), and for packages with neither (books), whether their files did
 pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash])) -> Diff {
     let mut d = diff(old.1, new.1);
+    // Nothing finer to compare (no verses, no entries): the files say
     d.files_changed = old.1.is_empty()
         && new.1.is_empty()
+        && old.0.entry_hashes.is_empty()
+        && new.0.entry_hashes.is_empty()
         && (old.0.files_checksum.as_ref())
             .is_some_and(|c| Some(c) != new.0.files_checksum.as_ref());
     // Summaries from before titles have none: nothing to compare
@@ -442,6 +533,31 @@ pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash
             let new = new.0.titles.get(path)?;
             (new != old).then(|| (path.clone(), old.clone(), new.clone()))
         })
+        .collect();
+    let entries = diff_entries(&old.0.entry_hashes, &new.0.entry_hashes);
+    d.entries_removed = entries.entries_removed;
+    d.entries_added = entries.entries_added;
+    d.entries_changed = entries.entries_changed;
+    d
+}
+
+/// What changed between two versions' entries, by key: removed (major: a link to the key finds
+/// nothing), added, and reworded (minor). Keys are hashes, so a renamed key is one removed and
+/// one added
+pub fn diff_entries(old: &[EntryHash], new: &[EntryHash]) -> Diff {
+    let old_by_key: HashMap<_, _> = old.iter().map(|e| (e.key, e)).collect();
+    let new_by_key: HashMap<_, _> = new.iter().map(|e| (e.key, e)).collect();
+    let mut d = Diff::default();
+    for e in old {
+        match new_by_key.get(&e.key) {
+            None => d.entries_removed.push(*e),
+            Some(n) if n.hash != e.hash => d.entries_changed.push(**n),
+            Some(_) => {}
+        }
+    }
+    d.entries_added = (new.iter())
+        .filter(|e| !old_by_key.contains_key(&e.key))
+        .copied()
         .collect();
     d
 }
@@ -573,12 +689,15 @@ impl Diff {
             || !self.moved.is_empty()
             || !self.joined.is_empty()
             || !self.bridged.is_empty()
+            || !self.entries_removed.is_empty()
         {
             Change::Major
         } else if !self.changed.is_empty()
             || !self.added.is_empty()
             || !self.split.is_empty()
             || !self.retitled.is_empty()
+            || !self.entries_added.is_empty()
+            || !self.entries_changed.is_empty()
             || self.files_changed
         {
             Change::Minor
@@ -834,6 +953,8 @@ mod tests {
             references: 0,
             cited: vec![],
             mappings: 0,
+            entries: 0,
+            entry_hashes: vec![],
             titles: [("epub/b.epub".to_string(), title.to_string())].into(),
         };
         let d = diff_summaries((&summary("Freely"), &[]), (&summary("Freely Given"), &[]));
@@ -844,6 +965,62 @@ mod tests {
         assert_eq!(d.change(), Change::Minor);
         let same = diff_summaries((&summary("Freely"), &[]), (&summary("Freely"), &[]));
         assert_eq!(same.change(), Change::Patch);
+    }
+
+    fn entry(key: &str, text: &str) -> EntryHash {
+        let full = Sha256::digest(key.as_bytes());
+        let mut hash = [0; KEY_HASH_BYTES];
+        hash.copy_from_slice(&full[..KEY_HASH_BYTES]);
+        EntryHash {
+            key: hash,
+            hash: verse_hash(text),
+        }
+    }
+
+    #[test]
+    fn entries_removed_are_major_reworded_and_added_minor() {
+        let old = [entry("G25", "to love"), entry("G26", "love")];
+        assert_eq!(diff_entries(&old, &old).change(), Change::Patch);
+        let reworded = [entry("G25", "to love, cherish"), entry("G26", "love")];
+        let d = diff_entries(&old, &reworded);
+        assert_eq!((d.entries_changed.len(), d.change()), (1, Change::Minor));
+        let added = [old[0], old[1], entry("G27", "beloved")];
+        let d = diff_entries(&old, &added);
+        assert_eq!((d.entries_added.len(), d.change()), (1, Change::Minor));
+        let d = diff_entries(&old, &old[..1]);
+        assert_eq!((d.entries_removed.len(), d.change()), (1, Change::Major));
+        // A renamed key is one removed and one added
+        let renamed = [entry("G25", "to love"), entry("G26a", "love")];
+        let d = diff_entries(&old, &renamed);
+        assert_eq!(
+            (d.entries_removed.len(), d.entries_added.len(), d.change()),
+            (1, 1, Change::Major)
+        );
+        // The file: its header, then a record an entry
+        let bytes = encode_entries(HashRule::One, &old);
+        assert_eq!(&bytes[..8], b"LXE1\x01\x00\x0f\x00");
+        assert_eq!(bytes.len(), 8 + 2 * 15);
+        assert_eq!(
+            decode_entries(&bytes).unwrap(),
+            (HashRule::One, old.to_vec())
+        );
+        let mut longer = bytes[..8].to_vec();
+        longer[6] = 16;
+        for record in bytes[8..].chunks(15) {
+            longer.extend_from_slice(record);
+            longer.push(0xff);
+        }
+        assert_eq!(decode_entries(&longer).unwrap().1, old);
+        let mut newer = bytes.clone();
+        newer[4] = 2;
+        assert!(
+            decode_entries(&newer)
+                .unwrap_err()
+                .to_string()
+                .contains("newer lx")
+        );
+        assert!(decode_entries(b"LXV2").is_err());
+        assert!(is_summary_file(ENTRIES));
     }
 
     fn part(chapter: u8, verse: u8, part: u8, text: &str) -> VerseHash {

@@ -13,8 +13,8 @@ use crate::{
     reader::{Skipped, TextReader},
     storage::{FsStorage, MemoryStorage, Storage},
     summary::{
-        Change, Diff, HashRule, SUMMARY, Summary, VERSES, VerseHash, diff_summaries, next_version,
-        summarize, summarize_facts, version_change,
+        Change, Diff, ENTRIES, HashRule, SUMMARY, Summary, VERSES, VerseHash, diff_summaries,
+        next_version, summarize, summarize_facts, version_change,
     },
 };
 
@@ -38,7 +38,7 @@ pub fn summary_in(
     reader: &dyn TextReader,
 ) -> Result<(Summary, Vec<VerseHash>)> {
     let reference = GitRef::Tag(tag.to_string());
-    let paths: Vec<String> = [SUMMARY, VERSES, crate::references::REFERENCES]
+    let paths: Vec<String> = [SUMMARY, VERSES, ENTRIES, crate::references::REFERENCES]
         .iter()
         .map(|p| format!("{prefix}{p}"))
         .collect();
@@ -165,9 +165,12 @@ pub fn check(plan: &Plan) -> Result<()> {
     }
 }
 
-/// `3 verses reworded, 1 renumbered`
+/// `3 verses reworded, 1 renumbered`; for a dictionary, `2 entries reworded, 1 removed`
 pub fn describe(d: &Diff) -> String {
-    let parts: Vec<String> = [
+    let count = |n: usize, what: &str, one: &str, many: &str| {
+        format!("{n} {} {what}", if n == 1 { one } else { many })
+    };
+    let mut parts: Vec<String> = [
         (d.removed.len(), "removed"),
         (d.moved.len(), "renumbered"),
         (d.joined.len(), "joined into a bridge"),
@@ -178,8 +181,18 @@ pub fn describe(d: &Diff) -> String {
     ]
     .into_iter()
     .filter(|(n, _)| *n > 0)
-    .map(|(n, what)| format!("{n} verse{} {what}", if n == 1 { "" } else { "s" }))
+    .map(|(n, what)| count(n, what, "verse", "verses"))
     .collect();
+    parts.extend(
+        [
+            (d.entries_removed.len(), "removed"),
+            (d.entries_changed.len(), "reworded"),
+            (d.entries_added.len(), "added"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, what)| count(n, what, "entry", "entries")),
+    );
     let what = if d.files_changed {
         String::from("its files changed (it has no verses to compare)")
     } else if parts.is_empty() {

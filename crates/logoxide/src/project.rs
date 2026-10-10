@@ -562,6 +562,49 @@ impl Project {
     }
 
     /**
+    The packages of a kind in use (the lock's packages the manifest asks for and hasn't turned
+    off, and what each brings in: [`Project::in_use`]), each opened, in the lock's order
+    */
+    pub fn packages_of(
+        &self,
+        library: &Library,
+        kind: PackageKind,
+    ) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
+        let mut found = vec![];
+        for locked in self.in_use() {
+            let package = library.open(locked, &self.dir)?;
+            if package.info().kind == kind {
+                found.push((locked, package));
+            }
+        }
+        Ok(found)
+    }
+
+    /// The commentaries in use ([`Project::packages_of`])
+    pub fn commentaries(
+        &self,
+        library: &Library,
+    ) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
+        self.packages_of(library, PackageKind::Commentary)
+    }
+
+    /// The dictionaries in use (`kind = "lexicon"`; [`Project::packages_of`])
+    pub fn dictionaries(
+        &self,
+        library: &Library,
+    ) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
+        self.packages_of(library, PackageKind::Lexicon)
+    }
+
+    /// The cross-reference packages in use ([`Project::packages_of`])
+    pub fn cross_references(
+        &self,
+        library: &Library,
+    ) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
+        self.packages_of(library, PackageKind::CrossReferences)
+    }
+
+    /**
     The translations the manifest asks for (its Bibles, and those in its collections; not other
     dependencies), for topos: each one's abbreviation, aliases, and verse counts, from the
     library's cache (read by `reader` when the cache lacks them)

@@ -226,7 +226,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     lock; `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
     `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
-    and `lx add` warn of
+    and `lx add` warn of; `packages_of(library, kind)` opens the packages of a kind among
+    `in_use`, with `commentaries()`, `dictionaries()` (kind `lexicon`), and `cross_references()`
   - `summary.rs`: `logoxide.summary.toml` (verse counts in book order, sizes, element counts
     without structural markers; `verse-hash = 1`) and `logoxide.verses.bin` (`LXV2`: a header
     of the hash rule (u16), the record length (12; readers skip bytes past what they know), and a
@@ -252,7 +253,15 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     verse again after an update.
     `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
     verses) change: a minor change. The passages a book cites go in `logoxide.references.bin`
-    (the summary counts its references)
+    (the summary counts its references). Dictionaries and cross-references publish
+    `logoxide.entries.bin` (`LXE1`: `LXV2`'s header with its own magic and a record length of
+    15, then a record an entry: 8 bytes of the key's hash, `HASH_BYTES` of its text's by the
+    verse rule; `EntryHash`, `encode_entries`/`decode_entries`; the summary counts `entries`,
+    and `Summary::read` checks the count and the rule agree), carried in `Summary::entry_hashes`
+    (`serde(skip)`, like `cited`, so `read`, `write`, and `summarize` keep their shapes);
+    `diff_entries` (an entry removed is major, reworded or added minor: `Diff::entries_removed`,
+    `entries_changed`, `entries_added`, which `release::describe` names) runs in `diff_summaries`,
+    and `files_changed` only counts when neither side has verses or entries
   - `references.rs`: the Bible references in a package's EPUBs, found by logoxide-text's
     `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly too). `find`
     (`read`) reads the books: each reference's OSIS passage, file, CFI, chapter, UTF-16 range,

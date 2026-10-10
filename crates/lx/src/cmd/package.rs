@@ -647,6 +647,7 @@ pub(crate) fn show_remote(
         MANIFEST,
         logoxide::summary::SUMMARY,
         logoxide::summary::VERSES,
+        logoxide::summary::ENTRIES,
         logoxide::references::REFERENCES,
     ];
     let files = MemoryStorage::new();

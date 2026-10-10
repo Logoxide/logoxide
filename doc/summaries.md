@@ -1,21 +1,22 @@
-# Summaries: `logoxide.summary.toml`, `logoxide.verses.bin`, `logoxide.references.bin`
+# Summaries: `logoxide.summary.toml`, `logoxide.verses.bin`, `logoxide.references.bin`, `logoxide.entries.bin`
 
 What a package version holds, published with it (committed at its release tag, and inside its
 release archive) so it can be known without downloading the text: what's in it, how big each
-format is, a short hash of every verse, and for books, the passages they cite. Two versions'
-summaries say what changed between them, which says how the version number must change. `lx
-release` writes them, `lx verify` builds them again and compares, `lx show --git` reads them from
-a tag alone. This describes the formats as logoxide 0.1 writes them; the reference is
-`crates/logoxide/src/summary.rs` and `crates/logoxide/src/references.rs`.
+format is, a short hash of every verse, for books, the passages they cite, and for dictionaries
+and cross-references, a hash of every entry. Two versions' summaries say what changed between
+them, which says how the version number must change. `lx release` writes them, `lx verify` builds
+them again and compares, `lx show --git` reads them from a tag alone. This describes the formats
+as logoxide 0.1 writes them; the reference is `crates/logoxide/src/summary.rs` and
+`crates/logoxide/src/references.rs`.
 
-All three files are part of the package (declared), but are left out of `text-checksum`, which
+All four files are part of the package (declared), but are left out of `text-checksum`, which
 they can't contain.
 
 The summary is the contract between whatever reads a package's text and the package manager,
 which never does. The text's reader gives `books`, `contents`, `verses` (and every hash in
-`logoxide.verses.bin`), `titles`, `references` (and `logoxide.references.bin`), and `mappings`;
-the package manager adds `id`, `version`, the checksums, `sizes`, and `media`, and does all the
-comparing and versioning below on these files alone.
+`logoxide.verses.bin`), `titles`, `references` (and `logoxide.references.bin`), `mappings`, and
+`entries` (and `logoxide.entries.bin`); the package manager adds `id`, `version`, the checksums,
+`sizes`, and `media`, and does all the comparing and versioning below on these files alone.
 
 ## `logoxide.summary.toml`
 
@@ -63,6 +64,7 @@ words-of-jesus = 2038
 | `media` | table | `files` and `bytes`: how many media files `[media]` lists, and their total size. Absent without media |
 | `references` | integer | How many Bible references the package's EPUBs have (absent when 0) |
 | `mappings` | integer | For a versification map, how many verses it maps (absent when 0) |
+| `entries` | integer | For a dictionary or cross-references, how many entries `logoxide.entries.bin` has: each key once, or each passage lines are for (absent when 0) |
 | `titles` | table of strings | Each file's title, by path ([manifest.md](manifest.md#titles)) |
 
 The element kinds are logoxide-markup's (`Kind`); a reader should treat `contents` as
@@ -174,6 +176,32 @@ OSIS reference as it was written (`Matt.10.8`, `Phil.4.10-Phil.4.20`, `1Cor.9`),
 Where each reference is in the book isn't published: it's only of use with the book, which gives
 it again.
 
+## `logoxide.entries.bin` (`LXE1`)
+
+For dictionaries and cross-references ([entries.md](entries.md)): a hash of every entry's key and
+of its text, so a changed entry is told from a removed one. Written only when there is at least
+one entry; `logoxide.verses.bin` is written too (empty: its header alone).
+
+```text
+offset  size  field
+0       4     magic: the ASCII bytes "LXE1"
+4       2     hash rule: the rule the text hashes were made with (u16, little-endian; 1), the
+              same as logoxide.verses.bin's
+6       1     record length: bytes a record (u8; 15)
+7       1     reserved (0)
+8       r*n   n records of r bytes, one per entry, in the files' order:
+  +0    8     the first 8 bytes of SHA-256 of the key's normal form, as UTF-8
+              (entries.md: `G25`; a cross-reference passage's `John.3.16-John.3.18`)
+  +8    7     the first 7 bytes of SHA-256 of the entry's text, as the rule makes it (the body's
+              words with notes left out, like a verse's; a passage's targets joined)
+```
+
+The file's length minus 8 must be a multiple of the record length; a reader takes the fields it
+knows from the start of each record and skips the rest; a record length below 15 is an error.
+The summary's `entries` must equal the number of records, and its `verse-hash` the file's rule.
+Keys are recorded only by their hash: a summary can say whether a key is still there and whether
+its text changed, not what the key is.
+
 ## Changes and versions
 
 Two releases' verse hashes are compared by verse number (book, chapter, verse, part), the range
@@ -191,7 +219,10 @@ are joined into it.
 | reworded | A verse's words changed at the same number and range (or its bridge widened over numbers no verse had) | **minor** |
 | added | A verse number the old version lacks (not one a split bridge covered) | **minor** |
 | retitled | A file's title changed (hosts name what they show by it, but nothing they point at is gone) | **minor** |
-| files changed | For packages without verses (books): `files-checksum` changed | **minor** |
+| files changed | For packages without verses or entries (books): `files-checksum` changed | **minor** |
+| entry removed | A dictionary's key, or a passage's cross-references, the new version lacks (a renamed key is one removed and one added) | **major** |
+| entry reworded | An entry's text changed at the same key (a passage's targets or weights changed) | **minor** |
+| entry added | A key the old version lacks | **minor** |
 | anything else | Notes, headings, markup, metadata, media timings | **patch** |
 
 A version's change is the largest of its changes, and the new version number must be at least
@@ -203,7 +234,8 @@ that much bigger (`lx release` refuses a smaller one):
   a patch bump (0.1.1 after 0.1.0) covers minor changes too.
 - In 0.0.x, every change is breaking, matching Cargo's rule that each 0.0.x version is
   incompatible with the others: any change needs 0.0.(z+1).
-- For packages without verses (books, collections, maps), any change to their files is minor.
+- For packages without verses or entries (books, collections, maps), any change to their files
+  is minor.
 - Imported packages whose version is the publisher's date (eBible.org's `2026.10.8`) or its own
   numbering (a SWORD module's) are an exception: their numbers say when, not what. An update
   still compares the summaries, and when the publisher's version isn't newer it takes the next
