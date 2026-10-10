@@ -233,7 +233,26 @@ Any order, as they're reachable; each in `logoxide-import`.
   limit, immutable versions duplicating media, and whether a registry's catalog lists media at
   all.
 
-## Status (2026-10-11, checkpoint; logoxide main after 39ca0af, plugin main 737f9f4)
+## Status (2026-10-10, after the second session; logoxide main 8f5cf61, plugin main 4348011)
+
+Done since the checkpoint below: items 1–8 (I.6 bindings, LSP, and plugin; M.3's plugin
+display half; J.1–J.4, with version 0.2.0 and narrower exports; K.1; L.2 on fixtures; L.3).
+Item 3 wasn't a bug: CrossWire's MHCC has no entry at John 3:9-21 (its 3:1-8 entry runs on;
+libsword's `mod2imp` agrees); a test pins it. Also: CCEL's printed verse numbers without a
+class are left out (the ASV); `lx read`/`compare` refuse a Bible name the project lacks and
+take package ids; `gen-COM` is a default catalog (the owner said yes). Every check is green
+(workspace, the FFI's 22, `pack:wasm`, the plugin's 90, KJV and BSB verify).
+
+Left: K.2 (topos-mcp, topos's repository); topos's `LSP_KEYS` (topos-cli's `config.rs`) lacks
+`bibles`, `project`, `library`, `default-bible`, `hover-bibles`, `commentaries`, `strongs`,
+`epub`, `pdf`, so a shared `config.toml` with them breaks the topos CLI (an edit there was
+refused in this session; the owner's to allow); topos's `doc/logoxide.md` layer table needs a
+`logoxide-app` row; Door43 checked live when it answers; MCP's other writes (`add`,
+`update_import`, `enable`, `disable`, `remove`); a chapter's verse-0 note can't be named in a
+reference (topos's convention); whether a commentary's note should stretch over the verses
+after it up to the next (the owner's call); item 9 (the owner's: tags, publishing).
+
+## Status, the earlier checkpoint (2026-10-11, checkpoint; logoxide main after 39ca0af, plugin main 737f9f4)
 
 Done: G.4; all of H (C6 included); I.1–I.5; L.4; M.1, M.2; M.3's LSP half and the plugin's
 model half; M.4. Every check is green (`cargo test --workspace` 34 suites, the FFI's 19 tests,
