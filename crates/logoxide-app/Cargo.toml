@@ -1,0 +1,35 @@
+[package]
+name = "logoxide-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What every logoxide front end does: catalogs over HTTP, imports, installs, reading and comparing passages, behind one Logoxide facade"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bible", "package-manager"]
+categories = ["text-processing"]
+
+[features]
+default = ["ureq"]
+# HTTP through ureq (`UreqHttp`): native hosts. Without it the host gives its own `Http` (the
+# bindings ask theirs), so WebAssembly builds without a network stack
+ureq = ["dep:ureq"]
+
+[dependencies]
+# The package manager with its reader: passages are read, and imports checked by reading them
+logoxide.workspace = true
+logoxide-text.workspace = true
+logoxide-import.workspace = true
+topos-bible.workspace = true
+serde.workspace = true
+# Hashing media as it downloads (`media::verify`)
+sha2 = "0.10"
+ureq = { version = "3", optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+# Making the archives the fetcher's tests read
+tar = { version = "0.4", default-features = false }
+flate2 = "1"

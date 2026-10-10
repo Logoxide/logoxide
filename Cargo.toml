@@ -6,6 +6,7 @@ members = [
     "crates/logoxide-lsp",
     "crates/logoxide-text",
     "crates/logoxide-import",
+    "crates/logoxide-app",
 ]
 # The bindings build against a topos checkout (BoltFFI only exports path dependencies' items), so
 # they are a workspace of their own and the rest builds from crates.io alone
@@ -30,6 +31,7 @@ topos-bible = "0.6.0"
 logoxide-markup = { path = "crates/logoxide-markup", version = "0.1.0", default-features = false, features = ["serde"] }
 logoxide-text = { path = "crates/logoxide-text", version = "0.1.0" }
 logoxide-import = { path = "crates/logoxide-import", version = "0.1.0" }
+logoxide-app = { path = "crates/logoxide-app", version = "0.1.0" }
 topos-bible-index = { version = "0.6.0", default-features = false, features = ["files"] }
 # Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
 topos-bible-formats = { version = "0.6.0", default-features = false, features = ["epub"] }

@@ -178,6 +178,19 @@ impl Default for GitCli {
 }
 
 /**
+Whether the `git` command can be run here (`git --version` answers), asked once. Hosts without it
+fetch over HTTP instead (logoxide-app's `NetFetcher`, through [`crate::archive`])
+*/
+pub fn git_available() -> bool {
+    static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *AVAILABLE.get_or_init(|| {
+        let mut command = Command::new("git");
+        command.arg("--version").current_dir(std::env::temp_dir());
+        run(command, "git --version", LIST_TIMEOUT).is_ok()
+    })
+}
+
+/**
 Runs git. Its `ext::` transport (which runs a command a URL names) is off, and transports git
 leaves to the user's choice (`fd::`, a helper's) are refused, since URLs come from manifests
 anyone writes. Local repositories stay allowed (git counts them among those): the resolver keeps
