@@ -53,9 +53,10 @@ pub enum FetchRequest {
         commit: String,
         urls: Vec<String>,
     },
-    /// GET `url` (a registry's catalog, or a release's archive) and give the answer to
-    /// `provideDownload(url, bytes)`
-    Download { url: String },
+    /// GET the first of `urls` that answers (a registry's catalog, or a release's archive:
+    /// its URL, then its mirrors) and give it to `provideDownload(url, bytes)`; `url` is the
+    /// first of them
+    Download { url: String, urls: Vec<String> },
     /// Read every file under the folder (in the library, or the project's for a path package)
     /// and give them to `provideFiles(location, files)`, or `provideMissing(location)` if it
     /// isn't there
@@ -191,8 +192,28 @@ impl Fetcher for Round<'_> {
         given.ok_or_else(|| {
             self.ask(FetchRequest::Download {
                 url: url.to_string(),
+                urls: vec![url.to_string()],
             })
         })
+    }
+
+    /// One request for every place: the host tries them in turn and gives what answered as
+    /// the first's
+    fn download_any(
+        &self,
+        urls: &[String],
+        check: &dyn Fn(&str, &[u8]) -> biblix_core::Result<()>,
+    ) -> biblix_core::Result<(String, Vec<u8>)> {
+        let url = urls.first().cloned().unwrap_or_default();
+        let given = self.given.borrow().downloads.get(&url).cloned();
+        let bytes = given.ok_or_else(|| {
+            self.ask(FetchRequest::Download {
+                url: url.clone(),
+                urls: urls.to_vec(),
+            })
+        })?;
+        check(&url, &bytes)?;
+        Ok((url, bytes))
     }
 
     fn fetch(
@@ -271,6 +292,7 @@ while (step.tag === "Fetch") {
   const r = step.request;
   if (r.tag === "Refs") installer.provideRefs(r.repository, await get(r.url));
   else if (r.tag === "Archive") installer.provideArchive(r.repository, r.commit, await getFirst(r.urls));
+  else if (r.tag === "Download") installer.provideDownload(r.url, await getFirst(r.urls));
   else if (await exists(r.location)) installer.provideFiles(r.location, await readAll(r.location));
   else installer.provideMissing(r.location);
   step = installer.install(project, UpdateMode.Nothing);

@@ -9,6 +9,12 @@ can host one (a file in a git repository is enough). Two kinds are read:
   publishes as USFM, imported into packages when installed ([`crate::import`])
 - **fetch.bible's manifest** (`manifest.json`, [`FETCH_BIBLE_CATALOG`]): about 1,400 translations
   it publishes as USX, a file per book, imported the same way
+- **CCEL's Bibles** (its page of them, [`CCEL_CATALOG`]): about 50 Bibles it publishes as ThML,
+  a file each. The page gives only titles: the language, rights, and version are in each file's
+  head, read when it's imported
+- **SWORD repositories** (a repository's `mods.d.tar.gz`, every module's conf;
+  [`SWORD_CATALOG`] is CrossWire's): the Bibles and commentaries whose markup is OSIS or ThML,
+  and which aren't locked, each a module zip imported into a package
 
 ```toml
 # catalog.toml
@@ -51,8 +57,55 @@ pub const EBIBLE_CATALOG: &str = "https://ebible.org/Scriptures/translations.csv
 /// fetch.bible's list of the translations it publishes
 pub const FETCH_BIBLE_CATALOG: &str = "https://v1.fetch.bible/manifest.json";
 
+/// CCEL's page of the Bibles it publishes (HTML: it has no other list)
+pub const CCEL_CATALOG: &str = "https://ccel.org/ccel/bible/";
+
+/// CrossWire's main SWORD repository's list of modules (every module's conf)
+pub const SWORD_CATALOG: &str = "https://crosswire.org/ftpmirror/pub/sword/raw/mods.d.tar.gz";
+
+/**
+The SWORD repositories in CrossWire's list of them (`masterRepoList.conf`) served over HTTP(S), by
+the name an import gives each (`sword:crosswire/KJV`). A repository's modules are at its root:
+its catalog is `mods.d.tar.gz` there, a module's zip `packages/<module>.zip`. Others are named by
+their host ([`sword_repository_name`])
+*/
+pub const SWORD_REPOSITORIES: [(&str, &str); 9] = [
+    (
+        "crosswire",
+        "https://crosswire.org/ftpmirror/pub/sword/raw/",
+    ),
+    (
+        "crosswire-beta",
+        "https://crosswire.org/ftpmirror/pub/sword/betaraw/",
+    ),
+    (
+        "crosswire-attic",
+        "https://crosswire.org/ftpmirror/pub/sword/atticraw/",
+    ),
+    (
+        "crosswire-wycliffe",
+        "https://crosswire.org/ftpmirror/pub/sword/wyclifferaw/",
+    ),
+    (
+        "bible-org",
+        "https://crosswire.org/ftpmirror/pub/bible.org/sword/",
+    ),
+    ("ebible", "https://ebible.org/sword/"),
+    ("dbg", "https://crosswire.org/ftpmirror/pub/sword/dbgraw/"),
+    (
+        "lockman",
+        "https://crosswire.org/ftpmirror/pub/sword/lockmanraw/",
+    ),
+    ("xiphos", "http://ftp.xiphos.org/pub/xiphos/"),
+];
+
 /// The catalogs searched when a vault names none
-pub const DEFAULT_CATALOGS: [&str; 2] = [EBIBLE_CATALOG, FETCH_BIBLE_CATALOG];
+pub const DEFAULT_CATALOGS: [&str; 4] = [
+    EBIBLE_CATALOG,
+    FETCH_BIBLE_CATALOG,
+    CCEL_CATALOG,
+    SWORD_CATALOG,
+];
 
 /// Where a listed package comes from
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,6 +118,16 @@ pub enum CatalogSource {
     /// A translation fetch.bible publishes as USX: each of `books` (lowercase USFM codes),
     /// imported into a package
     FetchBible { id: String, books: Vec<String> },
+    /// A Bible CCEL publishes as ThML (`kjv`: `https://ccel.org/ccel/bible/kjv.xml`), imported
+    /// into a package
+    Ccel { id: String },
+    /// A module a SWORD repository publishes (`repository` is its root URL, `module` its name,
+    /// `id` the two as an import names them: `crosswire/KJV`), imported into a package
+    Sword {
+        id: String,
+        repository: String,
+        module: String,
+    },
     /// A package a registry publishes as archives (its entry's `releases`): `catalog` is the
     /// registry's catalog, which a dependency names as its `registry`
     Registry { catalog: String },
@@ -76,6 +139,10 @@ pub struct CatalogRelease {
     pub version: String,
     /// Its `.tar.gz` (relative to the catalog in its file; whole once read)
     pub url: String,
+    /// Other places serving the same archive, tried in order after `url` (relative to the
+    /// catalog too)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<String>,
     /// The SHA-256 of the archive's bytes (`sha256:` and hex)
     pub sha256: String,
     /// What the package's files hash to (`Package::checksum`), as a lock file has it
@@ -92,7 +159,7 @@ pub struct CatalogRelease {
 
 impl CatalogSource {
     /// Every kind's import prefix: what `ebible:<id>` and `fetch:<id>` start with
-    pub const PREFIXES: [&'static str; 2] = ["ebible", "fetch"];
+    pub const PREFIXES: [&'static str; 4] = ["ebible", "fetch", "ccel", "sword"];
 
     /// The prefix that names this kind's imports (`ebible`, `fetch`); a git package has none,
     /// since it's added by its URL
@@ -101,6 +168,8 @@ impl CatalogSource {
             CatalogSource::Git { .. } | CatalogSource::Registry { .. } => None,
             CatalogSource::Ebible { .. } => Some("ebible"),
             CatalogSource::FetchBible { .. } => Some("fetch"),
+            CatalogSource::Ccel { .. } => Some("ccel"),
+            CatalogSource::Sword { .. } => Some("sword"),
         }
     }
 
@@ -108,8 +177,23 @@ impl CatalogSource {
     pub fn import_id(&self) -> Option<&str> {
         match self {
             CatalogSource::Git { .. } | CatalogSource::Registry { .. } => None,
-            CatalogSource::Ebible { id } | CatalogSource::FetchBible { id, .. } => Some(id),
+            CatalogSource::Ebible { id }
+            | CatalogSource::FetchBible { id, .. }
+            | CatalogSource::Ccel { id }
+            | CatalogSource::Sword { id, .. } => Some(id),
         }
+    }
+
+    /**
+    Whether a newer download always has a newer version here, so an import at the catalog's
+    version needn't be downloaded again to know it's current: eBible.org's update dates and
+    SWORD modules' `Version`s do; fetch.bible's year and CCEL's (unlisted) edition don't
+    */
+    pub fn versions_track_updates(&self) -> bool {
+        matches!(
+            self,
+            CatalogSource::Ebible { .. } | CatalogSource::Sword { .. }
+        )
     }
 
     /// What `bx import` takes for it: `ebible:eng-asv`, `fetch:eng_asv`
@@ -213,15 +297,77 @@ pub struct Catalog {
 }
 
 impl Catalog {
+    /// A catalog from a file's bytes: a SWORD repository's when `name` ends in `.tar.gz`, else
+    /// its text ([`Catalog::parse`])
+    pub fn parse_bytes(name: &str, bytes: &[u8]) -> Result<Catalog> {
+        let path = name.split(['?', '#']).next().unwrap_or(name);
+        match path.to_ascii_lowercase().ends_with(".tar.gz") {
+            true => Catalog::parse_sword(name, bytes),
+            false => Catalog::parse(name, &String::from_utf8_lossy(bytes)),
+        }
+    }
+
+    /**
+    A SWORD repository's catalog: its `mods.d.tar.gz` (at `location`, its root's
+    `mods.d.tar.gz`), every module's conf. Listed are the Bibles and commentaries that aren't
+    locked (enciphered without a key) and whose markup is OSIS or ThML (what biblix reads),
+    each with its conf's description, language, version, and license
+    */
+    pub fn parse_sword(location: &str, bytes: &[u8]) -> Result<Catalog> {
+        use std::io::Read;
+        use sword_modules::{Markup, ModuleKind};
+        let bad = |e: std::io::Error| BiblixError::Catalog(format!("mods.d.tar.gz: {e}"));
+        let repository = location.strip_suffix("mods.d.tar.gz").unwrap_or(location);
+        let short = sword_repository_name(repository);
+        let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+        let mut entries = vec![];
+        for file in archive.entries().map_err(bad)? {
+            let mut file = file.map_err(bad)?;
+            let is_conf = (file.path().ok())
+                .is_some_and(|p| p.to_string_lossy().to_ascii_lowercase().ends_with(".conf"));
+            if !file.header().entry_type().is_file() || !is_conf {
+                continue;
+            }
+            let mut data = vec![];
+            file.by_ref()
+                .take(1 << 20)
+                .read_to_end(&mut data)
+                .map_err(bad)?;
+            let Ok(confs) = sword_modules::conf::parse_conf(&conf_text(&data)) else {
+                continue;
+            };
+            for conf in confs {
+                let kind = match conf.module_kind() {
+                    Ok(ModuleKind::Bible) => PackageKind::Bible,
+                    Ok(ModuleKind::Commentary) => PackageKind::Commentary,
+                    _ => continue,
+                };
+                let readable = matches!(conf.source_type(), Markup::Osis | Markup::Thml);
+                if conf.is_locked() || !readable || conf.get("ModDrv") == Some("RawFiles") {
+                    continue;
+                }
+                entries.push(sword_entry(&conf, kind, &short, repository));
+            }
+        }
+        entries.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(Catalog {
+            name: format!("SWORD: {short}"),
+            entries,
+        })
+    }
+
     /// A catalog from a file's text: eBible.org's CSV when `name` ends in `.csv`, fetch.bible's
-    /// manifest when it ends in `.json`, else a `catalog.toml`
+    /// manifest when it ends in `.json`, CCEL's page when it's on ccel.org, else a
+    /// `catalog.toml`
     pub fn parse(name: &str, text: &str) -> Result<Catalog> {
         let path = name
             .split(['?', '#'])
             .next()
             .unwrap_or(name)
             .to_ascii_lowercase();
-        if path.ends_with(".csv") {
+        if path.contains("ccel.org/ccel/") {
+            Catalog::parse_ccel(text)
+        } else if path.ends_with(".csv") {
             Catalog::parse_ebible(text)
         } else if path.ends_with(".json") {
             Catalog::parse_fetch_bible(text)
@@ -322,6 +468,76 @@ impl Catalog {
         })
     }
 
+    /**
+    CCEL's page of its Bibles ([`CCEL_CATALOG`]): each work's id and title, from the links in
+    its headings (`<h2><a href="https://ccel.org/ccel/bible/kjv/kjv">King James Version of the
+    Holy Bible</a></h2>`). The page doesn't say a work's language or rights (its file's head
+    does, [`crate::import::ccel`]): the language is `und` until then, and the license unknown
+    */
+    pub fn parse_ccel(text: &str) -> Result<Catalog> {
+        let mut entries: Vec<CatalogEntry> = vec![];
+        for heading in text.split("<h2").skip(1) {
+            let Some((heading, _)) = heading.split_once("</h2>") else {
+                continue;
+            };
+            let Some(href) = (heading.split_once("href=\""))
+                .and_then(|(_, rest)| rest.split_once('"'))
+                .map(|(href, _)| href)
+            else {
+                continue;
+            };
+            // `…/ccel/bible/<work>/<work>`: a work of the author `bible`
+            let mut parts = href.trim_end_matches('/').rsplit('/');
+            let (Some(_), Some(work), Some("bible")) = (parts.next(), parts.next(), parts.next())
+            else {
+                continue;
+            };
+            let title = (heading.split_once('>'))
+                .and_then(|(_, rest)| rest.split_once("<a"))
+                .map(|(_, rest)| rest)
+                .and_then(|rest| rest.split_once('>'))
+                .and_then(|(_, rest)| rest.split_once("</a>"))
+                .map(|(title, _)| topos_bible_markup::decode_entities(title))
+                .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| work.to_string());
+            if (entries.iter()).any(|e| e.source.import_id() == Some(work)) {
+                continue;
+            }
+            entries.push(CatalogEntry {
+                // Prefixed: CCEL's ids (`kjv`, `web`) are other catalogs' too, and the first of
+                // an id wins when catalogs merge
+                id: format!("ccel-{}", package_id(work)),
+                name: title,
+                abbreviation: work.to_uppercase(),
+                aliases: vec![],
+                language: String::from("und"),
+                language_name: None,
+                description: None,
+                license: None,
+                copyright: None,
+                version: None,
+                kind: PackageKind::Bible,
+                direction: Direction::Ltr,
+                source: CatalogSource::Ccel {
+                    id: work.to_string(),
+                },
+                path: None,
+                releases: vec![],
+            });
+        }
+        if entries.is_empty() {
+            return Err(BiblixError::Catalog(String::from(
+                "CCEL's page lists no Bibles (has it changed?)",
+            )));
+        }
+        entries.sort_by(|a, b| a.id.cmp(&b.id));
+        Ok(Catalog {
+            name: String::from("CCEL"),
+            entries,
+        })
+    }
+
     pub fn parse_toml(text: &str) -> Result<Catalog> {
         Catalog::parse_toml_at(None, text)
     }
@@ -351,12 +567,16 @@ impl Catalog {
                 },
             };
             let releases = (e.releases.into_iter())
-                .map(|r| CatalogRelease {
-                    url: match location {
-                        Some(base) => relative_url(base, &r.url),
-                        None => r.url.clone(),
-                    },
-                    ..r
+                .map(|r| {
+                    let whole = |url: &String| match location {
+                        Some(base) => relative_url(base, url),
+                        None => url.clone(),
+                    };
+                    CatalogRelease {
+                        url: whole(&r.url),
+                        mirrors: r.mirrors.iter().map(whole).collect(),
+                        ..r
+                    }
                 })
                 .collect();
             entries.push(CatalogEntry {
@@ -504,6 +724,13 @@ impl Catalog {
     /// names, if this catalog lists it
     pub fn find_import(&self, name: &str) -> Option<&CatalogEntry> {
         (self.entries.iter()).find(|e| e.source.import_name().as_deref() == Some(name))
+    }
+
+    /// The entry an imported package was made from, by the `upstream` its import wrote
+    /// ([`crate::import::upstream`])
+    pub fn find_upstream(&self, upstream: &str) -> Option<&CatalogEntry> {
+        (self.entries.iter())
+            .find(|e| crate::import::upstream(e).as_deref() == Some(upstream.trim()))
     }
 
     /**
@@ -654,8 +881,9 @@ pub fn relative_url(base: &str, url: &str) -> String {
 }
 
 /// Names a registry can't have: what URLs and other names already start with
-pub const RESERVED_REGISTRY_NAMES: [&str; 10] = [
-    "github", "gitlab", "codeberg", "ebible", "fetch", "http", "https", "file", "ssh", "git",
+pub const RESERVED_REGISTRY_NAMES: [&str; 13] = [
+    "github", "gitlab", "codeberg", "ebible", "fetch", "ccel", "sword", "door43", "http", "https",
+    "file", "ssh", "git",
 ];
 
 /// Whether `name` can name a registry: lowercase letters, digits, `-`, and `_`, not reserved
@@ -702,8 +930,131 @@ fn fetch_bible_license(license: Option<&serde_json::Value>, url: Option<String>)
     }
 }
 
+/// What an import names a SWORD repository by (its root URL): its name in
+/// [`SWORD_REPOSITORIES`], else its host's (`sword.example.org` is `sword-example-org`)
+pub fn sword_repository_name(repository: &str) -> String {
+    let root = repository.trim_end_matches('/');
+    if let Some((name, _)) =
+        (SWORD_REPOSITORIES.iter()).find(|(_, url)| url.trim_end_matches('/') == root)
+    {
+        return name.to_string();
+    }
+    let host = root.split("://").nth(1).unwrap_or(root);
+    let host = host.split('/').next().unwrap_or(host);
+    package_id(host.trim_start_matches("www.")).replace('.', "-")
+}
+
+/// A SWORD repository's catalog, by the name an import gives it (`crosswire`)
+pub fn sword_catalog_url(name: &str) -> Option<String> {
+    (SWORD_REPOSITORIES.iter())
+        .find(|(n, _)| *n == name)
+        .map(|(_, url)| format!("{url}mods.d.tar.gz"))
+}
+
+/// A conf file's text: UTF-8, else Latin-1 (as older confs are)
+fn conf_text(bytes: &[u8]) -> String {
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(_) => bytes.iter().map(|&b| char::from(b)).collect(),
+    }
+}
+
+/// A SWORD module's catalog entry, from its conf
+pub(crate) fn sword_entry(
+    conf: &sword_modules::ModuleConf,
+    kind: PackageKind,
+    repository_name: &str,
+    repository: &str,
+) -> CatalogEntry {
+    let module = conf.name().to_string();
+    let text = |key: &str| {
+        (conf.get(key))
+            .map(|v| v.split_whitespace().collect::<Vec<_>>().join(" "))
+            .filter(|v| !v.is_empty())
+    };
+    // A repository other than CrossWire's adds its name, so its module's id is its own
+    let id = match repository_name {
+        "crosswire" => format!("sword-{}", package_id(&module)),
+        other => format!("sword-{other}-{}", package_id(&module)),
+    };
+    let copyright = text("ShortCopyright").or_else(|| text("Copyright"));
+    CatalogEntry {
+        id,
+        name: text("Description").unwrap_or_else(|| module.clone()),
+        abbreviation: text("Abbreviation").unwrap_or_else(|| module.clone()),
+        aliases: vec![],
+        language: conf.lang().unwrap_or("und").to_string(),
+        language_name: None,
+        // Its first paragraph (the whole is in the package's license file)
+        description: (conf.about_text()).and_then(|a| {
+            (a.split('\n'))
+                .map(|p| p.split_whitespace().collect::<Vec<_>>().join(" "))
+                .find(|p| !p.is_empty())
+        }),
+        license: Some(sword_license(conf.get("DistributionLicense"))),
+        copyright,
+        version: conf.version().and_then(dotted_version),
+        kind,
+        direction: match conf.direction() {
+            sword_modules::conf::Direction::RightToLeft => Direction::Rtl,
+            _ => Direction::Ltr,
+        },
+        source: CatalogSource::Sword {
+            id: format!("{repository_name}/{module}"),
+            repository: repository.to_string(),
+            module,
+        },
+        path: None,
+        releases: vec![],
+    }
+}
+
+/**
+A SWORD module's `DistributionLicense` as SPDX: public domain, a Creative Commons license
+(`Creative Commons: BY-SA 4.0` is `CC-BY-SA-4.0`), the GPL; anything else (`Copyrighted; Free
+non-commercial distribution`) is `LicenseRef-SWORD`, its statement in the package's license file
+*/
+pub(crate) fn sword_license(license: Option<&str>) -> String {
+    let Some(license) = license.map(str::trim) else {
+        return String::from("LicenseRef-SWORD");
+    };
+    let lower = license.to_ascii_lowercase();
+    if lower.contains("public domain") {
+        return String::from("LicenseRef-PublicDomain");
+    }
+    if let Some(cc) = lower.strip_prefix("creative commons:") {
+        let mut parts = cc.split_whitespace();
+        let (Some(terms), version) = (parts.next(), parts.next()) else {
+            return String::from("LicenseRef-SWORD");
+        };
+        if terms.eq_ignore_ascii_case("zero") || terms.eq_ignore_ascii_case("cc0") {
+            return String::from("CC0-1.0");
+        }
+        return format!("CC-{}-{}", terms.to_uppercase(), version.unwrap_or("4.0"));
+    }
+    match lower.as_str() {
+        "gpl" | "gplv2" | "gpl v2" => String::from("GPL-2.0-only"),
+        "gplv3" | "gpl v3" => String::from("GPL-3.0-only"),
+        _ => String::from("LicenseRef-SWORD"),
+    }
+}
+
+/// A semantic version from a dotted one (`1.0` is `1.0.0`, `3.1` is `3.1.0`; more parts than
+/// three, or anything else, is none)
+pub(crate) fn dotted_version(text: &str) -> Option<String> {
+    let parts: Vec<u64> = (text.trim().split('.'))
+        .map(|p| p.parse().ok())
+        .collect::<Option<_>>()?;
+    match parts.as_slice() {
+        [major] => Some(format!("{major}.0.0")),
+        [major, minor] => Some(format!("{major}.{minor}.0")),
+        [major, minor, patch] => Some(format!("{major}.{minor}.{patch}")),
+        _ => None,
+    }
+}
+
 /// A version from a date (`2026-10-08` is `2026.10.8`), so newer downloads have newer versions
-fn date_version(date: &str) -> Option<String> {
+pub(crate) fn date_version(date: &str) -> Option<String> {
     let mut parts = date.split('-').map(|p| p.parse::<u32>().ok());
     let (Some(Some(y)), Some(Some(m)), Some(Some(d))) = (parts.next(), parts.next(), parts.next())
     else {
@@ -756,7 +1107,7 @@ fn score(entry: &CatalogEntry, words: &[String]) -> Option<u32> {
 }
 
 /// A package id from eBible.org's (`eng-asv`, `engkjv2006`): lowercase letters, digits, `-`, `_`
-fn package_id(id: &str) -> String {
+pub(crate) fn package_id(id: &str) -> String {
     id.to_lowercase()
         .chars()
         .map(|c| match c {
@@ -1051,5 +1402,106 @@ git = "https://example.org/bsb"
         assert_eq!(entry.version.as_deref(), Some("1.2.0"));
         assert_eq!(entry.kind, PackageKind::Book);
         assert_eq!(catalog.find("romans").unwrap(), Some(entry));
+    }
+
+    #[test]
+    fn reads_a_sword_repositorys_modules() {
+        let conf = |name: &str, extra: &str| {
+            format!(
+                "[{name}]\nDataPath=./modules/texts/ztext/{name}/\nDescription={name} Bible\nLang=de\n{extra}\n"
+            )
+        };
+        let files = [
+            (
+                "mods.d/kjv.conf",
+                conf(
+                    "KJV",
+                    "ModDrv=zText\nSourceType=OSIS\nVersion=3.1\nDistributionLicense=GPL",
+                ),
+            ),
+            (
+                "mods.d/isv.conf",
+                conf("ISV", "ModDrv=zText\nSourceType=ThML\nDirection=RtoL"),
+            ),
+            (
+                "mods.d/mhc.conf",
+                conf("MHC", "ModDrv=zCom\nSourceType=ThML"),
+            ),
+            // GBF (the default), locked, a dictionary, personal notes: left out
+            ("mods.d/old.conf", conf("Old", "ModDrv=zText")),
+            (
+                "mods.d/nasb.conf",
+                conf("NASB", "ModDrv=zText\nSourceType=OSIS\nCipherKey="),
+            ),
+            (
+                "mods.d/easton.conf",
+                conf("Easton", "ModDrv=RawLD\nSourceType=ThML"),
+            ),
+            (
+                "mods.d/notes.conf",
+                conf("Notes", "ModDrv=RawFiles\nSourceType=ThML"),
+            ),
+        ];
+        let mut tar = tar::Builder::new(Vec::new());
+        for (path, text) in &files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(text.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            tar.append_data(&mut header, path, text.as_bytes()).unwrap();
+        }
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut gz, &tar.into_inner().unwrap()).unwrap();
+        let bytes = gz.finish().unwrap();
+
+        let catalog = Catalog::parse_bytes(SWORD_CATALOG, &bytes).unwrap();
+        assert_eq!(catalog.name, "SWORD: crosswire");
+        let ids: Vec<&str> = catalog.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["sword-isv", "sword-kjv", "sword-mhc"]);
+        let kjv = catalog.find_import("sword:crosswire/KJV").unwrap();
+        assert_eq!(
+            (
+                kjv.version.as_deref(),
+                kjv.license.as_deref(),
+                kjv.language.as_str()
+            ),
+            (Some("3.1.0"), Some("GPL-2.0-only"), "de")
+        );
+        let CatalogSource::Sword {
+            repository, module, ..
+        } = &kjv.source
+        else {
+            panic!()
+        };
+        assert_eq!(
+            crate::import::sword_zip_urls(repository, module),
+            [
+                "https://crosswire.org/ftpmirror/pub/sword/raw/packages/KJV.zip",
+                "https://crosswire.org/ftpmirror/pub/sword/raw/packages/kjv.zip"
+            ]
+        );
+        assert_eq!(catalog.entries[0].direction, Direction::Rtl);
+        assert_eq!(catalog.entries[2].kind, PackageKind::Commentary);
+
+        // Another repository's modules are named by it
+        let other =
+            Catalog::parse_bytes("https://sword.example.org/repo/mods.d.tar.gz", &bytes).unwrap();
+        assert_eq!(other.entries[1].id, "sword-sword-example-org-kjv");
+        assert_eq!(
+            other.entries[1].source.import_name().as_deref(),
+            Some("sword:sword-example-org/KJV")
+        );
+        assert_eq!(
+            sword_catalog_url("crosswire-beta").as_deref(),
+            Some("https://crosswire.org/ftpmirror/pub/sword/betaraw/mods.d.tar.gz")
+        );
+        assert_eq!(
+            sword_license(Some("Creative Commons: BY-NC-ND 3.0")),
+            "CC-BY-NC-ND-3.0"
+        );
+        assert_eq!(
+            sword_license(Some("Copyrighted; Free non-commercial distribution")),
+            "LicenseRef-SWORD"
+        );
     }
 }

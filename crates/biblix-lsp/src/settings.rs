@@ -662,10 +662,14 @@ impl Settings {
             && self.bibles.is_empty()
             && let Some((project, library)) = self.project(roots, machine)?
         {
-            let ids: Vec<String> = project
-                .lock()
+            // Those turned off (`enabled = false`) are left out; naming one in `bibles` reads it
+            let ids: Vec<String> = (project.lock())
                 .map(|l| l.roots().map(|p| p.dependency_name().to_string()).collect())
                 .unwrap_or_default();
+            let ids: Vec<String> = ids
+                .into_iter()
+                .filter(|id| project.is_enabled(id))
+                .collect();
             for id in ids.iter().filter(|id| bible_kind(&project, &library, id)) {
                 add(self.package_bible(&project, &library, id, data)?, &mut list);
             }

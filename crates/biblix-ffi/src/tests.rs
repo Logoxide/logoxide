@@ -198,6 +198,41 @@ git = "https://example.org/romans"
             (String::from("romans"), None),
         ]
     );
+
+    // Turned off: still listed, but not in use, and neither is what it brings in (romans is
+    // asked for itself, so it is)
+    let off = project.set_enabled("books".into(), false).unwrap();
+    assert!(!off.is_enabled("books".into()));
+    assert_eq!(off.enabled_dependencies(), ["romans"]);
+    assert_eq!(off.disabled_dependencies(), ["books"]);
+    assert!(off.manifest_text().contains("enabled = false"));
+    let enabled: Vec<(String, bool)> = (off.packages().into_iter())
+        .map(|p| (p.id, p.enabled))
+        .collect();
+    assert_eq!(
+        enabled,
+        [
+            (String::from("books"), false),
+            (String::from("acts"), false),
+            (String::from("romans"), true),
+        ]
+    );
+    assert!(project.set_enabled("nope".into(), false).is_err());
+    // A package that's off is named from its biblix.toml alone
+    let info = Biblix::new()
+        .package_info("[package]\nid = \"gill\"\nname = \"Gill's Exposition\"\nversion = \"1.0.0\"\nabbreviation = \"Gill\"\nlanguage = \"en\"\nkind = \"collection\"\n".into())
+        .unwrap();
+    assert_eq!(
+        (info.id.as_str(), info.name.as_str()),
+        ("gill", "Gill's Exposition")
+    );
+    assert!(
+        Biblix::new()
+            .package_info("[dependencies]\n".into())
+            .is_err()
+    );
+    let on = off.set_enabled("books".into(), true).unwrap();
+    assert!(on.packages().iter().all(|p| p.enabled));
 }
 
 #[test]
@@ -357,7 +392,7 @@ impl Host {
                     .provide_archive(repository, commit, Self::archive())
                     .unwrap();
             }
-            FetchRequest::Download { url } => {
+            FetchRequest::Download { url, .. } => {
                 let bytes = match url.as_str() {
                     REGISTRY => registry().0.into_bytes(),
                     _ if url == format!("{REGISTRY_DIR}/test/test-1.0.0.tar.gz") => registry().1,
@@ -396,6 +431,7 @@ fn registry() -> (String, Vec<u8>) {
     let release = CatalogRelease {
         version: "1.0.0".into(),
         url: "test/test-1.0.0.tar.gz".into(),
+        mirrors: vec!["https://mirror.example.org/test-1.0.0.tar.gz".into()],
         sha256: publish::sha256(&bytes),
         checksum: Some(biblix_core::package::checksum(&storage).unwrap()),
         size: None,
@@ -441,11 +477,14 @@ fn installing_from_a_registry_of_archives() {
     assert!(matches!(
         host.requests.as_slice(),
         [
-            FetchRequest::Download { url: catalog },
+            FetchRequest::Download { url: catalog, .. },
             FetchRequest::Files { .. },
-            FetchRequest::Download { url: archive },
-        ] if catalog == REGISTRY && archive.ends_with(".tar.gz")
+            FetchRequest::Download { url: archive, urls },
+        ] if catalog == REGISTRY
+            && archive.ends_with(".tar.gz")
+            && urls[1] == "https://mirror.example.org/test-1.0.0.tar.gz"
     ));
+    assert!(lock.contains("mirrors = [\"https://mirror.example.org/test-1.0.0.tar.gz\"]"));
     assert!(lock.contains("archive = \"https://example.org/registry/test/test-1.0.0.tar.gz\""));
     let dir = files[0]
         .path
@@ -466,7 +505,8 @@ fn installing_from_a_registry_of_archives() {
     other.install(&biblix.installer(), &locked);
     assert!(matches!(
         other.requests.as_slice(),
-        [FetchRequest::Files { .. }, FetchRequest::Download { url }] if url.ends_with(".tar.gz")
+        [FetchRequest::Files { .. }, FetchRequest::Download { url, urls }]
+            if url.ends_with(".tar.gz") && urls.len() == 2
     ));
 }
 
@@ -658,7 +698,7 @@ fn catalogs_and_ebible_imports() {
 
     let project = biblix.parse_project(None, None).unwrap();
     assert_eq!(project.catalogs()[0], biblix.ebible_catalog_url());
-    assert_eq!(project.catalogs().len(), 2);
+    assert_eq!(project.catalogs().len(), 4);
     let mine = project.add_catalog("catalog.toml".into()).unwrap();
     assert_eq!(mine.catalogs()[0], "catalog.toml");
     assert!(
@@ -668,8 +708,192 @@ fn catalogs_and_ebible_imports() {
     let ebible = biblix.ebible_catalog_url();
     assert!(mine.is_default_catalog(ebible.clone()));
     let fewer = mine.remove_catalog(ebible.clone()).unwrap();
-    assert_eq!(fewer.catalogs().len(), 2);
+    assert_eq!(fewer.catalogs().len(), 4);
     assert!(!fewer.catalogs().contains(&ebible));
+}
+
+#[test]
+fn ccel_catalog_and_import() {
+    let biblix = Biblix::new();
+    let page = r#"<h2><a href="https://ccel.org/ccel/bible/kjv/kjv">King James Version of the Holy Bible</a></h2>"#;
+    let catalog = biblix
+        .parse_catalog("https://ccel.org/ccel/bible/".into(), page.into())
+        .unwrap();
+    let entry = catalog.search("king james".into(), 0)[0].clone();
+    assert_eq!(
+        entry.source,
+        crate::CatalogSource::Ccel {
+            id: "kjv".into(),
+            url: "https://ccel.org/ccel/bible/kjv.xml".into()
+        }
+    );
+    let xml = r#"<?xml version="1.0"?><ThML><ThML.head><electronicEdInfo><version>1.0</version>
+<DC><DC.Title>The King James Version</DC.Title><DC.Language>eng</DC.Language><DC.Rights>Public Domain</DC.Rights></DC>
+</electronicEdInfo></ThML.head><ThML.body><div1><p><scripture passage="John 3.16" parsed="|John|3|16|0|0" osisRef="Bible:John.3.16" />For God so loved the world.</p></div1></ThML.body></ThML>"#;
+    let files = biblix.import_ccel(entry.clone(), xml.into()).unwrap();
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["COPYRIGHT.txt", "biblix.toml", "thml/kjv.xml"]);
+    let package = biblix.open_package(files, defaults(), vec![]).unwrap();
+    let info = package.info();
+    assert_eq!(
+        (
+            info.language.as_str(),
+            info.version.as_str(),
+            package.books()
+        ),
+        ("eng", "1.0.0", vec![43])
+    );
+    assert!(
+        biblix
+            .import_ccel(entry, b"<!DOCTYPE html><html></html>".to_vec())
+            .is_err()
+    );
+}
+
+#[test]
+fn sword_catalog_and_import() {
+    use std::io::Write;
+    use sword_modules::{Testament, VerseKey, Versification};
+
+    let biblix = Biblix::new();
+    let conf = "[Test]\nDataPath=./modules/texts/rawtext/test/\nModDrv=RawText\nSourceType=OSIS\nEncoding=UTF-8\nLang=en\nVersion=2.1\nDescription=Test Bible\nDistributionLicense=Public Domain\n";
+    // The repository's catalog: every module's conf in a mods.d.tar.gz
+    let mut tar = tar::Builder::new(Vec::new());
+    let mut header = tar::Header::new_gnu();
+    header.set_size(conf.len() as u64);
+    header.set_mode(0o644);
+    header.set_cksum();
+    tar.append_data(&mut header, "mods.d/test.conf", conf.as_bytes())
+        .unwrap();
+    let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    gz.write_all(&tar.into_inner().unwrap()).unwrap();
+    let location = "https://crosswire.org/ftpmirror/pub/sword/raw/mods.d.tar.gz";
+    let catalog = biblix
+        .parse_catalog_bytes(location.into(), gz.finish().unwrap())
+        .unwrap();
+    let entry = catalog.search("test".into(), 0)[0].clone();
+    let crate::CatalogSource::Sword { id, zip_urls, .. } = &entry.source else {
+        panic!("{:?}", entry.source)
+    };
+    assert_eq!(id, "crosswire/Test");
+    assert_eq!(
+        zip_urls[0],
+        "https://crosswire.org/ftpmirror/pub/sword/raw/packages/Test.zip"
+    );
+
+    // The module's zip: a RawText module with John 3:16
+    let v11n = Versification::kjv();
+    let mut index = vec![0u8; v11n.slot_count(Testament::New) as usize * 6];
+    let text = "For God so loved the world.";
+    let key = VerseKey::from_osis("John", 3, 16).unwrap();
+    let at = v11n.index_of(&key).unwrap().slot as usize * 6;
+    index[at + 4..at + 6].copy_from_slice(&(text.len() as u16).to_le_bytes());
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let dir = "modules/texts/rawtext/test";
+    for (path, bytes) in [
+        ("mods.d/test.conf".to_string(), conf.as_bytes()),
+        (format!("{dir}/nt.vss"), &index[..]),
+        (format!("{dir}/nt"), text.as_bytes()),
+    ] {
+        writer
+            .start_file(path, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        writer.write_all(bytes).unwrap();
+    }
+    let zip = writer.finish().unwrap().into_inner();
+    let files = biblix.import_sword(entry, zip).unwrap();
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["COPYRIGHT.txt", "biblix.toml", "osis/John.xml"]);
+    let package = biblix.open_package(files, defaults(), vec![]).unwrap();
+    let info = package.info();
+    assert_eq!(
+        (
+            info.version.as_str(),
+            info.license.as_deref(),
+            package.books()
+        ),
+        ("2.1.0", Some("LicenseRef-PublicDomain"), vec![43])
+    );
+    // A text catalog reads as bytes too
+    let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n";
+    let ebible = biblix.parse_catalog_bytes(biblix.ebible_catalog_url(), csv.as_bytes().to_vec());
+    assert_eq!(ebible.unwrap().count(), 0);
+}
+
+#[test]
+fn updating_an_import() {
+    use std::io::Write;
+    let biblix = Biblix::new();
+    let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n\"eng\",\"eng-asv\",\"English\",\"American Standard Version (1901)\",\"\",\"True\",\"public domain\",\"2026-10-08\",\"ltr\",\"True\",\"ASV\"\n";
+    let catalog = biblix
+        .parse_catalog(biblix.ebible_catalog_url(), csv.into())
+        .unwrap();
+    let zip = |books: &[(&str, &str)]| {
+        let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (path, text) in books {
+            writer
+                .start_file(*path, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(text.as_bytes()).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    };
+    let john = |text: &str| format!("\\id JHN\n\\c 3\n\\p\n\\v 16 {text}\n");
+    let entry = catalog.search("asv".into(), 1)[0].clone();
+    let current = biblix
+        .import_ebible(
+            entry.clone(),
+            zip(&[
+                ("73-JHNeng-asv.usfm", &john("For God so loved the world.")),
+                (
+                    "44-ACTeng-asv.usfm",
+                    "\\id ACT\n\\c 1\n\\p\n\\v 1 The former.\n",
+                ),
+            ]),
+        )
+        .unwrap();
+    // The installed import names its entry
+    let package = biblix
+        .open_package(current.clone(), defaults(), vec![])
+        .unwrap();
+    let upstream = package.info().upstream.clone().unwrap();
+    assert_eq!(catalog.find_upstream(upstream), Some(entry.clone()));
+    assert!(biblix.import_is_current(entry.clone(), "2026.10.8".into()));
+    assert!(!biblix.import_is_current(entry.clone(), "2026.1.1".into()));
+
+    assert_eq!(
+        biblix
+            .update_import(current.clone(), current.clone())
+            .unwrap(),
+        None
+    );
+    let fresh = biblix
+        .import_ebible(
+            entry,
+            zip(&[(
+                "73-JHNeng-asv.usfm",
+                &john("For God so much loved the world."),
+            )]),
+        )
+        .unwrap();
+    let update = biblix.update_import(current, fresh).unwrap().unwrap();
+    assert_eq!(
+        (update.from.as_str(), update.to.as_str(), update.bumped),
+        ("2026.10.8", "2027.0.0", true)
+    );
+    assert_eq!(update.change, crate::ChangeKind::Major);
+    assert_eq!(update.removed, ["usfm/44-ACTeng-asv.usfm"]);
+    assert!(
+        update.description.contains("1 verse reworded"),
+        "{}",
+        update.description
+    );
+    let manifest = update
+        .files
+        .iter()
+        .find(|f| f.path == "biblix.toml")
+        .unwrap();
+    assert!(String::from_utf8_lossy(&manifest.bytes).contains("version = \"2027.0.0\""));
 }
 
 #[test]

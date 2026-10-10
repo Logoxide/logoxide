@@ -118,6 +118,8 @@ pub struct MediaFile {
     /// Its name in the package: `JHN.mp3`
     pub path: String,
     pub url: String,
+    /// Other places serving the same bytes, to try in order when `url` fails
+    pub mirrors: Vec<String>,
     pub size: u64,
     /// Lowercase hex
     pub sha256: String,
@@ -130,6 +132,7 @@ impl From<&biblix_core::media::MediaFile> for MediaFile {
         Self {
             path: f.path.clone(),
             url: f.url.clone(),
+            mirrors: f.mirrors.clone(),
             size: f.size,
             sha256: f.sha256.clone(),
             book: f.book.clone(),
@@ -173,6 +176,7 @@ impl From<MediaFile> for biblix_core::media::MediaFile {
         Self {
             path: f.path,
             url: f.url,
+            mirrors: f.mirrors,
             size: f.size,
             sha256: f.sha256,
             book: f.book,
@@ -355,8 +359,9 @@ impl BiblixPackage {
         books.iter().map(|(id, _)| id.0).collect()
     }
 
-    /// The audio and video it lists (by URL and hash; download one when it's played, check it
-    /// with `Biblix::verify_media`, and keep it at `Biblix::media_store_path`)
+    /// The audio and video it lists (by URL and hash; download one when it's played, from its
+    /// `url` or else each of its `mirrors` in turn, check it with `Biblix::verify_media`, and
+    /// keep it at `Biblix::media_store_path`)
     pub fn media(&self) -> Vec<MediaFile> {
         (self.cached.package().manifest().media.iter())
             .flat_map(|m| m.files.iter())

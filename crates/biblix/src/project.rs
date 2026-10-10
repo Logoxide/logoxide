@@ -176,6 +176,72 @@ impl Project {
         self.reparse()
     }
 
+    /// Whether a dependency is on (any name the manifest doesn't have is)
+    pub fn is_enabled(&self, name: &str) -> bool {
+        self.manifest
+            .dependencies
+            .get(name)
+            .is_none_or(Dependency::enabled)
+    }
+
+    /**
+    Turns a dependency on or off (`enabled = false`, kept in the manifest and the lock, and
+    installed, but not read); whether the manifest has it. Turning it on takes the key out
+    */
+    pub fn set_enabled(&mut self, name: &str, enabled: bool) -> Result<bool> {
+        let Some(item) = (self.doc.get_mut("dependencies"))
+            .and_then(Item::as_table_like_mut)
+            .and_then(|t| t.get_mut(name))
+        else {
+            return Ok(false);
+        };
+        let table = item
+            .as_table_like_mut()
+            .ok_or_else(|| BiblixError::Manifest(format!("dependency `{name}` isn't a table")))?;
+        if enabled {
+            table.remove("enabled");
+        } else {
+            table.insert("enabled", value(false));
+        }
+        // `{ path = "bsb", enabled = false }`, not `{ path = "bsb" , enabled = false }`
+        if let Some(inline) = item.as_inline_table_mut() {
+            inline.fmt();
+        }
+        self.reparse()?;
+        Ok(true)
+    }
+
+    /// What the manifest calls the dependencies that are on (`enabled`) or off, by name
+    pub fn dependencies_enabled(&self, enabled: bool) -> Vec<String> {
+        (self.manifest.dependencies.iter())
+            .filter(|(_, d)| d.enabled() == enabled)
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /**
+    The lock's packages in use: those the manifest asks for and hasn't turned off, and what
+    each brings in (a package another one in use brings in is in use, even if it's off itself)
+    */
+    pub fn in_use(&self) -> Vec<&crate::LockedPackage> {
+        let Some(lock) = &self.lock else {
+            return vec![];
+        };
+        let mut todo: Vec<&crate::LockedPackage> = (lock.roots())
+            .filter(|p| self.is_enabled(p.dependency_name()))
+            .collect();
+        let mut seen = std::collections::BTreeSet::new();
+        let mut used = vec![];
+        while let Some(locked) = todo.pop() {
+            if !seen.insert(locked.name()) {
+                continue;
+            }
+            todo.extend((locked.dependencies.iter()).filter_map(|name| lock.named(name)));
+            used.push(locked);
+        }
+        used
+    }
+
     /// Removes a dependency; whether it was there
     pub fn remove(&mut self, name: &str) -> Result<bool> {
         let removed = self
@@ -199,8 +265,8 @@ impl Project {
 
     /**
     Adds a catalog to search (a URL or a path relative to the project) to `[settings] catalogs`;
-    whether it wasn't searched already. A default one (eBible.org's or fetch.bible's) is only
-    written when the defaults are turned off
+    whether it wasn't searched already. A default one ([`crate::catalog::DEFAULT_CATALOGS`]) is
+    only written when the defaults are turned off
     */
     pub fn add_catalog(&mut self, location: &str) -> Result<bool> {
         if self.manifest.catalogs().iter().any(|c| c == location) {
@@ -231,8 +297,8 @@ impl Project {
     }
 
     /**
-    Stops searching a catalog; whether it was searched. Removing eBible.org's or fetch.bible's
-    list turns the defaults off (`default-catalogs = false`) and names the other one instead
+    Stops searching a catalog; whether it was searched. Removing a default one turns the defaults
+    off (`default-catalogs = false`) and names the others instead
     */
     pub fn remove_catalog(&mut self, location: &str) -> Result<bool> {
         if !self.manifest.catalogs().iter().any(|c| c == location) {
@@ -372,8 +438,10 @@ impl Project {
         let Some(lock) = &self.lock else {
             return Ok(bibles);
         };
-        // The manifest's packages, and what each collection among them brings in
-        let mut todo: Vec<&crate::LockedPackage> = lock.roots().collect();
+        // The manifest's packages that are on, and what each collection among them brings in
+        let mut todo: Vec<&crate::LockedPackage> = (lock.roots())
+            .filter(|p| self.is_enabled(p.dependency_name()))
+            .collect();
         todo.reverse();
         let mut seen = std::collections::BTreeSet::new();
         while let Some(locked) = todo.pop() {
@@ -410,11 +478,11 @@ impl Project {
         Ok(translations)
     }
 
-    /// The versification maps in the lock (any package of it, so a Bible's own dependency on a
-    /// map counts too)
+    /// The versification maps in use (any package of the lock in use, so a Bible's own
+    /// dependency on a map counts too; see [`Project::in_use`])
     pub fn versifications(&self, library: &Library) -> Result<Versifications> {
         let mut maps = Versifications::default();
-        for locked in self.lock.iter().flat_map(|lock| &lock.packages) {
+        for locked in self.in_use() {
             let package = library.open(locked, &self.dir)?;
             if package.info().kind == PackageKind::VersificationMap {
                 maps.add(VersificationMap::from_package(&package)?);
@@ -502,7 +570,89 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::catalog::{DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
+    use crate::catalog::{
+        CCEL_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG, SWORD_CATALOG,
+    };
+
+    #[test]
+    fn dependencies_are_turned_off_and_on() {
+        let manifest = r#"# my vault
+[dependencies]
+kjv = { git = "https://example.org/kjv", version = "1" } # the old one
+bsb = { path = "bsb" }
+
+[dependencies.library]
+path = "library"
+"#;
+        let lock = r#"version = 1
+dependencies = ["kjv 1.0.0", "bsb 1.0.0", "library 1.0.0"]
+
+[[package]]
+id = "kjv"
+version = "1.0.0"
+path = "kjv"
+
+[[package]]
+id = "bsb"
+version = "1.0.0"
+path = "bsb"
+
+[[package]]
+id = "library"
+version = "1.0.0"
+path = "library"
+dependencies = ["gill 1.0.0"]
+
+[[package]]
+id = "gill"
+version = "1.0.0"
+path = "gill"
+"#;
+        let mut project = Project::from_text("", Some(manifest), Some(lock)).unwrap();
+        let in_use = |p: &Project| -> Vec<String> {
+            let mut ids: Vec<String> = p.in_use().iter().map(|l| l.id.clone()).collect();
+            ids.sort();
+            ids
+        };
+        assert_eq!(in_use(&project), ["bsb", "gill", "kjv", "library"]);
+        // Off: kept in the manifest, with its comment, whatever form it was written in
+        for name in ["kjv", "bsb", "library"] {
+            assert!(project.set_enabled(name, false).unwrap());
+            assert!(!project.is_enabled(name));
+        }
+        assert!(!project.set_enabled("nope", false).unwrap());
+        let text = project.manifest_text();
+        assert!(text.contains("# my vault"), "{text}");
+        assert!(
+            text.contains(r#"version = "1", enabled = false } # the old one"#),
+            "{text}"
+        );
+        assert!(
+            text.contains(r#"bsb = { path = "bsb", enabled = false }"#),
+            "{text}"
+        );
+        assert!(
+            text.contains("path = \"library\"\nenabled = false"),
+            "{text}"
+        );
+        // What a package that's off brings in is off too
+        assert!(in_use(&project).is_empty());
+        assert!(project.dependencies_enabled(true).is_empty());
+        assert_eq!(
+            project.dependencies_enabled(false),
+            ["bsb", "kjv", "library"]
+        );
+        // And on again: the key goes
+        project.set_enabled("library", true).unwrap();
+        project.set_enabled("kjv", true).unwrap();
+        assert_eq!(in_use(&project), ["gill", "kjv", "library"]);
+        assert_eq!(project.dependencies_enabled(true), ["kjv", "library"]);
+        assert_eq!(project.dependencies_enabled(false), ["bsb"]);
+        let text = project.manifest_text();
+        assert!(text.contains(r#"version = "1" } # the old one"#), "{text}");
+        assert!(!text.contains("path = \"library\"\nenabled"), "{text}");
+        assert_eq!(project.manifest().dependencies.len(), 3);
+    }
 
     #[test]
     fn registries_are_named_and_removed() {
@@ -541,15 +691,22 @@ mod tests {
             [
                 "https://example.org/catalog.toml",
                 EBIBLE_CATALOG,
-                FETCH_BIBLE_CATALOG
+                FETCH_BIBLE_CATALOG,
+                CCEL_CATALOG,
+                SWORD_CATALOG
             ]
         );
 
-        // Removing a default keeps the other one, by name
+        // Removing a default keeps the others, by name
         assert!(project.remove_catalog(EBIBLE_CATALOG).unwrap());
         assert_eq!(
             project.manifest().catalogs(),
-            ["https://example.org/catalog.toml", FETCH_BIBLE_CATALOG]
+            [
+                "https://example.org/catalog.toml",
+                FETCH_BIBLE_CATALOG,
+                CCEL_CATALOG,
+                SWORD_CATALOG
+            ]
         );
         assert!(project.manifest_text().contains("default-catalogs = false"));
         // Added back: the defaults again, and nothing about them written

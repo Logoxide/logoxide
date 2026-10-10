@@ -78,6 +78,9 @@ pub struct LockedPackage {
     /// That release's archive, and the SHA-256 of its bytes (`sha256:` and hex)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archive: Option<String>,
+    /// Other places serving the same archive, tried in order after `archive`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
     /// The checksum of every file (not for path packages, whose files change as they're written)
@@ -188,6 +191,7 @@ mod tests {
             path: None,
             registry: None,
             archive: None,
+            mirrors: vec![],
             sha256: None,
             checksum: Some("sha256:00".into()),
             features: vec!["sword".into()],

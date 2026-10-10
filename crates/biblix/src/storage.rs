@@ -27,6 +27,11 @@ pub trait Storage: Send + Sync {
         Err(BiblixError::ReadOnly)
     }
 
+    /// Removes a file (one that isn't there is no error)
+    fn remove(&self, _path: &str) -> Result<()> {
+        Err(BiblixError::ReadOnly)
+    }
+
     fn exists(&self, path: &str) -> bool {
         self.read(path).is_ok()
     }
@@ -132,6 +137,25 @@ impl Storage for FsStorage {
         std::fs::rename(&partial, &full).map_err(|e| BiblixError::io(path, e))
     }
 
+    /// Removes a file, then the folders it leaves empty (never the root)
+    fn remove(&self, path: &str) -> Result<()> {
+        let full = self.path(path)?;
+        match std::fs::remove_file(&full) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => return Err(BiblixError::io(path, e)),
+        }
+        let mut dir = full.parent();
+        while let Some(folder) = dir.filter(|d| *d != self.root && d.starts_with(&self.root)) {
+            // Only an empty folder is removed
+            if std::fs::remove_dir(folder).is_err() {
+                break;
+            }
+            dir = folder.parent();
+        }
+        Ok(())
+    }
+
     fn exists(&self, path: &str) -> bool {
         self.path(path).is_ok_and(|p| p.exists())
     }
@@ -201,6 +225,13 @@ impl Storage for MemoryStorage {
         let path = checked(path)?;
         let mut files = self.files.write().map_err(|e| BiblixError::io(path, e))?;
         files.insert(path.to_string(), bytes.to_vec());
+        Ok(())
+    }
+
+    fn remove(&self, path: &str) -> Result<()> {
+        let path = checked(path)?;
+        let mut files = self.files.write().map_err(|e| BiblixError::io(path, e))?;
+        files.remove(path);
         Ok(())
     }
 }

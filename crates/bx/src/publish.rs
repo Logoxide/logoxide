@@ -231,6 +231,7 @@ pub fn publish(dir: &Path, host: &Host, git: &biblix::git::GitCli) -> biblix::Re
     let release = |url: String| CatalogRelease {
         version: info.version.to_string(),
         url,
+        mirrors: vec![],
         sha256: sha256.clone(),
         checksum: Some(packed.checksum.clone()),
         size: Some(packed.bytes.len() as u64),

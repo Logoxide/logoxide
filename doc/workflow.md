@@ -30,8 +30,10 @@ cd ~/Notes
 bx init                                   # biblix.toml here, without [package]
 ```
 
-Find a translation. The project's own catalogs are searched first, then eBible.org's and
-fetch.bible's lists (about 2,900 translations):
+Find a translation. The project's own catalogs are searched first, then four publishers' own
+lists of their downloads: eBible.org's and fetch.bible's (about 2,900 translations), CCEL's
+Bibles (about 50, as ThML), and CrossWire's SWORD repository (about 250 Bibles and 40
+commentaries whose markup is OSIS or ThML):
 
 ```sh
 bx search "american standard"
@@ -39,7 +41,15 @@ bx search "american standard"
 #     bx import ebible:eng-asv
 # ASV (eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
 #     bx import fetch:eng_asv
+# ASV (sword-asv): American Standard Version (1901), en, LicenseRef-PublicDomain
+#     bx import sword:crosswire/ASV
+# …
+# ASV (ccel-asv): American Standard Version of the Holy Bible (1901), und, no license given
+#     bx import ccel:asv
 ```
+
+CCEL's page of its Bibles gives only their titles (`und` for the language until it's imported:
+each file's head says its language, rights, and version).
 
 Before adding a package published as a git repository, look at its newest release without
 downloading its text (a partial clone reads only its summary):
@@ -66,8 +76,23 @@ bx list
 ```
 
 An import's prefix is its catalog's kind (`ebible:` for eBible.org's list, `fetch:` for
-fetch.bible's), and `bx import` looks it up in the project's catalogs in order, the same ones
-`bx search` reads (`bx catalog list`).
+fetch.bible's, `ccel:` for CCEL's, `sword:<repository>/<module>` for a SWORD repository's), and
+`bx import` looks it up in the project's catalogs in order, the same ones `bx search` reads
+(`bx catalog list`). The other SWORD repositories CrossWire lists are known by name, so
+`bx import sword:crosswire-beta/<module>` works without adding their catalog; any other is added
+by its `mods.d.tar.gz` (`bx catalog add https://example.org/sword/mods.d.tar.gz`).
+
+```sh
+bx import ccel:kjv              # CCEL's ThML, a whole Bible in one file, with the Apocrypha
+bx import sword:crosswire/KJV   # the module's OSIS entries, a file a book (osis/John.xml)
+bx import sword:crosswire/MHCC  # a commentary: kind = "commentary", an entry a span of verses
+```
+
+Each import's version is its publisher's: eBible.org's update date (`2026.10.8`), CCEL's edition
+(`1.0.0`, else the file's date), a SWORD module's `Version` (`3.1.0`). Its license is shown as
+the publisher states it (public domain, a Creative Commons license, the GPL), else
+`LicenseRef-<publisher>` with the statement in the package's license file. Locked SWORD modules
+and those in GBF or plain text aren't listed: biblix reads OSIS and ThML.
 
 The manifest now reads:
 
@@ -148,6 +173,23 @@ bx clean --remove                         # delete them
 
 An update never crosses a major version: `version = "1"` stays on 1.x, because a major version
 means verses were renumbered or removed, and verse links could point at other text.
+
+Imports aren't followed by `bx update` (they're path packages: nothing upstream is locked).
+`bx import --update` makes each one again from its publisher's download and replaces those that
+changed, saying how (a reader's files beside them stay):
+
+```sh
+bx import --update --dry-run              # what would change
+# ccel-darby 1.0.0 → 1.1.0: 1 verse reworded (a Minor change, the version raised for it: the publisher's isn't newer)
+# eng-asv 2026.10.8: up to date (ebible:eng-asv)
+bx import --update                        # replace the changed ones and lock them again
+bx import --update eng-asv                # just one (its name, or ebible:eng-asv)
+```
+
+eBible.org's and SWORD imports are downloaded only when the catalog lists a newer version.
+fetch.bible's and CCEL's are downloaded each time, since their texts change without a new
+version; when one did, its version is raised by what changed (a reworded verse is minor), so
+one version never names two texts.
 
 ## Publishing: a package of your own
 
@@ -284,6 +326,11 @@ host (a web server, GitHub Pages, an S3 bucket). The Obsidian plugin installs fr
 on the web too, phones included; a collection's packages can come from a registry
 (`{ registry = …, version = … }` in its `[dependencies]`).
 
+Anyone can mirror a release: add `mirrors = ["https://…/the-dorean-principle-1.0.2.tar.gz"]` to
+its `[[package.release]]` in `catalog.toml` (relative to the catalog, like `url`). Installing
+tries `url`, then each mirror, and takes the first whose bytes hash as listed; the lock keeps the
+mirrors too.
+
 ### Titles
 
 Each file a reader sees has a title, which apps name it by (the Obsidian plugin's
@@ -298,10 +345,13 @@ Recordings are listed, never stored: each file's URL, size, and SHA-256, and a W
 where each verse is (`timings/JHN.vtt`, cues named `JHN 3:16`):
 
 ```sh
-bx media add JHN.mp3 --url https://example.org/audio/JHN.mp3 --book JHN
+bx media add JHN.mp3 --url https://example.org/audio/JHN.mp3 --url https://archive.org/download/bsb-audio/JHN.mp3 --book JHN
 bx media check --offline                  # the timings against the text
-bx media check                            # and download and check every file
+bx media check                            # and download and check every file, from every URL
 ```
+
+A second `--url` (and more) is a mirror (`mirrors = […]`): players try `url`, then each mirror in
+turn. The hash makes any copy as good as the first, so a file can be served from anywhere.
 
 ## Books and collections
 
@@ -476,10 +526,12 @@ What's missing here is biblix's side, not topos's:
 - **topos already finds references** inside all of these, and inside EPUBs (each match located by
   an EPUB CFI) and PDFs, so a ThML commentary or an EPUB in a vault is searched today.
 - **biblix reads Bibles in USX, USFM, OSIS, and ThML** (a whole Bible in one file works: the
-  KJV from open-bibles' OSIS and from CCEL's ThML both give 31,102 verses in its 66 books). What
-  it doesn't read yet is everything that isn't a Bible: a commentary needs its sections tied to
-  the verses they're on, and its own summary (sections, not verse counts). SWORD needs wiring to
-  sword-modules.
+  KJV from open-bibles' OSIS and from CCEL's ThML both give 31,102 verses in its 66 books).
+- **SWORD commentaries import** (`bx import sword:crosswire/MHCC`): each entry is a span of the
+  verses it's on (an entry SWORD links over a range is one bridged span), in OSIS or ThML a book
+  a file, so the package opens and versions like a Bible. What isn't there yet: a commentary's
+  own summary (sections, not verse counts), reading one in the Obsidian plugin (it installs, but
+  gets no reader), and CCEL's commentaries (its import takes Bibles).
 
 What's below is how it could look, not what runs.
 
@@ -511,9 +563,9 @@ sword = []
 ```
 
 ```sh
-bx import sword:MHC                       # from CrossWire's repository, through sword-modules
-bx import ccel:henry/mhc                  # CCEL's ThML (downloads need a login: a file instead)
-bx import ./mhc.thml --kind commentary    # a file someone already has
+bx import sword:crosswire/MHC             # from CrossWire's repository, through sword-modules (works)
+bx import ccel:henry/mhc                  # CCEL's ThML commentaries (not yet: CCEL's import takes Bibles)
+bx import ./mhc.thml --kind commentary    # a file someone already has (not yet)
 ```
 
 ## What isn't there yet
@@ -523,6 +575,5 @@ bx import ./mhc.thml --kind commentary    # a file someone already has
   `file://` URLs exist.
 - **Installing bx** needs a topos checkout next to biblix (`cargo install --path crates/bx`)
   until topos 0.6 is released.
-- `bx update` doesn't yet say when a newer major version exists; `ver=` links,
-  SWORD, Door43, and CCEL imports, and an audio player are later steps (`doc/biblix.md` in
-  topos).
+- `bx update` doesn't yet say when a newer major version exists; Door43 imports and an audio
+  player are later steps (`doc/biblix.md` in topos).

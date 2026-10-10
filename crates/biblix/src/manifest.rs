@@ -229,7 +229,7 @@ pub enum Dependency {
     Detailed(DetailedDependency),
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct DetailedDependency {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -266,6 +266,42 @@ pub struct DetailedDependency {
     /// Its aliases here, in place of the package's own
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aliases: Option<Vec<String>>,
+    /// `false` turns it off without removing it: it stays locked and installed (so `bx clean`
+    /// keeps it, and turning it on again needs no download), but nothing reads it
+    #[serde(default = "yes", skip_serializing_if = "Clone::clone")]
+    pub enabled: bool,
+}
+
+/// As a manifest without the fields reads: default features and the dependency on
+impl Default for DetailedDependency {
+    fn default() -> Self {
+        Self {
+            git: None,
+            registry: None,
+            path: None,
+            version: None,
+            tag: None,
+            rev: None,
+            branch: None,
+            optional: false,
+            features: vec![],
+            default_features: true,
+            package: None,
+            abbreviation: None,
+            aliases: None,
+            enabled: true,
+        }
+    }
+}
+
+impl Dependency {
+    /// Whether it's on (`enabled = false` turns it off without removing it)
+    pub fn enabled(&self) -> bool {
+        match self {
+            Dependency::Version(_) => true,
+            Dependency::Detailed(d) => d.enabled,
+        }
+    }
 }
 
 impl DetailedDependency {
@@ -601,7 +637,9 @@ compare = ["mine"]
 
     #[test]
     fn a_vaults_catalogs_come_before_the_defaults() {
-        use crate::catalog::{DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG};
+        use crate::catalog::{
+            CCEL_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG, SWORD_CATALOG,
+        };
         let catalogs = |settings: &str| {
             Manifest::parse(&format!("[dependencies]\n[settings]\n{settings}"))
                 .unwrap()
@@ -610,13 +648,25 @@ compare = ["mine"]
         assert_eq!(Manifest::default().catalogs(), DEFAULT_CATALOGS);
         assert_eq!(
             catalogs("catalogs = [\"mine.toml\"]"),
-            ["mine.toml", EBIBLE_CATALOG, FETCH_BIBLE_CATALOG]
+            [
+                "mine.toml",
+                EBIBLE_CATALOG,
+                FETCH_BIBLE_CATALOG,
+                CCEL_CATALOG,
+                SWORD_CATALOG
+            ]
         );
         // Named again: listed once, where the vault puts it
         let again = format!("catalogs = [\"{FETCH_BIBLE_CATALOG}\", \"mine.toml\"]");
         assert_eq!(
             catalogs(&again),
-            [FETCH_BIBLE_CATALOG, "mine.toml", EBIBLE_CATALOG]
+            [
+                FETCH_BIBLE_CATALOG,
+                "mine.toml",
+                EBIBLE_CATALOG,
+                CCEL_CATALOG,
+                SWORD_CATALOG
+            ]
         );
         assert_eq!(
             catalogs("catalogs = [\"mine.toml\"]\ndefault-catalogs = false"),

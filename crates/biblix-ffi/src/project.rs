@@ -62,6 +62,9 @@ pub struct LockedEntry {
     /// when the manifest doesn't ask for it itself. A collection's packages are the project's
     /// Bibles and books; another package's dependencies aren't
     pub dependency_of: Option<String>,
+    /// Whether it's in use: `false` when the manifest turned it off (`enabled = false`), or
+    /// turned off what brings it in. It stays installed; hosts don't read it
+    pub enabled: bool,
 }
 
 impl From<&LockedPackage> for LockedEntry {
@@ -81,6 +84,7 @@ impl From<&LockedPackage> for LockedEntry {
             git: locked.git.clone(),
             commit: locked.commit.clone(),
             dependency_of: None,
+            enabled: true,
         }
     }
 }
@@ -192,6 +196,8 @@ impl BiblixProject {
         };
         let manifest = self.project.manifest();
         let mut entries = vec![];
+        let in_use: std::collections::BTreeSet<String> =
+            self.project.in_use().iter().map(|p| p.name()).collect();
         // A package both asked for and brought in is listed as asked for
         let roots: std::collections::BTreeSet<String> = lock.roots().map(|p| p.name()).collect();
         let mut seen = std::collections::BTreeSet::new();
@@ -210,6 +216,7 @@ impl BiblixProject {
                     entry.aliases = d.aliases.clone();
                 }
                 entry.dependency_of = of;
+                entry.enabled = in_use.contains(&locked.name());
                 let of = Some(root.dependency_name().to_string());
                 let inside = (locked.dependencies.iter()).filter_map(|name| lock.named(name));
                 todo.extend(inside.rev().map(|p| (p, of.clone())));
@@ -277,7 +284,8 @@ impl BiblixProject {
         Ok(Self { project })
     }
 
-    /// Whether a catalog is one of the defaults (eBible.org's or fetch.bible's list)
+    /// Whether a catalog is one of the defaults (eBible.org's, fetch.bible's, CCEL's, and
+    /// CrossWire's SWORD repository's lists)
     pub fn is_default_catalog(&self, location: String) -> bool {
         biblix_core::catalog::DEFAULT_CATALOGS.contains(&location.as_str())
     }
@@ -290,8 +298,8 @@ impl BiblixProject {
         Ok(Self { project })
     }
 
-    /// This project without a catalog. Removing eBible.org's or fetch.bible's list turns the
-    /// defaults off and keeps the other one
+    /// This project without a catalog. Removing a default one turns the defaults off and keeps
+    /// the others
     pub fn remove_catalog(&self, location: String) -> Result<BiblixProject, BiblixError> {
         let mut project = self.project.clone();
         project.remove_catalog(&location)?;
@@ -314,5 +322,35 @@ impl BiblixProject {
         let mut project = self.project.clone();
         project.remove(&name)?;
         Ok(Self { project })
+    }
+
+    /**
+    This project with a dependency turned on or off (`enabled = false`): off, it stays in the
+    manifest and the lock, and installed, but `packages()` marks it (and what it brings in)
+    `enabled: false` for hosts to leave out. An error for a name the manifest doesn't have
+    */
+    pub fn set_enabled(&self, name: String, enabled: bool) -> Result<BiblixProject, BiblixError> {
+        let mut project = self.project.clone();
+        if !project.set_enabled(&name, enabled)? {
+            return Err(BiblixError::NotFound {
+                message: format!("no dependency `{name}`"),
+            });
+        }
+        Ok(Self { project })
+    }
+
+    /// Whether a dependency is on (any name the manifest doesn't have is)
+    pub fn is_enabled(&self, name: String) -> bool {
+        self.project.is_enabled(&name)
+    }
+
+    /// What the manifest calls its dependencies that are on, by name
+    pub fn enabled_dependencies(&self) -> Vec<String> {
+        self.project.dependencies_enabled(true)
+    }
+
+    /// What the manifest calls its dependencies that are turned off (`enabled = false`), by name
+    pub fn disabled_dependencies(&self) -> Vec<String> {
+        self.project.dependencies_enabled(false)
     }
 }

@@ -142,6 +142,19 @@ impl Biblix {
         BiblixPackage::open_dir(dir, features, cache_dir)
     }
 
+    /// What a package is, from its `biblix.toml`'s text alone (without reading its text): to name
+    /// one that's turned off. An error for a manifest without `[package]` (a vault's)
+    pub fn package_info(&self, manifest: String) -> Result<PackageInfo, BiblixError> {
+        let parsed = biblix_core::manifest::Manifest::parse(&manifest)?;
+        let info = parsed
+            .package
+            .as_ref()
+            .ok_or_else(|| BiblixError::Manifest {
+                message: String::from("no [package]: a vault's biblix.toml, not a package's"),
+            })?;
+        Ok(PackageInfo::from(info))
+    }
+
     /// A project from its `biblix.toml`'s text (a new, empty one without it) and its
     /// `biblix.lock`'s, if it has one
     pub fn parse_project(
@@ -169,8 +182,9 @@ impl Biblix {
         BiblixVersifications::default()
     }
 
-    /// A catalog from its file's text: eBible.org's CSV when `location` ends in `.csv`, else a
-    /// `catalog.toml`
+    /// A catalog from its file's text: eBible.org's CSV when `location` ends in `.csv`,
+    /// fetch.bible's manifest when it ends in `.json`, CCEL's page when it's on ccel.org, else a
+    /// `catalog.toml`. A SWORD repository's (`.tar.gz`) is bytes: `parse_catalog_bytes`
     pub fn parse_catalog(
         &self,
         location: String,
@@ -179,6 +193,32 @@ impl Biblix {
         Ok(BiblixCatalog {
             catalog: biblix_core::catalog::Catalog::parse(&location, &text)?,
         })
+    }
+
+    /// A catalog from its file's bytes: a SWORD repository's `mods.d.tar.gz` when `location` ends
+    /// in `.tar.gz`, else as `parse_catalog` reads its text (so any catalog can be read this way)
+    pub fn parse_catalog_bytes(
+        &self,
+        location: String,
+        bytes: Vec<u8>,
+    ) -> Result<BiblixCatalog, BiblixError> {
+        Ok(BiblixCatalog {
+            catalog: biblix_core::catalog::Catalog::parse_bytes(&location, &bytes)?,
+        })
+    }
+
+    /// A package made from a SWORD module's zip (the first of its entry's `zipUrls` that
+    /// answers): its files, relative to the folder to write them in, like `import_ebible`. Each
+    /// book is a file in the module's markup (OSIS or ThML); its conf gives the version, license,
+    /// and language. A Bible or a commentary
+    pub fn import_sword(
+        &self,
+        entry: CatalogEntry,
+        zip: Vec<u8>,
+    ) -> Result<Vec<PackageFile>, BiblixError> {
+        let files = biblix_core::MemoryStorage::new();
+        biblix_core::import::sword(&entry.into(), &zip, &files)?;
+        create::files_of(&files)
     }
 
     /// A package made from eBible.org's download of a catalog entry (`zipUrl`'s bytes): its
@@ -205,6 +245,61 @@ impl Biblix {
         let files = biblix_core::MemoryStorage::new();
         biblix_core::import::fetch_bible(&entry.into(), &books, &files)?;
         create::files_of(&files)
+    }
+
+    /// A package made from a Bible CCEL publishes (the ThML at its entry's `url`): its files,
+    /// relative to the folder to write them in, like `import_ebible`. The file's head names it
+    /// and gives its language, rights, and version; a page in its place (a work CCEL restricts)
+    /// is an error
+    pub fn import_ccel(
+        &self,
+        entry: CatalogEntry,
+        xml: Vec<u8>,
+    ) -> Result<Vec<PackageFile>, BiblixError> {
+        let files = biblix_core::MemoryStorage::new();
+        biblix_core::import::ccel(&entry.into(), &xml, &files)?;
+        create::files_of(&files)
+    }
+
+    /**
+    Whether an import at `installed_version` is as new as its catalog entry lists, so it needn't
+    be downloaded to know: eBible.org's and SWORD's versions follow their updates; fetch.bible's
+    and CCEL's don't, so those are always `false` (download, then `update_import`)
+    */
+    pub fn import_is_current(&self, entry: CatalogEntry, installed_version: String) -> bool {
+        semver::Version::parse(&installed_version)
+            .is_ok_and(|v| biblix_core::import::import_is_current(&entry.into(), &v))
+    }
+
+    /**
+    How an imported package (`current`: its folder's files) differs from the same import made
+    again (`fresh`: what `import_ebible` and the others return for its entry, from
+    `BiblixCatalog.find_upstream`); none when nothing changed. Write `files` and delete
+    `removed`, then install with `UpdateMode.Only` for it. When the publisher's version isn't
+    newer, the version is raised by the change, so one version never names two texts
+    */
+    pub fn update_import(
+        &self,
+        current: Vec<PackageFile>,
+        fresh: Vec<PackageFile>,
+    ) -> Result<Option<ImportUpdate>, BiblixError> {
+        let memory = |files: Vec<PackageFile>| {
+            biblix_core::MemoryStorage::with(files.into_iter().map(|f| (f.path, f.bytes)))
+        };
+        let current = std::sync::Arc::new(memory(current));
+        let fresh = std::sync::Arc::new(memory(fresh));
+        let Some(update) = biblix_core::import::compare_import(current.clone(), &fresh)? else {
+            return Ok(None);
+        };
+        Ok(Some(ImportUpdate {
+            from: update.from.to_string(),
+            to: update.to.to_string(),
+            change: update.diff.change().into(),
+            description: biblix_core::release::describe(&update.diff),
+            bumped: update.bumped,
+            removed: biblix_core::import::import_removals(current.as_ref(), fresh.as_ref())?,
+            files: create::files_of(&fresh)?,
+        }))
     }
 
     /// What a file says about itself, to fill in a new package's form: an EPUB's title,

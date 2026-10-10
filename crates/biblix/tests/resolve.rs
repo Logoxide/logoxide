@@ -388,6 +388,11 @@ fn annotations_stay_and_edits_are_repaired() {
 /// Publishes a package's folder into a registry folder: its archive, and its release in the
 /// registry's catalog.toml (as `bx publish` does)
 fn publish(package: &Path, registry: &Path) {
+    publish_mirrored(package, registry, vec![]);
+}
+
+/// The same, with mirrors listed for the archive (relative to the catalog, like its URL)
+fn publish_mirrored(package: &Path, registry: &Path, mirrors: Vec<String>) {
     use biblix::{FsStorage, Storage, catalog::CatalogRelease, publish};
     let storage = FsStorage::new(package);
     let manifest = biblix::Manifest::parse(&storage.read_string("biblix.toml").unwrap()).unwrap();
@@ -401,6 +406,7 @@ fn publish(package: &Path, registry: &Path) {
     let release = CatalogRelease {
         version: info.version.to_string(),
         url: file,
+        mirrors,
         sha256: publish::sha256(&bytes),
         checksum: Some(biblix::package::checksum(&storage).unwrap()),
         size: Some(bytes.len() as u64),
@@ -501,4 +507,54 @@ fn registry_releases_are_archives() {
         matches!(result, Err(BiblixError::Checksum { .. })),
         "{result:?}"
     );
+}
+
+#[test]
+fn archives_come_from_mirrors_when_their_url_fails() {
+    let world = World::new("mirrors");
+    let repo = world.path("authoring/tb");
+    let registry = world.path("registry");
+    std::fs::create_dir_all(&repo).unwrap();
+    release(&repo, "tb", "1.0.0", "one", "");
+    let mirrors = vec!["gone/tb-1.0.0.tar.gz".into(), "copy/tb-1.0.0.tar.gz".into()];
+    publish_mirrored(&repo, &registry, mirrors);
+    // The archive only at the second mirror
+    std::fs::create_dir_all(registry.join("copy")).unwrap();
+    std::fs::rename(
+        registry.join("tb/tb-1.0.0.tar.gz"),
+        registry.join("copy/tb-1.0.0.tar.gz"),
+    )
+    .unwrap();
+
+    let catalog = registry.join("catalog.toml").display().to_string();
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    let dependency = DetailedDependency {
+        registry: Some(catalog),
+        default_features: true,
+        ..DetailedDependency::default()
+    };
+    project.add("tb", &dependency).unwrap();
+    project
+        .install(&world.library("lib"), &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap();
+    let tb = lock.get("tb").unwrap();
+    assert_eq!(tb.mirrors.len(), 2);
+    assert!(tb.mirrors[1].ends_with("registry/copy/tb-1.0.0.tar.gz"));
+
+    // A mirror whose bytes don't hash as listed is passed over too, and when none serves it,
+    // the error names each
+    std::fs::write(registry.join("tb/tb-1.0.0.tar.gz"), b"something else").unwrap();
+    project
+        .install(&world.library("second"), &fetcher, Update::Nothing)
+        .unwrap();
+    std::fs::remove_file(registry.join("copy/tb-1.0.0.tar.gz")).unwrap();
+    let error = project
+        .install(&world.library("third"), &fetcher, Update::Nothing)
+        .unwrap_err()
+        .to_string();
+    for place in ["tb/tb-1.0.0.tar.gz", "gone/", "copy/"] {
+        assert!(error.contains(place), "{error}");
+    }
 }

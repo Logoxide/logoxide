@@ -12,10 +12,13 @@ before changing the design.
     `[package]`), like `Cargo.toml`. "Index" means only a registry. Formats, Cargo-style features,
     and `git`/`path` dependencies; no default registry. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
-    `aliases` (`Project::names`). `[package]` has `authors` (a list) and `description`. Kinds
+    `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
+    locked and installed, so `bx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and
+    `in_use`: the lock's packages from dependencies that are on, which `bibles`, `translations`,
+    and `versifications` read). `[package]` has `authors` (a list) and `description`. Kinds
     include `book` and `collection` (no `[formats]`, only dependencies; a project's Bibles
     include a collection's); the `epub` format is kept as files, not read as verses
-  - `storage.rs`: `Storage` (read, list, write) over a folder (`FsStorage`), memory
+  - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`
   - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
     verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
@@ -46,12 +49,20 @@ before changing the design.
   - `catalog.rs`: catalogs to search (`Catalog::parse` by extension: a `catalog.toml` of git
     packages, eBible.org's `translations.csv` (its downloadable, redistributable rows), or
     fetch.bible's `manifest.json` (`https://v1.fetch.bible/manifest.json`, not
-    `/bibles/manifest.json`, an older form)); `search` ranks exact abbreviations and ids first; a
-    vault's `[settings] catalogs`, then both of those (`DEFAULT_CATALOGS`) unless
-    `default-catalogs = false`. Each imported kind names its prefix (`CatalogSource::prefix`:
-    `ebible`, `fetch`), and `Catalog::find_import` finds `ebible:<id>` in a catalog; `bx import`
-    looks through the project's catalogs in order. `Project::add_catalog`/`remove_catalog` edit them (removing a
-    default turns the defaults off and names the other; naming both again turns them back on). Registries (`[settings.registries]`, `Project::add_registry`) are named catalogs: a folder
+    `/bibles/manifest.json`, an older form)), CCEL's page of its Bibles (`CCEL_CATALOG`, HTML:
+    `parse_ccel` takes each `<h2>` link's work and title; no language or license, which the
+    file's head gives on import), or a SWORD repository's `mods.d.tar.gz` (`parse_bytes` /
+    `parse_sword`: Bibles and commentaries in OSIS or ThML that aren't locked; GBF isn't read).
+    `SWORD_REPOSITORIES` names the HTTPS repositories in CrossWire's list (`crosswire`,
+    `crosswire-beta`, `ebible`, …; others by host, `sword_repository_name`). Ids are prefixed
+    (`ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
+    first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first; a
+    vault's `[settings] catalogs`, then those four (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
+    CCEL, CrossWire) unless `default-catalogs = false`. Each imported kind names its prefix
+    (`CatalogSource::prefix`: `ebible`, `fetch`, `ccel`, `sword`), and `Catalog::find_import`
+    finds `ebible:<id>` (or `sword:crosswire/KJV`) in a catalog; `bx import` looks through the
+    project's catalogs in order (and for `sword:<known repository>/…`, that repository's). `Project::add_catalog`/`remove_catalog` edit them (removing a
+    default turns the defaults off and names the others; naming them all again turns them back on). Registries (`[settings.registries]`, `Project::add_registry`) are named catalogs: a folder
     of package repositories (`Catalog::from_packages`; bx scans it) or a catalog, so
     `dorean-local:<id>` or `dorean-local:<path in the folder>` names a package (`Catalog::find`,
     `split_registry_name`); a shared id needs the path
@@ -59,9 +70,25 @@ before changing the design.
     `biblix.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
     date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
     codes; other paths answer with fetch.bible's site, which is refused) into `usx/` +
-    `COPYRIGHT.txt`. A vault uses either as a path package in `imports/<id>/`
+    `COPYRIGHT.txt`; `ccel` takes a Bible's ThML (`ccel_url`; restricted works answer with a
+    page, refused) into `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>`
+    (`thml_head`; version `<version>`, else `DC.Date`; right to left judged from its letters);
+    `sword` unzips a module (`sword_zip_urls`: `packages/<Module>.zip`, then lowercase) into
+    sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
+    with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
+    milestones, making linked verses bridges (`n="16-17"`), and leaving out introductions that
+    are another verse's entry; the conf gives version, license (`sword_license`), language, and
+    `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Updating:
+    `upstream(entry)` is what each import writes as `upstream`, so `Catalog::find_upstream`
+    finds an installed import's entry (no field records the import name); `compare_import`
+    (current vs. a fresh import: `None` when the declared files match; the summaries' `Diff`;
+    when the publisher's version isn't newer it compares at the current version, then raises
+    it with `next_version`) and `apply_import` (removes declared files the fresh one lacks, through
+    `Storage::remove`, writes the rest; other files stay).
+    `CatalogSource::versions_track_updates` (eBible.org, SWORD) lets `bx` skip downloading
   - `media.rs`: `[media]` in a package's `biblix.toml`: each audio or video file's path, URL,
-    size, SHA-256, and book, never stored in the package; `verify` checks a download,
+    `mirrors` (tried in order after it: `MediaFile::urls`), size, SHA-256, and book, never
+    stored in the package; `verify` checks a download,
     `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
     by the text. Timings (audio Bibles: where each verse is) are WebVTT, `timings/<stem>.vtt` per
     file, each cue named by its verse (`JHN 3:16`, `JHN 3:17-18`; other cues are skipped):
@@ -78,7 +105,9 @@ before changing the design.
     bindings). A `registry` dependency (a catalog's URL) gets the newest release its catalog lists
     that the requirement allows, or the locked one (whose archive URL and hash the lock has, so
     no catalog is read); the archive must hash to `sha256` and its files to `checksum`; lock
-    entries have `registry`, `archive`, `sha256`, and its library folder is `<version>+a<hash>`. A lock entry is kept
+    entries have `registry`, `archive`, `mirrors` (the release's, tried in turn by
+    `Fetcher::download_any`, which passes over bytes that don't hash as listed), `sha256`, and
+    its library folder is `<version>+a<hash>`. A lock entry is kept
     while the manifest still allows it (unless updating); fetched text is checked against the
     locked checksum; a tag's version must match its `biblix.toml`; git packages can't have path
     dependencies
@@ -116,7 +145,7 @@ before changing the design.
     what they show by it (`BookFile.title`, `BiblixPackage.titles()`)
   - `publish.rs`: release archives for registries: `pack` (declared files, sorted, no times or
     owners, so the same files make the same bytes), `sha256`, `add_release` (a catalog.toml's
-    `[[package.release]]`: version, url relative to the catalog, sha256, checksum, size; a
+    `[[package.release]]`: version, url relative to the catalog, optional `mirrors`, sha256, checksum, size; a
     published version never changes), `yank` (`yanked = true`: `CatalogEntry::release`
     passes over it; locks still install it). `CatalogSource::Registry { catalog }` and
     `CatalogEntry::releases`/`release(req)`; `relative_url`
@@ -141,14 +170,14 @@ before changing the design.
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `bx release`), `init`, `add` (`bx add github:owner/repo` or `--git`/`--path`; `--name`,
-  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `install`, `update`, `list`, `show` (`--git` reads a
+  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 1 when off), `install`, `update`, `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>` or `fetch:<id>`, `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (`--update [name]`, `--dry-run`: make imports again, replace changed ones, re-lock them), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
   (`publish.rs`: a folder registry, or GitHub releases through `gh`, the catalog being release
   `index`'s file and each archive a release `<id>-v<version>`), `add --registry <catalog> <id>`,
-  `media add <file> --url`
-  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file; `--offline` for only the timings), `map "<reference>" --from <bible or
+  `media add <file> --url` (repeated: mirrors)
+  (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file from each of its URLs; `--offline` for only the timings), `map "<reference>" --from <bible or
   versification> --to …` (`--with <map package>` adds one not in the project). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash bx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `bx add`
@@ -164,16 +193,23 @@ before changing the design.
   native only. Opening goes through the `Biblix` object because BoltFFI's WebAssembly
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry biblix's books and counts
-  across. `BiblixCatalog` (`catalog.rs`) searches catalogs, and `Biblix.importEbible` and
-  `importFetchBible` make downloads into a package's files. `create.rs`: `fileMetadata`,
+  across. `BiblixCatalog` (`catalog.rs`) searches catalogs, and `Biblix.importEbible`,
+  `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
+  try in order) make downloads into a package's files; `parseCatalogBytes` reads any catalog,
+  and a SWORD repository's `.tar.gz` only that way. Updating an import: `BiblixCatalog.findUpstream`
+  (its entry, from `PackageInfo.upstream`), `Biblix.importIsCurrent` (skip the download), and
+  `Biblix.updateImport(current, fresh)` (`ImportUpdate`: versions, `ChangeKind`, description,
+  `files` to write and `removed` paths to delete; then install with `UpdateMode.Only`). `create.rs`: `fileMetadata`,
   `newPackage` (a package's files from one file), `newCollection`, `parseReferences`, and
   `BiblixPackage.references()` and `epubFiles()`. `BiblixVersifications` (`versification.rs`,
   from `Biblix.versifications()`, then `withMap(package)` or `withVrs`) maps references
   (`MappedPassage`: text, OSIS, verses, missing). `BiblixProject.packages()` lists each package
   the manifest asks for followed by what it brings in (`LockedEntry.dependencyOf`), so hosts see
-  a collection's packages. `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
-  given (`Download` requests, answered with `provideDownload`, are registries' catalogs and
-  archives; `BiblixProject.registries()`, `addRegistry`, `removeRegistry`;
+  a collection's packages; `LockedEntry.enabled` is false for one turned off (`setEnabled`) and
+  what it brings in; `isEnabled`, `enabledDependencies`, `disabledDependencies`, and
+  `Biblix.packageInfo` (a package's details from its `biblix.toml` alone, to name one that's off). `BiblixInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
+  given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
+  that answers, are registries' catalogs and archives, with their mirrors; `BiblixProject.registries()`, `addRegistry`, `removeRegistry`;
   `Dependency.registry`); whatever is missing (refs, an archive, an installed package's files) stops the round and
   is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `libbiblix.rlib`. Build with
@@ -182,8 +218,13 @@ before changing the design.
 
 ## Decisions
 
-- Its own repository; depends on topos (`../topos`, path dependencies until topos 0.6) and, later,
-  sword-modules (`../sword-modules`) for SWORD. topos never depends on biblix
+- Its own repository; depends on topos (`../topos`, path dependencies until topos 0.6) and
+  sword-modules (`../sword-modules`, without its installer: modules are read from memory through
+  its `Files`, so WebAssembly too). topos never depends on biblix. sword-modules is a
+  clean-room crate: read its `CLAUDE.md` and `CLEANROOM.md` before changing it (interface into
+  `docs/spec/api.md` first; never read libsword's source)
+- Door43 isn't imported yet: git.door43.org wasn't reachable from the owner's machine
+  (October 2026). The plan is in topos's `doc/biblix.md` (step 7)
 - Licenses are shown, never enforced. No default registry (the owner can't host mirrors)
 - One package for apps: biblix-ffi includes topos's API
 - Summaries with verse hashes are published for every package (not only Bibles); the parsed cache

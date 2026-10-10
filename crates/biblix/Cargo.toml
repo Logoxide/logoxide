@@ -11,6 +11,7 @@ publish = false
 topos-bible.workspace = true
 topos-bible-markup.workspace = true
 topos-bible-formats.workspace = true
+sword-modules.workspace = true
 serde.workspace = true
 toml = { version = "0.9", features = ["preserve_order"] }
 semver = { version = "1", features = ["serde"] }

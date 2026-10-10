@@ -144,14 +144,14 @@ pub fn opf_metadata(opf: &str) -> FileMetadata {
 
 /// An element of a small XML document: its local name (no prefix), attributes (local names too),
 /// and its text
-struct Element {
-    name: String,
+pub(crate) struct Element {
+    pub(crate) name: String,
     attributes: Vec<(String, String)>,
-    text: String,
+    pub(crate) text: String,
 }
 
 impl Element {
-    fn attr(&self, name: &str) -> Option<&str> {
+    pub(crate) fn attr(&self, name: &str) -> Option<&str> {
         (self.attributes.iter())
             .find(|(n, _)| n == name)
             .map(|(_, v)| v.as_str())
@@ -159,7 +159,7 @@ impl Element {
 }
 
 /// Every element in `xml`, in document order, each with the text directly inside it
-fn elements(xml: &str) -> Vec<Element> {
+pub(crate) fn elements(xml: &str) -> Vec<Element> {
     let local = |name: &str| name.rsplit(':').next().unwrap_or_default().to_string();
     let mut reader = Reader::from_str(xml);
     let mut found: Vec<Element> = vec![];

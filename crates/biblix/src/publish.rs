@@ -23,7 +23,11 @@ url = "the-dorean-principle/the-dorean-principle-1.0.2.tar.gz"
 sha256 = "sha256:9f86…"
 checksum = "sha256:41c0…"
 size = 1834201
+mirrors = ["https://archive.org/download/dorean/the-dorean-principle-1.0.2.tar.gz"]  # optional
 ```
+
+Anyone can mirror a release: its `mirrors` are tried in order when `url` fails, and the hash
+makes every copy as good as the first.
 */
 
 use std::io::Write;
@@ -167,6 +171,10 @@ pub fn add_release(
     let mut added = toml_edit::Table::new();
     added.insert("version", toml_edit::value(&version));
     added.insert("url", toml_edit::value(&release.url));
+    if !release.mirrors.is_empty() {
+        let mirrors: toml_edit::Array = release.mirrors.iter().collect();
+        added.insert("mirrors", toml_edit::value(mirrors));
+    }
     added.insert("sha256", toml_edit::value(&release.sha256));
     if let Some(checksum) = &release.checksum {
         added.insert("checksum", toml_edit::value(checksum));
@@ -259,6 +267,7 @@ mod tests {
         let release = |version: &str, sha: &str| CatalogRelease {
             version: version.into(),
             url: format!("romans/romans-{version}.tar.gz"),
+            mirrors: vec![],
             sha256: sha.into(),
             checksum: Some("sha256:00".into()),
             size: Some(10),

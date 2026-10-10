@@ -73,6 +73,35 @@ pub trait Fetcher {
         read_local(url)
     }
 
+    /**
+    The first of `urls` (one file's places: its URL, then its mirrors) that downloads and passes
+    `check`, and which it was. Each failure is tried past; when all fail, the error names each
+    */
+    fn download_any(
+        &self,
+        urls: &[String],
+        check: &dyn Fn(&str, &[u8]) -> Result<()>,
+    ) -> Result<(String, Vec<u8>)> {
+        let mut failures = vec![];
+        for url in urls {
+            match self.download(url).and_then(|bytes| {
+                check(url, &bytes)?;
+                Ok(bytes)
+            }) {
+                Ok(bytes) => return Ok((url.clone(), bytes)),
+                Err(e) if urls.len() == 1 => return Err(e),
+                Err(e) => failures.push(e.to_string()),
+            }
+        }
+        Err(BiblixError::Fetch {
+            url: urls.first().cloned().unwrap_or_default(),
+            message: match failures.is_empty() {
+                true => String::from("nowhere to download it from"),
+                false => failures.join("; "),
+            },
+        })
+    }
+
     /// The repository's files at `reference` into `dest` (without `.git`), and the commit
     /// they're from
     fn fetch(&self, url: &str, reference: &GitRef, dest: &dyn Storage) -> Result<String>;

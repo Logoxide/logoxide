@@ -1,8 +1,10 @@
 /*!
 Audio and video: listed in a package's `biblix.toml` by URL, size, and SHA-256, never stored in
 it, so a package stays a small git repository and the media stays wherever its owner serves it.
-A host downloads a file when it's first played, checks it ([`verify`]), and keeps it by its hash
-([`store_path`]), so versions that list the same file share it.
+A host downloads a file when it's first played, from `url` or else each of its `mirrors` in
+turn ([`MediaFile::urls`]), checks it ([`verify`]), and keeps it by its hash ([`store_path`]), so
+versions that list the same file share it. The hash makes every copy as good as the first, so
+anyone may serve one.
 
 ```toml
 [media]
@@ -11,6 +13,7 @@ timings = "timings/"             # each verse's start and end in each file: timi
 [[media.files]]
 path = "JHN.mp3"                 # what timings name it by
 url = "https://example.org/audio/JHN.mp3"
+mirrors = ["https://archive.org/download/bsb-audio/JHN.mp3"]  # tried in order when it fails
 size = 31457280
 sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 book = "JHN"                     # the book it reads, if one
@@ -61,6 +64,9 @@ pub struct MediaFile {
     /// Its name in the package (what timings name it by): `JHN.mp3`
     pub path: String,
     pub url: String,
+    /// Other places that serve the same bytes, tried in order after `url`
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub mirrors: Vec<String>,
     /// In bytes
     pub size: u64,
     /// Lowercase hex
@@ -76,10 +82,16 @@ impl MediaFile {
         MediaFile {
             path: path.to_string(),
             url: url.to_string(),
+            mirrors: vec![],
             size: bytes.len() as u64,
             sha256: sha256_hex(bytes),
             book: None,
         }
+    }
+
+    /// Where it can be downloaded, in the order to try: `url`, then each mirror
+    pub fn urls(&self) -> impl Iterator<Item = &str> {
+        std::iter::once(self.url.as_str()).chain(self.mirrors.iter().map(String::as_str))
     }
 }
 
@@ -366,6 +378,7 @@ timings = "timings/"
 [[media.files]]
 path = "JHN.mp3"
 url = "https://example.org/JHN.mp3"
+mirrors = ["https://mirror.example.org/JHN.mp3"]
 size = 5
 sha256 = "2CF24DBA5FB0A30E26E83B2AC5B9E29E1B161E5C1FA7425E73043362938B9824"
 book = "JHN"
@@ -374,6 +387,13 @@ book = "JHN"
         .unwrap();
         let media = manifest.media.unwrap();
         let file = &media.files[0];
+        assert_eq!(
+            file.urls().collect::<Vec<_>>(),
+            [
+                "https://example.org/JHN.mp3",
+                "https://mirror.example.org/JHN.mp3"
+            ]
+        );
         assert!(verify(file, b"hello").is_ok());
         assert!(verify(file, b"hellO").is_err());
         assert!(verify(file, b"hello!").is_err());

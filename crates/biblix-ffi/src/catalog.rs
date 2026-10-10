@@ -5,7 +5,7 @@ use biblix_core::{
         Catalog, CatalogEntry as CoreEntry, CatalogRelease as CoreRelease,
         CatalogSource as CoreSource,
     },
-    import::{ebible_zip_url, fetch_bible_book_url},
+    import::{ccel_url, ebible_zip_url, fetch_bible_book_url, sword_zip_urls},
     manifest::Direction,
 };
 use boltffi::*;
@@ -26,6 +26,17 @@ pub enum CatalogSource {
     /// A translation fetch.bible publishes: download each of `books`, then
     /// `Biblix::import_fetch_bible`
     FetchBible { id: String, books: Vec<FetchBook> },
+    /// A Bible CCEL publishes as ThML: download `url`, then `Biblix::import_ccel` (its file's
+    /// head gives the language and rights the catalog doesn't)
+    Ccel { id: String, url: String },
+    /// A module a SWORD repository publishes (`id` is `<repository>/<module>`, as `sword:` names
+    /// it): download the first of `zip_urls` that answers, then `Biblix::import_sword`
+    Sword {
+        id: String,
+        repository: String,
+        module: String,
+        zip_urls: Vec<String>,
+    },
 }
 
 /// A book fetch.bible publishes, and where
@@ -43,6 +54,8 @@ pub struct FetchBook {
 pub struct CatalogRelease {
     pub version: String,
     pub url: String,
+    /// Other places serving the same archive, to try in order when `url` fails
+    pub mirrors: Vec<String>,
     /// The SHA-256 of the archive (`sha256:` and hex)
     pub sha256: String,
     /// What its files hash to, as a lock file has it
@@ -57,6 +70,7 @@ impl From<&CoreRelease> for CatalogRelease {
         Self {
             version: r.version.clone(),
             url: r.url.clone(),
+            mirrors: r.mirrors.clone(),
             sha256: r.sha256.clone(),
             checksum: r.checksum.clone(),
             size: r.size,
@@ -70,6 +84,7 @@ impl From<CatalogRelease> for CoreRelease {
         Self {
             version: r.version,
             url: r.url,
+            mirrors: r.mirrors,
             sha256: r.sha256,
             checksum: r.checksum,
             size: r.size,
@@ -137,6 +152,20 @@ impl From<&CoreEntry> for CatalogEntry {
                         })
                         .collect(),
                 },
+                CoreSource::Ccel { id } => CatalogSource::Ccel {
+                    id: id.clone(),
+                    url: ccel_url(id),
+                },
+                CoreSource::Sword {
+                    id,
+                    repository,
+                    module,
+                } => CatalogSource::Sword {
+                    id: id.clone(),
+                    repository: repository.clone(),
+                    module: module.clone(),
+                    zip_urls: sword_zip_urls(repository, module),
+                },
             },
             path: e.path.clone(),
             releases: e.releases.iter().map(Into::into).collect(),
@@ -169,6 +198,17 @@ impl From<CatalogEntry> for CoreEntry {
                 CatalogSource::FetchBible { id, books } => CoreSource::FetchBible {
                     id,
                     books: books.into_iter().map(|b| b.code).collect(),
+                },
+                CatalogSource::Ccel { id, .. } => CoreSource::Ccel { id },
+                CatalogSource::Sword {
+                    id,
+                    repository,
+                    module,
+                    ..
+                } => CoreSource::Sword {
+                    id,
+                    repository,
+                    module,
                 },
             },
             path: e.path,
@@ -218,10 +258,58 @@ impl BiblixCatalog {
             .collect()
     }
 
+    /// The entry an imported package was made from, by its `upstream` (`PackageInfo.upstream`):
+    /// how to update an import (`Biblix::update_import`)
+    pub fn find_upstream(&self, upstream: String) -> Option<CatalogEntry> {
+        self.catalog
+            .find_upstream(&upstream)
+            .map(CatalogEntry::from)
+    }
+
     /// This catalog and another's packages (an id in both is this one's)
     pub fn merge(&self, other: &BiblixCatalog) -> BiblixCatalog {
         BiblixCatalog {
             catalog: self.catalog.clone().merge(other.catalog.clone()),
         }
     }
+}
+
+/// How much a change can break links: notes or markup (`Patch`), wording or added verses
+/// (`Minor`), verses removed or renumbered (`Major`)
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChangeKind {
+    Patch,
+    Minor,
+    Major,
+}
+
+impl From<biblix_core::summary::Change> for ChangeKind {
+    fn from(change: biblix_core::summary::Change) -> Self {
+        use biblix_core::summary::Change;
+        match change {
+            Change::Patch => ChangeKind::Patch,
+            Change::Minor => ChangeKind::Minor,
+            Change::Major => ChangeKind::Major,
+        }
+    }
+}
+
+/// What updating an imported package changes (`Biblix::update_import`), and the files to do it
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportUpdate {
+    pub from: String,
+    pub to: String,
+    pub change: ChangeKind,
+    /// What changed, in words (`1 verse reworded`)
+    pub description: String,
+    /// The publisher's version isn't newer though the package changed: `to` is the next version
+    /// the change calls for
+    pub bumped: bool,
+    /// The package's files now, to write over the old (its `biblix.toml` has `to`)
+    pub files: Vec<crate::PackageFile>,
+    /// Its old files to delete (ones the publisher dropped); a reader's files beside it aren't
+    /// among them
+    pub removed: Vec<String>,
 }

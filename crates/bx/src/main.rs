@@ -176,11 +176,24 @@ enum Command {
     },
     /// Adds a package to biblix.toml, installs it, and locks it
     Add(AddArgs),
-    /// Removes a package from biblix.toml (its files stay in the library)
+    /// Removes a package from biblix.toml (its files stay in the library until `bx clean`)
     Remove {
         /// The package's id
         #[arg(add = ArgValueCompleter::new(complete::dependency))]
         id: String,
+    },
+    /// Turns a package off without removing it (`enabled = false` in biblix.toml): it stays
+    /// locked and installed, but nothing reads it
+    Disable {
+        /// What biblix.toml calls it
+        #[arg(add = ArgValueCompleter::new(complete::dependency))]
+        name: String,
+    },
+    /// Turns a package that was turned off on again
+    Enable {
+        /// What biblix.toml calls it
+        #[arg(add = ArgValueCompleter::new(complete::dependency))]
+        name: String,
     },
     /// Installs what biblix.lock says (resolving what it doesn't have yet)
     Install {
@@ -195,8 +208,21 @@ enum Command {
         #[arg(add = ArgValueCompleter::new(complete::dependency))]
         ids: Vec<String>,
     },
-    /// The packages biblix.toml asks for, as locked
-    List,
+    /// The packages biblix.toml asks for, as locked (those turned off are marked `(off)`)
+    List {
+        /// Only the packages in use (biblix.toml's that are on, and what they bring in)
+        #[arg(long, conflicts_with = "disabled")]
+        enabled: bool,
+        /// Only the packages turned off (and what only they bring in)
+        #[arg(long)]
+        disabled: bool,
+    },
+    /// Whether a package is on: prints `on` or `off`, and exits with 0 if it's on, 1 if it's off
+    IsEnabled {
+        /// What biblix.toml calls it
+        #[arg(add = ArgValueCompleter::new(complete::dependency))]
+        name: String,
+    },
     /// A locked package: what it is, where, its size, its books and verses, and whether its files
     /// are still the ones locked
     Info {
@@ -235,11 +261,23 @@ enum Command {
         json: bool,
     },
     /// Makes a package from another publisher's download, puts it in the project's `imports/`,
-    /// and adds it as a path package: `ebible:<id>` or `fetch:<id>` (as `bx search` shows), from
-    /// the project's catalogs
+    /// and adds it as a path package: `ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or
+    /// `sword:<repository>/<module>` (as `bx search` shows), from the project's catalogs (and
+    /// for SWORD, the repositories CrossWire lists)
+    ///
+    /// `--update` makes the project's imports again from their publishers' downloads and replaces
+    /// the ones that changed (a reader's files beside them stay), saying what changed
     Import {
-        /// `ebible:eng-asv`, `fetch:eng_bsb`
-        source: String,
+        /// `ebible:eng-asv`, `fetch:eng_bsb`, `ccel:kjv`, `sword:crosswire/KJV`; with `--update`,
+        /// one import (its dependency's name, or this), else all of them
+        #[arg(required_unless_present = "update")]
+        source: Option<String>,
+        /// Update imports: download each again, and replace it if it changed
+        #[arg(long)]
+        update: bool,
+        /// With `--update`: say what would change, and change nothing
+        #[arg(long, requires = "update")]
+        dry_run: bool,
     },
     /// Catalogs: lists of packages anyone can host
     #[command(subcommand)]
@@ -303,9 +341,9 @@ enum MediaCommand {
     Add {
         /// The file, as it's served
         file: PathBuf,
-        /// Where it's served
-        #[arg(long)]
-        url: String,
+        /// Where it's served; repeat for mirrors, tried in the order given
+        #[arg(long, required = true)]
+        url: Vec<String>,
         /// The book it reads (a USFM code)
         #[arg(long)]
         book: Option<String>,
@@ -314,7 +352,7 @@ enum MediaCommand {
         package: PathBuf,
     },
     /// Checks the timings (WebVTT, a cue per verse) against the text, then downloads every
-    /// listed file and checks its size and hash
+    /// listed file from each of its URLs (mirrors too) and checks its size and hash
     Check {
         /// The package's folder
         #[arg(default_value = ".")]
@@ -356,8 +394,8 @@ enum CatalogCommand {
         #[arg(long)]
         name: Option<String>,
     },
-    /// Stops searching a catalog, or a registry (by its name). Removing eBible.org's or
-    /// fetch.bible's turns the defaults off (`default-catalogs = false`), keeping the other one
+    /// Stops searching a catalog, or a registry (by its name). Removing a default one turns the
+    /// defaults off (`default-catalogs = false`), keeping the others
     Remove {
         #[arg(add = ArgValueCompleter::new(complete::searched))]
         location: String,
@@ -548,6 +586,8 @@ fn main() -> ExitCode {
             .map(|p| println!("created {}", p.dir().join(MANIFEST).display())),
         Command::Add(args) => add(&cli, args),
         Command::Remove { id } => remove(&cli, id),
+        Command::Disable { name } => set_enabled(&cli, name, false),
+        Command::Enable { name } => set_enabled(&cli, name, true),
         Command::Install { repair: false } => install(&cli, Update::Nothing),
         Command::Install { repair: true } => repair(&cli),
         Command::Update { ids } => install(
@@ -557,7 +597,19 @@ fn main() -> ExitCode {
                 false => Update::Only(ids.iter().cloned().collect()),
             },
         ),
-        Command::List => list(&cli),
+        Command::List { enabled, disabled } => list(
+            &cli,
+            match (enabled, disabled) {
+                (true, _) => Some(true),
+                (_, true) => Some(false),
+                _ => None,
+            },
+        ),
+        Command::IsEnabled { name } => match is_enabled(&cli, name) {
+            Ok(true) => return ExitCode::SUCCESS,
+            Ok(false) => return ExitCode::FAILURE,
+            Err(error) => Err(error),
+        },
         Command::Info { id } => info(&cli, id),
         Command::Clean { remove, keep } => clean(&cli, *remove, keep),
         Command::Search {
@@ -574,7 +626,12 @@ fn main() -> ExitCode {
             *limit,
             *json,
         ),
-        Command::Import { source } => import(&cli, source),
+        Command::Import {
+            source,
+            update: true,
+            dry_run,
+        } => import_update(&cli, source.as_deref(), *dry_run),
+        Command::Import { source, .. } => import(&cli, source.as_deref().unwrap_or_default()),
         Command::Catalog(CatalogCommand::Entry { git }) => {
             catalog_entry(&cli, &biblix::git::expand_url(git))
         }
@@ -1289,6 +1346,28 @@ fn remove(cli: &Cli, id: &str) -> biblix::Result<()> {
     Ok(())
 }
 
+fn set_enabled(cli: &Cli, name: &str, enabled: bool) -> biblix::Result<()> {
+    let library = cli.library();
+    let mut project = cli.project(&library)?;
+    let was = project.is_enabled(name);
+    if !project.set_enabled(name, enabled)? {
+        return Err(biblix::BiblixError::Manifest(format!(
+            "no dependency `{name}`"
+        )));
+    }
+    // Nothing to install or lock: it stays as it is either way
+    project.save_manifest()?;
+    match (was, enabled) {
+        (true, true) => println!("{name} is already on"),
+        (false, false) => println!("{name} is already off"),
+        (_, true) => println!("turned {name} on"),
+        (_, false) => {
+            println!("turned {name} off (still installed: `bx enable {name}` turns it on)")
+        }
+    }
+    Ok(())
+}
+
 fn repair(cli: &Cli) -> biblix::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
@@ -1339,18 +1418,43 @@ fn install(cli: &Cli, update: Update) -> biblix::Result<()> {
     Ok(())
 }
 
-fn list(cli: &Cli) -> biblix::Result<()> {
+/// Prints whether a dependency is on, and returns it
+fn is_enabled(cli: &Cli, name: &str) -> biblix::Result<bool> {
+    let library = cli.library();
+    let project = cli.project(&library)?;
+    if !project.manifest().dependencies.contains_key(name) {
+        return Err(biblix::BiblixError::Manifest(format!(
+            "no dependency `{name}`"
+        )));
+    }
+    let enabled = project.is_enabled(name);
+    println!("{}", if enabled { "on" } else { "off" });
+    Ok(enabled)
+}
+
+/// The locked packages; with `only`, those in use (`true`) or not (`false`)
+fn list(cli: &Cli, only: Option<bool>) -> biblix::Result<()> {
     let library = cli.library();
     let project = cli.project(&library)?;
     let Some(lock) = project.lock() else {
         println!("nothing installed yet: `bx add --git URL`, then `bx install`");
         return Ok(());
     };
+    let in_use: std::collections::BTreeSet<String> =
+        project.in_use().iter().map(|p| p.name()).collect();
     for locked in &lock.packages {
         let root = if lock.roots().any(|r| std::ptr::eq(r, locked)) {
             ""
         } else {
             "  (a dependency)"
+        };
+        let used = in_use.contains(&locked.name());
+        if only.is_some_and(|wanted| wanted != used) {
+            continue;
+        }
+        let off = match used {
+            true => "",
+            false => "  (off)",
         };
         let source = match (&locked.git, &locked.path) {
             (Some(git), _) => format!(
@@ -1383,7 +1487,7 @@ fn list(cli: &Cli) -> biblix::Result<()> {
             )
         });
         println!(
-            "{}  {}  {}{root}{installed}",
+            "{}  {}  {}{root}{off}{installed}",
             locked.label(),
             about.unwrap_or_default(),
             source.trim()
@@ -1661,7 +1765,7 @@ fn load_catalog(location: &str, base: &Path) -> biblix::Result<biblix::catalog::
             message: e.to_string(),
         })?
     };
-    biblix::catalog::Catalog::parse(location, &String::from_utf8_lossy(&bytes))
+    biblix::catalog::Catalog::parse_bytes(location, &bytes)
 }
 
 /**
@@ -2171,7 +2275,16 @@ fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
     // The project's catalogs, in order: the first that lists it is the one used
-    let catalogs = load_catalogs(&project.manifest().catalogs(), project.dir())?;
+    let mut catalogs = load_catalogs(&project.manifest().catalogs(), project.dir())?;
+    // A SWORD repository CrossWire lists (`sword:crosswire-beta/…`) is read even if the project
+    // doesn't search it
+    if !catalogs.iter().any(|c| c.find_import(source).is_some())
+        && let Some(url) = (source.strip_prefix("sword:"))
+            .and_then(|rest| rest.split_once('/'))
+            .and_then(|(repository, _)| biblix::catalog::sword_catalog_url(repository))
+    {
+        catalogs.push(load_catalog(&url, project.dir())?);
+    }
     let entry = (catalogs.iter())
         .find_map(|c| c.find_import(source))
         .ok_or_else(|| {
@@ -2187,26 +2300,7 @@ fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
             dir.display()
         )));
     }
-    let dest = FsStorage::new(&dir);
-    match &entry.source {
-        CatalogSource::Ebible { id } => {
-            let zip = get(&biblix::import::ebible_zip_url(id))?;
-            biblix::import::ebible(entry, &zip, &dest)?;
-        }
-        CatalogSource::FetchBible { id, books } => {
-            let mut files = vec![];
-            for code in books {
-                files.push((
-                    code.clone(),
-                    get(&biblix::import::fetch_bible_book_url(id, code))?,
-                ));
-            }
-            biblix::import::fetch_bible(entry, &files, &dest)?;
-        }
-        CatalogSource::Git { .. } | CatalogSource::Registry { .. } => {
-            unreachable!("only imports are found")
-        }
-    }
+    import_files(entry, &FsStorage::new(&dir))?;
     let dependency = DetailedDependency {
         path: Some(relative),
         default_features: true,
@@ -2221,6 +2315,146 @@ fn import(cli: &Cli, source: &str) -> biblix::Result<()> {
         entry.name,
         dir.display()
     );
+    Ok(())
+}
+
+/// Downloads what a catalog entry's import needs, and makes its package in `dest`
+fn import_files(entry: &biblix::catalog::CatalogEntry, dest: &dyn Storage) -> biblix::Result<()> {
+    use biblix::catalog::CatalogSource;
+    match &entry.source {
+        CatalogSource::Ebible { id } => {
+            let zip = get(&biblix::import::ebible_zip_url(id))?;
+            biblix::import::ebible(entry, &zip, dest)?;
+        }
+        CatalogSource::FetchBible { id, books } => {
+            let mut files = vec![];
+            for code in books {
+                files.push((
+                    code.clone(),
+                    get(&biblix::import::fetch_bible_book_url(id, code))?,
+                ));
+            }
+            biblix::import::fetch_bible(entry, &files, dest)?;
+        }
+        CatalogSource::Ccel { id } => {
+            let xml = get(&biblix::import::ccel_url(id))?;
+            biblix::import::ccel(entry, &xml, dest)?;
+        }
+        CatalogSource::Sword {
+            repository, module, ..
+        } => {
+            // The first of its zip's URLs that has it
+            let mut zip = Err(biblix::BiblixError::Import(format!("{module}: no zip")));
+            for url in biblix::import::sword_zip_urls(repository, module) {
+                zip = get(&url);
+                if zip.is_ok() {
+                    break;
+                }
+            }
+            biblix::import::sword(entry, &zip?, dest)?;
+        }
+        CatalogSource::Git { .. } | CatalogSource::Registry { .. } => {
+            return Err(biblix::BiblixError::Import(format!(
+                "{} isn't imported: add it",
+                entry.id
+            )));
+        }
+    }
+    Ok(())
+}
+
+/**
+`bx import --update`: each of the project's imports (path packages whose `upstream` a catalog
+entry's import writes), or the one named, made again from its publisher's download and compared
+with the one the project has; changed ones are replaced (unless `dry_run`) and locked again. An
+entry whose versions follow its updates (eBible.org's dates, SWORD's `Version`) is only
+downloaded when the catalog lists a newer version
+*/
+fn import_update(cli: &Cli, name: Option<&str>, dry_run: bool) -> biblix::Result<()> {
+    use biblix::import::{apply_import, compare_import};
+    let library = cli.library();
+    let mut project = cli.project(&library)?;
+    let mut catalogs = load_catalogs(&project.manifest().catalogs(), project.dir())?;
+    let paths: Vec<(String, String)> = (project.manifest().dependencies.iter())
+        .filter_map(|(dep, d)| match d {
+            Dependency::Detailed(d) => Some((dep.clone(), d.path.clone()?)),
+            Dependency::Version(_) => None,
+        })
+        .collect();
+    let (mut found, mut changed) = (0, std::collections::BTreeSet::new());
+    for (dep, path) in paths {
+        let dir = project.dir().join(&path);
+        let current: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir));
+        let Ok(package) = Package::open(current.clone(), Features::default()) else {
+            continue;
+        };
+        let Some(upstream) = package.info().upstream.clone() else {
+            continue;
+        };
+        // A SWORD module from a repository the project doesn't search: its catalog is beside
+        // its packages
+        if !catalogs
+            .iter()
+            .any(|c| c.find_upstream(&upstream).is_some())
+            && let Some((root, _)) = upstream.split_once("/packages/")
+        {
+            match load_catalog(&format!("{root}/mods.d.tar.gz"), project.dir()) {
+                Ok(catalog) => catalogs.push(catalog),
+                Err(e) => eprintln!("warning: {dep}: {e}"),
+            }
+        }
+        let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
+            if name == Some(dep.as_str()) {
+                return Err(biblix::BiblixError::Import(format!(
+                    "{dep} ({upstream}) is in none of this project's catalogs (bx catalog list)"
+                )));
+            }
+            continue;
+        };
+        let import_name = entry.source.import_name().unwrap_or_default();
+        if name.is_some_and(|n| n != dep && n != import_name) {
+            continue;
+        }
+        found += 1;
+        let from = package.info().version.clone();
+        if biblix::import::import_is_current(entry, &from) {
+            println!("{dep} {from}: up to date ({import_name})");
+            continue;
+        }
+        let fresh = Arc::new(MemoryStorage::new());
+        import_files(entry, fresh.as_ref())?;
+        let Some(update) = compare_import(current, &fresh)? else {
+            println!("{dep} {from}: up to date ({import_name})");
+            continue;
+        };
+        let raised = match update.bumped {
+            true => ", the version raised for it: the publisher's isn't newer",
+            false => "",
+        };
+        println!(
+            "{dep} {} → {}: {} (a {:?} change{raised})",
+            update.from,
+            update.to,
+            biblix::release::describe(&update.diff),
+            update.diff.change()
+        );
+        if !dry_run {
+            apply_import(&FsStorage::new(&dir), fresh.as_ref())?;
+            changed.insert(dep);
+        }
+    }
+    match (found, name) {
+        (0, Some(name)) => {
+            return Err(biblix::BiblixError::Import(format!(
+                "{name}: no import of that name in this project"
+            )));
+        }
+        (0, None) => println!("this project has no imports"),
+        _ => {}
+    }
+    if !changed.is_empty() {
+        project.install(&library, &cli.fetcher(&library), Update::Only(changed))?;
+    }
     Ok(())
 }
 
@@ -2385,7 +2619,7 @@ fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> biblix::Result<()> {
 
 fn media_add(
     file: &std::path::Path,
-    url: &str,
+    urls: &[String],
     book: Option<&str>,
     package: &std::path::Path,
 ) -> biblix::Result<()> {
@@ -2398,7 +2632,11 @@ fn media_add(
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
+    let (url, mirrors) = urls
+        .split_first()
+        .ok_or_else(|| biblix::BiblixError::Media(String::from("where is it served? (--url)")))?;
     let mut entry = biblix::media::MediaFile::of(&name, url, &bytes);
+    entry.mirrors = mirrors.to_vec();
     entry.book = book.map(str::to_uppercase);
     let path = package.join(MANIFEST);
     let text = std::fs::read_to_string(&path).map_err(|e| io(&path, e))?;
@@ -2427,6 +2665,10 @@ fn media_add(
     let mut table = toml_edit::Table::new();
     table.insert("path", toml_edit::value(&entry.path));
     table.insert("url", toml_edit::value(&entry.url));
+    if !entry.mirrors.is_empty() {
+        let mirrors: toml_edit::Array = entry.mirrors.iter().collect();
+        table.insert("mirrors", toml_edit::value(mirrors));
+    }
     table.insert("size", toml_edit::value(entry.size as i64));
     table.insert("sha256", toml_edit::value(&entry.sha256));
     if let Some(book) = &entry.book {
@@ -2470,13 +2712,31 @@ fn media_check(package: &std::path::Path, offline: bool) -> biblix::Result<()> {
     if offline {
         return Ok(());
     }
-    let mut failed = 0;
+    // Every mirror too: a host falls back to it, so it must serve the same bytes
+    let (mut checked, mut failed) = (0, 0);
     for file in &files {
-        match get(&file.url).and_then(|bytes| biblix::media::verify(file, &bytes)) {
-            Ok(()) => println!("ok: {}", file.path),
-            Err(error) => {
-                failed += 1;
-                println!("FAILED: {}: {error}", file.path);
+        for url in file.urls() {
+            checked += 1;
+            let shown = match url == file.url {
+                true => file.path.clone(),
+                false => format!("{} (mirror {url})", file.path),
+            };
+            // Named by the URL it came from, not the file's first
+            let verify = |bytes: Vec<u8>| {
+                biblix::media::verify(file, &bytes).map_err(|e| match e {
+                    biblix::BiblixError::Fetch { message, .. } => biblix::BiblixError::Fetch {
+                        url: url.to_string(),
+                        message,
+                    },
+                    e => e,
+                })
+            };
+            match get(url).and_then(verify) {
+                Ok(()) => println!("ok: {shown}"),
+                Err(error) => {
+                    failed += 1;
+                    println!("FAILED: {shown}: {error}");
+                }
             }
         }
     }
@@ -2484,7 +2744,7 @@ fn media_check(package: &std::path::Path, offline: bool) -> biblix::Result<()> {
         0 => Ok(()),
         n => Err(biblix::BiblixError::Fetch {
             url: package.display().to_string(),
-            message: format!("{n} of {} media files don't match", files.len()),
+            message: format!("{n} of {checked} media downloads don't match"),
         }),
     }
 }

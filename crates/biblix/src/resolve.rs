@@ -256,6 +256,7 @@ impl Resolver<'_> {
                 path: Some(relative),
                 registry: None,
                 archive: None,
+                mirrors: vec![],
                 sha256: None,
                 checksum: None,
                 features,
@@ -435,6 +436,7 @@ impl Resolver<'_> {
             path: None,
             registry: None,
             archive: None,
+            mirrors: vec![],
             sha256: None,
             checksum: Some(checksum),
             features: vec![],
@@ -521,6 +523,7 @@ impl Resolver<'_> {
                     path: None,
                     registry: Some(registry.to_string()),
                     archive: Some(release.url.clone()),
+                    mirrors: release.mirrors.clone(),
                     sha256: Some(release.sha256.clone()),
                     checksum: release.checksum.clone(),
                     features: vec![],
@@ -549,16 +552,21 @@ impl Resolver<'_> {
                 return Ok(locked);
             }
         }
-        let url = locked.archive.clone().unwrap_or_default();
-        let bytes = self.fetcher.download(&url)?;
-        let sha256 = crate::publish::sha256(&bytes);
-        if Some(&sha256) != locked.sha256.as_ref() {
-            return Err(BiblixError::Checksum {
-                id: format!("{} ({url})", locked.label()),
-                expected: locked.sha256.clone().unwrap_or_default(),
-                actual: sha256,
-            });
-        }
+        // From the archive's URL, else each mirror: the first whose bytes hash as listed
+        let urls: Vec<String> = (locked.archive.iter().chain(&locked.mirrors))
+            .cloned()
+            .collect();
+        let (url, bytes) = self.fetcher.download_any(&urls, &|url, bytes| {
+            let sha256 = crate::publish::sha256(bytes);
+            match Some(&sha256) == locked.sha256.as_ref() {
+                true => Ok(()),
+                false => Err(BiblixError::Checksum {
+                    id: format!("{} ({url})", locked.label()),
+                    expected: locked.sha256.clone().unwrap_or_default(),
+                    actual: sha256,
+                }),
+            }
+        })?;
         let unpacked = MemoryStorage::new();
         crate::archive::unpack(&bytes, &unpacked)?;
         let storage = crate::package::only_declared(&unpacked)?;
