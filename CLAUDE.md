@@ -183,8 +183,10 @@ before changing the design.
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
     and `lx add` warn of
   - `summary.rs`: `logoxide.summary.toml` (verse counts in book order, sizes, element counts
-    without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book,
-    chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
+    without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book
+    (`books.rs`'s `Book`: logoxide's own fixed numbers, matched to topos's `BookId` by USFM code;
+    1–66 as topos's, 67–90 topos 0.6's, 91–103 the other USFM books, 200–214 peripherals, a
+    snapshot test so none changes), chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
     `diff` (removed, renumbered: old text at another number, bridged, reworded, added) and
     `Change` (patch/minor/major; before 1.0 the minor counts as major, and before 0.1 every change
     is, like Cargo). Text counts as moved only to a number that held other text (a psalm's

@@ -62,6 +62,7 @@ model are specified in the repository's `doc/` folder, for other implementations
 */
 
 pub mod archive;
+pub mod books;
 pub mod cache;
 pub mod catalog;
 pub mod config;

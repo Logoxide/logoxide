@@ -6,8 +6,8 @@ What a package version holds, published with it so it can be known without downl
 builds them again and compares, and two versions' summaries say what changed between them
 ([`diff`]), which says how the version number must change ([`Change`]).
 
-`logoxide.verses.bin`: `LXV1`, then 12 bytes a verse (373 KB for the KJV): book, chapter, verse, last verse (of a bridge
-like 4-5), and the first 8 bytes of the SHA-256 of its text (its words, with whitespace collapsed;
+`logoxide.verses.bin`: `LXV1`, then 12 bytes a verse (373 KB for the KJV): book (logoxide's
+number, [`crate::books`]), chapter, verse, last verse (of a bridge like 4-5), and the first 8 bytes of the SHA-256 of its text (its words, with whitespace collapsed;
 notes and headings left out, since changing them can't break a link).
 */
 
@@ -16,10 +16,10 @@ use std::collections::{BTreeMap, HashMap};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use topos_bible::data::books::BookId;
 use topos_bible_markup::{Filter, Kind, Node, TextOptions, plain_text, verses::slice};
 
 use crate::{
+    books::Book,
     error::{LogoxideError, Result},
     package::Package,
     storage::Storage,
@@ -86,7 +86,8 @@ pub struct MediaSummary {
 /// One verse and the hash of its text
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VerseHash {
-    pub book: BookId,
+    /// logoxide's number for the book ([`crate::books`]), not topos's
+    pub book: Book,
     pub chapter: u8,
     pub verse: u8,
     pub last: u8,
@@ -94,17 +95,13 @@ pub struct VerseHash {
 }
 
 impl VerseHash {
-    pub fn key(&self) -> (BookId, u8, u8) {
+    pub fn key(&self) -> (Book, u8, u8) {
         (self.book, self.chapter, self.verse)
     }
 
     /// `JHN 3:16` (or `JHN 3:4-5` for a bridge)
     pub fn reference(&self) -> String {
-        let code = crate::bible_data()
-            .books()
-            .get_usfm(self.book)
-            .cloned()
-            .unwrap_or_else(|| self.book.0.to_string());
+        let code = self.book.name();
         match self.last > self.verse {
             true => format!("{code} {}:{}-{}", self.chapter, self.verse, self.last),
             false => format!("{code} {}:{}", self.chapter, self.verse),
@@ -127,12 +124,16 @@ pub fn verse_text(nodes: &[Node]) -> String {
 /**
 Each verse of a book and the hash of its words (notes and headings left out), as
 `logoxide.verses.bin` has them: what a link records, so it can find its verse again in a later
-version (renumbered: the same words at another number)
+version (renumbered: the same words at another number). A book without a number in logoxide's
+table has none (every book topos knows has one)
 */
 pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
+    let Some(number) = Book::from_book_id(book.id) else {
+        return vec![];
+    };
     (book.spans.iter())
         .map(|span| VerseHash {
-            book: book.id,
+            book: number,
             chapter: span.chapter,
             verse: span.verse,
             last: span.last,
@@ -338,7 +339,7 @@ pub fn decode_verses(bytes: &[u8]) -> Result<Vec<VerseHash>> {
             let mut hash = [0; 8];
             hash.copy_from_slice(&c[4..]);
             VerseHash {
-                book: BookId(c[0]),
+                book: Book(c[0]),
                 chapter: c[1],
                 verse: c[2],
                 last: c[3],
@@ -503,7 +504,7 @@ mod tests {
 
     fn verse(chapter: u8, verse: u8, text: &str) -> VerseHash {
         VerseHash {
-            book: BookId(43),
+            book: Book(43),
             chapter,
             verse,
             last: verse,

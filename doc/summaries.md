@@ -68,7 +68,7 @@ A short hash of every verse's words, in the text's order (373 KB for the KJV):
 offset  size  field
 0       4     magic: the ASCII bytes "LXV1"
 4       12*n  n records, one per verse marker:
-  +0    1     book: topos's book number (u8)
+  +0    1     book: logoxide's book number (u8; the table below)
   +1    1     chapter (u8)
   +2    1     verse (u8; 0 is a psalm's title where the text numbers one)
   +3    1     last: the bridge's last verse (u8; the same as verse when not a bridge)
@@ -78,10 +78,26 @@ offset  size  field
 The file's length minus 4 must be a multiple of 12. There is no count or other header; `LXV1`
 names this layout for good, and a change would be a new magic.
 
-**Book numbers** are topos's: 1 to 66 for `GEN` to `REV` in the Protestant canon's order (`MAT`
-is 40, `JHN` 43, `REV` 66), then 67 and up for the deuterocanonical and other books, as topos's
-`crates/topos-lib/src/data/deuterocanon.json` numbers them (`TOB` 67, `JDT` 68, `ESG` 69, `WIS`
-71, `SIR` 72, `BAR` 73, `LJE` 74, `S3Y` 75, …, `LAO` 89).
+**Book numbers** are logoxide's own, fixed for good: a number is never changed or given to
+another book, and new books take reserved numbers. They're matched to a book by its USFM code,
+never by another library's numbering. 1 to 66 are the Protestant canon in its order (the same
+numbers topos gives them), 67 to 90 follow topos 0.6's numbering of the deuterocanonical and
+other books, 91 to 103 are the other books USFM names, and 200 to 214 its peripherals. 0 is never
+a book; 70 and 78 (topos's Additions to Esther and to Daniel, which have no USFM code) and 104 to
+199 are reserved. The reference is `crates/logoxide/src/books.rs`.
+
+| Numbers | Books (USFM codes) |
+|---|---|
+| 1–39 | `GEN` `EXO` `LEV` `NUM` `DEU` `JOS` `JDG` `RUT` `1SA` `2SA` `1KI` `2KI` `1CH` `2CH` `EZR` `NEH` `EST` `JOB` `PSA` `PRO` `ECC` `SNG` `ISA` `JER` `LAM` `EZK` `DAN` `HOS` `JOL` `AMO` `OBA` `JON` `MIC` `NAM` `HAB` `ZEP` `HAG` `ZEC` `MAL` |
+| 40–66 | `MAT` `MRK` `LUK` `JHN` `ACT` `ROM` `1CO` `2CO` `GAL` `EPH` `PHP` `COL` `1TH` `2TH` `1TI` `2TI` `TIT` `PHM` `HEB` `JAS` `1PE` `2PE` `1JN` `2JN` `3JN` `JUD` `REV` |
+| 67–69 | `TOB` `JDT` `ESG` |
+| 70 | reserved |
+| 71–77 | `WIS` `SIR` `BAR` `LJE` `S3Y` `SUS` `BEL` |
+| 78 | reserved |
+| 79–90 | `1MA` `2MA` `1ES` `MAN` `PS2` `3MA` `2ES` `4MA` `ODA` `PSS` `ENO` `LAO` |
+| 91–103 | `DAG` `PS3` `2BA` `LBA` `JUB` `1MQ` `2MQ` `3MQ` `REP` `4BA` `EZA` `5EZ` `6EZ` |
+| 104–199 | reserved |
+| 200–214 | `FRT` `INT` `BAK` `CNC` `GLO` `TDX` `NDX` `OTH` `XXA` `XXB` `XXC` `XXD` `XXE` `XXF` `XXG` |
 
 **The verse's text**, as hashed: the plain text of everything between the verse's start and its
 end (from right after the previous verse to the next verse's or chapter's marker, so a heading
