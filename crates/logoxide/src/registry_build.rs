@@ -25,9 +25,11 @@ pub struct Release {
     pub manifest: String,
 }
 
-/// Runs git in a repository; what it printed
+/// Runs git in a repository; what it printed. The repository's `core.fsmonitor` (a command git
+/// would run) is turned off: the folder may hold repositories from anywhere
 pub fn git_in(repo: &Path, args: &[&str]) -> Result<String> {
     let output = std::process::Command::new("git")
+        .args(["-c", "core.fsmonitor=false"])
         .arg("-C")
         .arg(repo)
         .args(args)

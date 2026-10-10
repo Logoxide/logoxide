@@ -700,11 +700,13 @@ fn packages_from_elsewhere_name_nothing_here() {
         .unwrap();
     assert_eq!(locked(&project), ["fine 1.0.0", "lexicon 1.0.0"]);
 
-    // But not on this machine: a local repository, a file:// one, or a local registry
+    // But not on this machine: a local repository, a file:// one, or a local registry; nor over
+    // git's unencrypted protocol
     for (i, dependency) in [
         format!("lexicon = {{ git = \"{}\" }}", lexicon.display()),
         format!("lexicon = {{ git = \"file://{}\" }}", lexicon.display()),
         String::from("lexicon = { registry = \"/srv/registry/catalog.toml\" }"),
+        String::from("lexicon = { git = \"git://example.org/lexicon\" }"),
     ]
     .iter()
     .enumerate()
@@ -724,6 +726,10 @@ fn packages_from_elsewhere_name_nothing_here() {
         let error = project
             .install(&world.library("lib"), &fetcher, Update::Nothing)
             .unwrap_err();
-        assert!(error.to_string().contains("on this one"), "{error}");
+        let error = error.to_string();
+        assert!(
+            error.contains("on this one") || error.contains("git's unencrypted protocol"),
+            "{error}"
+        );
     }
 }

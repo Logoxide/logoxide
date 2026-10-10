@@ -8,8 +8,10 @@ over HTTP (a repository's refs, and archives of its commits; see [`crate::archiv
 */
 
 use std::{
+    io::Read,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
+    time::{Duration, Instant},
 };
 
 use crate::{
@@ -155,44 +157,190 @@ pub trait Fetcher {
     }
 }
 
+/// The longest a git command may take (a fetch, or anything but listing tags) before it's stopped
+pub const FETCH_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+/// The longest listing a repository's tags (`git ls-remote`) may take
+pub const LIST_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Fetching with the `git` command
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct GitCli {
     /// Where repositories are cloned while fetching (a temporary folder by default)
     pub scratch: Option<PathBuf>,
+    /// The longest a fetch (or any git command but `ls-remote`) may take ([`FETCH_TIMEOUT`])
+    pub fetch_timeout: Duration,
+    /// The longest listing a repository's tags may take ([`LIST_TIMEOUT`])
+    pub list_timeout: Duration,
+}
+
+impl Default for GitCli {
+    fn default() -> Self {
+        GitCli {
+            scratch: None,
+            fetch_timeout: FETCH_TIMEOUT,
+            list_timeout: LIST_TIMEOUT,
+        }
+    }
 }
 
 /**
 Runs git. Its `ext::` transport (which runs a command a URL names) is off, and transports git
 leaves to the user's choice (`fd::`, a helper's) are refused, since URLs come from manifests
 anyone writes. Local repositories stay allowed (git counts them among those): the resolver keeps
-packages from elsewhere from naming them ([`is_local`])
+packages from elsewhere from naming them ([`is_local`]). It's stopped after `timeout`.
+
+A repository's `core.fsmonitor` names a command git would run, so it's off everywhere (lx also
+runs git in repositories it didn't make: a package's own, a registry's folder). Fetching runs
+nothing the repository or its host asks for ([`Mode::Fetching`])
 */
-fn git(args: &[&str], dir: Option<&Path>, url: &str) -> Result<String> {
+fn git(
+    args: &[&str],
+    dir: Option<&Path>,
+    url: &str,
+    timeout: Duration,
+    mode: Mode,
+) -> Result<String> {
     let mut command = Command::new("git");
     command
         .args(["-c", "protocol.ext.allow=never"])
         .args(["-c", "protocol.file.allow=always"])
+        .args(["-c", "core.fsmonitor=false"]);
+    if let Mode::Fetching { hooks } = mode {
+        // Git LFS would download whatever the repository's `.lfsconfig` names: its pointer files
+        // are kept as they are, so a package hashes the same whether LFS is installed or not
+        command
+            .args(["-c", "filter.lfs.process=", "-c", "filter.lfs.smudge="])
+            .args(["-c", "filter.lfs.required=false"])
+            .env("GIT_LFS_SKIP_SMUDGE", "1");
+        // Hooks (the user's own `core.hooksPath` included) don't run in lx's clones
+        if let Some(hooks) = hooks {
+            let mut setting = std::ffi::OsString::from("core.hooksPath=");
+            setting.push(hooks);
+            command.arg("-c").arg(setting);
+        }
+        // SSH never asks (for a passphrase, or to trust a host): it fails instead
+        if !user_ssh_command() {
+            command.env("GIT_SSH_COMMAND", "ssh -o BatchMode=yes");
+        }
+    }
+    command
         .args(args)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("GIT_PROTOCOL_FROM_USER", "0");
     if let Some(dir) = dir {
         command.current_dir(dir);
     }
-    let output = command.output().map_err(|e| LogoxideError::Fetch {
+    run(command, url, timeout)
+}
+
+/// How git is run
+#[derive(Clone, Copy)]
+enum Mode<'a> {
+    /// In a repository of the user's (a package being released, a registry's folder)
+    Local,
+    /// Fetching from elsewhere, into a repository lx made: `hooks` is an empty folder for
+    /// `core.hooksPath` when the command could run one
+    Fetching { hooks: Option<&'a Path> },
+}
+
+/// Whether the user chose how git runs SSH (`GIT_SSH_COMMAND`, `GIT_SSH`, or `core.sshCommand`),
+/// which lx then leaves alone
+fn user_ssh_command() -> bool {
+    static CHOSEN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *CHOSEN.get_or_init(|| {
+        if ["GIT_SSH_COMMAND", "GIT_SSH"]
+            .iter()
+            .any(|name| std::env::var_os(name).is_some_and(|v| !v.is_empty()))
+        {
+            return true;
+        }
+        let mut command = Command::new("git");
+        command
+            .args(["config", "--get", "core.sshCommand"])
+            .current_dir(std::env::temp_dir());
+        run(command, "core.sshCommand", LIST_TIMEOUT).is_ok_and(|v| !v.trim().is_empty())
+    })
+}
+
+/**
+Runs a command and gives what it printed, killing it if it takes longer than `timeout` (a host
+that never answers, or sends a byte a minute, would otherwise hold lx forever). What it prints is
+read as it runs, so a full pipe never stops it
+*/
+fn run(mut command: Command, url: &str, timeout: Duration) -> Result<String> {
+    let fail = |message: String| LogoxideError::Fetch {
         url: url.to_string(),
-        message: format!("couldn't run git: {e}"),
-    })?;
-    if !output.status.success() {
-        return Err(LogoxideError::Fetch {
-            url: url.to_string(),
-            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        });
+        message,
+    };
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|e| fail(format!("couldn't run git: {e}")))?;
+    fn read_all(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut bytes = vec![];
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    let stdout = read_all(child.stdout.take());
+    let stderr = read_all(child.stderr.take());
+    let start = Instant::now();
+    let mut pause = Duration::from_millis(5);
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                let left = timeout.saturating_sub(start.elapsed());
+                if left.is_zero() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    // The readers are left to finish alone: a helper git started (for HTTPS or
+                    // SSH) may hold the pipes a moment longer
+                    return Err(fail(format!(
+                        "git took longer than {} and was stopped (`git-timeout` and \
+                         `git-list-timeout` in logoxide's config change how long it may take)",
+                        describe(timeout)
+                    )));
+                }
+                std::thread::sleep(pause.min(left));
+                pause = (pause * 2).min(Duration::from_millis(100));
+            }
+            Err(e) => {
+                let _ = child.kill();
+                return Err(fail(format!("couldn't wait for git: {e}")));
+            }
+        }
+    };
+    let stdout = stdout.join().unwrap_or_default();
+    let stderr = stderr.join().unwrap_or_default();
+    if !status.success() {
+        return Err(fail(String::from_utf8_lossy(&stderr).trim().to_string()));
+    }
+    Ok(String::from_utf8_lossy(&stdout).into_owned())
+}
+
+/// A time limit in words: `10 minutes`, `90 s`, `100 ms`
+fn describe(timeout: Duration) -> String {
+    match timeout.as_secs() {
+        0 => format!("{} ms", timeout.as_millis()),
+        60 => String::from("1 minute"),
+        s if s % 60 == 0 => format!("{} minutes", s / 60),
+        s => format!("{s} s"),
+    }
 }
 
 impl GitCli {
+    /// Runs git, stopped after [`GitCli::fetch_timeout`]
+    fn git(&self, args: &[&str], dir: Option<&Path>, url: &str) -> Result<String> {
+        git(args, dir, url, self.fetch_timeout, Mode::Local)
+    }
+
     fn scratch_dir(&self, what: &str) -> PathBuf {
         let scratch = self.scratch.clone().unwrap_or_else(std::env::temp_dir);
         scratch.join(format!(
@@ -274,56 +422,41 @@ impl Fetcher for GitCli {
         paths: &[&str],
         dest: &dyn Storage,
     ) -> Result<String> {
-        let work = self.scratch_dir("files");
-        let io = |e: std::io::Error| LogoxideError::io(&work.display().to_string(), e);
-        std::fs::create_dir_all(&work).map_err(io)?;
-        let result = (|| {
-            check_args(url, reference)?;
-            let w = Some(work.as_path());
-            git(&["init", "-q"], w, url)?;
-            git(&["remote", "add", "--", "origin", url], w, url)?;
-            git(&["config", "remote.origin.promisor", "true"], w, url)?;
-            git(
-                &["config", "remote.origin.partialclonefilter", "blob:none"],
-                w,
-                url,
-            )?;
-            git(
-                &[
-                    "fetch",
-                    "-q",
-                    "--depth",
-                    "1",
-                    "--filter=blob:none",
-                    "--",
-                    "origin",
-                    &wanted(reference),
-                ],
-                w,
-                url,
-            )?;
+        self.in_clone("files", url, reference, |repo, git| {
+            git(&["remote", "add", "--", "origin", url])?;
+            git(&["config", "remote.origin.promisor", "true"])?;
+            git(&["config", "remote.origin.partialclonefilter", "blob:none"])?;
+            let wanted = wanted(reference);
+            let filter = "--filter=blob:none";
+            git(&[
+                "fetch", "-q", "--depth", "1", filter, "--", "origin", &wanted,
+            ])?;
             let mut sparse = vec!["sparse-checkout", "set", "--no-cone"];
             let patterns: Vec<String> = paths.iter().map(|p| format!("/{p}")).collect();
             sparse.extend(patterns.iter().map(String::as_str));
-            git(&sparse, w, url)?;
-            git(&["checkout", "-q", "FETCH_HEAD"], w, url)?;
-            let commit = git(&["rev-parse", "HEAD"], w, url)?.trim().to_string();
+            git(&sparse)?;
+            git(&["checkout", "-q", "FETCH_HEAD"])?;
+            let commit = git(&["rev-parse", "HEAD"])?.trim().to_string();
             for path in paths {
-                // Only a file in the work folder: never through a link, which may lead anywhere
-                if let Some(from) = plain_file(&work, path) {
+                // Only a file in the clone: never through a link, which may lead anywhere
+                if let Some(from) = plain_file(repo, path) {
                     let bytes = std::fs::read(&from).map_err(|e| LogoxideError::io(path, e))?;
                     dest.write(path, &bytes)?;
                 }
             }
             Ok(commit)
-        })();
-        let _ = std::fs::remove_dir_all(&work);
-        result
+        })
     }
 
     fn tags(&self, url: &str) -> Result<Vec<(String, String)>> {
         check_args(url, &GitRef::Head)?;
-        let out = git(&["ls-remote", "--tags", "--", url], None, url)?;
+        let out = git(
+            &["ls-remote", "--tags", "--", url],
+            None,
+            url,
+            self.list_timeout,
+            Mode::Fetching { hooks: None },
+        )?;
         let mut tags: Vec<(String, String)> = vec![];
         for line in out.lines() {
             let Some((commit, name)) = line.split_once('\t') else {
@@ -346,25 +479,48 @@ impl Fetcher for GitCli {
     }
 
     fn fetch(&self, url: &str, reference: &GitRef, dest: &dyn Storage) -> Result<String> {
-        let work = self.scratch_dir("fetch");
-        let io = |e: std::io::Error| LogoxideError::io(&work.display().to_string(), e);
-        std::fs::create_dir_all(&work).map_err(io)?;
-        let result = (|| {
-            check_args(url, reference)?;
-            git(&["init", "-q"], Some(&work), url)?;
-            git(
-                &["fetch", "-q", "--depth", "1", "--", url, &wanted(reference)],
-                Some(&work),
-                url,
-            )?;
-            git(&["checkout", "-q", "FETCH_HEAD"], Some(&work), url)?;
-            let commit = git(&["rev-parse", "HEAD"], Some(&work), url)?
-                .trim()
-                .to_string();
-            copy_into(&work, "", dest)?;
+        self.in_clone("fetch", url, reference, |repo, git| {
+            git(&["fetch", "-q", "--depth", "1", "--", url, &wanted(reference)])?;
+            git(&["checkout", "-q", "FETCH_HEAD"])?;
+            let commit = git(&["rev-parse", "HEAD"])?.trim().to_string();
+            copy_into(repo, "", dest)?;
             Ok(commit)
+        })
+    }
+}
+
+/// Runs git in one of lx's clones
+type InClone<'a> = &'a dyn Fn(&[&str]) -> Result<String>;
+
+impl GitCli {
+    /**
+    Runs `work` in a new, empty repository in the scratch folder (removed after), given the
+    repository's folder and a way to run git there as [`Mode::Fetching`], with an empty folder
+    beside it for hooks
+    */
+    fn in_clone(
+        &self,
+        what: &str,
+        url: &str,
+        reference: &GitRef,
+        work: impl FnOnce(&Path, InClone) -> Result<String>,
+    ) -> Result<String> {
+        let scratch = self.scratch_dir(what);
+        let (repo, hooks) = (scratch.join("repo"), scratch.join("hooks"));
+        let result = (|| {
+            for dir in [&repo, &hooks] {
+                std::fs::create_dir_all(dir)
+                    .map_err(|e| LogoxideError::io(&dir.display().to_string(), e))?;
+            }
+            check_args(url, reference)?;
+            let mode = Mode::Fetching {
+                hooks: Some(&hooks),
+            };
+            let git = |args: &[&str]| git(args, Some(&repo), url, self.fetch_timeout, mode);
+            git(&["init", "-q"])?;
+            work(&repo, &git)
         })();
-        let _ = std::fs::remove_dir_all(&work);
+        let _ = std::fs::remove_dir_all(&scratch);
         result
     }
 }
@@ -373,7 +529,7 @@ impl GitCli {
     /// A local repository's tags that are versions (`v1.2.0`), newest last
     pub fn local_versions(&self, repo: &Path) -> Result<Vec<(semver::Version, String)>> {
         let (_, prefix) = self.package_in(repo)?;
-        let out = git(&["tag", "--list"], Some(repo), &repo.display().to_string())?;
+        let out = self.git(&["tag", "--list"], Some(repo), &repo.display().to_string())?;
         let mut versions: Vec<(semver::Version, String)> = out
             .lines()
             .filter_map(|tag| {
@@ -396,8 +552,8 @@ impl GitCli {
     */
     pub fn package_in(&self, dir: &Path) -> Result<(PathBuf, String)> {
         let at = dir.display().to_string();
-        let root = git(&["rev-parse", "--show-toplevel"], Some(dir), &at)?;
-        let prefix = git(&["rev-parse", "--show-prefix"], Some(dir), &at)?;
+        let root = self.git(&["rev-parse", "--show-toplevel"], Some(dir), &at)?;
+        let prefix = self.git(&["rev-parse", "--show-prefix"], Some(dir), &at)?;
         Ok((PathBuf::from(root.trim()), prefix.trim().to_string()))
     }
 
@@ -405,14 +561,15 @@ impl GitCli {
     /// the repository are left as they are) and tags it
     pub fn commit_and_tag(&self, repo: &Path, message: &str, tag: &str) -> Result<String> {
         let at = repo.display().to_string();
-        git(&["add", "-A", "--", "."], Some(repo), &at)?;
+        self.git(&["add", "-A", "--", "."], Some(repo), &at)?;
         // Nothing new (the summary written is the one committed): the commit there is tagged
-        let staged = git(&["status", "--porcelain", "--", "."], Some(repo), &at)?;
+        let staged = self.git(&["status", "--porcelain", "--", "."], Some(repo), &at)?;
         if !staged.trim().is_empty() {
-            git(&["commit", "-q", "-m", message, "--", "."], Some(repo), &at)?;
+            self.git(&["commit", "-q", "-m", message, "--", "."], Some(repo), &at)?;
         }
-        git(&["tag", tag], Some(repo), &at)?;
-        Ok(git(&["rev-parse", "HEAD"], Some(repo), &at)?
+        self.git(&["tag", tag], Some(repo), &at)?;
+        Ok(self
+            .git(&["rev-parse", "HEAD"], Some(repo), &at)?
             .trim()
             .to_string())
     }
@@ -539,6 +696,27 @@ mod tests {
         .unwrap();
         assert_eq!(some.walk("").unwrap(), ["ok.txt"]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn git_has_a_deadline() {
+        let mut slow = Command::new("sleep");
+        slow.arg("30");
+        let start = Instant::now();
+        let error = run(slow, "https://e.org/slow", Duration::from_millis(200))
+            .unwrap_err()
+            .to_string();
+        assert!(start.elapsed() < Duration::from_secs(10), "{error}");
+        assert!(error.contains("longer than 200 ms"), "{error}");
+        // What finishes in time is given back, however much it prints
+        let mut loud = Command::new("sh");
+        loud.args(["-c", "head -c 1000000 /dev/zero; echo done >&2"]);
+        let out = run(loud, "x", Duration::from_secs(30)).unwrap();
+        assert_eq!(out.len(), 1_000_000);
+        assert_eq!(describe(FETCH_TIMEOUT), "10 minutes");
+        assert_eq!(describe(LIST_TIMEOUT), "1 minute");
+        assert_eq!(describe(Duration::from_secs(90)), "90 s");
     }
 
     #[test]

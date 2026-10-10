@@ -30,7 +30,9 @@ When a dependency is first resolved, logoxide takes what its source says:
 
 Catalogs and archives fetched over **plain HTTP** (any `http://` URL, including one SWORD
 repository in CrossWire's list) give no integrity at all on first use: anyone on the network
-path can change them. The lock still protects later installs. Prefer HTTPS sources.
+path can change them. The lock still protects later installs. Prefer HTTPS sources. An HTTPS
+URL stays HTTPS: `lx` refuses a redirect from one to plain HTTP, and its warning of plain HTTP
+names where a download was redirected.
 
 There are **no signatures**: no package, catalog, tag, or archive is signed, and logoxide doesn't
 check git commit or tag signatures. Trust in a publisher is trust in their hosting account.
@@ -60,9 +62,21 @@ sources. To keep a fetched manifest from reaching into the machine it is install
 - a git or registry package **can't have `path` dependencies** (refused today)
 - its dependencies **can't name local paths or `file://` URLs** in `git` or `registry` either,
   and a catalog fetched from the web can't list a local path or `file://` URL for a release
+- its dependencies **can't use `git://`**, git's unencrypted protocol (your own manifest may,
+  with a warning, as for any `http://` URL)
 - git URLs and refs (tags, branches, revisions) that `git` would read as **command-line options**
   (starting with `-`) are refused, since `lx` runs the `git` command (which also runs with the
   `ext::` transport off, and never follows a symlink in a checkout)
+- git has a **deadline**: a fetch is stopped after 10 minutes and listing a repository's tags
+  after 60 seconds (`git-timeout` and `git-list-timeout`, in seconds, in logoxide's config), so a
+  host that never answers can't hold `lx` forever
+- git **runs nothing a repository asks for**: no hooks (lx's clones use an empty
+  `core.hooksPath`, so not even your own), no Git LFS filter (LFS's small pointer files are
+  kept as they are, so a package hashes the same whether or not LFS is installed, and nothing is
+  downloaded from what a `.lfsconfig` names), no `core.fsmonitor` (also off in repositories lx
+  didn't make: a package being released, a registry's folder), and SSH never asks for a
+  passphrase or to trust a host (`BatchMode`), unless you set `GIT_SSH_COMMAND` or
+  `core.sshCommand` yourself
 
 What a package can still do is name other public repositories and catalogs, which are then
 trusted on first use like your own dependencies. `lx` never runs anything a package contains:

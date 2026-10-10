@@ -9,6 +9,9 @@ library = "~/Bibles"                 # LOGOXIDE_HOME and --library win
 cache = "~/.cache/logoxide"          # LOGOXIDE_CACHE and --cache-dir win
 catalogs = ["https://example.org/catalog.toml"]   # searched in every project, after its own
 
+git-timeout = 600                    # seconds a git fetch may take (10 minutes)
+git-list-timeout = 60                # seconds listing a repository's tags may take
+
 [registries]                         # every project's, besides its own (its own name wins)
 dorean-local = "~/Documents/logoxide-dorean-repos"
 ```
@@ -44,6 +47,12 @@ pub struct Config {
     /// Registries every project can name, besides its own
     #[serde(default)]
     pub registries: BTreeMap<String, String>,
+    /// Seconds a git fetch may take before it's stopped ([`crate::git::FETCH_TIMEOUT`])
+    #[serde(default)]
+    pub git_timeout: Option<u64>,
+    /// Seconds listing a repository's tags may take ([`crate::git::LIST_TIMEOUT`])
+    #[serde(default)]
+    pub git_list_timeout: Option<u64>,
 }
 
 /// `~/` as the home folder; a relative path beside `base`; a URL as it is
@@ -141,6 +150,16 @@ impl Config {
         Library::new(root, cache)
     }
 
+    /// The `git` command with this config's time limits, cloning in `scratch`
+    pub fn git(&self, scratch: Option<PathBuf>) -> crate::git::GitCli {
+        let seconds = std::time::Duration::from_secs;
+        crate::git::GitCli {
+            scratch,
+            fetch_timeout: self.git_timeout.map_or(crate::git::FETCH_TIMEOUT, seconds),
+            list_timeout: (self.git_list_timeout).map_or(crate::git::LIST_TIMEOUT, seconds),
+        }
+    }
+
     /// A project's registries and this config's (the project's own name wins)
     pub fn registries(&self, manifest: &Manifest) -> BTreeMap<String, String> {
         let mut all = self.registries.clone();
@@ -185,6 +204,11 @@ dorean-local = "../repos"
             ]
         );
         assert_eq!(config.registries["dorean-local"], "/etc/repos");
+        assert_eq!(config.git(None).fetch_timeout, crate::git::FETCH_TIMEOUT);
+        let timed = Config::parse("git-timeout = 5\ngit-list-timeout = 2", Path::new("/")).unwrap();
+        let git = timed.git(None);
+        assert_eq!(git.fetch_timeout, std::time::Duration::from_secs(5));
+        assert_eq!(git.list_timeout, std::time::Duration::from_secs(2));
         // Flags win over the config
         let library = config.library(Some(PathBuf::from("/flag")), None);
         assert_eq!(library.root(), Path::new("/flag"));

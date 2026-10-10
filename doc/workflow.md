@@ -30,6 +30,8 @@ mistyped one is an error. topos's own settings (book data, genres) stay in topos
 library = "~/Bibles"                 # LOGOXIDE_HOME and --library win over it
 cache = "~/.cache/logoxide"          # LOGOXIDE_CACHE and --cache-dir win over it
 catalogs = ["https://example.org/catalog.toml"]   # every project searches it, after its own
+git-timeout = 600                    # seconds git may take to fetch before it's stopped
+git-list-timeout = 60                # seconds listing a repository's tags may take
 
 [registries]                         # every project can name these (its own name wins)
 dorean-local = "~/Documents/logoxide-dorean-repos"

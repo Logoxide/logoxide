@@ -14,8 +14,12 @@ use std::{
     time::Duration,
 };
 
-use logoxide::{LogoxideError, Storage, git::GitCli};
+use logoxide::{
+    LogoxideError, Storage,
+    git::{GitCli, is_insecure},
+};
 use sha2::{Digest, Sha256};
+use ureq::ResponseExt;
 
 /// How many times a download is tried
 const ATTEMPTS: u32 = 3;
@@ -65,9 +69,22 @@ fn with_retries<T>(
     if !QUIET.load(Ordering::Relaxed) {
         eprintln!("Downloading {url}");
     }
-    let mut attempt = 1;
+    let (mut attempt, warned) = (1, std::cell::Cell::new(false));
     loop {
-        match agent().get(url).call().and_then(&read) {
+        let result = call(url).and_then(|response| {
+            // Judged by where it ended up: an HTTP URL redirected elsewhere is still said
+            let at = response.get_uri().to_string();
+            if !warned.replace(true) && (is_insecure(url) || is_insecure(&at)) {
+                match at == url {
+                    true => eprintln!("warning: {url} is plain HTTP: what it sends can't be checked"),
+                    false => eprintln!(
+                        "warning: {url} (redirected to {at}) is plain HTTP: what it sends can't be checked"
+                    ),
+                }
+            }
+            read(response)
+        });
+        match result {
             Ok(value) => return Ok(value),
             Err(e) if attempt < ATTEMPTS && retryable(&e) => {
                 std::thread::sleep(Duration::from_millis(500 * 3u64.pow(attempt - 1)));
@@ -76,10 +93,29 @@ fn with_retries<T>(
             Err(e) => {
                 return Err(LogoxideError::Fetch {
                     url: url.to_string(),
-                    message: e.to_string(),
+                    message: describe(e),
                 });
             }
         }
+    }
+}
+
+/// Asks for `url`. An HTTPS URL stays HTTPS: ureq checks every hop of a redirect, and one to
+/// plain HTTP is refused
+fn call(url: &str) -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
+    let https = url
+        .get(..8)
+        .is_some_and(|s| s.eq_ignore_ascii_case("https://"));
+    agent().get(url).config().https_only(https).build().call()
+}
+
+/// What went wrong, in words
+fn describe(error: ureq::Error) -> String {
+    match error {
+        ureq::Error::RequireHttpsOnly(to) => {
+            format!("refused: it redirects to {to}, which isn't HTTPS")
+        }
+        other => other.to_string(),
     }
 }
 
@@ -142,8 +178,22 @@ impl std::ops::Deref for Web {
     }
 }
 
+/// Warns, once a URL, of a repository fetched without encryption (`git://`, `http://`), which a
+/// package from elsewhere can't name (`git://`) but the project itself may
+fn warn_insecure(url: &str) {
+    static WARNED: OnceLock<std::sync::Mutex<std::collections::BTreeSet<String>>> = OnceLock::new();
+    if !is_insecure(url) {
+        return;
+    }
+    let warned = WARNED.get_or_init(Default::default);
+    if warned.lock().is_ok_and(|mut w| w.insert(url.to_string())) {
+        eprintln!("warning: {url} isn't encrypted: what it sends could be changed on the way");
+    }
+}
+
 impl logoxide::git::Fetcher for Web {
     fn tags(&self, url: &str) -> logoxide::Result<Vec<(String, String)>> {
+        warn_insecure(url);
         self.0.tags(url)
     }
 
@@ -153,6 +203,7 @@ impl logoxide::git::Fetcher for Web {
         reference: &logoxide::git::GitRef,
         dest: &dyn Storage,
     ) -> logoxide::Result<String> {
+        warn_insecure(url);
         self.0.fetch(url, reference, dest)
     }
 
@@ -163,6 +214,7 @@ impl logoxide::git::Fetcher for Web {
         paths: &[&str],
         dest: &dyn Storage,
     ) -> logoxide::Result<String> {
+        warn_insecure(url);
         self.0.fetch_files(url, reference, paths, dest)
     }
 
@@ -171,5 +223,51 @@ impl logoxide::git::Fetcher for Web {
             true => get(url),
             false => logoxide::git::read_local(url),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+
+    /// A server on this machine answering `/from` with a redirect to `/to`, and `/to` with `ok`
+    fn serve() -> String {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let location = format!("{base}/to");
+        std::thread::spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let mut reader = BufReader::new(&stream);
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                // The headers, to the blank line
+                while reader.read_line(&mut String::new()).unwrap_or(0) > 2 {}
+                let reply = match line.contains("/from") {
+                    true => format!(
+                        "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\n\r\n"
+                    ),
+                    false => String::from("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"),
+                };
+                let _ = (&stream).write_all(reply.as_bytes());
+            }
+        });
+        base
+    }
+
+    #[test]
+    fn https_never_becomes_http() {
+        let base = serve();
+        // Plain HTTP may be redirected (and is warned of)
+        assert_eq!(get(&format!("{base}/from")).unwrap(), b"ok");
+        // A request that must stay HTTPS (as every HTTPS URL's must) refuses a hop that isn't,
+        // and says so
+        let error = (agent().get(format!("{base}/from")).config())
+            .https_only(true)
+            .build()
+            .call()
+            .unwrap_err();
+        let message = describe(error);
+        assert!(message.contains("isn't HTTPS"), "{message}");
     }
 }
