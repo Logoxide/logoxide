@@ -620,3 +620,37 @@ fn two_bibles_with_one_name_are_warned_of() {
     let out = world.lx(&["install"]);
     assert!(!String::from_utf8_lossy(&out.stderr).contains("warning"));
 }
+
+#[test]
+fn diff_names_joined_and_split_verses() {
+    let world = World::new("diff-bridges");
+    let tb = world.path("tb");
+    released(&tb, "tb", "1.0.0");
+    let path = tb.to_str().unwrap();
+    // 16 and 17 joined into one verse
+    let joined = JHN.replace(
+        r#"<verse number="16" style="v"/>For God so loved <verse number="17" style="v"/>"#,
+        r#"<verse number="16-17" style="v"/>For God so loved "#,
+    );
+    std::fs::write(tb.join("usx/JHN.usx"), &joined).unwrap();
+    let d = world.json(&["--format", "json", "diff", "--path", path, "v1.0.0"]);
+    assert_eq!(d["change"], "major");
+    assert_eq!(
+        d["joined"],
+        serde_json::json!([["JHN 3:17", "JHN 3:16-17"]])
+    );
+    assert_eq!(d["removed"], serde_json::json!([]));
+    let text = world.ok(&["diff", "--path", path, "v1.0.0"]);
+    assert!(
+        text.contains("JHN 3:17 is joined into JHN 3:16-17"),
+        "{text}"
+    );
+    // Released joined, then split again: minor
+    git(&tb, &["commit", "-qam", "joined"]);
+    git(&tb, &["tag", "v2.0.0"]);
+    std::fs::write(tb.join("usx/JHN.usx"), JHN).unwrap();
+    let d = world.json(&["--format", "json", "diff", "--path", path, "v2.0.0"]);
+    assert_eq!(d["change"], "minor");
+    assert_eq!(d["split"], serde_json::json!(["JHN 3:16"]));
+    assert_eq!(d["added"], serde_json::json!([]));
+}

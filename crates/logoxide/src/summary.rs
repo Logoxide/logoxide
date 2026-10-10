@@ -67,7 +67,7 @@ pub struct Summary {
     #[serde(skip)]
     pub cited: Vec<crate::references::Cited>,
     /// Each file's title, by path ([`crate::titles`]): hosts name what they show by it, so a
-    /// changed title is a major change
+    /// changed title is a minor change
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub titles: BTreeMap<String, String>,
 }
@@ -354,10 +354,11 @@ pub fn decode_verses(bytes: &[u8]) -> Result<Vec<VerseHash>> {
 pub enum Change {
     /// Markup, headings, notes, metadata: nothing breaks
     Patch,
-    /// Wording changed, or books and verses were added: exact-word links in those verses may not
-    /// match
+    /// Wording changed, verses were added or a bridge split, or a title changed: exact-word links
+    /// in those verses may not match
     Minor,
-    /// Verses removed, renumbered, or moved: verse links may point at other text
+    /// Verses removed, renumbered, moved, or joined into another's bridge: verse links may point
+    /// at other text
     Major,
 }
 
@@ -371,7 +372,13 @@ pub struct Diff {
     pub changed: Vec<VerseHash>,
     /// Verses whose old text is at another number now (renumbered)
     pub moved: Vec<(VerseHash, VerseHash)>,
-    /// Verses whose bridge changed (`4-5` became `4`)
+    /// Verses now inside another verse's bridge (`5` joined into `4-5`): each old verse and the
+    /// new one that covers it
+    pub joined: Vec<(VerseHash, VerseHash)>,
+    /// Verses whose bridge was split or narrowed, every number it covered still a verse (`4-5`
+    /// became `4` and `5`): the new verse at its number
+    pub split: Vec<VerseHash>,
+    /// Verses whose bridge narrowed and lost a number (`4-5` became `4`, with no `5`)
     pub bridged: Vec<VerseHash>,
     /// For packages without verses (books): their files changed, in ways verses can't show
     pub files_changed: bool,
@@ -397,14 +404,31 @@ pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash
     d
 }
 
+/// Each number inside a bridge (5 and 6 of `4-6`), and the verse whose bridge it is
+fn bridged_numbers(verses: &[VerseHash]) -> HashMap<(Book, u8, u8), &VerseHash> {
+    let mut covered = HashMap::new();
+    for v in verses {
+        for n in v.verse.saturating_add(1)..=v.last {
+            covered.entry((v.book, v.chapter, n)).or_insert(v);
+        }
+    }
+    covered
+}
+
 /**
-What changed from `old` to `new`. A verse whose text is gone from its number has moved when that
-text is now at a number that held other text before: identical verses (Psalm 107's refrain, or
-empty verses) reworded or removed aren't moves to their twins, and empty text never moves
+What changed from `old` to `new`. The range a verse covers is compared before its words: a
+number now inside another verse's bridge has been joined into it, a bridge split into verses
+(each of its numbers still somewhere) is minor, and one that lost a number is major; a split
+verse's words are taken to change with it. A verse whose text is gone from its number has moved
+when that text is now at a number that held other text before: identical verses (Psalm 107's
+refrain, or empty verses) reworded or removed aren't moves to their twins, and empty text never
+moves
 */
 pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
     let new_by_key: HashMap<_, _> = new.iter().map(|v| (v.key(), v)).collect();
     let old_by_key: HashMap<_, _> = old.iter().map(|v| (v.key(), v)).collect();
+    let new_bridged = bridged_numbers(new);
+    let old_bridged = bridged_numbers(old);
     let mut new_by_hash: HashMap<_, Vec<_>> = HashMap::new();
     for v in new {
         new_by_hash.entry(v.hash).or_default().push(v);
@@ -422,25 +446,50 @@ pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
             })
             .copied()
     };
+    // Whether a number of a verse's chapter is a verse, or inside a bridge, in `by_key`/`bridged`
+    let present = |by_key: &HashMap<(Book, u8, u8), &VerseHash>,
+                   bridged: &HashMap<(Book, u8, u8), &VerseHash>,
+                   v: &VerseHash,
+                   n: u8| {
+        let key = (v.book, v.chapter, n);
+        by_key.contains_key(&key) || bridged.contains_key(&key)
+    };
     let mut diff = Diff::default();
     for v in old {
         match new_by_key.get(&v.key()) {
-            None => match moved_to(v) {
-                Some(to) => diff.moved.push((*v, *to)),
-                None => diff.removed.push(*v),
+            None => match (new_bridged.get(&v.key()), moved_to(v)) {
+                (Some(by), _) => diff.joined.push((*v, **by)),
+                (None, Some(to)) => diff.moved.push((*v, *to)),
+                (None, None) => diff.removed.push(*v),
             },
+            // Narrowed: split when each number it no longer covers is still in the text
+            Some(n) if n.last < v.last => {
+                match (n.last + 1..=v.last).all(|k| present(&new_by_key, &new_bridged, v, k)) {
+                    true => diff.split.push(**n),
+                    false => diff.bridged.push(**n),
+                }
+            }
+            // Widened: the verses it took in are joined (listed with them); over numbers no verse
+            // had, only its words can have changed
+            Some(n) if n.last > v.last => {
+                let took_in =
+                    (v.last + 1..=n.last).any(|k| present(&old_by_key, &old_bridged, v, k));
+                if !took_in && n.hash != v.hash {
+                    diff.changed.push(**n);
+                }
+            }
             Some(n) if n.hash != v.hash => match moved_to(v) {
                 // Its text is now at another number, and something else is here
                 Some(to) => diff.moved.push((*v, *to)),
                 None => diff.changed.push(**n),
             },
-            Some(n) if n.last != v.last => diff.bridged.push(**n),
             Some(_) => {}
         }
     }
+    // A split bridge's later verses are part of the split, not added
     diff.added = new
         .iter()
-        .filter(|v| !old_by_key.contains_key(&v.key()))
+        .filter(|v| !old_by_key.contains_key(&v.key()) && !old_bridged.contains_key(&v.key()))
         .copied()
         .collect();
     diff
@@ -450,11 +499,16 @@ impl Diff {
     pub fn change(&self) -> Change {
         if !self.removed.is_empty()
             || !self.moved.is_empty()
+            || !self.joined.is_empty()
             || !self.bridged.is_empty()
-            || !self.retitled.is_empty()
         {
             Change::Major
-        } else if !self.changed.is_empty() || !self.added.is_empty() || self.files_changed {
+        } else if !self.changed.is_empty()
+            || !self.added.is_empty()
+            || !self.split.is_empty()
+            || !self.retitled.is_empty()
+            || self.files_changed
+        {
             Change::Minor
         } else {
             Change::Patch
@@ -510,6 +564,72 @@ mod tests {
             last: verse,
             hash: hash8(text),
         }
+    }
+
+    fn bridge(chapter: u8, verse: u8, last: u8, text: &str) -> VerseHash {
+        VerseHash {
+            last,
+            ..self::verse(chapter, verse, text)
+        }
+    }
+
+    #[test]
+    fn a_split_bridge_is_minor() {
+        let old = [verse(3, 3, "c"), bridge(3, 4, 5, "d e"), verse(3, 6, "f")];
+        let new = [
+            verse(3, 3, "c"),
+            verse(3, 4, "d"),
+            verse(3, 5, "e"),
+            verse(3, 6, "f"),
+        ];
+        let d = diff(&old, &new);
+        assert_eq!(d.split, [verse(3, 4, "d")]);
+        assert!(d.added.is_empty() && d.changed.is_empty() && d.removed.is_empty());
+        assert_eq!(d.change(), Change::Minor);
+        // Split and reworded: still minor, the words can't be compared across a split
+        let reworded = [
+            verse(3, 3, "c"),
+            verse(3, 4, "d!"),
+            verse(3, 5, "e!"),
+            verse(3, 6, "f"),
+        ];
+        let d = diff(&old, &reworded);
+        assert_eq!((d.split.len(), d.change()), (1, Change::Minor));
+        // Narrowed into another bridge (4-6 to 4 and 5-6): each number still there
+        let old = [bridge(3, 4, 6, "d e f")];
+        let new = [verse(3, 4, "d"), bridge(3, 5, 6, "e f")];
+        let d = diff(&old, &new);
+        assert_eq!((d.split.len(), d.change()), (1, Change::Minor));
+        // Narrowed with a number lost (4-5 to 4, and no 5): a link to 5 finds nothing
+        let d = diff(&[bridge(3, 4, 5, "d e")], &[verse(3, 4, "d e")]);
+        assert_eq!((d.bridged.len(), d.change()), (1, Change::Major));
+    }
+
+    #[test]
+    fn joined_verses_are_major() {
+        let old = [
+            verse(3, 3, "c"),
+            verse(3, 4, "d"),
+            verse(3, 5, "e"),
+            verse(3, 6, "f"),
+        ];
+        let new = [verse(3, 3, "c"), bridge(3, 4, 5, "d e"), verse(3, 6, "f")];
+        let d = diff(&old, &new);
+        // 5 is joined into 4-5, not removed; 4 isn't reworded for taking it in
+        assert_eq!(d.joined, [(verse(3, 5, "e"), bridge(3, 4, 5, "d e"))]);
+        assert!(d.removed.is_empty() && d.changed.is_empty() && d.moved.is_empty());
+        assert_eq!(d.change(), Change::Major);
+        assert_eq!(d.joined[0].1.reference(), "JHN 3:4-5");
+        // Widened: 4-5 to 4-6 takes in 6
+        let old = [bridge(3, 4, 5, "d e"), verse(3, 6, "f")];
+        let new = [bridge(3, 4, 6, "d e f")];
+        let d = diff(&old, &new);
+        assert_eq!(d.joined, [(verse(3, 6, "f"), bridge(3, 4, 6, "d e f"))]);
+        assert_eq!(d.change(), Change::Major);
+        // Widened over a number no verse had (an omitted verse bridged in): its words changed,
+        // and no link breaks
+        let d = diff(&[verse(17, 20, "a")], &[bridge(17, 20, 21, "a b")]);
+        assert_eq!((d.changed.len(), d.change()), (1, Change::Minor));
     }
 
     #[test]
@@ -621,7 +741,7 @@ mod tests {
     }
 
     #[test]
-    fn a_changed_title_is_a_major_change() {
+    fn a_changed_title_is_a_minor_change() {
         let summary = |title: &str| Summary {
             summary: SUMMARY_VERSION,
             id: "b".into(),
@@ -643,7 +763,7 @@ mod tests {
             d.retitled,
             [("epub/b.epub".into(), "Freely".into(), "Freely Given".into())]
         );
-        assert_eq!(d.change(), Change::Major);
+        assert_eq!(d.change(), Change::Minor);
         let same = diff_summaries((&summary("Freely"), &[]), (&summary("Freely"), &[]));
         assert_eq!(same.change(), Change::Patch);
     }

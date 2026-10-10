@@ -615,6 +615,9 @@ pub(crate) fn release(
         for (from, to) in d.moved.iter().take(10) {
             outln!("  {} is now {}", from.reference(), to.reference());
         }
+        for (from, to) in d.joined.iter().take(10) {
+            outln!("  {} is joined into {}", from.reference(), to.reference());
+        }
         for v in d.removed.iter().take(10) {
             outln!("  removed {}", v.reference());
         }
@@ -674,6 +677,11 @@ pub(crate) struct DiffReport {
     moved: Vec<[String; 2]>,
     removed: Vec<String>,
     added: Vec<String>,
+    /// Each verse now inside another's bridge, and that bridge
+    joined: Vec<[String; 2]>,
+    /// Bridges split, each number still a verse: the new verse at the bridge's number
+    split: Vec<String>,
+    /// Bridges that lost a number
     bridged: Vec<String>,
     /// Files whose title changed: each one's path, old title, and new title
     retitled: Vec<[String; 3]>,
@@ -695,6 +703,10 @@ impl DiffReport {
                 .collect(),
             removed: references(&d.removed),
             added: references(&d.added),
+            joined: (d.joined.iter())
+                .map(|(from, to)| [from.reference(), to.reference()])
+                .collect(),
+            split: references(&d.split),
             bridged: references(&d.bridged),
             retitled: (d.retitled.iter())
                 .map(|(path, old, new)| [path.clone(), old.clone(), new.clone()])
@@ -747,6 +759,12 @@ pub(crate) fn diff(
     }
     for v in &d.added {
         outln!("added {}", v.reference());
+    }
+    for (from, to) in &d.joined {
+        outln!("{} is joined into {}", from.reference(), to.reference());
+    }
+    for v in &d.split {
+        outln!("split {}", v.reference());
     }
     for v in &d.bridged {
         outln!("bridged differently {}", v.reference());

@@ -133,16 +133,19 @@ it again.
 
 ## Changes and versions
 
-Two releases' verse hashes are compared by verse number (book, chapter, verse):
+Two releases' verse hashes are compared by verse number (book, chapter, verse), the range each
+verse covers (its `last`) before its words: a split verse's words are taken to change with it.
 
 | Change | Meaning | Kind |
 |---|---|---|
 | removed | A verse number the new version lacks, whose words aren't anywhere else | **major** |
 | renumbered (moved) | A verse's old words are now at another number | **major** |
-| bridged | A verse's bridge changed (`4-5` became `4`) | **major** |
-| retitled | A file's title changed (hosts name what they show by it) | **major** |
-| reworded | A verse's words changed at the same number | **minor** |
-| added | A verse number the old version lacks | **minor** |
+| joined | A verse number now inside another verse's bridge (`4`, `5` became `4-5`, or `4-5`, `6` became `4-6`): a link to it finds other words with its own | **major** |
+| bridged | A verse's bridge narrowed and lost a number (`4-5` became `4`, with no `5`) | **major** |
+| split | A verse's bridge narrowed, each number it covered still a verse or in another bridge (`4-5` became `4` and `5`) | **minor** |
+| reworded | A verse's words changed at the same number and range (or its bridge widened over numbers no verse had) | **minor** |
+| added | A verse number the old version lacks (not one a split bridge covered) | **minor** |
+| retitled | A file's title changed (hosts name what they show by it, but nothing they point at is gone) | **minor** |
 | files changed | For packages without verses (books): `files-checksum` changed | **minor** |
 | anything else | Notes, headings, markup, metadata, media timings | **patch** |
 

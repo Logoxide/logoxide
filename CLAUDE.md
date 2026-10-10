@@ -186,8 +186,11 @@ before changing the design.
     without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book
     (`books.rs`'s `Book`: logoxide's own fixed numbers, matched to topos's `BookId` by USFM code;
     1–66 as topos's, 67–90 topos 0.6's, 91–103 the other USFM books, 200–214 peripherals, a
-    snapshot test so none changes), chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
-    `diff` (removed, renumbered: old text at another number, bridged, reworded, added) and
+    snapshot test so none changes), chapter, verse, last, 8 bytes of SHA-256 of its words with
+    notes and headings left out); `diff` (removed, renumbered: old text at another number,
+    joined: a number now inside another verse's bridge, split: a bridge narrowed with each number
+    still there (minor), bridged: one that lost a number, reworded, added; ranges are compared
+    before hashes, the owner's D2) and
     `Change` (patch/minor/major; before 1.0 the minor counts as major, and before 0.1 every change
     is, like Cargo). Text counts as moved only to a number that held other text (a psalm's
     repeated refrain reworded is a rewording), and empty verses never move.
@@ -213,8 +216,8 @@ before changing the design.
     and its commits take only its folder (nothing new: the current commit is tagged)
   - `titles.rs`: each file's title (a Bible book's or an EPUB's): `[titles]` in the manifest,
     else the file's (`\toc2`, `\h`, `\toc1`; `dc:title`), else the book's English name (a file of
-    many books: the package's name). Summaries list them (`titles`); a changed title is a major
-    change (`Diff::retitled`); `lx check` and `lx release` refuse an untitled file. Hosts name
+    many books: the package's name). Summaries list them (`titles`); a changed title is a minor
+    change (`Diff::retitled`, the owner's choice); `lx check` and `lx release` refuse an untitled file. Hosts name
     what they show by it (`BookFile.title`, `LogoxidePackage.titles()`)
   - `text.rs`: `printable` drops control characters (but `\n`, `\t`), whole ANSI/OSC escape
     sequences (7-bit and C1), and bidi controls (U+202A–202E, U+2066–2069) from text bound for a

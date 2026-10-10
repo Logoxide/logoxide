@@ -265,7 +265,7 @@ in place of what the file says:
 Without one, a file's title is what it says (a Bible book's `\toc2`, else `\h`, else `\toc1`; in
 USX the paragraphs of those styles; an EPUB's `dc:title`), else a Bible book's English name, else
 for a file holding many books, the package's `name`. A file with no title is refused by `lx check`
-and `lx release`. Titles are published in the summary, and changing one is a major change.
+and `lx release`. Titles are published in the summary, and changing one is a minor change.
 
 ## What a package is made of
 

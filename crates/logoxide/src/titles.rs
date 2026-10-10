@@ -2,7 +2,8 @@
 Each file's title: what a reader sees for a Bible book or a book (`John`, `The Dorean
 Principle`), apart from its file name (`usx/JHN.usx`). Hosts name what they show by it (the
 Obsidian plugin's stubs, `Logoxide/bsb/John.bible`), so a package's titles are part of what it
-publishes: its summary lists them, and a changed title is a major change.
+publishes: its summary lists them, and a changed title is a minor change (a host may rename what
+it shows, but nothing it points at is gone).
 
 A title is, in order:
 - what `[titles]` in `logoxide.toml` gives the file (`"usx/JHN.usx" = "John"`)

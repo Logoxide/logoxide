@@ -462,7 +462,7 @@ impl LogoxidePackage {
     }
 
     /// Each Bible book's file and each EPUB, with its title, in path order: what hosts name the
-    /// files they show by (a title changes only in a major release)
+    /// files they show by (a title changes only in a minor or major release)
     pub fn titles(&self) -> Vec<TitledFile> {
         (logoxide_core::titles::titles(self.cached.package()).unwrap_or_default())
             .into_iter()

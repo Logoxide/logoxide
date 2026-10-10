@@ -357,7 +357,7 @@ Each file a reader sees has a title, which apps name it by (the Obsidian plugin'
 `Logoxide/bsb/John.bible`): a Bible book's short name in the file (`\toc2`, else `\h`), an EPUB's
 title, else the book's name in English. `[titles]` in `logoxide.toml` gives one in its place
 (`"usx/JHN.usx" = "Juan"`). `lx check` lists them and refuses a file without one, and a changed
-title is a major change, since links name the file by it.
+title is a minor change: a host may rename what it shows, but nothing it points at is gone.
 
 ### Audio
 

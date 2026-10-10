@@ -58,8 +58,8 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
   beside a book never change it
 - Summaries: `lx release` writes `logoxide.summary.toml` (verse counts, sizes, what the text holds,
   titles) and `logoxide.verses.bin` (a hash of every verse's words), checks the version against
-  what changed since the last release (patch: notes and markup; minor: wording or additions;
-  major: verses removed or renumbered, titles changed), then commits and tags it. `lx diff`,
+  what changed since the last release (patch: notes and markup; minor: wording, additions, split
+  bridges, or titles; major: verses removed, renumbered, or joined), then commits and tags it. `lx diff`,
   `lx verify`, and `lx show --git URL` (a release's summary, without downloading its text)
 - Catalogs and imports: `lx search` finds packages by name, abbreviation, language, keyword,
   category, or the books they're about, in your own catalogs (`catalog.toml`, anyone can host

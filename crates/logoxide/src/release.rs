@@ -158,7 +158,9 @@ pub fn describe(d: &Diff) -> String {
     let parts: Vec<String> = [
         (d.removed.len(), "removed"),
         (d.moved.len(), "renumbered"),
+        (d.joined.len(), "joined into a bridge"),
         (d.bridged.len(), "bridged differently"),
+        (d.split.len(), "split from a bridge"),
         (d.changed.len(), "reworded"),
         (d.added.len(), "added"),
     ]
