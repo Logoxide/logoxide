@@ -195,9 +195,9 @@ The package in `dir` at its release tag for the version its `logoxide.toml` give
 */
 fn pack(dir: &Path, git: &logoxide::git::GitCli) -> logoxide::Result<Packed> {
     let (root, prefix) = git.package_in(dir)?;
-    let manifest = logoxide::Manifest::parse(
-        &std::fs::read_to_string(dir.join(logoxide::manifest::MANIFEST)).map_err(|e| io(dir, e))?,
-    )?;
+    // Never through a link: what's packed comes from the release's commit, which has none
+    let folder = logoxide::FsStorage::new(dir).no_symlinks();
+    let manifest = logoxide::Manifest::parse(&folder.read_string(logoxide::manifest::MANIFEST)?)?;
     let version = (manifest.package.as_ref())
         .map(|p| p.version.clone())
         .ok_or_else(|| LogoxideError::Manifest(format!("{}: no [package]", dir.display())))?;

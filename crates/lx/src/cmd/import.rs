@@ -164,7 +164,7 @@ pub(crate) fn import_update(
     let (mut reports, mut failed) = (vec![], vec![]);
     for (dep, path) in paths {
         let dir = project.dir().join(&path);
-        let current: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir));
+        let current: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir).no_symlinks());
         let Ok(package) = Package::open(current.clone(), Features::default()) else {
             continue;
         };
@@ -368,7 +368,7 @@ fn update_import(
             return Ok(());
         }
     }
-    apply_import(&FsStorage::new(dir), fresh.as_ref())?;
+    apply_import(&FsStorage::new(dir).no_symlinks(), fresh.as_ref())?;
     report.status = "updated";
     Ok(())
 }

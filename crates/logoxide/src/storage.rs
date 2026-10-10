@@ -86,15 +86,54 @@ fn checked(path: &str) -> Result<&str> {
 #[derive(Clone, Debug)]
 pub struct FsStorage {
     root: PathBuf,
+    /// Links under the root are never followed ([`FsStorage::no_symlinks`])
+    no_symlinks: bool,
 }
 
 impl FsStorage {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            no_symlinks: false,
+        }
+    }
+
+    /**
+    The same folder, but never through a link under its root (the root itself may be one): a
+    path with a link on the way, or that is one, can't be read, written, or removed, and folders
+    are listed without their links. For what is published or written over from elsewhere (`lx
+    publish`, an import's update), where a link could bring in, or write to, a file anywhere
+    */
+    pub fn no_symlinks(mut self) -> Self {
+        self.no_symlinks = true;
+        self
     }
 
     pub fn root(&self) -> &Path {
         &self.root
+    }
+
+    /// With [`FsStorage::no_symlinks`], refuses a path that is a link or has one on the way
+    /// (checked with `symlink_metadata`, part by part; a part not there ends the check)
+    fn unlinked(&self, path: &str) -> Result<()> {
+        if !self.no_symlinks {
+            return Ok(());
+        }
+        let mut at = self.root.clone();
+        for part in path.split('/').filter(|p| !p.is_empty()) {
+            at.push(part);
+            match std::fs::symlink_metadata(&at) {
+                Ok(meta) if meta.file_type().is_symlink() => {
+                    return Err(LogoxideError::Io {
+                        path: path.to_string(),
+                        message: String::from("a link, which isn't followed here"),
+                    });
+                }
+                Ok(_) => {}
+                Err(_) => break,
+            }
+        }
+        Ok(())
     }
 
     /**
@@ -127,6 +166,7 @@ fn staging_path(full: &Path) -> PathBuf {
 impl Storage for FsStorage {
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let full = self.path(path)?;
+        self.unlinked(path)?;
         std::fs::read(&full).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => LogoxideError::NotFound(path.to_string()),
             _ => LogoxideError::io(path, e),
@@ -135,6 +175,7 @@ impl Storage for FsStorage {
 
     fn list(&self, dir: &str) -> Result<Vec<String>> {
         let full = self.path(dir)?;
+        self.unlinked(dir)?;
         let entries = std::fs::read_dir(&full).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => LogoxideError::NotFound(dir.to_string()),
             _ => LogoxideError::io(dir, e),
@@ -143,7 +184,11 @@ impl Storage for FsStorage {
             .flatten()
             .filter_map(|entry| {
                 let name = entry.file_name().into_string().ok()?;
-                let dir = entry.file_type().ok()?.is_dir();
+                let kind = entry.file_type().ok()?;
+                if self.no_symlinks && kind.is_symlink() {
+                    return None;
+                }
+                let dir = kind.is_dir();
                 Some(if dir { format!("{name}/") } else { name })
             })
             .collect();
@@ -153,6 +198,7 @@ impl Storage for FsStorage {
 
     fn write(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let full = self.path(path)?;
+        self.unlinked(path)?;
         if let Some(parent) = full.parent() {
             std::fs::create_dir_all(parent).map_err(|e| LogoxideError::io(path, e))?;
         }
@@ -171,6 +217,7 @@ impl Storage for FsStorage {
     /// Removes a file, then the folders it leaves empty (never the root)
     fn remove(&self, path: &str) -> Result<()> {
         let full = self.path(path)?;
+        self.unlinked(path)?;
         match std::fs::remove_file(&full) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -188,7 +235,7 @@ impl Storage for FsStorage {
     }
 
     fn exists(&self, path: &str) -> bool {
-        self.path(path).is_ok_and(|p| p.exists())
+        self.path(path).is_ok_and(|p| p.exists()) && self.unlinked(path).is_ok()
     }
 }
 
@@ -323,6 +370,49 @@ mod tests {
         assert_eq!(
             storage.walk("a").unwrap(),
             ["a/JHN.partial", "a/JHN.usx", "a/b.txt"]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_can_be_refused() {
+        let dir = std::env::temp_dir().join(format!("logoxide-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (root, outside) = (dir.join("package"), dir.join("outside"));
+        std::fs::create_dir_all(root.join("usx")).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret"), "secret").unwrap();
+        std::fs::write(root.join("usx/JHN.usx"), "john").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret"), root.join("usx/ROM.usx")).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("away")).unwrap();
+        // Followed as before
+        let open = FsStorage::new(&root);
+        assert_eq!(open.read_string("usx/ROM.usx").unwrap(), "secret");
+        assert_eq!(
+            open.walk("").unwrap(),
+            ["away", "usx/JHN.usx", "usx/ROM.usx"]
+        );
+        // Never followed: not listed, not read, not written or removed through
+        let strict = FsStorage::new(&root).no_symlinks();
+        assert_eq!(strict.walk("").unwrap(), ["usx/JHN.usx"]);
+        assert!(strict.read("usx/ROM.usx").is_err());
+        assert!(strict.read("away/secret").is_err());
+        assert!(!strict.exists("away/secret") && strict.exists("usx/JHN.usx"));
+        assert!(strict.write("away/new", b"x").is_err());
+        assert!(strict.remove("away/secret").is_err());
+        assert!(!outside.join("new").exists() && outside.join("secret").exists());
+        strict.write("usx/new/MAT.usx", b"matthew").unwrap();
+        assert_eq!(strict.read_string("usx/new/MAT.usx").unwrap(), "matthew");
+        // The root may be a link itself
+        let linked = dir.join("linked");
+        std::os::unix::fs::symlink(&root, &linked).unwrap();
+        assert_eq!(
+            FsStorage::new(&linked)
+                .no_symlinks()
+                .read_string("usx/JHN.usx")
+                .unwrap(),
+            "john"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

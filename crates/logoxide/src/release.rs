@@ -88,9 +88,10 @@ impl Plan {
 }
 
 /// Summarizes the package in `repo` and compares it with the newest earlier release. Media
-/// timings that don't fit the text are an error
+/// timings that don't fit the text are an error. Links in the folder are passed over, as
+/// fetching and packing the release pass over them, so the summary is of what is published
 pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
-    let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(repo));
+    let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(repo).no_symlinks());
     let package = Package::open(storage, Features::default())?;
     let problems = crate::media::check_package_timings(&package)?;
     if !problems.is_empty() {
@@ -189,7 +190,8 @@ Writes the summary into the package's folder, then commits it (only that folder)
 */
 pub fn release(repo: &Path, plan: &Plan, git: &GitCli) -> Result<(String, String)> {
     check(plan)?;
-    plan.summary.write(&plan.verses, &FsStorage::new(repo))?;
+    plan.summary
+        .write(&plan.verses, &FsStorage::new(repo).no_symlinks())?;
     let (_, prefix) = git.package_in(repo)?;
     let tag = tag_for(&prefix, &plan.summary.version);
     let commit = git.commit_and_tag(repo, &format!("Release {tag}"), &tag)?;

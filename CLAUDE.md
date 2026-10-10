@@ -40,7 +40,10 @@ before changing the design.
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
     `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
-    unique temporary file
+    unique temporary file; `FsStorage::no_symlinks()` never goes through a link under its root
+    (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
+    used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
+    `lx import --update` (`apply_import`)
   - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
     verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
     between adjacent `\w` words; both gave the KJV's 31,102 verses). OSIS and ThML Bibles

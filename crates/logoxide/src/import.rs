@@ -757,7 +757,8 @@ fn set_version(storage: &dyn Storage, version: &semver::Version) -> Result<()> {
 /**
 Replaces an imported package's files (`current`) with a fresh import's: its declared files the
 fresh one doesn't have are removed, the fresh one's written. Files beside them that aren't the
-package's (a reader's annotations) stay
+package's (a reader's annotations) stay. On disk, give it an [`crate::FsStorage::no_symlinks`]
+folder, so a link in the project can't have a file written or removed somewhere else
 */
 pub fn apply_import(current: &dyn Storage, fresh: &dyn Storage) -> Result<()> {
     for path in import_removals(current, fresh)? {

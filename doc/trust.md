@@ -63,6 +63,10 @@ sources. To keep a fetched manifest from reaching into the machine it is install
 - git URLs and refs (tags, branches, revisions) that `git` would read as **command-line options**
   (starting with `-`) are refused, since `lx` runs the `git` command (which also runs with the
   `ext::` transport off, and never follows a symlink in a checkout)
+- links in your own folders aren't followed where lx writes over or publishes what's there:
+  `lx import --update` won't write or remove a file through a link, and `lx release` and
+  `lx publish` pass links over, so a link can't put a file from elsewhere on the machine into a
+  published package
 
 What a package can still do is name other public repositories and catalogs, which are then
 trusted on first use like your own dependencies. `lx` never runs anything a package contains:
