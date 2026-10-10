@@ -476,6 +476,7 @@ impl Project {
     is [`LogoxideError::Conflict`]: open the project again and redo the change
     */
     pub fn save_manifest(&mut self) -> Result<()> {
+        let _lock = self.take_lock()?;
         let path = self.dir.join(MANIFEST);
         if read_optional(&path)? != self.manifest_on_disk {
             return Err(LogoxideError::Conflict {
@@ -528,6 +529,11 @@ impl Project {
         self.install_with(library, fetcher, Update::Nothing, true, Frozen::default())
     }
 
+    /// The project's lock ([`crate::locking`]), held while its files are written
+    pub fn take_lock(&self) -> Result<crate::locking::Guard> {
+        crate::locking::lock(&self.dir, "the project at")
+    }
+
     fn install_with(
         &mut self,
         library: &Library,
@@ -536,6 +542,11 @@ impl Project {
         repair: bool,
         frozen: Frozen,
     ) -> Result<&Lockfile> {
+        // The library's lock and the project's, from resolving through writing the lock file
+        let _locks = crate::locking::lock_all(&[
+            (library.root(), "the library at"),
+            (&self.dir, "the project at"),
+        ])?;
         let packages = library.packages(&self.dir);
         let resolver = Resolver {
             packages: &packages,

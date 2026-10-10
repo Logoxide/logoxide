@@ -198,8 +198,16 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
-    beside its folder, then renamed into place; a repair writes each file atomically and removes
-    what the version no longer has last)
+    beside its folder in `.<key>.staging-<pid>-<n>-<random>`, then renamed into place; a repair
+    writes each file atomically and removes what the version no longer has last). `Library::lock`
+    is the library's lock (`lx clean` holds it; `stale_staging(age)` lists staging folders an
+    install left, which `lx clean --remove` deletes only under the lock and only after a day)
+  - `locking.rs`: exclusive advisory locks (`std::fs::File::try_lock`, polled up to
+    `LOCK_TIMEOUT`, 5 s, else `Busy` naming the holder, which the lock file records) on the
+    library (install, repair, clean) and a project (manifest and lock writes); lock files in
+    `$XDG_RUNTIME_DIR/logoxide/<hash of the canonical path>.lock`, else `<default cache>/locks/`,
+    never in the library (Dropbox syncs it); `lock_all` takes several in one order, one folder
+    once; readers take none; a no-op in WebAssembly
   - `resolve.rs`: manifest + previous lock → new lock, installing as it goes (`Frozen`: `locked`
     keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`), through `Packages`
     (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
@@ -218,7 +226,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   - `project.rs`: a folder with `logoxide.toml` (edited with toml_edit, keeping comments; or
     `from_text` and `manifest_text` for hosts that do the reading and writing) and its
     lock; `save_manifest` keeps the text it read and refuses with `Conflict` when the file
-    changed since (open again, redo the change); `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
+    changed since (open again, redo the change); `install` holds the library's and the project's
+    locks (`locking.rs`, below) from resolving through writing the lock, `save_manifest` the
+    project's (`take_lock`); `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
     `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
     and `lx add` warn of

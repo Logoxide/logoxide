@@ -77,6 +77,7 @@ pub mod language;
 pub mod library;
 pub mod license;
 pub mod lock;
+pub mod locking;
 pub mod manifest;
 pub mod media;
 pub mod package;

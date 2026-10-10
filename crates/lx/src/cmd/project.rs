@@ -759,8 +759,32 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
     Ok(())
 }
 
+/// How old a staging folder (a version an install was writing) must be before `lx clean`
+/// takes it for a dead install's
+const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
 pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Result<()> {
     let library = cli.library();
+    // No install may write while versions are judged and removed
+    let _lock = library.lock()?;
+    // A version an install never finished (it died more than a day ago: a live one holds the
+    // lock, and a day is longer than any install)
+    for staging in library.stale_staging(STALE_STAGING) {
+        match remove {
+            true => {
+                std::fs::remove_dir_all(&staging)
+                    .map_err(|e| logoxide::LogoxideError::io(&staging.display().to_string(), e))?;
+                outln!(
+                    "removed {}: left by an install that didn't finish",
+                    staging.display()
+                );
+            }
+            false => outln!(
+                "stale: {} (left by an install that didn't finish; lx clean --remove deletes it)",
+                staging.display()
+            ),
+        }
+    }
     let mut projects = vec![Project::open(library.root())?, cli.project(&library)?];
     for dir in keep {
         projects.push(Project::open(dir)?);

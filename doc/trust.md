@@ -116,6 +116,20 @@ each file atomically and removes what a version no longer has last. `lx` reads `
 again before writing it and refuses (`Conflict`) if it changed since the project was opened, so
 an edit made meanwhile isn't written over.
 
+## Locks
+
+Two `lx` processes writing at once (an install and a clean, two vaults installing into one
+library) could each undo the other's work, so `lx` takes an exclusive lock on the library while
+it installs, repairs, or cleans, and on a project while it writes its manifest or lock. The
+locks are the operating system's advisory file locks, in `$XDG_RUNTIME_DIR/logoxide/` (else
+`locks/` in logoxide's cache folder), each named by a hash of the folder's canonical path; never
+in the library itself, which a sync service may copy, and a process that dies releases its lock.
+Readers take none: a version is renamed into place whole, and the manifest and lock are written
+whole. Taking a lock waits five seconds, then fails (`Busy`) naming the process that holds it.
+Nothing is locked in WebAssembly, where the host owns the files. A version an install was writing
+when it died (`packages/<id>/.<key>.staging-…`) is removed by `lx clean --remove` only under the
+library's lock and only once it is a day old.
+
 ## Media
 
 Audio and video are listed by URL, size, and SHA-256 in the package (so the lock's checksum

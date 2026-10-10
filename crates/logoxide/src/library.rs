@@ -7,9 +7,11 @@ The library: installed package versions, side by side, as plain files.
   logoxide.lock                     requirements and their lock, for apps without a vault
   packages/<id>/<version>/        each version, without .git, so it syncs well
   packages/<id>/<version>+g<commit>/   from a branch or a revision rather than its release
+  packages/<id>/.<key>.staging-<pid>-<n>-<random>/   a version being written (renamed into place when whole)
 <cache>/                          per device, never synced: LOGOXIDE_CACHE, else config.toml's `cache`, else $XDG_CACHE_HOME/logoxide
   books/                          parsed books and verse counts (see cache.rs)
   git/                            scratch space while fetching
+  locks/                          the library's and projects' lock files (locking.rs), unless $XDG_RUNTIME_DIR is set
 ```
 */
 
@@ -144,6 +146,60 @@ impl Library {
     pub fn git_dir(&self) -> PathBuf {
         self.cache.join("git")
     }
+
+    /// The library's lock ([`crate::locking`]), held while versions are installed or removed
+    pub fn lock(&self) -> Result<crate::locking::Guard> {
+        crate::locking::lock(&self.root, "the library at")
+    }
+
+    /**
+    Staging folders (a version being written, `packages/<id>/.<key>.staging-…`) older than
+    `max_age`: left by an install that died. Remove them only under the library's [`lock`](Self::lock)
+    (a live install's can't be told from a dead one's otherwise) and only when old enough that no
+    install could still be writing them (`lx clean` takes a day)
+    */
+    pub fn stale_staging(&self, max_age: std::time::Duration) -> Vec<PathBuf> {
+        let mut found = vec![];
+        let Ok(ids) = std::fs::read_dir(self.root.join("packages")) else {
+            return found;
+        };
+        let now = std::time::SystemTime::now();
+        for id in ids.flatten() {
+            let Ok(entries) = std::fs::read_dir(id.path()) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                let staging = name.starts_with('.') && name.contains(".staging-");
+                let old = (entry.metadata().and_then(|m| m.modified()).ok())
+                    .and_then(|modified| now.duration_since(modified).ok())
+                    .is_some_and(|age| age >= max_age);
+                if staging && old && entry.path().is_dir() {
+                    found.push(entry.path());
+                }
+            }
+        }
+        found.sort();
+        found
+    }
+}
+
+/// A name for a version's staging folder, beside its place and unlike any other process's or
+/// run's: `.<key>.staging-<pid>-<n>-<random>`
+fn staging_dir(dir: &Path, key: &str) -> PathBuf {
+    use std::{
+        hash::{BuildHasher, RandomState},
+        sync::atomic::{AtomicU64, Ordering},
+    };
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    // RandomState is seeded at random for each process, so hashing anything with a fresh one gives
+    // a number another run won't
+    let random = RandomState::new().hash_one(n) & 0xffff_ffff;
+    dir.with_file_name(format!(
+        ".{key}.staging-{}-{n}-{random:08x}",
+        std::process::id()
+    ))
 }
 
 /// A locked version's files, opened with its locked features
@@ -205,9 +261,7 @@ impl Packages for LibraryPackages<'_> {
     /// taken for an installed one
     fn install(&self, locked: &LockedPackage, files: &dyn Storage) -> Result<()> {
         let dir = self.library.package_dir(locked, self.base);
-        let staging =
-            dir.with_file_name(format!(".{}.staging-{}", locked.key(), std::process::id()));
-        let _ = std::fs::remove_dir_all(&staging);
+        let staging = staging_dir(&dir, &locked.key());
         let result = (|| {
             let to = FsStorage::new(&staging);
             for path in files.walk("")? {
