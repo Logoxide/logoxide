@@ -441,6 +441,10 @@ pub struct Settings {
     /// with the commentary's name and the verses it's on: `true` for every commentary the
     /// project uses, or their ids (`["mhcc"]`); none by default
     pub commentaries: CommentariesSetting,
+    /// A commentary's note also covers the verses after it up to its next note in the chapter,
+    /// so hovering a verse it skips shows the note before it; off by default, since a
+    /// commentary may skip verses on purpose
+    pub stretch_notes: bool,
     /// Hovering a Strong's number (`G25`, `H430`, `G0025`) shows its entry in the project's
     /// Strong's dictionaries (`keys = "strongs-greek"` or `"strongs-hebrew"`); off by default
     pub strongs: bool,
@@ -465,6 +469,8 @@ pub struct Configured {
     pub hover_bibles: Vec<String>,
     /// The `commentaries` setting's commentaries, in the project's order
     pub commentaries: Vec<Bible>,
+    /// The `stretch-notes` setting
+    pub stretch_notes: bool,
     /// The `strongs` setting's dictionaries (none when it's off)
     pub dictionaries: Vec<Dictionary>,
     pub insertions: Vec<Insertion>,
@@ -693,6 +699,7 @@ impl Settings {
                 .collect::<Result<_, _>>()?,
             bibles,
             commentaries,
+            stretch_notes: self.stretch_notes,
             dictionaries,
             insertions: self.insertions.clone(),
             epub: self.epub,

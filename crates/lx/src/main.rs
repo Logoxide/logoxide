@@ -144,8 +144,9 @@ fn main() -> ExitCode {
             package,
             git: None,
             notes: Some(reference),
+            stretch,
             ..
-        } => lookup(package, Lookup::Notes(reference), json),
+        } => lookup(package, Lookup::Notes(reference, *stretch), json),
         Command::Show {
             package,
             git: None,

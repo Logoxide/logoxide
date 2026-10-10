@@ -15,7 +15,6 @@ use crate::{
     book::{nodes_html, nodes_text},
 };
 use logoxide_core::topos_bible::segments::Passage as CorePassage;
-use logoxide_markup::verses::{passage_ranges, slice};
 use topos_bible::Passage;
 
 /// What a package is (`kind` in its `logoxide.toml`)
@@ -773,35 +772,34 @@ impl LogoxidePackage {
     A commentary's notes on a passage (in a Bible, its verses): each of its spans covering any
     verse of the passage, in the book's order, as text and HTML. None for a book it lacks (a
     commentary may cover a few) or a passage in no book it has; a note across chapters is found
-    by any verse it covers. Its books are parsed once and cached, as `book` is
+    by any verse it covers. With `stretch` (a reader's setting, off by default), a note also
+    covers the verses after it up to the next in its chapter, so a verse the commentary skips
+    gets the note before it. Its books are parsed once and cached, as `book` is
     */
     pub fn notes(
         &self,
         passage: Passage,
         options: BookTextOptions,
+        stretch: bool,
     ) -> Result<Vec<Note>, LogoxideError> {
         if !self.books().contains(&passage.book_id) {
             return Ok(Vec::new());
         }
-        // logoxide-text's `Source::notes`, over the cached book rather than a fresh parse
+        // logoxide-text's `book_notes`, over the cached book rather than a fresh parse
         let book = self.cached.book(BookId(passage.book_id))?;
         let passage = CorePassage::from(&passage);
-        let mut notes = vec![];
-        for range in passage_ranges(&book.spans, &passage) {
-            for span in book.spans.get(range).into_iter().flatten() {
-                let nodes = slice(&book.nodes, &span.start, Some(&span.end));
-                notes.push(Note {
-                    chapter: span.chapter,
-                    verse: span.verse,
-                    last: span.last,
-                    last_chapter: span.last_chapter,
-                    part: span.part,
-                    text: nodes_text(&nodes, &options),
-                    html: nodes_html(&nodes, &options),
-                });
-            }
-        }
-        Ok(notes)
+        Ok(logoxide_text::source::book_notes(&book, &passage, stretch)
+            .into_iter()
+            .map(|note| Note {
+                chapter: note.chapter,
+                verse: note.verse,
+                last: note.last,
+                last_chapter: note.last_chapter,
+                part: note.part,
+                text: nodes_text(&note.nodes, &options),
+                html: nodes_html(&note.nodes, &options),
+            })
+            .collect())
     }
 
     /**

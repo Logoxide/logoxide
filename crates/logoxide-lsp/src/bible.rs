@@ -27,16 +27,13 @@ use logoxide::{
     manifest::MANIFEST,
     reader::{DefaultReader, StorageBooks, StorageFiles},
 };
-use logoxide_markup::{
-    Flattener, Kind, Node,
-    verses::{passage_ranges, slice},
-};
+use logoxide_markup::{Flattener, Kind, Node};
 pub use logoxide_text::passage::{Part, Rendered};
 use logoxide_text::{
     Book, Note, Source,
     cache::BookCache,
     passage,
-    source::UsxSource,
+    source::{UsxSource, book_notes},
     versification::{Mapped, Versifications},
 };
 use topos_bible::{
@@ -367,29 +364,17 @@ impl Bible {
     /**
     A commentary's notes on a passage (its verses are notes): each verse span covering any of
     the passage's verses, with its tree, in the book's order; none when it lacks the book. The
-    book is parsed once and kept, as a Bible's are
+    book is parsed once and kept, as a Bible's are. With `stretch`, a note also covers the verses
+    after it up to the next in its chapter (logoxide-text's `book_notes`)
     */
-    pub fn notes(&self, passage: &Passage) -> Vec<Note> {
+    pub fn notes(&self, passage: &Passage, stretch: bool) -> Vec<Note> {
         if !self.source().files().contains_key(&passage.book) {
             return vec![];
         }
         let Some(book) = self.book(passage.book) else {
             return vec![];
         };
-        let mut notes = vec![];
-        for range in passage_ranges(&book.spans, passage) {
-            for span in book.spans.get(range).into_iter().flatten() {
-                notes.push(Note {
-                    chapter: span.chapter,
-                    verse: span.verse,
-                    last_chapter: span.last_chapter,
-                    last: span.last,
-                    part: span.part,
-                    nodes: slice(&book.nodes, &span.start, Some(&span.end)),
-                });
-            }
-        }
-        notes
+        book_notes(&book, passage, stretch)
     }
 
     /// The whole book as text, rendered once (until the settings change)

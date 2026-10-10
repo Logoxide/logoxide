@@ -447,7 +447,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is
   one bridge), each book wrapped in a division. Preference: USX, USFM, OSIS, ThML, GBF. A
   commentary is any verse source: `Source::notes(passage)` (a default on the trait over `book`
-  and `passage_ranges`) gives each span covering the passage as a `Note` with its tree. Two
+  and `passage_ranges`) gives each span covering the passage as a `Note` with its tree;
+  `source::book_notes(book, passage, stretch)` is it over a parsed book (the LSP, lx, the MCP,
+  and the FFI call it), `stretch` also taking the span before each of the passage's ranges in
+  its chapter when none covers the range's first verse (a note over the verses after it up to
+  the next: the owner's 2026-10-10 call, a reader's setting, off by default). Two
   formats hold no verses and open as sources with no books, so `open` returns one `Box<dyn
   Source>` for any format: `dictionary.rs` (`TextFormat::Dictionary`, `entries/*.xml` as
   `doc/entries.md` specifies: the root's `markup` names the bodies' markup; files indexed once,
@@ -510,7 +514,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   hover adds its notes on the passage after the Bible text (`Bible::notes`, the spans
   `Source::notes` would give, from the cached book; `bible::nodes_text` writes a tree in the
   markup's style without labels; each note labeled `*MHCC* (John 3:16-18)`, at most
-  `MAX_HOVER_NOTES` a commentary); `strongs = true` keeps `Project::dictionaries` whose `keys`
+  `MAX_HOVER_NOTES` a commentary; `stretch-notes = true` stretches them, `book_notes`);
+  `strongs = true` keeps `Project::dictionaries` whose `keys`
   are Strong's (`dictionary.rs`: `Dictionary`, and `strongs_at`, an uppercase `G`/`H` number
   standing alone, normalized by logoxide-text's `normalize_key`), and hovering one shows its
   entry (`Source::entry`). `epub = true` (opt-in) searches EPUBs (and `pdf = true` PDFs, with
@@ -560,7 +565,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone; `--notes "<reference>"` a commentary's notes on a
-  passage, each labeled with its verses (`cmd/package.rs`'s `lookup`, `Source::notes`),
+  passage, each labeled with its verses (`cmd/package.rs`'s `lookup`, `book_notes`; `--stretch`),
   `--entry <key>` a dictionary's entry (key, headword, text; a missing one is an error as text,
   `null` as JSON), `--keys [--limit N]` its keys, `--xref "<reference>"` a cross-reference
   package's lines covering any verse of it, with weights; text or JSON), `check` (counts a
@@ -617,7 +622,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `list_packages`, `package_info` (a package by name, id, abbreviation, or alias: `find`),
   `read_passage`, `compare_passage`, `map_reference`, `show_summary` (installed: published, else
   built; a version: `release::summary_in` through the app's fetcher from the lock's git URL),
-  `diff_versions`, `cited_references`, `read_notes`, `lookup_entry`, `cross_references`;
+  `diff_versions`, `cited_references`, `read_notes` (`stretch`), `lookup_entry`, `cross_references`;
   `install` (`Update::Nothing`, `locked`), `import` (only an entry of the project's own catalogs,
   never a URL or path, then `import::run`). `limits.rs`: `Untrusted` (an object with `source` and
   fields through `text::printable`, capped: `SHORT` 300, `LONG` 2,000, `TEXT` 16,000), `page`
@@ -649,7 +654,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   last node by index), so a host renders with its own engine without parsing the formats;
   `LogoxidePackage.book` gives one through `from_tree` (Rust-only). Commentaries,
   dictionaries, and cross-references (PLAN-NEXT.md I.6): `LogoxidePackage.notes(passage,
-  BookTextOptions)` (`Note`: chapter, verse, last, lastChapter, part, text, html; logoxide-text's
+  BookTextOptions, stretch)` (`Note`: chapter, verse, last, lastChapter, part, text, html; logoxide-text's
   `Source::notes` over the cached book), `entry(key, options)` (`Entry`: key, headword, text,
   html; `null` for a key it lacks), `keys()`, and `crossReferences(verse)` (`CrossReference`:
   from, to, weight; `verse` OSIS or a reference topos reads); `PackageInfo.keys` and

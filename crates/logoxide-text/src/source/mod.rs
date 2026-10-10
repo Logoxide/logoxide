@@ -185,24 +185,10 @@ pub trait Source: Send + Sync {
     A commentary's notes on a passage (in any verse source: a Bible's are its verses): each
     verse span covering any of the passage's verses, with its tree, in the book's order. A
     span across chapters is found by any verse it covers; a passage's verses the book lacks
-    find nothing
+    find nothing. [`book_notes`] with `stretch` off
     */
     fn notes(&self, passage: &Passage) -> Result<Vec<Note>> {
-        let book = self.book(passage.book)?;
-        let mut notes = vec![];
-        for range in passage_ranges(&book.spans, passage) {
-            for span in book.spans.get(range).into_iter().flatten() {
-                notes.push(Note {
-                    chapter: span.chapter,
-                    verse: span.verse,
-                    last_chapter: span.last_chapter,
-                    last: span.last,
-                    part: span.part,
-                    nodes: slice(&book.nodes, &span.start, Some(&span.end)),
-                });
-            }
-        }
-        Ok(notes)
+        Ok(book_notes(&self.book(passage.book)?, passage, false))
     }
 
     /// A dictionary's keys in normal form, in its files' order (for cross-references, the
@@ -223,6 +209,49 @@ pub trait Source: Send + Sync {
     fn cross_references(&self, _verse: &str) -> Result<Vec<CrossReference>> {
         Ok(vec![])
     }
+}
+
+/**
+A commentary's notes on a passage in its book: each verse span covering any of the passage's
+verses, in the book's order. With `stretch`, a note also covers the verses after it up to the
+next note in its chapter: where no span covers the passage's first verse (or the first verse of
+each of its ranges), the span before it in that chapter is taken too (a chapter's verse 0, its
+introduction, is one). Off by default where a user can choose: a commentary that skips verses
+on purpose would seem to speak of them
+*/
+pub fn book_notes(book: &Book, passage: &Passage, stretch: bool) -> Vec<Note> {
+    let mut found: Vec<usize> = passage_ranges(&book.spans, passage)
+        .into_iter()
+        .flatten()
+        .collect();
+    if stretch {
+        for range in passage.ranges(None) {
+            let start = (range.start.chapter, range.start.verse);
+            let covered = (book.spans.iter())
+                .any(|s| (s.chapter, s.verse) <= start && (s.last_chapter, s.last) >= start);
+            if covered {
+                continue;
+            }
+            let before = (book.spans.iter().enumerate())
+                .filter(|(_, s)| s.last_chapter == start.0 && (s.last_chapter, s.last) < start)
+                .map(|(i, _)| i)
+                .next_back();
+            found.extend(before);
+        }
+        found.sort_unstable();
+        found.dedup();
+    }
+    (found.into_iter())
+        .filter_map(|i| book.spans.get(i))
+        .map(|span| Note {
+            chapter: span.chapter,
+            verse: span.verse,
+            last_chapter: span.last_chapter,
+            last: span.last,
+            part: span.part,
+            nodes: slice(&book.nodes, &span.start, Some(&span.end)),
+        })
+        .collect()
 }
 
 /// A book found in a second file: an error naming both

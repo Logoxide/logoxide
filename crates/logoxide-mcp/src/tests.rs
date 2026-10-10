@@ -288,6 +288,15 @@ fn commentaries_dictionaries_and_cross_references() {
     assert_eq!(notes["licenses"]["mhcc"]["free"], true);
     let none = tools::read_notes(&context, params(json!({ "reference": "Romans 1:1" }))).unwrap();
     assert_eq!(none["total"], 0);
+    // A verse it skips gets the note before it in the chapter with `stretch`
+    let skipped = json!({ "reference": "John 3:19" });
+    assert_eq!(
+        tools::read_notes(&context, params(skipped)).unwrap()["total"],
+        0
+    );
+    let stretched = json!({ "reference": "John 3:19", "stretch": true });
+    let stretched = tools::read_notes(&context, params(stretched)).unwrap();
+    assert_eq!(stretched["notes"][0]["reference"], "John 3:17-18");
     // A package of another kind is refused
     let wrong = tools::read_notes(
         &context,

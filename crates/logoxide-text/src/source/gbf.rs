@@ -304,6 +304,30 @@ mod tests {
     const TWO_BOOKS: &str = "<H1>A Test Bible<SBJohn><TT>John<Tt><SC1><SV1>In the beginning was the Word.<SV2>The same was in the beginning.<CM><SC><SV1>And the third day.\n<SBActs><SC1><SV1>The former treatise.<SV2><SV3>Linked verses.<SV4>Last of all.<ZZ>";
 
     #[test]
+    fn notes_stretch_over_the_verses_after_them_when_asked() {
+        // Notes on 1:1, 1:4-5, and 2:3; nothing on 1:2-3, 1:6, or 2:1-2
+        let text =
+            "<SBJohn><SC1><SV1>On one.<SV4><SV5>On four and five.<CM><SC2><SV3>On two three.<ZZ>";
+        let package = package("gbf", &[("john.gbf", text)]);
+        let john = package.book(book("JHN")).unwrap();
+        let notes = |reference: &str, stretch: bool| {
+            let passage = crate::bible_data().books().parse_osis(reference).unwrap();
+            let notes = super::super::book_notes(&john, &passage, stretch);
+            (notes.iter())
+                .map(|n| (n.chapter, n.verse, n.last))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(notes("John.1.2", false), []);
+        assert_eq!(notes("John.1.2", true), [(1, 1, 1)]);
+        assert_eq!(notes("John.1.2-John.1.4", true), [(1, 1, 1), (1, 4, 5)]);
+        assert_eq!(notes("John.1.4", true), [(1, 4, 5)]);
+        assert_eq!(notes("John.1.6", true), [(1, 4, 5)]);
+        // Never from the chapter before
+        assert_eq!(notes("John.2.1", true), []);
+        assert_eq!(notes("John.2.1-John.2.3", true), [(2, 3, 3)]);
+    }
+
+    #[test]
     fn a_bible_in_one_file() {
         let package = package("gbf", &[("bible.gbf", TWO_BOOKS)]);
         let (john, acts) = (book("JHN"), book("ACT"));

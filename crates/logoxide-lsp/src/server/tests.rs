@@ -1478,6 +1478,24 @@ fn commentaries_and_strongs_in_hover() {
     let other = Uri::from_str("file:///other.md").unwrap();
     let hover = hover_text(&server, &other, 0, 2).unwrap();
     assert!(!hover.contains("MHCC"), "{hover}");
+    // A verse the commentary skips (3:19) shows the note before it only with `stretch-notes`
+    let skipped = Uri::from_str("file:///skipped.md").unwrap();
+    server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(
+            skipped.clone(),
+            "markdown".into(),
+            1,
+            "John 3:19".into(),
+        ),
+    });
+    let hover = hover_text(&server, &skipped, 0, 2).unwrap();
+    assert!(!hover.contains("MHCC"), "{hover}");
+    server
+        .configure(json!({ "no-config": true, "commentaries": true, "stretch-notes": true }))
+        .unwrap();
+    let hover = hover_text(&server, &skipped, 0, 2).unwrap();
+    assert!(hover.contains("*MHCC* (John 3:17-18)"), "{hover}");
+    assert!(!hover.contains("God so loved: the"), "{hover}");
 
     // Strong's numbers: the entry, under the number in normal form and its headword
     server

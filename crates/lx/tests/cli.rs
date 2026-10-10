@@ -1098,6 +1098,20 @@ fn a_commentarys_notes_are_shown() {
         world.json(&["--format", "json", "show", &path, "--notes", "John 4:1"]),
         serde_json::json!([])
     );
+    // A verse it skips gets the note before it in the chapter only with --stretch
+    assert!(
+        world
+            .ok(&["show", &path, "--notes", "John 3:19"])
+            .contains("no notes")
+    );
+    assert_eq!(
+        world.ok(&["show", &path, "--notes", "John 3:19", "--stretch"]),
+        "John 3:17-18\nNot to condemn.\n"
+    );
+    assert_eq!(
+        world.lx(&["show", &path, "--stretch"]).status.code(),
+        Some(2)
+    );
     // Only one lookup at a time
     let out = world.lx(&["show", &path, "--notes", "John 3:16", "--keys"]);
     assert_eq!(out.status.code(), Some(2));

@@ -160,13 +160,15 @@ impl Server {
             .unwrap_or_default();
         let mut sections = vec![];
         for commentary in &self.commentaries {
-            let notes: Vec<(Note, bible::Text)> = (commentary.notes(passage).into_iter())
-                .filter_map(|note| {
-                    let text =
-                        bible::nodes_text(&note.nodes, &commentary.markup, Some(MAX_HOVER_TEXT))?;
-                    Some((note, text))
-                })
-                .collect();
+            let notes: Vec<(Note, bible::Text)> = (commentary
+                .notes(passage, self.stretch_notes)
+                .into_iter())
+            .filter_map(|note| {
+                let text =
+                    bible::nodes_text(&note.nodes, &commentary.markup, Some(MAX_HOVER_TEXT))?;
+                Some((note, text))
+            })
+            .collect();
             for (note, text) in notes.iter().take(MAX_HOVER_NOTES) {
                 sections.push(format!(
                     "*{}* ({})\n{}",

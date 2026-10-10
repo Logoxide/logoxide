@@ -121,6 +121,10 @@ pub(crate) enum Command {
         /// verses it covers; a Bible's are its verses
         #[arg(long, value_name = "REFERENCE", conflicts_with_all = ["git", "references", "entry", "keys", "xref"])]
         notes: Option<String>,
+        /// With --notes: a note also covers the verses after it up to the commentary's next
+        /// note in the chapter, so a verse it skips shows the note before it
+        #[arg(long, requires = "notes")]
+        stretch: bool,
         /// A dictionary's entry by key (`--entry G25`; `G0025` and `g25` find it too, a
         /// headword ignoring case and accents): its key, headword, and text
         #[arg(long, value_name = "KEY", conflicts_with_all = ["git", "references", "keys", "xref"])]

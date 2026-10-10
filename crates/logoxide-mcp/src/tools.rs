@@ -420,6 +420,10 @@ pub struct NotesParams {
     /// One commentary of the project; all it uses when left out
     #[serde(default)]
     pub commentary: Option<String>,
+    /// A note also covers the verses after it up to the commentary's next note in the chapter,
+    /// so a verse it skips gets the note before it (off when left out)
+    #[serde(default)]
+    pub stretch: bool,
     /// The `nextCursor` of the page before
     #[serde(default)]
     pub cursor: Option<String>,
@@ -1076,7 +1080,8 @@ pub fn read_notes(context: &Context, params: NotesParams) -> Out {
             continue;
         }
         let source = cached.package().source();
-        for note in source.notes(&passage).map_err(error)? {
+        let book = source.book(passage.book).map_err(error)?;
+        for note in logoxide_text::source::book_notes(&book, &passage, params.stretch) {
             items.push(json!({
                 "commentary": locked.dependency_name(),
                 "reference": note_reference(&name, &note),

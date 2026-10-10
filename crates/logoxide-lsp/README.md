@@ -191,7 +191,9 @@ God so loved the world, ...
 
 A note is cut like passage text (after 2000 bytes), and after eight notes from one commentary
 the rest are counted (`*MHCC*: 28 more notes`). The passage is looked up as written, in the
-commentary's own numbering.
+commentary's own numbering. A verse the commentary skips has no note, unless
+`stretch-notes = true` (off by default): then a note also covers the verses after it up to the
+commentary's next note in the chapter, so hovering John 3:19 shows a note on 3:17-18.
 
 With `strongs = true`, hovering a Strong's number (an uppercase `G` or `H`, one to five digits,
 perhaps a letter: `G25`, `G0025`, `H430a`; standing alone, so `h1` or `AG25` isn't one) shows its

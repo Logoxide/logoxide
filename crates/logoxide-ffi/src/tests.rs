@@ -1244,7 +1244,7 @@ fn commentaries_dictionaries_and_cross_references() {
         )
         .unwrap();
     let notes = commentary
-        .notes(passage("John 3:16-17"), options.clone())
+        .notes(passage("John 3:16-17"), options.clone(), false)
         .unwrap();
     let verses: Vec<(u8, u8, u8, u8, &str)> = (notes.iter())
         .map(|n| (n.chapter, n.verse, n.last_chapter, n.last, n.text.as_str()))
@@ -1261,16 +1261,20 @@ fn commentaries_dictionaries_and_cross_references() {
     // A verse it lacks, or a book: nothing
     assert!(
         commentary
-            .notes(passage("John 4:1"), options.clone())
+            .notes(passage("John 4:1"), options.clone(), false)
             .unwrap()
             .is_empty()
     );
     assert!(
         commentary
-            .notes(passage("Romans 1:1"), options.clone())
+            .notes(passage("Romans 1:1"), options.clone(), false)
             .unwrap()
             .is_empty()
     );
+    // A verse it skips gets the note before it in the chapter only when stretched
+    let stretched = (commentary.notes(passage("John 3:19"), options.clone(), true)).unwrap();
+    assert_eq!(stretched.len(), 1);
+    assert_eq!((stretched[0].verse, stretched[0].last), (17, 18));
     // A commentary has no entries or keys
     assert!(commentary.keys().is_empty());
     assert_eq!(
@@ -1312,7 +1316,7 @@ fn commentaries_dictionaries_and_cross_references() {
     );
     assert!(
         dictionary
-            .notes(passage("John 3:16"), options)
+            .notes(passage("John 3:16"), options, false)
             .unwrap()
             .is_empty()
     );

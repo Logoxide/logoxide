@@ -195,6 +195,8 @@ pub struct Server {
     /// The commentaries whose notes hover shows after a passage's text (the `commentaries`
     /// setting)
     commentaries: Vec<Bible>,
+    /// Whether a commentary's note covers the verses after it up to its next (`stretch-notes`)
+    stretch_notes: bool,
     /// The Strong's dictionaries whose entries hover shows on a Strong's number (`strongs`)
     dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
@@ -220,6 +222,7 @@ impl Server {
             bibles: Bibles::default(),
             hover_bibles: vec![],
             commentaries: vec![],
+            stretch_notes: false,
             dictionaries: vec![],
             library: None,
             insertions: vec![],
@@ -253,6 +256,7 @@ impl Server {
             bibles,
             hover_bibles,
             commentaries,
+            stretch_notes,
             dictionaries,
             insertions,
             epub,
@@ -263,6 +267,7 @@ impl Server {
         self.bibles = bibles;
         self.hover_bibles = hover_bibles;
         self.commentaries = commentaries;
+        self.stretch_notes = stretch_notes;
         self.dictionaries = dictionaries;
         self.insertions = insertions;
         self.matcher = Arc::new(matcher);

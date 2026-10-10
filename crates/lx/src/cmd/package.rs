@@ -174,8 +174,9 @@ pub(crate) fn show(
 
 /// What `lx show` looks up in a package that isn't a Bible's text
 pub(crate) enum Lookup<'a> {
-    /// A commentary's notes on a passage (`--notes "John 3:16"`)
-    Notes(&'a str),
+    /// A commentary's notes on a passage (`--notes "John 3:16"`), stretched over the verses
+    /// after each up to the next (`--stretch`)
+    Notes(&'a str, bool),
     /// A dictionary's entry (`--entry G25`)
     Entry(&'a str),
     /// A dictionary's keys, the first so many (`--keys --limit 10`)
@@ -223,13 +224,17 @@ pub(crate) fn lookup(args: &PackageArgs, lookup: Lookup, json: bool) -> logoxide
     let package = args.open()?;
     let source = package.source();
     match lookup {
-        Lookup::Notes(reference) => {
+        Lookup::Notes(reference, stretch) => {
             let passage = parse_reference(reference)?;
             let books = bible_data().books();
             let name = (books.get_name(passage.book).cloned()).unwrap_or_default();
             // A book the package lacks has no notes (no error: a commentary may cover a few)
             let notes = match package.books().contains(&passage.book) {
-                true => source.notes(&passage)?,
+                true => logoxide_text::source::book_notes(
+                    &source.book(passage.book)?,
+                    &passage,
+                    stretch,
+                ),
                 false => vec![],
             };
             if json {
