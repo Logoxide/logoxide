@@ -25,6 +25,11 @@ use logoxide::{
     manifest::MANIFEST,
     source::{Book, Source, UsxSource},
 };
+use logoxide_markup::{
+    Filter, Flat, Flattener, Kind, NodePath, TextOptions,
+    flatten::flatten,
+    verses::{VerseSpan, passage_ranges, slice},
+};
 use topos_bible::{
     data::{
         bible_data::BibleData,
@@ -33,11 +38,6 @@ use topos_bible::{
         translations::{Translation, Translations},
     },
     segments::Passage,
-};
-use topos_bible_markup::{
-    Filter, Flat, Flattener, Kind, NodePath, TextOptions,
-    flatten::flatten,
-    verses::{VerseSpan, passage_ranges, slice},
 };
 
 use crate::settings::{MarkupElement, MarkupSettings};

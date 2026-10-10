@@ -65,7 +65,7 @@ words-of-jesus = 2038
 | `mappings` | integer | For a versification map, how many verses it maps (absent when 0) |
 | `titles` | table of strings | Each file's title, by path ([manifest.md](manifest.md#titles)) |
 
-The element kinds are topos-bible-markup's (`Kind`); a reader should treat `contents` as
+The element kinds are logoxide-markup's (`Kind`); a reader should treat `contents` as
 informational and accept kinds it doesn't know.
 
 ## `logoxide.verses.bin` (`LXV2`)
@@ -134,7 +134,7 @@ markup therefore never changes a verse's hash.
 
 **Rule 1** (the only one so far):
 
-1. topos-bible-markup's `plain_text` with `Filter::text()` (how words in nested elements join,
+1. logoxide-markup's `plain_text` with `Filter::text()` (how words in nested elements join,
    what a note inside a word leaves behind)
 2. Unicode NFC (not NFKC, which would fold away distinctions a text makes), so text typed with
    its marks in another order, or decomposed, hashes the same
@@ -145,7 +145,7 @@ markup therefore never changes a verse's hash.
    spaces, no leading or trailing space
 
 A rule never changes once published. Anything that would change the text a rule hashes (another
-normalization, or a topos-bible-markup that renders markup differently, which golden tests in
+normalization, or a logoxide-markup that renders markup differently, which golden tests in
 `crates/logoxide/tests/verse_hash.rs` catch) is a new rule with the next number. Hashes are
 compared only when made by one rule: `lx diff` and `lx release` build an older rule's side again
 from its tag's text, so a rule change is never reported as rewording, and `lx verify` says to

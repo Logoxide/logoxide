@@ -9,8 +9,8 @@ first verse or chapter marker to its last.
 
 use std::{collections::BTreeMap, sync::Mutex};
 
+use logoxide_markup::{Element, Kind, Markup, Node, parse, verses::verses};
 use topos_bible::data::books::BookId;
-use topos_bible_markup::{Element, Kind, Markup, Node, parse, verses::verses};
 
 use super::{Book, SkipReason, Skipped};
 use crate::{

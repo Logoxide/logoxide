@@ -1,5 +1,5 @@
 /*!
-A package's text in one format, read a book at a time into topos-bible-markup's tree, the same
+A package's text in one format, read a book at a time into logoxide-markup's tree, the same
 whatever the format: USX and USFM (a book a file), OSIS and ThML (a whole Bible in one file, or a
 book a file).
 */
@@ -12,12 +12,12 @@ mod whole;
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
-use topos_bible::data::books::BookId;
-use topos_bible_markup::{
+use logoxide_markup::{
     Node,
     verses::{VerseSpan, chapter_verses},
 };
+use serde::{Deserialize, Serialize};
+use topos_bible::data::books::BookId;
 
 pub use osis::OsisSource;
 pub use thml::ThmlSource;

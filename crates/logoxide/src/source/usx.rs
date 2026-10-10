@@ -1,10 +1,10 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use topos_bible::data::books::BookId;
-use topos_bible_markup::{
+use logoxide_markup::{
     Markup, parse,
     verses::{usx_chapter_verses, verses},
 };
+use topos_bible::data::books::BookId;
 
 use super::{Book, Skipped, Source, book_files};
 use crate::{

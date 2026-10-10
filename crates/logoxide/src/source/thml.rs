@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use logoxide_markup::{Element, Kind, Markup, Milestone, Node};
 use topos_bible::data::books::BookId;
-use topos_bible_markup::{Element, Kind, Markup, Milestone, Node};
 
 use super::{
     Book, Skipped, Source,
@@ -20,7 +20,7 @@ A folder of ThML files: a whole Bible in one file, as CCEL publishes them, or a 
   it for readers with `<sup class="verse">2</sup>`. Those markers become verse markers (with a
   chapter marker where the chapter changes), and the printed numbers are left out, so verses
   hash and render as USX's do
-- topos-bible-markup reads `<scripture>` as an ordinary element, since in commentaries it holds
+- logoxide-markup reads `<scripture>` as an ordinary element, since in commentaries it holds
   quoted text; only empty ones are taken as verses
 */
 pub struct ThmlSource {

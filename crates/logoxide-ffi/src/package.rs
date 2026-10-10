@@ -710,8 +710,8 @@ impl LogoxidePackage {
         }
         let book = self.cached.book(BookId(book_id))?;
         Ok(ToposBook::from_tree(
-            book.nodes.clone(),
-            book.spans.clone(),
+            to_topos(&book.nodes)?,
+            to_topos(&book.spans)?,
             Some(book.id.0),
         ))
     }
@@ -757,4 +757,20 @@ impl LogoxidePackage {
             })
             .collect()
     }
+}
+
+/**
+logoxide-markup's tree as topos-bible-markup's, for topos-ffi's `ToposBook`: the same types (the
+crate moved from topos to logoxide), so postcard's bytes of one are the other's. Only until
+`ToposBook` becomes logoxide-ffi's own (PLAN-CRATES.md phase E)
+*/
+fn to_topos<From, To>(value: &From) -> Result<To, LogoxideError>
+where
+    From: serde::Serialize + ?Sized,
+    To: serde::de::DeserializeOwned,
+{
+    let failed = |e: postcard::Error| LogoxideError::Files {
+        message: format!("a book's tree couldn't be carried to topos: {e}"),
+    };
+    postcard::from_bytes(&postcard::to_allocvec(value).map_err(failed)?).map_err(failed)
 }

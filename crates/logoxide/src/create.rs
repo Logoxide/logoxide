@@ -13,9 +13,9 @@ A collection ([`new_collection`]) has no file: its packages are its dependencies
 */
 
 #[cfg(feature = "read")]
-use quick_xml::{Reader, events::Event};
+use logoxide_markup::decode_entities;
 #[cfg(feature = "read")]
-use topos_bible_markup::decode_entities;
+use quick_xml::{Reader, events::Event};
 
 #[cfg(feature = "read")]
 use crate::manifest::FormatEntry;

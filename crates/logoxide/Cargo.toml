@@ -13,12 +13,12 @@ categories = ["text-processing", "parser-implementations"]
 
 [features]
 default = ["read"]
-## The reader built in (`reader::DefaultReader`): the formats parsed through topos-bible-markup
+## The reader built in (`reader::DefaultReader`): the formats parsed through logoxide-markup
 ## and usfm3, an EPUB's references through topos-bible-formats, and imports through sword-modules
 ## and zip. Without it the crate is the package manager alone, which reads no text: it takes a
 ## `reader::TextReader` from whoever runs it
 read = [
-    "dep:topos-bible-markup",
+    "dep:logoxide-markup",
     "dep:topos-bible-formats",
     "dep:sword-modules",
     "dep:usfm3",
@@ -28,7 +28,7 @@ read = [
 
 [dependencies]
 topos-bible.workspace = true
-topos-bible-markup = { workspace = true, optional = true }
+logoxide-markup = { workspace = true, optional = true }
 topos-bible-formats = { workspace = true, optional = true }
 sword-modules = { workspace = true, optional = true }
 serde.workspace = true

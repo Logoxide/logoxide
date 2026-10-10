@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
+use logoxide_markup::Markup;
 use topos_bible::data::books::BookId;
-use topos_bible_markup::Markup;
 
 use super::{
     Book, Skipped, Source,
@@ -82,7 +82,7 @@ pub(crate) mod tests {
         storage::MemoryStorage,
         summary::{HashRule, verse_text},
     };
-    use topos_bible_markup::verses::slice;
+    use logoxide_markup::verses::slice;
 
     /// A package of one format's files
     pub(crate) fn package(format: &str, files: &[(&str, &str)]) -> Package {

@@ -92,10 +92,10 @@ before changing the design.
     (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
     used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
     `lx import --update` (`apply_import`)
-  - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
+  - `source/`: one `Source` per format, each giving logoxide-markup's tree (`Book`: nodes and
     verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
     between adjacent `\w` words; both gave the KJV's 31,102 verses). OSIS and ThML Bibles
-    through topos-bible-markup (`whole.rs`: a file can hold every book; it's scanned for the
+    through logoxide-markup (`whole.rs`: a file can hold every book; it's scanned for the
     books its verse markers name, cut into books, and its last parse kept). ThML's empty
     `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers. Preference: USX,
     USFM, OSIS, ThML. `Source::skipped` says what was passed over (`Skipped`, `SkipReason`):
@@ -188,7 +188,7 @@ before changing the design.
     sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
     with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
     milestones, making linked verses bridges from sword-modules' `iter_spans` (`n="16-17"`, or
-    one id into the next chapter, `osisID="John.3.36-John.4.2"`, which topos-bible-markup reads
+    one id into the next chapter, `osisID="John.3.36-John.4.2"`, which logoxide-markup reads
     as one span to `last_chapter`), and leaving out introductions stored at an earlier verse's
     entry (`EntryLocation`); the conf's `Versification` is kept (`sword_versification`: SWORD's
     names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
@@ -329,6 +329,14 @@ before changing the design.
     package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs).
     The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) loads whole (2424
     verses; its `S3Y = DAG` lines map), with two lines past its counts warned of
+- `crates/logoxide-markup`: Bible markup (OSIS, ThML, GBF, TEI, USX, plain text) parsed into one
+  tolerant tree (`Node`, `Element`, `Kind`), `Filter`, `Flattener`/`plain_text`, verses found in a
+  book (`verses::verses`, `slice`, `passage_ranges`), references the markup tags, and HTML
+  (`HtmlRenderer`, behind the default `html` feature, which nothing here turns on yet). topos's
+  topos-bible-markup until October 2026, moved with its history (PLAN-CRATES.md phase B). A
+  clean-room rewrite: change its `docs/spec/` first, then the code; its golden files
+  (`tests/golden/`) and `NO_PANIC_ROUNDS=100000 cargo test --release -p logoxide-markup --test
+  no_panic` check it; never read libsword or other SWORD readers' code (its `CLEANROOM.md`)
 - `crates/logoxide-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on logoxide). `bible.rs`'s `Bible` reads a package or a plain
   USX folder through logoxide sources; `settings.rs` finds the project (the `project` setting, a
@@ -387,7 +395,9 @@ before changing the design.
   native only. Opening goes through the `Logoxide` object because BoltFFI's WebAssembly
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry logoxide's books and counts
-  across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
+  across; until `ToposBook` becomes logoxide-ffi's own (PLAN-CRATES.md phase E), `package::to_topos`
+  carries logoxide-markup's tree into topos-bible-markup's through postcard (the same types,
+  moved). `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
   `PackageInfo`, carries `script` and the language's name), and `Logoxide.importEbible`,
   `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
   try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,

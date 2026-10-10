@@ -21,7 +21,7 @@ use topos_bible::{
     segments::formatter::{BookStyle, FormatOptions},
 };
 
-use topos_bible_markup::Kind;
+use logoxide_markup::Kind;
 
 use logoxide::{
     Library, Project,

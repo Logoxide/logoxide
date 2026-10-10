@@ -73,7 +73,7 @@ pub struct Cache {
 
 /**
 What a parsed book's file starts with: the cache format and the logoxide that wrote it. Postcard
-isn't self-describing, so a book written by another logoxide (whose topos-bible-markup may lay
+isn't self-describing, so a book written by another logoxide (whose logoxide-markup may lay
 its trees out otherwise) could decode into the wrong tree; one without this header is parsed again
 */
 #[cfg(feature = "read")]

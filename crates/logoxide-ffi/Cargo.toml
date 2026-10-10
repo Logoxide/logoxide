@@ -22,6 +22,12 @@ semver = "1"
 # exports the items of path dependencies, so this needs a topos checkout beside logoxide
 # (CI checks out the tag matching topos-bible's version)
 topos-ffi = { path = "../../../topos/crates/topos-ffi" }
+# Until ToposBook becomes logoxide-ffi's own (PLAN-CRATES.md phase E): topos-ffi's books take
+# topos-bible-markup's tree, the core gives logoxide-markup's (the same code, moved), so `book`
+# carries one into the other through postcard
+topos-bible-markup = { path = "../../../topos/crates/topos-markup", features = ["serde"] }
+postcard = { version = "1", features = ["use-std"] }
+serde = "1"
 
 [dev-dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }
@@ -39,6 +45,5 @@ pdf = ["topos-ffi/pdf"]
 
 [patch.crates-io]
 topos-bible = { path = "../../../topos/crates/topos-lib" }
-topos-bible-markup = { path = "../../../topos/crates/topos-markup" }
 topos-bible-index = { path = "../../../topos/crates/topos-index" }
 topos-bible-formats = { path = "../../../topos/crates/topos-formats" }

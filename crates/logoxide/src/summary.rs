@@ -53,7 +53,7 @@ both name it
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum HashRule {
     /**
-    topos-bible-markup's `plain_text` with `Filter::text()` (notes, headings, and metadata left
+    logoxide-markup's `plain_text` with `Filter::text()` (notes, headings, and metadata left
     out), in Unicode NFC (not NFKC, which would fold away distinctions a text makes), without
     the invisible U+200B (zero-width space), U+FEFF (byte-order mark), U+00AD (soft hyphen), and
     U+2060 (word joiner), split on Unicode whitespace (NBSP included) and joined with single
@@ -191,8 +191,8 @@ const INVISIBLE: [char; 4] = ['\u{200B}', '\u{FEFF}', '\u{00AD}', '\u{2060}'];
 
 /// A verse's text as hashed by `rule`: its words, normalized, with whitespace collapsed
 #[cfg(feature = "read")]
-pub fn verse_text(nodes: &[topos_bible_markup::Node], rule: HashRule) -> String {
-    use topos_bible_markup::{Filter, TextOptions, plain_text};
+pub fn verse_text(nodes: &[logoxide_markup::Node], rule: HashRule) -> String {
+    use logoxide_markup::{Filter, TextOptions, plain_text};
     use unicode_normalization::UnicodeNormalization;
     let options = TextOptions {
         filter: Filter::text(),
@@ -221,7 +221,7 @@ pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
 /// [`book_hashes`] by any rule this logoxide knows
 #[cfg(feature = "read")]
 pub fn book_hashes_by(book: &crate::source::Book, rule: HashRule) -> Vec<VerseHash> {
-    use topos_bible_markup::verses::slice;
+    use logoxide_markup::verses::slice;
     let Some(number) = Book::from_book_id(book.id) else {
         return vec![];
     };
@@ -266,7 +266,7 @@ pub fn verse_hash(text: &str) -> [u8; HASH_BYTES] {
 
 /// `WordsOfJesus` → `words-of-jesus`
 #[cfg(feature = "read")]
-fn kebab(kind: topos_bible_markup::Kind) -> String {
+fn kebab(kind: logoxide_markup::Kind) -> String {
     let mut out = String::new();
     for (i, c) in format!("{kind:?}").chars().enumerate() {
         if c.is_uppercase() && i > 0 {
@@ -279,8 +279,8 @@ fn kebab(kind: topos_bible_markup::Kind) -> String {
 
 /// Markers and containers, which say nothing about what a text holds
 #[cfg(feature = "read")]
-const STRUCTURE: [topos_bible_markup::Kind; 8] = {
-    use topos_bible_markup::Kind;
+const STRUCTURE: [logoxide_markup::Kind; 8] = {
+    use logoxide_markup::Kind;
     [
         Kind::Verse,
         Kind::Chapter,
@@ -296,8 +296,8 @@ const STRUCTURE: [topos_bible_markup::Kind; 8] = {
 /// Counts a book's elements into `contents` as the summary lists them (`note`, `title`, ...,
 /// and `strongs` for words tagged with Strong's numbers), markers and containers left out
 #[cfg(feature = "read")]
-pub fn count_elements(nodes: &[topos_bible_markup::Node], contents: &mut BTreeMap<String, u64>) {
-    use topos_bible_markup::{Kind, Node};
+pub fn count_elements(nodes: &[logoxide_markup::Node], contents: &mut BTreeMap<String, u64>) {
+    use logoxide_markup::{Kind, Node};
     for node in nodes {
         if let Node::Element(e) = node {
             if !STRUCTURE.contains(&e.kind) {
@@ -982,7 +982,7 @@ mod tests {
     #[cfg(feature = "read")]
     fn rule_one_normalizes() {
         let text = |s: &str| {
-            let nodes = [topos_bible_markup::Node::Text(s.to_string())];
+            let nodes = [logoxide_markup::Node::Text(s.to_string())];
             verse_text(&nodes, HashRule::One)
         };
         // NFD and NFC, invisible characters, and kinds of space all hash alike

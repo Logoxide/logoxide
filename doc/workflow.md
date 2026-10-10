@@ -588,7 +588,7 @@ lx map "Joel 3" --from English --to Original --with ./english-original   # a map
 
 What's missing here is logoxide's side, not topos's:
 
-- **topos-bible-markup already reads** OSIS, ThML, GBF, and TEI (every markup SWORD modules use)
+- **logoxide-markup already reads** OSIS, ThML, GBF, and TEI (every markup SWORD modules use)
   into the same tree as USX, and renders it as plain text and HTML. sword-modules reads SWORD
   Bibles, commentaries, lexicons, and general books into that tree.
 - **topos already finds references** inside all of these, and inside EPUBs (each match located by
@@ -621,7 +621,7 @@ upstream = { url = "https://ccel.org/ccel/henry/mhc.xml", import = "ccel:henry/m
 versification = "KJV"
 
 [formats]
-thml = { path = "thml/", feature = "thml" }      # CCEL's source, read by topos-bible-markup
+thml = { path = "thml/", feature = "thml" }      # CCEL's source, read by logoxide-markup
 sword = { path = "sword/", feature = "sword" }   # the same text as a SWORD module (zCom)
 
 [features]

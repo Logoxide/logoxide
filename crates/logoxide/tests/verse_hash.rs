@@ -6,7 +6,7 @@ USX, and OSIS books (nested `\w`, `\add`, a note inside a word, Hebrew whose mar
 canonical order and the same in NFC, a zero-width space, a no-break space, a bridge, and a
 partial verse).
 
-A rule never changes once published: these pin topos-bible-markup's `plain_text` (how words in
+A rule never changes once published: these pin logoxide-markup's `plain_text` (how words in
 nested elements join, what notes leave behind) as rule 1 uses it. If a topos upgrade breaks them,
 don't change the expected values: the text rule 1 hashes has changed, so `HashRule` needs a new
 rule (rule 2) beside rule 1, written by the new topos, and the files written with rule 1 are built

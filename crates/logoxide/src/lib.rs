@@ -105,14 +105,14 @@ pub use cache::{Cache, CachedPackage};
 pub use error::{LogoxideError, Result};
 pub use library::Library;
 pub use lock::{LockedPackage, Lockfile};
+#[cfg(feature = "read")]
+pub use logoxide_markup as markup;
 pub use manifest::Manifest;
 pub use package::{Features, Package};
 pub use project::Project;
 pub use reader::TextReader;
 pub use storage::{FsStorage, MemoryStorage, Storage};
 pub use topos_bible;
-#[cfg(feature = "read")]
-pub use topos_bible_markup as markup;
 
 use topos_bible::data::BibleData;
 

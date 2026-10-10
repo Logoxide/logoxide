@@ -24,7 +24,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = "1.1"
 topos-bible = { workspace = true }
-topos-bible-markup = { workspace = true }
+logoxide-markup = { workspace = true }
 topos-bible-index = { workspace = true }
 topos-bible-formats = { workspace = true }
 

@@ -60,7 +60,6 @@ for name in "${which[@]}"; do
       fi
       patches+=(
         "topos-bible = { path = \"$deps/topos/crates/topos-lib\" }"
-        "topos-bible-markup = { path = \"$deps/topos/crates/topos-markup\" }"
         "topos-bible-index = { path = \"$deps/topos/crates/topos-index\" }"
         "topos-bible-formats = { path = \"$deps/topos/crates/topos-formats\" }"
       )

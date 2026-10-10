@@ -222,7 +222,7 @@ fn inner_text(xml: &str, name: &str) -> Option<String> {
             _ => {}
         }
     }
-    let text = topos_bible_markup::decode_entities(&text);
+    let text = logoxide_markup::decode_entities(&text);
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     (!text.is_empty()).then_some(text)
 }
@@ -1316,7 +1316,7 @@ mod tests {
             (3, 36, 4, 2)
         );
         let span = &book.spans[2];
-        let words = topos_bible_markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
+        let words = logoxide_markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
         assert_eq!(
             (
                 span.verse,
