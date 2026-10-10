@@ -4,9 +4,10 @@
 use std::collections::HashMap;
 
 use crate::{
-    BookStyle, BookTextOptions, Dependency, FetchRequest, InspectStep, InstallStep, Logoxide,
-    LogoxideError, LogoxideInstaller, LogoxideProject, MappedVerse, OffsetUnit, PackageFeatures,
-    PackageFile, PackageKind, PackageLocation, Topos, ToposTranslations, UpdateMode, VerseTiming,
+    BookStyle, BookTextOptions, Dependency, FetchRequest, ImportDownload, InspectStep, InstallStep,
+    Logoxide, LogoxideError, LogoxideInstaller, LogoxideProject, MappedVerse, OffsetUnit,
+    PackageFeatures, PackageFile, PackageKind, PackageLocation, Topos, ToposTranslations,
+    UpdateMode, VerseTiming,
 };
 
 const USX: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -610,7 +611,10 @@ fn installing_with_the_host_downloading() {
             Err(error) => break error,
         }
     };
-    assert!(matches!(error, LogoxideError::Files { .. }), "{error:?}");
+    assert!(
+        matches!(error, LogoxideError::Integrity { .. }),
+        "{error:?}"
+    );
 
     // Repairing hands back its files to write over the changed one; an annotation beside them
     // isn't the package's, so it changes nothing
@@ -694,7 +698,24 @@ fn catalogs_and_ebible_imports() {
         .write_all(b"\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n")
         .unwrap();
     let zip = writer.finish().unwrap().into_inner();
-    let files = logoxide.import_ebible(entry, zip).unwrap();
+    // The same through the import of any source: what it downloads, then its bytes by name
+    let downloads = logoxide.import_downloads(entry.clone()).unwrap();
+    assert_eq!(
+        downloads,
+        [ImportDownload {
+            name: "zip".into(),
+            urls: vec!["https://ebible.org/Scriptures/eng-asv_usfm.zip".into()]
+        }]
+    );
+    let built = (logoxide.import_downloaded(entry.clone(), vec![file("zip", "")]))
+        .expect_err("an empty zip isn't one");
+    assert!(matches!(built, LogoxideError::Import { .. }), "{built:?}");
+    let by_name = vec![PackageFile {
+        path: "zip".into(),
+        bytes: zip.clone(),
+    }];
+    let files = logoxide.import_downloaded(entry.clone(), by_name).unwrap();
+    assert_eq!(files, logoxide.import_ebible(entry, zip).unwrap());
     let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
     assert_eq!(
         (package.info().abbreviation.as_str(), package.books()),
@@ -703,6 +724,8 @@ fn catalogs_and_ebible_imports() {
 
     let project = logoxide.parse_project(None, None).unwrap();
     assert_eq!(project.catalogs()[0], logoxide.ebible_catalog_url());
+    assert_eq!(project.catalogs(), logoxide.default_catalog_urls());
+    assert!(logoxide.is_insecure_url("http://ftp.xiphos.org/".into()));
     assert_eq!(project.catalogs().len(), 4);
     let mine = project.add_catalog("catalog.toml".into()).unwrap();
     assert_eq!(mine.catalogs()[0], "catalog.toml");
@@ -942,7 +965,7 @@ fn media_by_url_and_hash() {
     );
     assert!(matches!(
         logoxide.verify_media(media[0].clone(), b"hellO".to_vec()),
-        Err(LogoxideError::Files { .. })
+        Err(LogoxideError::Integrity { .. })
     ));
     assert!(
         logoxide

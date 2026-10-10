@@ -137,8 +137,8 @@ that much bigger (`lx release` refuses a smaller one):
   patch a new patch version.
 - Before 1.0, like Cargo, the minor number counts as major: a major change needs 0.(x+1).0, and
   a patch bump (0.1.1 after 0.1.0) covers minor changes too.
-- In 0.0.x, every change is breaking (being added in the next release, matching Cargo's rule that
-  each 0.0.x version is incompatible with the others).
+- In 0.0.x, every change is breaking, matching Cargo's rule that each 0.0.x version is
+  incompatible with the others: any change needs 0.0.(z+1).
 - For packages without verses (books, collections, maps), any change to their files is minor.
 - Imported packages whose version is the publisher's date (eBible.org's `2026.10.8`) or its own
   numbering (a SWORD module's) are an exception: their numbers say when, not what. An update

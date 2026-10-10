@@ -8,9 +8,9 @@ The file is TOML 1.0, UTF-8, at the root of the package's folder (or repository)
 kebab-case. A manifest with `[package]` is a package's; without one, it is a vault's (only
 `[dependencies]`, `[features]`, and `[settings]` mean anything there).
 
-**Unknown keys** are an error today in every table described here. An upcoming release will
-warn about them instead (so a manifest written for a newer logoxide still reads), and
-implementations should do the same: ignore what they don't know, and say so.
+**Unknown keys** are passed over with a warning in every table described here (so a manifest
+written for a newer logoxide still reads), and implementations should do the same: ignore what
+they don't know, and say so. Values of known keys that don't make sense are still errors.
 
 ```toml
 [package]
@@ -165,13 +165,14 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 
 | Key | Type | Meaning |
 |---|---|---|
-| `git` | string | A git repository's URL. `github:owner/repo`, `gitlab:owner/repo`, and `codeberg:owner/repo` are short for the hosts' HTTPS URLs |
+| `git` | string | A git repository's URL (never starting with `-`). `github:owner/repo`, `gitlab:owner/repo`, and `codeberg:owner/repo` are short for the hosts' HTTPS URLs |
 | `registry` | string | A registry's catalog (its URL, or a file's path), whose releases are archives ([catalog.md](catalog.md)) |
 | `path` | string | A folder, relative to this manifest, used in place |
 | `version` | string | A semver requirement (`1`, `^1.2`, `>=1, <3`): the newest release matching it. For git, releases are tags `v<version>` |
 | `tag` | string | For `git` only: this tag |
-| `rev` | string | For `git` only: this commit |
+| `rev` | string | For `git` only: this commit (4 to 64 hex digits) |
 | `branch` | string | For `git` only: this branch's head |
+| `folder` | string | For `git` only: the package's folder in the repository, when it isn't at the top. Its releases are tags `<folder>/v<version>` (others are passed over), and only that folder is installed |
 | `optional` | boolean | Only used when a feature turns it on (`dep:<name>`). Default `false` |
 | `features` | array of strings | Its features to turn on |
 | `default-features` | boolean | Whether its `default` feature is on. Default `true` |

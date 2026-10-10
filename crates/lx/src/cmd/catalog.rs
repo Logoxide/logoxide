@@ -38,6 +38,9 @@ pub(crate) fn load_catalog(
     base: &Path,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
     let bytes = if location.starts_with("https://") || location.starts_with("http://") {
+        if logoxide::git::is_insecure(location) {
+            eprintln!("warning: {location} is plain HTTP: its packages' hashes can't be trusted");
+        }
         get(location)?
     } else {
         let path = base.join(location);
@@ -348,14 +351,27 @@ pub(crate) fn search(
         name: String::new(),
         entries: registries.into_iter().flat_map(|c| c.entries).collect(),
     };
+    let mut shadowed = vec![];
     if !catalogs.is_empty() {
-        all = (load_catalogs(&catalogs, &base)?.into_iter()).fold(all, |all, c| all.merge(c));
+        let loaded = load_catalogs(&catalogs, &base)?;
+        shadowed = logoxide::catalog::Catalog::shadowed(&loaded);
+        all = (loaded.into_iter()).fold(all, |all, c| all.merge(c));
     }
     let mut found = all.search(query);
     found.retain(|e| {
         (books.as_ref()).is_none_or(|codes| e.about_books.iter().any(|b| codes.contains(b)))
             && (filters.category).is_none_or(|c| e.categories.iter().any(|x| x == c))
     });
+    // A package another catalog also lists by its id: only the first catalog's is shown
+    for (id, names) in &shadowed {
+        if found.iter().take(limit).any(|e| &e.id == id) {
+            eprintln!(
+                "warning: `{id}` is in {}; {}'s is shown",
+                names.join(", "),
+                names[0]
+            );
+        }
+    }
     if json {
         let entries: Vec<serde_json::Value> = (found.iter().take(limit))
             .map(|e| {

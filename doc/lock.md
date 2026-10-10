@@ -48,7 +48,8 @@ checksum = "sha256:41c0…"
 | `version` | string | Its version |
 | `git` | string | The repository it came from (the full URL, never a `github:` short form) |
 | `tag`, `branch`, `rev` | string | How it was asked for (the commit is what is used) |
-| `commit` | string | The commit installed (git packages) |
+| `commit` | string | The commit installed (git packages): 7 to 64 lowercase hex digits |
+| `folder` | string | The package's folder in its repository, when it isn't at the top |
 | `path` | string | A folder used in place, relative to the manifest (path packages) |
 | `registry` | string | The registry's catalog it was chosen from |
 | `archive` | string | That release's archive URL |

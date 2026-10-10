@@ -49,6 +49,9 @@ pub enum LogoxideError {
     /// No version satisfies a requirement, or two requirements conflict
     #[error("{0}")]
     Resolve(String),
+    /// A download isn't what was listed for it (its size or hash differs)
+    #[error("{url}: {message}")]
+    Mismatch { url: String, message: String },
     /// What was installed isn't what the lock file says
     #[error("{id}: expected {expected}, got {actual} (the source changed since it was locked)")]
     Checksum {

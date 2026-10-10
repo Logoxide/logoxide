@@ -53,7 +53,7 @@ size = 1834201
 
 | Key | Type | Meaning |
 |---|---|---|
-| `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed (being added in the next release; 0.1 ignores the key) |
+| `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed |
 | `name` | string | The catalog's name, shown in search results |
 | `package` | array of tables | Its packages |
 

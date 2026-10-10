@@ -121,7 +121,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 /// Whether downloaded bytes are the file listed: its size, then its hash
 pub fn verify(file: &MediaFile, bytes: &[u8]) -> Result<()> {
-    let fail = |message: String| LogoxideError::Fetch {
+    let fail = |message: String| LogoxideError::Mismatch {
         url: file.url.clone(),
         message,
     };

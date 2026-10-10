@@ -114,47 +114,25 @@ fn import_files(
     entry: &logoxide::catalog::CatalogEntry,
     dest: &dyn Storage,
 ) -> logoxide::Result<()> {
-    use logoxide::catalog::CatalogSource;
-    match &entry.source {
-        CatalogSource::Ebible { id } => {
-            let zip = get(&logoxide::import::ebible_zip_url(id))?;
-            logoxide::import::ebible(entry, &zip, dest)?;
-        }
-        CatalogSource::FetchBible { id, books } => {
-            let mut files = vec![];
-            for code in books {
-                files.push((
-                    code.clone(),
-                    get(&logoxide::import::fetch_bible_book_url(id, code))?,
-                ));
+    let mut files = vec![];
+    for download in logoxide::import::downloads(entry)? {
+        // The first of its URLs that has it
+        let mut bytes = Err(logoxide::LogoxideError::Import(format!(
+            "{}: no URL for {}",
+            entry.id, download.name
+        )));
+        for url in &download.urls {
+            if logoxide::git::is_insecure(url) {
+                eprintln!("warning: {url} is plain HTTP: what it sends can't be checked");
             }
-            logoxide::import::fetch_bible(entry, &files, dest)?;
-        }
-        CatalogSource::Ccel { id } => {
-            let xml = get(&logoxide::import::ccel_url(id))?;
-            logoxide::import::ccel(entry, &xml, dest)?;
-        }
-        CatalogSource::Sword {
-            repository, module, ..
-        } => {
-            // The first of its zip's URLs that has it
-            let mut zip = Err(logoxide::LogoxideError::Import(format!("{module}: no zip")));
-            for url in logoxide::import::sword_zip_urls(repository, module) {
-                zip = get(&url);
-                if zip.is_ok() {
-                    break;
-                }
+            bytes = get(url);
+            if bytes.is_ok() {
+                break;
             }
-            logoxide::import::sword(entry, &zip?, dest)?;
         }
-        CatalogSource::Git { .. } | CatalogSource::Registry { .. } => {
-            return Err(logoxide::LogoxideError::Import(format!(
-                "{} isn't imported: add it",
-                entry.id
-            )));
-        }
+        files.push((download.name, bytes?));
     }
-    Ok(())
+    logoxide::import::build(entry, &files, dest)
 }
 
 /**

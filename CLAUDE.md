@@ -31,9 +31,16 @@ before changing the design.
     `in_use`: the lock's packages from dependencies that are on, which `bibles`, `translations`,
     and `versifications` read). `[package]` has `authors` (a list) and `description`. Kinds
     include `book` and `collection` (no `[formats]`, only dependencies; a project's Bibles
-    include a collection's); the `epub` format is kept as files, not read as verses
+    include a collection's); the `epub` format is kept as files, not read as verses. Keys it
+    doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
+    older lx reads a newer manifest. `validate` refuses a `git`/`registry`/`tag`/`branch`/`rev`
+    that starts with `-` (git would take it as an option), a `rev` that isn't hex, and names and
+    `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
+    package in a folder of its repository (tags `<folder>/v<version>`, `lx add --folder`)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
-    (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`
+    (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
+    `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
+    unique temporary file
   - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
     verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
     between adjacent `\w` words; both gave the KJV's 31,102 verses). OSIS and ThML Bibles
@@ -46,20 +53,29 @@ before changing the design.
     `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but
     `.git`
   - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard;
-    references also per logoxide version) per `<id>/<version>-<checksum>`; `Cache::references`
+    references also per logoxide version) per `<id>/<version>-<checksum>`; each book file starts
+    with a line naming `CACHE_FORMAT` and the logoxide version (`book_header`), else it's parsed
+    again, since postcard can't tell a stale layout; `Cache::references`
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
     aliases, and counts
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, older lock files' `id version` still read; `rename` is the
-    manifest's name when it isn't the id; `get` finds by that name)
+    manifest's name when it isn't the id; `get` finds by that name). `LockedPackage::check`
+    refuses a commit or sha256 that isn't hex and an id that isn't one, so a lock can't name a
+    folder outside the library
   - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).
     `GitCli` runs `git`. `expand_url`: `github:owner/repo` (also `gitlab:`, `codeberg:`) to its
-    URL, wherever a URL is taken; manifests and locks keep the full URL
+    URL, wherever a URL is taken; manifests and locks keep the full URL. `GitCli` refuses
+    arguments starting with `-`, puts `--` before repositories, runs with `protocol.ext.allow=never`
+    and `GIT_PROTOCOL_FROM_USER=0`, and never follows a symlink in a checkout. `is_insecure`
+    (`http://`, `git://`, `ftp://`: warned of) and `is_local`
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
-    and GitHub's own archives)
+    and GitHub's own archives). Unpacking (and `import::unzip`) stops at `MAX_UNPACKED_BYTES`,
+    `MAX_ENTRY_BYTES`, and `MAX_ENTRIES`; `Refs::find_commit` takes a revision of at least
+    `MIN_REV_PREFIX` hex digits naming one commit
   - `catalog.rs`: catalogs to search (`Catalog::parse` by extension: a `catalog.toml` of git
     packages, eBible.org's `translations.csv` (its downloadable, redistributable rows), or
     fetch.bible's `manifest.json` (`https://v1.fetch.bible/manifest.json`, not
@@ -79,7 +95,11 @@ before changing the design.
     default turns the defaults off and names the others; naming them all again turns them back on). Registries (`[settings.registries]`, `Project::add_registry`) are named catalogs: a folder
     of package repositories (`Catalog::from_packages`; lx scans it) or a catalog, so
     `dorean-local:<id>` or `dorean-local:<path in the folder>` names a package (`Catalog::find`,
-    `split_registry_name`); a shared id needs the path
+    `split_registry_name`); a shared id needs the path. A `catalog.toml` may say `format = 1`
+    (`CATALOG_FORMAT`; a higher one asks for a newer lx); a remote catalog can't list a local
+    path or `file://` URL; `Catalog::shadowed` gives ids more than one catalog lists (lx search
+    warns). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
+    `newest_release`, read with `git show`)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
     `logoxide.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
     date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
@@ -99,10 +119,13 @@ before changing the design.
     when the publisher's version isn't newer it compares at the current version, then raises
     it with `next_version`) and `apply_import` (removes declared files the fresh one lacks, through
     `Storage::remove`, writes the rest; other files stay).
-    `CatalogSource::versions_track_updates` (eBible.org, SWORD) lets `lx` skip downloading
+    `CatalogSource::versions_track_updates` (eBible.org, SWORD) lets `lx` skip downloading.
+    `downloads(entry)` (each file an import needs, by name, with URLs to try in turn) and
+    `build(entry, files, dest)` are the one way every host imports (lx, `Logoxide.importDownloads`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
     `mirrors` (tried in order after it: `MediaFile::urls`), size, SHA-256, and book, never
-    stored in the package; `verify` checks a download,
+    stored in the package (its `sha256` must be 64 hex digits); `verify` checks a download
+    (`LogoxideError::Mismatch` when it isn't the one listed); `Project::add_media` lists one,
     `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
     by the text. Timings (audio Bibles: where each verse is) are WebVTT, `timings/<stem>.vtt` per
     file, each cue named by its verse (`JHN 3:16`, `JHN 3:17-18`; other cues are skipped):
@@ -123,8 +146,9 @@ before changing the design.
     `Fetcher::download_any`, which passes over bytes that don't hash as listed), `sha256`, and
     its library folder is `<version>+a<hash>`. A lock entry is kept
     while the manifest still allows it (unless updating); fetched text is checked against the
-    locked checksum; a tag's version must match its `logoxide.toml`; git packages can't have path
-    dependencies
+    locked checksum; a tag's version must match its `logoxide.toml`. A package from another
+    machine (git or a registry) can't name a path, a local or `file://` repository, or a local
+    registry; a local one can (`folder_tag_version` reads a `folder`'s tags)
   - `project.rs`: a folder with `logoxide.toml` (edited with toml_edit, keeping comments; or
     `from_text` and `manifest_text` for hosts that do the reading and writing) and its
     lock; `translations()` gives topos the Bibles it asks for
@@ -132,7 +156,9 @@ before changing the design.
     without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book,
     chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
     `diff` (removed, renumbered: old text at another number, bridged, reworded, added) and
-    `Change` (patch/minor/major; before 1.0 the minor counts as major, like Cargo).
+    `Change` (patch/minor/major; before 1.0 the minor counts as major, and before 0.1 every change
+    is, like Cargo). Text counts as moved only to a number that held other text (a psalm's
+    repeated refrain reworded is a rewording), and empty verses never move.
     `book_hashes` hashes one book's verses the same way (`LogoxidePackage.verseHashes`), which
     hosts put in links (`&ver=…&vh=…`) to find a verse again after an update
     `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
@@ -143,10 +169,11 @@ before changing the design.
     reference's OSIS passage, file, CFI, chapter, UTF-16 range, line, column, spine item, and
     paragraph (about 0.1 s a book natively, 0.25 s in WebAssembly). Only `cited` is published
     (`LXR1`: deflate over postcard of each passage and its count, in Bible order; 2.6 KB for 937
-    references): locations are only of use with the book, which gives them again
+    references; inflated to at most `MAX_REFERENCES_BYTES`): locations are only of use with the
+    book, which gives them again
   - `package.rs` also says what a package is made of: `declared_files` (the manifest, each
     format's files by its extensions, the license file, summary files, timings, `include`
-    globs); `checksum` hashes only those, so a reader's annotations beside a book never change
+    globs, matched without backtracking); `checksum` hashes only those, so a reader's annotations beside a book never change
     it. `other_files` are kept by repairs and stop `lx clean`
   - `release.rs`: summarize, compare with the newest release tag's summary (or its text, for
     releases before summaries), check the version, write, commit, tag `v{version}`. A package in
@@ -178,15 +205,21 @@ before changing the design.
   the project's Bibles. `epub = true` (opt-in) searches EPUBs (and `pdf = true` PDFs, with
   `--features pdf`) through topos's file cache on disk (the CLI's: same fingerprint), as
   `logoxide-file://` documents whose text `logoxide/fileText` gives (`workspace.rs`: `BookSearch`,
-  `book_text`); logoxide.nvim opens them read-only. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
-  `../topos`. The Neovim plugin (`~/Development/nvim-plugins/logoxide.nvim`) runs it
+  `book_text`); logoxide.nvim opens them read-only. References and search commands run on their
+  own threads (`server::Search`, a snapshot of what they need); `$/cancelRequest` stops them
+  (`workspace::Stop`, checked between files) with -32800. `server.rs` holds the state and
+  document sync, `server/` a module per feature and the tests. Its tests read a copy of topos's
+  `crates/topos-lib/tests/cases/complete.txt` (`tests/fixtures/`, copied again when topos's
+  changes). The Neovim plugin (`~/Development/nvim-plugins/logoxide.nvim`) runs it
 - `crates/lx` (package `logoxide-cli`, binary `lx`): `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
-  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 1 when off), `install`, `update`, `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
+  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install`, `update`, `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (`--update [name]`, `--dry-run`: make imports again, replace changed ones, re-lock them), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
+  stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
   (`publish.rs`: a folder registry, or GitHub releases through `gh`, the catalog being release
   `index`'s file and each archive a release `<id>-v<version>`), `add --registry <catalog> <id>`,
@@ -196,8 +229,14 @@ before changing the design.
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash lx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
   installs and locks what it adds. Catalogs and
-  imports come over HTTPS with ureq; packages through git. The project
-  is `--project`, else the current folder if it has a `logoxide.toml`, else the library's own
+  imports come over HTTPS with ureq (`net.rs`: one agent, timeouts, `lx/<version>` user agent,
+  the environment's proxy, three tries; media hashed as it's read); packages through git. The
+  project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
+  own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
+  import --update, show --references; others refuse it). `lx publish` warns of a license that
+  isn't free or the public domain. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
+  `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
+  folders (assert_cmd)
 - `crates/logoxide-ffi`: BoltFFI 0.31 bindings (npm and PyPI `logoxide`), re-exporting topos-ffi
   (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
   package. Its library is `logoxide` (BoltFFI names artifacts after the package), so it depends on
@@ -209,7 +248,10 @@ before changing the design.
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry logoxide's books and counts
   across. `LogoxideCatalog` (`catalog.rs`) searches catalogs, and `Logoxide.importEbible`,
   `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
-  try in order) make downloads into a package's files; `parseCatalogBytes` reads any catalog,
+  try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,
+  for any source) and `importDownloaded`; `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
+  `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
+  `Files`; `parseCatalogBytes` reads any catalog,
   and a SWORD repository's `.tar.gz` only that way. Updating an import: `LogoxideCatalog.findUpstream`
   (its entry, from `PackageInfo.upstream`), `Logoxide.importIsCurrent` (skip the download), and
   `Logoxide.updateImport(current, fresh)` (`ImportUpdate`: versions, `ChangeKind`, description,
@@ -260,3 +302,6 @@ before changing the design.
 - Check behavior on the real packages (`lx check ~/Development/logoxide-packages/kjv`), not only
   unit tests
 - Commit messages end with a `Co-Authored-By` line
+- Formats for other implementations are specified in `doc/` (`manifest.md`, `catalog.md`,
+  `lock.md`, `summaries.md`, `trust.md`): change them with the code. `scripts/` has CI's helpers
+  (`check-versions.sh`, `topos-ref.sh`, `patch-unpublished.sh`); the minimum Rust is 1.88

@@ -146,12 +146,18 @@ impl Round<'_> {
         // A full commit from a lock file needs no refs
         let commit = match reference {
             GitRef::Rev(rev) if rev.len() == 40 => rev.clone(),
-            _ => self.refs(url)?.commit(reference).ok_or_else(|| {
-                logoxide_core::LogoxideError::Fetch {
-                    url: url.to_string(),
-                    message: format!("no {reference:?}"),
-                }
-            })?,
+            _ => self
+                .refs(url)?
+                .find_commit(reference)
+                .map_err(|e| match e {
+                    logoxide_core::LogoxideError::Fetch { message, .. } => {
+                        logoxide_core::LogoxideError::Fetch {
+                            url: url.to_string(),
+                            message,
+                        }
+                    }
+                    e => e,
+                })?,
         };
         let key = (url.to_string(), commit.clone());
         let files = self.given.borrow().archives.get(&key).cloned();

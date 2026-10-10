@@ -58,11 +58,11 @@ A package's own `[dependencies]` are resolved too, so a package from the interne
 sources. To keep a fetched manifest from reaching into the machine it is installed on:
 
 - a git or registry package **can't have `path` dependencies** (refused today)
-- its dependencies **can't name local paths or `file://` URLs** in `git` or `registry` either
-  (being added in the next release)
+- its dependencies **can't name local paths or `file://` URLs** in `git` or `registry` either,
+  and a catalog fetched from the web can't list a local path or `file://` URL for a release
 - git URLs and refs (tags, branches, revisions) that `git` would read as **command-line options**
-  (starting with `-`) are refused (being added in the next release), since `lx` runs the `git`
-  command
+  (starting with `-`) are refused, since `lx` runs the `git` command (which also runs with the
+  `ext::` transport off, and never follows a symlink in a checkout)
 
 What a package can still do is name other public repositories and catalogs, which are then
 trusted on first use like your own dependencies. `lx` never runs anything a package contains:

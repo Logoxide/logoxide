@@ -619,6 +619,67 @@ pub fn upstream(entry: &CatalogEntry) -> Option<String> {
     }
 }
 
+/// A file an import needs: `name` is what [`build`] knows it by, and it comes from the first of
+/// `urls` that answers
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Download {
+    pub name: String,
+    pub urls: Vec<String>,
+}
+
+/**
+What importing `entry` downloads, so every host fetches the same files the same way: eBible.org's
+zip, fetch.bible's books (each named by its code), CCEL's ThML, or a SWORD module's zip (its
+URLs tried in turn). Packages from git or a registry aren't imported, which is an error
+*/
+pub fn downloads(entry: &CatalogEntry) -> Result<Vec<Download>> {
+    let one = |name: &str, urls: Vec<String>| {
+        vec![Download {
+            name: name.to_string(),
+            urls,
+        }]
+    };
+    Ok(match &entry.source {
+        CatalogSource::Ebible { id } => one("zip", vec![ebible_zip_url(id)]),
+        CatalogSource::FetchBible { id, books } => (books.iter())
+            .map(|code| Download {
+                name: code.clone(),
+                urls: vec![fetch_bible_book_url(id, code)],
+            })
+            .collect(),
+        CatalogSource::Ccel { id } => one("thml", vec![ccel_url(id)]),
+        CatalogSource::Sword {
+            repository, module, ..
+        } => one("zip", sword_zip_urls(repository, module)),
+        CatalogSource::Git { .. } | CatalogSource::Registry { .. } => {
+            return Err(LogoxideError::Import(format!(
+                "{} isn't imported: add it",
+                entry.id
+            )));
+        }
+    })
+}
+
+/// The package `entry`'s import makes, written into `dest`, from the bytes of each of its
+/// [`downloads`] (by name)
+pub fn build(entry: &CatalogEntry, files: &[(String, Vec<u8>)], dest: &dyn Storage) -> Result<()> {
+    let named = |name: &str| {
+        (files.iter())
+            .find(|(n, _)| n == name)
+            .map(|(_, bytes)| bytes.as_slice())
+            .ok_or_else(|| LogoxideError::Import(format!("{}: {name} wasn't downloaded", entry.id)))
+    };
+    match &entry.source {
+        CatalogSource::Ebible { .. } => ebible(entry, named("zip")?, dest),
+        CatalogSource::FetchBible { .. } => fetch_bible(entry, files, dest),
+        CatalogSource::Ccel { .. } => ccel(entry, named("thml")?, dest),
+        CatalogSource::Sword { .. } => sword(entry, named("zip")?, dest),
+        CatalogSource::Git { .. } | CatalogSource::Registry { .. } => Err(LogoxideError::Import(
+            format!("{} isn't imported: add it", entry.id),
+        )),
+    }
+}
+
 /// What updating an imported package changes ([`compare_import`])
 #[derive(Clone, Debug)]
 pub struct ImportUpdate {
@@ -829,8 +890,15 @@ mod tests {
             ("copr.htm", "<p>public domain</p>"),
             ("latin.css", "body {}"),
         ]);
+        assert_eq!(
+            downloads(entry).unwrap(),
+            [Download {
+                name: "zip".into(),
+                urls: vec![ebible_zip_url("eng-asv")]
+            }]
+        );
         let dest = MemoryStorage::new();
-        ebible(entry, &bytes, &dest).unwrap();
+        build(entry, &[("zip".into(), bytes)], &dest).unwrap();
         assert_eq!(
             dest.walk("").unwrap(),
             [

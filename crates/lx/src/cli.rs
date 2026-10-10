@@ -68,7 +68,13 @@ impl Cli {
             None if std::path::Path::new(MANIFEST).is_file() => PathBuf::from("."),
             None => library.root().to_path_buf(),
         };
-        Project::open(dir)
+        let project = Project::open(dir)?;
+        // Keys this lx doesn't know (a newer one's) are passed over, like Cargo's
+        let keys = logoxide::manifest::Manifest::unknown_keys(&project.manifest_text())?;
+        for key in keys {
+            eprintln!("warning: {MANIFEST}: unknown key `{key}`");
+        }
+        Ok(project)
     }
 
     pub(crate) fn fetcher(&self, library: &Library) -> Web {
@@ -434,6 +440,10 @@ pub(crate) struct AddArgs {
     pub(crate) branch: Option<String>,
     #[arg(long)]
     pub(crate) rev: Option<String>,
+    /// The package's folder in the repository, when it isn't at the top (its releases are
+    /// tagged `<folder>/v<version>`)
+    #[arg(long, conflicts_with_all = ["path", "registry"])]
+    pub(crate) folder: Option<String>,
     /// Features to turn on, separated by commas
     #[arg(short = 'F', long, value_delimiter = ',')]
     pub(crate) features: Vec<String>,

@@ -95,7 +95,7 @@ Downloads a media file and checks it's the one listed (its size, then its SHA-25
 reads rather than holding it; errors are named by `url`
 */
 pub fn verify_media(url: &str, file: &logoxide::media::MediaFile) -> logoxide::Result<()> {
-    let fail = |message: String| LogoxideError::Fetch {
+    let fail = |message: String| LogoxideError::Mismatch {
         url: url.to_string(),
         message,
     };

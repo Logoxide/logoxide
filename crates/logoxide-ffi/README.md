@@ -19,7 +19,7 @@ const project = logoxide.parseProject(manifestText, lockText); // either can be 
 let translations = ToposTranslations.create();
 const packages = new Map();
 for (const entry of project.packages()) {
-  // entry.location: { tag: "Library", dir: "packages/bsb/1.0.1" } (in the library) or
+  // entry.location: { tag: "Library", dir: "packages/bsb/1.0.1+g1a2b3c4d" } (in the library) or
   // { tag: "Path", dir } (relative to the vault)
   const pkg = logoxide.openPackage(await readAll(entry.location.dir), entry.features, await readCache());
   for (const file of pkg.cacheWrites()) await saveCache(file.path, file.bytes);

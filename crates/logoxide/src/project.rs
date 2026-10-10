@@ -146,6 +146,7 @@ impl Project {
         put("tag", dependency.tag.as_deref());
         put("branch", dependency.branch.as_deref());
         put("rev", dependency.rev.as_deref());
+        put("folder", dependency.folder.as_deref());
         if dependency.optional {
             table.insert("optional", true.into());
         }

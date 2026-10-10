@@ -51,6 +51,13 @@ pub enum LogoxideError {
     Media { message: String },
     /// A versification map can't be read, or none leads where asked
     Versification { message: String },
+    /// A download or a git repository couldn't be reached
+    Network { message: String },
+    /// What was fetched isn't what was listed or locked (its hash or checksum differs), or a
+    /// release changed under its version
+    Integrity { message: String },
+    /// No versions satisfy what's asked, or a package names what it may not
+    Resolve { message: String },
 }
 
 impl From<logoxide_core::LogoxideError> for LogoxideError {
@@ -67,15 +74,23 @@ impl From<logoxide_core::LogoxideError> for LogoxideError {
             E::Import(_) => LogoxideError::Import { message },
             E::Media(_) => LogoxideError::Media { message },
             E::Versification(_) => LogoxideError::Versification { message },
-            E::Io { .. }
-            | E::BadPath(_)
-            | E::ReadOnly
-            | E::Fetch { .. }
-            | E::Resolve(_)
-            | E::Checksum { .. }
-            | E::Changed { .. } => LogoxideError::Files { message },
+            E::Fetch { .. } => LogoxideError::Network { message },
+            E::Mismatch { .. } | E::Checksum { .. } | E::Changed { .. } => {
+                LogoxideError::Integrity { message }
+            }
+            E::Resolve(_) => LogoxideError::Resolve { message },
+            E::Io { .. } | E::BadPath(_) | E::ReadOnly => LogoxideError::Files { message },
         }
     }
+}
+
+/// A file an import needs (`Logoxide.importDownloads`): `name` is what to give its bytes as
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportDownload {
+    pub name: String,
+    /// Tried in order: the first that answers has it
+    pub urls: Vec<String>,
 }
 
 /// A file and its bytes, relative to a package's folder (or to the cache's)
@@ -186,10 +201,54 @@ impl Logoxide {
         Ok(logoxide_core::source::usfm_to_usx(&usfm)?)
     }
 
-    /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`; a
-    /// project's `catalogs()` has it and fetch.bible's unless it names others)
+    /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`; one of
+    /// `default_catalog_urls`)
     pub fn ebible_catalog_url(&self) -> String {
         logoxide_core::catalog::EBIBLE_CATALOG.to_string()
+    }
+
+    /// The catalogs a project searches unless it says otherwise (`default-catalogs = false`):
+    /// eBible.org, fetch.bible, CCEL, and CrossWire's SWORD repository, in order
+    pub fn default_catalog_urls(&self) -> Vec<String> {
+        (logoxide_core::catalog::DEFAULT_CATALOGS.iter())
+            .map(|c| c.to_string())
+            .collect()
+    }
+
+    /// Whether `url` is fetched without encryption (`http://`, `git://`, `ftp://`), so what it
+    /// sends can't be trusted: worth a warning
+    pub fn is_insecure_url(&self, url: String) -> bool {
+        logoxide_core::git::is_insecure(&url)
+    }
+
+    /// What importing `entry` downloads (each from the first of its `urls` that answers), the
+    /// same for every source: give their bytes, by `name`, to `import_downloaded`
+    pub fn import_downloads(
+        &self,
+        entry: CatalogEntry,
+    ) -> Result<Vec<ImportDownload>, LogoxideError> {
+        Ok(logoxide_core::import::downloads(&entry.into())?
+            .into_iter()
+            .map(|d| ImportDownload {
+                name: d.name,
+                urls: d.urls,
+            })
+            .collect())
+    }
+
+    /// The package `entry`'s import makes from its downloads (`import_downloads`; each file's
+    /// `path` its `name`): its files, relative to the folder to write them in, like
+    /// `import_ebible`
+    pub fn import_downloaded(
+        &self,
+        entry: CatalogEntry,
+        downloads: Vec<PackageFile>,
+    ) -> Result<Vec<PackageFile>, LogoxideError> {
+        let downloads: Vec<(String, Vec<u8>)> =
+            downloads.into_iter().map(|d| (d.path, d.bytes)).collect();
+        let files = logoxide_core::MemoryStorage::new();
+        logoxide_core::import::build(&entry.into(), &downloads, &files)?;
+        create::files_of(&files)
     }
 
     /// No versification maps yet: add map packages with `withMap` (or `.vrs` text with

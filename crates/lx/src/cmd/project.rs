@@ -44,6 +44,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         tag: args.tag.clone(),
         branch: args.branch.clone(),
         rev: args.rev.clone(),
+        folder: args.folder.clone(),
         features: args.features.clone(),
         default_features: !args.no_default_features,
         ..DetailedDependency::default()
@@ -73,8 +74,18 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             };
             // Only its manifest, where the host allows that
             let probe = MemoryStorage::new();
-            logoxide::git::Fetcher::fetch_files(&fetcher, url, &reference, &[MANIFEST], &probe)?;
-            let manifest = logoxide::Manifest::parse(&probe.read_string(MANIFEST)?)?;
+            let manifest_path = match &args.folder {
+                Some(folder) => format!("{}/{MANIFEST}", folder.trim_end_matches('/')),
+                None => String::from(MANIFEST),
+            };
+            logoxide::git::Fetcher::fetch_files(
+                &fetcher,
+                url,
+                &reference,
+                &[manifest_path.as_str()],
+                &probe,
+            )?;
+            let manifest = logoxide::Manifest::parse(&probe.read_string(&manifest_path)?)?;
             let info = manifest
                 .package
                 .ok_or_else(|| logoxide::LogoxideError::Manifest(format!("{url}: no [package]")))?;
@@ -87,7 +98,9 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
                 let tags = logoxide::git::Fetcher::tags(&fetcher, url)?;
                 let newest = tags
                     .iter()
-                    .filter_map(|(t, _)| logoxide::resolve::tag_version(t))
+                    .filter_map(|(t, _)| {
+                        logoxide::resolve::folder_tag_version(t, args.folder.as_deref())
+                    })
                     .filter(|v| v.pre.is_empty())
                     .max();
                 if let Some(newest) = newest {
