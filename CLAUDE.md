@@ -152,7 +152,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     kept), points `core.hooksPath` at an empty folder, and runs SSH with `BatchMode=yes` unless
     the user chose their own (`GIT_SSH_COMMAND`, `GIT_SSH`, `core.sshCommand`). Fetched packages'
     dependencies can't use `git://` (resolve.rs); lx warns of the project's own. `is_insecure`
-    (`http://`, `git://`, `ftp://`: warned of) and `is_local`
+    (`http://`, `git://`, `ftp://`: warned of) and `is_local`. `git_available()` (`git --version`
+    answers, asked once) is how logoxide-app's `fetch::fetcher` picks `git` or HTTP. `Fetcher`
+    isn't `Send + Sync` (the FFI's rounds hold `RefCell`s); logoxide-app asks it of its own
+    (`Box<dyn Fetcher + Send + Sync>`)
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
@@ -394,7 +397,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   hand-made package's source with no URL, which then has none), which `upstream(entry)` writes
   and catalog entries' `version` holds for imports. `downloads(entry)` and
   `build(entry, files, dest)` (dispatching on the prefix) are the one way every host imports
-  (lx's `cmd/import.rs`, `Logoxide.importDownloads`/`importDownloaded`); `PREFIXES` is what
+  (logoxide-app's `import`, `Logoxide.importDownloads`/`importDownloaded`); `PREFIXES` is what
   `lx import` accepts. `update.rs`: `compare_import(current, fresh, reader)` (compared at the
   current version: `None` when the declared files match; else the summaries' `Diff`, and the
   version raised by `next_version`; `ImportUpdate` has the publisher's
@@ -485,6 +488,38 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   document sync, `server/` a module per feature and the tests. Its tests read a copy of topos's
   `crates/topos-lib/tests/cases/complete.txt` (`tests/fixtures/`, copied again when topos's
   changes). The Neovim plugin (`~/Development/nvim-plugins/logoxide.nvim`) runs it
+- `crates/logoxide-app`: what every front end does (PLAN-NEXT.md J, the owner's N1), above
+  logoxide-import, as lx, the FFI, and logoxide-mcp are callers of it. It prints nothing:
+  downloads and plain-HTTP or unencrypted-repository warnings go to a `Notes` callback (`Note`:
+  `Downloading`, `Insecure`, `Unencrypted`; `Display` is lx's words, `is_warning`), and what to
+  warn of as it's found to a `Warn` (`&mut dyn FnMut(String)`, lx's words after `warning: `).
+  `http.rs`: `Http` (`get`; `get_to(url, sink)` streams, the sink breaking off, tried again only
+  before it has bytes), `NoHttp`, and `UreqHttp::new(user_agent, notes)` behind the `ureq`
+  feature (default; moved from lx's `net.rs`: 20 s connect, 60 s response, 1 h body, the
+  environment's proxy, three tries 500·3ⁿ ms apart, HTTPS kept HTTPS, 1 GiB for `get`), so
+  WebAssembly builds with `default-features = false`. `fetch.rs`: `GitFetcher` (`GitCli`, derefs
+  to it, plus downloads through `Http` and an `Unencrypted` note once a URL), `NetFetcher` (refs
+  from smart HTTP, cached; a commit's archive from `archive_urls` in turn, unpacked; a local
+  repository needs git), `fetcher(git, http, notes)` picks by `git::git_available`.
+  `catalogs.rs`: `load_catalogs`, `load_catalog` (a URL, else a path; `warnings` in the catalog),
+  `load_registry` (a folder's repositories or a catalog; the folder's warnings join the
+  catalog's), `registry_url`, `shadowed` and `other_registries` (the warnings' words).
+  `import.rs`: `check_source`, `find_entry` (the project's catalogs, a CrossWire-listed SWORD
+  repository's too), `files` (each download from the first URL that has it, then `build`),
+  `run` (staged, renamed into place, added, installed, else rolled back: `Imported` with
+  `skipped`), `plan_updates` (`UpdatePlan { dependency, import, dir, from, upstream_from,
+  outcome: Current | Changed(Box<Change { update, fresh, removed }>) | Failed }`) and
+  `apply_update(change, dir, allow_removals)`. `clean.rs`: `clean(library, projects, remove,
+  prune_roots, said)` under the library's lock, each step a `Cleaning` given as it happens
+  (`STALE_STAGING`). `media.rs`: `verify(http, url, file)`, hashed as it downloads. `read.rs`:
+  `read(project, library, reader, reference, style)` (topos's `parse_with_translation` over
+  `Project::translations`; the Bible named, else `Project::bibles`' first: `Read { bible,
+  abbreviation, passage, reference, osis, text, versification }`) and `compare(…, bibles,
+  style)` (numbered by the Bible named, else the first of `bibles`; each other numbering mapped
+  through `Project::versifications`, `own` read as written: `Compared { reference, passages,
+  text, missing, mapped, versification }`); errors are `Resolve`. `lib.rs`: `Logoxide { config,
+  library, http, fetcher, reader }` (`new`, `default_native` under `ureq`; `project`,
+  `catalogs`, `registry`, `install`, `import`, `plan_updates`, `clean`, `read`, `compare`)
 - `crates/lx` (package `logoxide-cli`, binary `lx`): `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
@@ -506,24 +541,30 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `index`'s file and each archive a release `<id>-v<version>`), `add --registry <catalog> <id>`,
   `media add <file> --url` (repeated: mirrors)
   (lists a file by size and hash), `media check` (timings, then downloads and checks every listed file from each of its URLs; `--offline` for only the timings), `map "<reference>" --from <bible or
-  versification> --to …` (`--with <map package>` adds one not in the project). Completion
+  versification> --to …` (`--with <map package>` adds one not in the project), `read
+  "<reference>"` (the passage from the Bible named after it, else the first: `John 3:16 KJV`;
+  `--width`, `--no-labels`), `compare "<reference>" [--bibles KJV,BSB]` (each Bible's text in its
+  own numbering, mapped, with what it lacks; `cmd/read.rs`). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash lx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
   installs and locks what it adds (`--path` is written relative to the manifest; an absolute path
   in a lock is warned of; a repository without release tags needs `--branch`, `--rev`, or
   `--tag`; tags like `v1.0` that aren't semver are warned of: `resolve::not_semver_tags`), and `lx add` and `lx remove` write the manifest only once that
-  succeeds. Catalogs and
-  imports come over HTTPS with ureq (`net.rs`: one agent, timeouts, `lx/<version>` user agent,
-  the environment's proxy, three tries; media hashed as it's read; an HTTPS URL is fetched
-  `https_only`, so a redirect to plain HTTP is refused, and plain HTTP is warned of there,
-  naming where it was redirected); packages through git. The
+  succeeds. lx is argument parsing and printing on logoxide-app: one `Logoxide` a process
+  (`main.rs`'s `app()`, `default_native` with the `lx/<version>` user agent; its `Notes` print
+  each download unless JSON is printed, and each warning), which loads catalogs and registries,
+  imports and plans their updates, installs, cleans, checks media, reads, and compares; lx keeps
+  the prompts, the JSON reports, and the words. Packages come through git where it's installed,
+  else over HTTPS (`NetFetcher`); `Cli::git` is the `git` command for release, diff, and
+  publish. The
   project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
   own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
-  import --update, show --references, --notes, --entry, --keys, and --xref; others refuse it). `lx publish` prints
+  import --update, read, compare, show --references, --notes, --entry, --keys, and --xref;
+  others refuse it). `lx publish` prints
   `license::assess`'s concerns, and for a package whose rights say it isn't redistributable
   warns loudly and asks (`--yes` answers; required outside a terminal: the owner's D8, still
-  never enforced); `lx info` prints the rights. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
-  `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
+  never enforced); `lx info` prints the rights. `main.rs` dispatches; `cli.rs` (clap) and
+  `cmd/{project,package,catalog,import,media,map,read}.rs`; `tests/cli.rs` runs lx in temporary
   folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
   Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
   through `text::printable`), so catalogs', manifests', and git's text can't drive the terminal
