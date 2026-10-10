@@ -80,7 +80,7 @@ impl Cli {
     }
 
     /// What installs fetch packages with: `git` where it runs, else HTTP alone
-    pub(crate) fn fetcher(&self) -> &'static (dyn logoxide::git::Fetcher + Send + Sync) {
+    pub(crate) fn fetcher(&self) -> &'static dyn logoxide::git::Fetcher {
         app().fetcher()
     }
 

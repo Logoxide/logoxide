@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Checks that the versions that must agree do: the workspace's (the crates'), the `logoxide`,
 # `logoxide-markup`, `logoxide-text`, `logoxide-import`, and `logoxide-app` workspace dependencies', and logoxide-ffi's (the npm and PyPI packages'; a workspace of its own,
-# so it can't inherit the version). With a tag (`v0.1.0`), it must be `v` and that version.
+# so it can't inherit the version). With a tag (`v0.2.0`), it must be `v` and that version.
 #   scripts/check-versions.sh            # in CI
-#   scripts/check-versions.sh v0.1.0     # before releasing
+#   scripts/check-versions.sh v0.2.0     # before releasing
 set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 # The first `version = "…"` in each section

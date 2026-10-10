@@ -30,6 +30,8 @@ Anyone can mirror a release: its `mirrors` are tried in order when `url` fails, 
 makes every copy as good as the first.
 */
 
+pub mod registry_build;
+
 use std::io::Write;
 
 use sha2::{Digest, Sha256};
@@ -255,7 +257,7 @@ mod tests {
         let b = pack(&storage, &info).unwrap();
         assert_eq!(sha256(&a), sha256(&b));
         let unpacked = MemoryStorage::new();
-        crate::archive::unpack(&a, &unpacked).unwrap();
+        crate::net::archive::unpack(&a, &unpacked).unwrap();
         let mut files = unpacked.walk("").unwrap();
         files.sort();
         assert_eq!(files, ["epub/romans.epub", "logoxide.toml"]);

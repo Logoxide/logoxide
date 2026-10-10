@@ -106,7 +106,7 @@ fn git_runs_nothing_a_repository_asks_for() {
     assert_eq!(cli.local_versions(&repo).unwrap().len(), 1);
     std::fs::write(repo.join("text.txt"), "more text").unwrap();
     cli.commit_and_tag(&repo, "second", "v1.0.1").unwrap();
-    logoxide::registry_build::git_in(&repo, &["status", "--porcelain"]).unwrap();
+    logoxide::publish::registry_build::git_in(&repo, &["status", "--porcelain"]).unwrap();
 
     for what in ["hook", "lfs", "fsmonitor"] {
         assert!(!ran(what).exists(), "{what} ran");

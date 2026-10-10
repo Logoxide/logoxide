@@ -84,6 +84,37 @@ async function answer(r: FetchRequest) {
 - `examples/node/install.ts` installs real packages this way (`https://` with `fetch()`; for
   `file://` repositories, git makes the same bytes an HTTP host serves)
 
+The project's catalogs (its `[settings] catalogs`, then the default ones) are read the same way,
+as `lx search` reads them, each asked for as a `Download`:
+
+```ts
+let step = installer.loadCatalogs(project);
+while (step.tag === "Fetch") {
+  const { url, urls } = step.request as { url: string; urls: string[] };
+  try { installer.provideDownload(url, await getFirst(urls)); }
+  catch (e) { installer.provideDownloadFailed(url, String(e)); } // a warning, unless none can be read
+  step = installer.loadCatalogs(project);
+}
+const catalog = installer.catalog(); // all of them merged; step.warnings, also catalog.warnings()
+catalog.search("world english", 20);
+```
+
+A catalog given by path isn't read there (a warning says so): read it and merge
+`parseCatalogBytes`'s.
+
+## Reading natively
+
+Where there are files (Python, Node), `readPassage` and `comparePassage` read a project's Bibles
+from its folder and the library's, as `lx read` and `lx compare` do (not in WebAssembly):
+
+```ts
+const style = { verseLabel: "[{verse}]", chapterLabel: null, notes: false, headings: false, templates: [], width: null, limit: null };
+const read = logoxide.readPassage(vault, library, cache, "John 3:16 KJV", style); // { bible, abbreviation, passage, text, versification }
+// Each Bible in its own numbering, mapped through the project's versification maps
+for (const c of logoxide.comparePassage(vault, library, cache, "Psalm 51:1", ["KJV", "BSB"], style))
+  console.log(c.abbreviation, c.reference, c.text?.text, c.missing);
+```
+
 ## Making packages
 
 A package can be made from one file the person picks: an EPUB fills in its own title, subtitle,

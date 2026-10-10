@@ -65,7 +65,6 @@ The file formats (`logoxide.toml`, `catalog.toml`, `logoxide.lock`, summaries) a
 model are specified in the repository's `doc/` folder, for other implementations.
 */
 
-pub mod archive;
 pub mod books;
 pub mod cache;
 pub mod catalog;
@@ -80,16 +79,16 @@ pub mod lock;
 pub mod locking;
 pub mod manifest;
 pub mod media;
+pub mod net;
 pub mod package;
 pub mod project;
 pub mod publish;
 pub mod reader;
 pub mod references;
-pub mod registry_build;
 pub mod release;
 pub mod resolve;
 pub mod roots;
-pub mod stamps;
+mod stamps;
 pub mod storage;
 pub mod summary;
 pub mod text;

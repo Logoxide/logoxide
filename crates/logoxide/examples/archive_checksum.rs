@@ -1,7 +1,7 @@
 //! The checksum of a package unpacked from a `.tar.gz` (`git archive`, or a host's download):
 //! `cargo run -p logoxide --example archive_checksum -- kjv.tar.gz`
 
-use logoxide::{MemoryStorage, archive, package::checksum};
+use logoxide::{MemoryStorage, net::archive, package::checksum};
 
 fn main() -> logoxide::Result<()> {
     for path in std::env::args().skip(1) {

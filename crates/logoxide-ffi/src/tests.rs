@@ -4,10 +4,11 @@
 use std::collections::HashMap;
 
 use crate::{
-    BookStyle, BookTextOptions, Dependency, FetchRequest, ImportDownload, InspectStep, InstallStep,
-    Logoxide, LogoxideError, LogoxideInstaller, LogoxideProject, MappedVerse, NameClash,
-    NamedBible, OffsetUnit, PackageFeatures, PackageFile, PackageKind, PackageLocation,
-    PackageManifest, Topos, ToposTranslations, UpdateMode, VerseTiming,
+    BookStyle, BookTextOptions, BookTextStyle, CatalogsStep, Dependency, FetchRequest,
+    ImportDownload, InspectStep, InstallStep, Logoxide, LogoxideError, LogoxideInstaller,
+    LogoxideProject, MappedVerse, NameClash, NamedBible, NodeKind, OffsetUnit, PackageFeatures,
+    PackageFile, PackageKind, PackageLocation, PackageManifest, Topos, ToposTranslations,
+    UpdateMode, VerseTiming,
 };
 
 const USX: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -1427,4 +1428,162 @@ path = "tsk"
         project.commentaries(bad),
         Err(LogoxideError::Invalid { .. })
     ));
+}
+
+#[test]
+fn loading_catalogs_with_the_host_downloading() {
+    let logoxide = Logoxide::new();
+    let manifest = format!(
+        "[settings]\ncatalogs = [\"{REGISTRY}\", \"https://example.org/down.toml\", \"mine.toml\"]\ndefault-catalogs = false\n"
+    );
+    let project = logoxide.parse_project(Some(manifest), None).unwrap();
+    let installer = logoxide.installer();
+    assert!(installer.catalog().is_err(), "nothing read yet");
+    let mut asked = vec![];
+    let warnings = loop {
+        match installer.load_catalogs(&project).unwrap() {
+            CatalogsStep::Done { warnings } => break warnings,
+            CatalogsStep::Fetch {
+                request: FetchRequest::Download { url, .. },
+            } => {
+                assert!(!asked.contains(&url), "asked twice for {url}");
+                asked.push(url.clone());
+                match url.as_str() {
+                    REGISTRY => installer.provide_download(url, registry().0.into_bytes()),
+                    _ => installer.provide_download_failed(url, "404 Not Found".into()),
+                }
+            }
+            CatalogsStep::Fetch { request } => panic!("asked for {request:?}"),
+        }
+    };
+    assert_eq!(asked, [REGISTRY, "https://example.org/down.toml"]);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("down.toml") && w.contains("404")),
+        "{warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("mine.toml")),
+        "{warnings:?}"
+    );
+    let catalog = installer.catalog().unwrap();
+    assert_eq!(catalog.search("TB".into(), 0)[0].id, "test");
+    assert_eq!(catalog.warnings(), warnings);
+
+    // None readable is an error
+    let manifest =
+        "[settings]\ncatalogs = [\"https://example.org/down.toml\"]\ndefault-catalogs = false\n";
+    let project = logoxide.parse_project(Some(manifest.into()), None).unwrap();
+    assert!(installer.load_catalogs(&project).is_err());
+}
+
+#[test]
+fn reading_and_comparing_passages_natively() {
+    let dir = std::env::temp_dir().join(format!("logoxide-ffi-read-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    for (folder, manifest) in [
+        ("test", MANIFEST.to_string()),
+        (
+            "other",
+            (MANIFEST.replace("id = \"test\"", "id = \"other\""))
+                .replace("abbreviation = \"TB\"", "abbreviation = \"OB\"")
+                .replace("aliases = [\"Test\"]", "aliases = []"),
+        ),
+    ] {
+        std::fs::create_dir_all(dir.join(format!("vault/{folder}/usx"))).unwrap();
+        std::fs::write(dir.join(format!("vault/{folder}/logoxide.toml")), manifest).unwrap();
+        std::fs::write(dir.join(format!("vault/{folder}/usx/JHN.usx")), USX).unwrap();
+    }
+    std::fs::write(
+        dir.join("vault/logoxide.toml"),
+        "[dependencies]\ntest = { path = \"test\" }\nother = { path = \"other\" }\n",
+    )
+    .unwrap();
+    let library = logoxide_core::Library::new(dir.join("library"), dir.join("cache"));
+    let mut project = logoxide_core::Project::open(dir.join("vault")).unwrap();
+    (project.install(
+        &library,
+        &logoxide_core::git::GitCli::default(),
+        logoxide_core::resolve::Update::Nothing,
+    ))
+    .unwrap();
+
+    let path = |p: &str| dir.join(p).to_string_lossy().into_owned();
+    let style = BookTextStyle {
+        verse_label: Some("[{verse}]".into()),
+        chapter_label: None,
+        notes: false,
+        headings: false,
+        templates: vec![],
+        width: None,
+        limit: None,
+    };
+    let logoxide = Logoxide::new();
+    let read = logoxide
+        .read_passage(
+            path("vault"),
+            path("library"),
+            path("cache"),
+            "John 3:16 OB".into(),
+            style.clone(),
+        )
+        .unwrap();
+    assert_eq!(
+        (read.bible.as_str(), read.abbreviation.as_str()),
+        ("other", "OB")
+    );
+    assert_eq!(read.passage.reference, "John 3:16");
+    assert_eq!(read.passage.osis, "John.3.16");
+    let text = read.text.unwrap();
+    assert_eq!(text.text, "[16] For God so loved the world.");
+    assert!(text.marks.iter().any(|m| m.kind == NodeKind::Verse));
+
+    let cut = BookTextStyle {
+        limit: Some(12),
+        ..style.clone()
+    };
+    let short = logoxide
+        .read_passage(
+            path("vault"),
+            path("library"),
+            path("cache"),
+            "John 3:16 TB".into(),
+            cut,
+        )
+        .unwrap();
+    assert_eq!(short.bible, "test");
+    assert_eq!(short.text.unwrap().text, "[16] For God …");
+
+    let compared = logoxide
+        .compare_passage(
+            path("vault"),
+            path("library"),
+            path("cache"),
+            "John 3:17".into(),
+            vec!["OB".into(), "TB".into()],
+            style.clone(),
+        )
+        .unwrap();
+    let bibles: Vec<_> = compared.iter().map(|c| c.abbreviation.as_str()).collect();
+    assert_eq!(bibles, ["OB", "TB"]);
+    assert!(compared.iter().all(|c| !c.mapped && c.missing.is_empty()));
+    assert_eq!(compared[1].passages[0].reference, "John 3:17");
+    assert_eq!(
+        compared[1].text.as_ref().unwrap().text,
+        "[17] For God did not send His Son."
+    );
+    assert!(
+        logoxide
+            .compare_passage(
+                path("vault"),
+                path("library"),
+                path("cache"),
+                "John 3:17".into(),
+                vec!["XYZ".into()],
+                style,
+            )
+            .is_err()
+    );
+    std::fs::remove_dir_all(&dir).unwrap();
 }

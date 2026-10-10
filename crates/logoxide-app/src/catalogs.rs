@@ -175,7 +175,7 @@ pub fn load_registry(http: &dyn Http, name: &str, location: &str, base: &Path) -
         return Ok(catalog);
     }
     let (mut catalog, warnings) =
-        logoxide::registry_build::folder_catalog(name, &canonical(&folder)?)?;
+        logoxide::publish::registry_build::folder_catalog(name, &canonical(&folder)?)?;
     catalog.warnings.extend(warnings);
     Ok(catalog)
 }

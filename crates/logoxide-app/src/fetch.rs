@@ -1,7 +1,7 @@
 /*!
 Fetchers for installing: [`GitFetcher`] through the `git` command, and [`NetFetcher`] over HTTP
 alone (a repository's refs from git's smart HTTP, and archives of its commits: the core's
-[`archive`](logoxide::archive)) for hosts without `git`. Both download registries' catalogs and
+[`logoxide::net::archive`]) for hosts without `git`. Both download registries' catalogs and
 archives through an [`Http`], and say through their [`Notes`] each repository fetched without
 encryption. [`fetcher`] picks one by whether `git` runs here
 */
@@ -13,14 +13,14 @@ use std::{
 
 use logoxide::{
     LogoxideError, Result, Storage,
-    archive::{self, Refs},
     git::{Fetcher, GitCli, GitRef, is_insecure, is_local, read_local},
+    net::archive::{self, Refs},
 };
 
 use crate::{Note, Notes, http::Http};
 
 /// The `git` command where it runs, else [`NetFetcher`]
-pub fn fetcher(git: GitCli, http: Arc<dyn Http>, notes: Notes) -> Box<dyn Fetcher + Send + Sync> {
+pub fn fetcher(git: GitCli, http: Arc<dyn Http>, notes: Notes) -> Box<dyn Fetcher> {
     match logoxide::git::git_available() {
         true => Box::new(GitFetcher::new(git, http, notes)),
         false => Box::new(NetFetcher::new(http, notes)),

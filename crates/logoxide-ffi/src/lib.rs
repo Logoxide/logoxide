@@ -5,7 +5,8 @@ same package, so an app needs only this one. A book's text is logoxide's own [`L
 The host reads and writes files, as an app's file API is often asynchronous (Obsidian's vault)
 and WebAssembly has none: a package is opened from its files' bytes ([`Logoxide::open_package`]),
 and the cache files it writes are handed back ([`LogoxidePackage::cache_writes`]). Natively,
-[`Logoxide::open_package_dir`] reads a folder itself. [`LogoxideProject`] says which packages a vault's
+[`Logoxide::open_package_dir`] reads a folder itself, and [`Logoxide::read_passage`] and
+[`Logoxide::compare_passage`] read a project's Bibles as `lx read` and `lx compare` do. [`LogoxideProject`] says which packages a vault's
 `logoxide.toml` and `logoxide.lock` ask for, and where each one's files are.
 */
 
@@ -15,6 +16,7 @@ mod create;
 mod installer;
 mod package;
 mod project;
+mod read;
 #[cfg(test)]
 mod tests;
 mod versification;
@@ -25,6 +27,7 @@ pub use create::*;
 pub use installer::*;
 pub use package::*;
 pub use project::*;
+pub use read::*;
 pub use topos_bible::*;
 pub use versification::*;
 
@@ -429,5 +432,47 @@ impl Logoxide {
     /// Installs packages and inspects repositories, with the host downloading
     pub fn installer(&self) -> LogoxideInstaller {
         LogoxideInstaller::new()
+    }
+
+    /**
+    A passage from one of the project's Bibles in `style` (`John 3:16 KJV`: the Bible it names,
+    else the project's first), as `lx read` gives it: the project in `project_dir`, its packages
+    installed in the library at `library_dir`, parsed books cached in `cache_dir`. Not in
+    WebAssembly, which has no file access (open the package and read its book there)
+    */
+    pub fn read_passage(
+        &self,
+        project_dir: String,
+        library_dir: String,
+        cache_dir: String,
+        reference: String,
+        style: BookTextStyle,
+    ) -> Result<ReadPassage, LogoxideError> {
+        read::read_passage(project_dir, library_dir, cache_dir, reference, style)
+    }
+
+    /**
+    A passage in several of the project's Bibles (`bibles` by name, in that order; all of them
+    when empty), as `lx compare` gives it: numbered by the Bible `reference` names, else the
+    first, and mapped through the project's versification maps into each Bible numbered
+    otherwise, with what of it that Bible lacks. Folders as `readPassage`'s; not in WebAssembly
+    */
+    pub fn compare_passage(
+        &self,
+        project_dir: String,
+        library_dir: String,
+        cache_dir: String,
+        reference: String,
+        bibles: Vec<String>,
+        style: BookTextStyle,
+    ) -> Result<Vec<ComparedPassage>, LogoxideError> {
+        read::compare_passage(
+            project_dir,
+            library_dir,
+            cache_dir,
+            reference,
+            bibles,
+            style,
+        )
     }
 }

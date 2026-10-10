@@ -11,7 +11,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
 - `crates/logoxide`: the library. The package manager never reads text (the owner's decision of
   2026-10-10; `PLAN-CRATES.md` has the phases): everything that parses a format is behind the
   `read` feature (on by default; `cargo check -p logoxide --no-default-features --all-targets`
-  must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs
+  must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs.
+  Its exports (PLAN-NEXT.md J.3, 0.2.0): the formats, `storage`, `reader`, `error`, and the
+  package manager's modules stay public (each is used by lx, the import, the app, the LSP, or
+  the FFI); `archive` is `net::archive`, `registry_build` is `publish::registry_build`, and
+  `stamps` and `package::glob` are crate-private. No re-exports under the old paths
   - `reader.rs`: the boundary. `TextReader` (`counts`: each book's verse counts; `facts`: a
     `TextFacts`, the text's half of a summary, with the verse hashes by a `HashRule`, titles and
     the untitled files, cited passages, the mapping count, `entries` (each dictionary entry's or
@@ -125,7 +129,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
     aliases, and counts. `Library::book_cache` adds `with_stamps(<cache>/stamps)`, so `Cache::open`
     takes a package's checksum from `stamps.rs` instead of hashing every file each time
-  - `stamps.rs`: checksums remembered by each declared file's `Storage::stamp` (size and
+  - `stamps.rs` (crate-private): checksums remembered by each declared file's `Storage::stamp` (size and
     modification time; `None` for memory and a host's files, so they're always hashed) in
     `<cache>/stamps/<id>/<version>-<hash of Storage::location>.postcard`, used only when the
     paths and every stamp match and each file is at least `RACY` (2 s) older than the stamp file
@@ -148,16 +152,15 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     has a deadline (`run`: spawned, waited on, killed): `fetch_timeout` (`FETCH_TIMEOUT`, 10
     minutes) and `list_timeout` for `ls-remote` (`LIST_TIMEOUT`, 60 s), set from the config's
     `git-timeout`/`git-list-timeout` (`Config::git`); the error names the limit. `core.fsmonitor`
-    is off for every git command (also `registry_build::git_in`); fetching (`Mode::Fetching`, in
+    is off for every git command (also `publish::registry_build::git_in`); fetching (`Mode::Fetching`, in
     a new repository, `in_clone`) also turns off LFS's filters (`GIT_LFS_SKIP_SMUDGE`, pointers
     kept), points `core.hooksPath` at an empty folder, and runs SSH with `BatchMode=yes` unless
     the user chose their own (`GIT_SSH_COMMAND`, `GIT_SSH`, `core.sshCommand`). Fetched packages'
     dependencies can't use `git://` (resolve.rs); lx warns of the project's own. `is_insecure`
     (`http://`, `git://`, `ftp://`: warned of) and `is_local`. `git_available()` (`git --version`
     answers, asked once) is how logoxide-app's `fetch::fetcher` picks `git` or HTTP. `Fetcher`
-    isn't `Send + Sync` (the FFI's rounds hold `RefCell`s); logoxide-app asks it of its own
-    (`Box<dyn Fetcher + Send + Sync>`)
-  - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
+    is `Send + Sync` (the FFI's rounds hold mutexes), so logoxide-app boxes any
+  - `net/archive.rs` (`net::archive`): git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
     and GitHub's own archives). Unpacking (and `import::unzip`) stops at `MAX_UNPACKED_BYTES`
@@ -196,7 +199,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `Catalog::warnings` (lx prints them as it loads a catalog; `LogoxideCatalog.warnings()`);
     `Catalog::shadowed` gives ids more than one catalog lists (lx search and lx import warn,
     `warn_shadowed`; lx add through a registry warns when another registry lists the id,
-    `warn_other_registries`). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
+    `warn_other_registries`). `publish/registry_build.rs` (`publish::registry_build`): folder registries (`folder_catalog`, `build_catalog`,
     `newest_release`, read with `git show`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
     `mirrors` (tried in order after it: `MediaFile::urls`), size, SHA-256, and book, never
@@ -308,7 +311,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     book, which gives them again
   - `package.rs` also says what a package is made of: `declared_files` (the manifest, each
     format's files by its extensions, the license file, summary files, timings, `include`
-    globs, matched without backtracking); `checksum` hashes only those, so a reader's annotations beside a book never change
+    globs, matched without backtracking by the crate-private `glob`); `checksum` hashes only those, so a reader's annotations beside a book never change
     it. `other_files` are kept by repairs and stop `lx clean`
   - `release.rs`: summarize, compare with the newest release tag's summary (or its text, for
     releases before summaries), check the version, write, commit, tag `v{version}`. A package in
@@ -686,7 +689,16 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
   that answers, are registries' catalogs and archives, with their mirrors; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;
   `Dependency.registry`); whatever is missing (refs, an archive, an installed package's files) stops the round and
-  is asked for (`FetchRequest`), and the host calls again. Its tests are unit tests
+  is asked for (`FetchRequest`), and the host calls again. A round (`Round`, behind mutexes, so
+  it's a `Fetcher`, `Send + Sync`) is also logoxide-app's `Http` (`HostHttp`, over the downloads
+  given), so `LogoxideInstaller.loadCatalogs(project)` (`CatalogsStep`: `Fetch`, else `Done`
+  with warnings; `catalog()` is them merged) reads the project's catalogs through
+  `logoxide_app::catalogs::load_catalogs` as lx does, `provideDownloadFailed(url, message)`
+  making one a warning (paths aren't read there: warned). Natively (like `openPackageDir`),
+  `Logoxide.readPassage(projectDir, libraryDir, cacheDir, reference, BookTextStyle)` and
+  `comparePassage(…, bibles, style)` are logoxide-app's `read` (`read.rs`: `ReadPassage`,
+  `ComparedPassage` with topos-ffi's `Passage`s and `StyledText` cut at the style's `limit`).
+  It depends on logoxide-app without `ureq`. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `liblogoxide.rlib`. Build with
   `npm install && npm run pack:wasm` or `npm run pack:python`; the examples open and install the
   real packages (`examples/node/install.ts`, whose lock and library `lx install` accepts)

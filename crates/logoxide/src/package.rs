@@ -214,7 +214,7 @@ pub fn declares(manifest: &Manifest, path: &str) -> bool {
 
 /// Whether `path` matches a pattern: `*` is any characters but `/`, `?` one of them, `**` any
 /// folders (or none), and a pattern ending in `/` is everything under that folder
-pub fn glob(pattern: &str, path: &str) -> bool {
+pub(crate) fn glob(pattern: &str, path: &str) -> bool {
     if let Some(dir) = pattern.strip_suffix('/') {
         return path.starts_with(&format!("{dir}/"));
     }

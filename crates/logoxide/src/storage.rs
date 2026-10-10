@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{LogoxideError, Result};
 
-/// A file's size and modification time, by which a checksum is remembered ([`crate::stamps`])
+/// A file's size and modification time, by which a checksum is remembered (`stamps.rs`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Stamp {
     pub size: u64,
@@ -188,7 +188,7 @@ fn staging_path(full: &Path) -> PathBuf {
 /**
 Writes a file so that a reader sees the old file or the whole new one, never half, and a crash
 or a power cut loses neither: the bytes go to a file beside it with a name of its own
-([`staging_path`]), are synced to disk, renamed over the old file, and the folder is synced so the
+(`staging_path`), are synced to disk, renamed over the old file, and the folder is synced so the
 rename itself lasts. Folders on the way are made. For the manifest, the lock, catalogs, and
 whatever else is written over in place; [`FsStorage::write`] goes through it
 */

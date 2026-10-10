@@ -8,22 +8,23 @@ and the host is asked for each thing once, so a project with a few packages take
 */
 
 use std::{
-    cell::RefCell,
     collections::{BTreeMap, HashMap},
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 use boltffi::*;
 use logoxide_core::{
     LockedPackage, MemoryStorage, Storage,
-    archive::{self, Refs},
     git::{Fetcher, GitRef},
     library::library_dir,
     manifest::{MANIFEST, Manifest},
+    net::archive::{self, Refs},
     resolve::{Frozen, Packages, Resolver, Update, tag_version},
 };
 
-use crate::{LogoxideError, LogoxideProject, PackageFile, PackageInfo, PackageLocation};
+use crate::{
+    LogoxideCatalog, LogoxideError, LogoxideProject, PackageFile, PackageInfo, PackageLocation,
+};
 
 /// Which locked packages may move to newer versions (like `lx update`)
 #[data]
@@ -106,26 +107,56 @@ struct Given {
     archives: HashMap<(String, String), Arc<MemoryStorage>>,
     files: HashMap<PackageLocation, Option<Arc<MemoryStorage>>>,
     downloads: HashMap<String, Vec<u8>>,
+    /// Downloads the host couldn't make, and why (a catalog that's down is a warning)
+    failed: HashMap<String, String>,
+    /// The catalogs `load_catalogs` last finished with, merged
+    catalog: Option<logoxide_core::catalog::Catalog>,
     /// Versions installed by this installer, by their folder in the library
     installed: BTreeMap<String, Arc<MemoryStorage>>,
 }
 
 /// One round: the resolver's fetcher and packages, over what's been given. What's missing is
-/// asked for, and resolving stops there (with an error the installer replaces by the request)
+/// asked for, and resolving stops there (with an error the installer replaces by the request).
+/// Behind mutexes, so it's a `Fetcher` (`Send + Sync`); a round runs on one thread
 struct Round<'a> {
-    given: RefCell<&'a mut Given>,
-    need: RefCell<Option<FetchRequest>>,
+    given: Mutex<&'a mut Given>,
+    need: Mutex<Option<FetchRequest>>,
 }
 
-impl Round<'_> {
+/// A lock that a panic elsewhere doesn't spoil (what's given is only ever added to)
+fn locked<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+impl<'a> Round<'a> {
+    fn given(&self) -> MutexGuard<'_, &'a mut Given> {
+        locked(&self.given)
+    }
+
     fn ask(&self, request: FetchRequest) -> logoxide_core::LogoxideError {
         let message = format!("needs {request:?}");
-        self.need.borrow_mut().get_or_insert(request);
+        locked(&self.need).get_or_insert(request);
         logoxide_core::LogoxideError::network("", message)
     }
 
+    /// A download the host has given, else asked for (`urls`: where to try, `url` first)
+    fn given_download(&self, url: &str, urls: &[String]) -> logoxide_core::Result<Vec<u8>> {
+        let given = self.given();
+        if let Some(bytes) = given.downloads.get(url) {
+            return Ok(bytes.clone());
+        }
+        if let Some(message) = given.failed.get(url) {
+            return Err(logoxide_core::LogoxideError::network(url, message.clone()));
+        }
+        drop(given);
+        Err(self.ask(FetchRequest::Download {
+            url: url.to_string(),
+            urls: urls.to_vec(),
+        }))
+    }
+
     fn refs(&self, url: &str) -> logoxide_core::Result<Refs> {
-        let refs = self.given.borrow().refs.get(url).cloned();
+        let refs = self.given().refs.get(url).cloned();
         refs.ok_or_else(|| {
             self.ask(FetchRequest::Refs {
                 repository: url.to_string(),
@@ -154,7 +185,7 @@ impl Round<'_> {
                 })?,
         };
         let key = (url.to_string(), commit.clone());
-        let files = self.given.borrow().archives.get(&key).cloned();
+        let files = self.given().archives.get(&key).cloned();
         let files = files.ok_or_else(|| {
             self.ask(FetchRequest::Archive {
                 repository: url.to_string(),
@@ -166,7 +197,7 @@ impl Round<'_> {
     }
 
     fn files(&self, location: PackageLocation) -> logoxide_core::Result<Option<Arc<dyn Storage>>> {
-        let given = self.given.borrow();
+        let given = self.given();
         if let PackageLocation::Library { dir } = &location
             && let Some(files) = given.installed.get(dir)
         {
@@ -188,13 +219,7 @@ impl Fetcher for Round<'_> {
     }
 
     fn download(&self, url: &str) -> logoxide_core::Result<Vec<u8>> {
-        let given = self.given.borrow().downloads.get(url).cloned();
-        given.ok_or_else(|| {
-            self.ask(FetchRequest::Download {
-                url: url.to_string(),
-                urls: vec![url.to_string()],
-            })
-        })
+        self.given_download(url, &[url.to_string()])
     }
 
     /// One request for every place: the host tries them in turn and gives what answered as
@@ -205,13 +230,7 @@ impl Fetcher for Round<'_> {
         check: &dyn Fn(&str, &[u8]) -> logoxide_core::Result<()>,
     ) -> logoxide_core::Result<(String, Vec<u8>)> {
         let url = urls.first().cloned().unwrap_or_default();
-        let given = self.given.borrow().downloads.get(&url).cloned();
-        let bytes = given.ok_or_else(|| {
-            self.ask(FetchRequest::Download {
-                url: url.clone(),
-                urls: urls.to_vec(),
-            })
-        })?;
+        let bytes = self.given_download(&url, urls)?;
         check(&url, &bytes)?;
         Ok((url, bytes))
     }
@@ -248,7 +267,7 @@ impl Packages for Round<'_> {
         for path in files.walk("")? {
             copy.write(&path, &files.read(&path)?)?;
         }
-        (self.given.borrow_mut().installed).insert(library_dir(locked), Arc::new(copy));
+        (self.given().installed).insert(library_dir(locked), Arc::new(copy));
         Ok(())
     }
 
@@ -259,12 +278,43 @@ impl Packages for Round<'_> {
     }
 }
 
+/**
+logoxide-app's [`Http`](logoxide_app::http::Http) over what the host has given: a URL it has
+given (`provideDownload`) is read, one it couldn't fetch (`provideDownloadFailed`) is that
+error, and any other is asked for (a `Download` request), stopping the round, so
+`logoxide_app::catalogs` reads catalogs here as it does in lx
+*/
+struct HostHttp<'r, 'a> {
+    round: &'r Round<'a>,
+}
+
+impl logoxide_app::http::Http for HostHttp<'_, '_> {
+    fn get(&self, url: &str) -> logoxide_core::Result<Vec<u8>> {
+        self.round.given_download(url, &[url.to_string()])
+    }
+}
+
+/// What `loadCatalogs` did: it needs a catalog, or it's read them all (`catalog()` has them)
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CatalogsStep {
+    Fetch {
+        request: FetchRequest,
+    },
+    /// Every catalog that could be read is in `catalog()`; `warnings` say what couldn't be read
+    /// and what the catalogs passed over (also in `catalog().warnings()`)
+    Done {
+        warnings: Vec<String>,
+    },
+}
+
 /// What a round ended with: its result, or what it asked for
 fn finish<T>(
     round: Round<'_>,
     result: logoxide_core::Result<T>,
 ) -> Result<Result<T, FetchRequest>, LogoxideError> {
-    if let Some(request) = round.need.into_inner() {
+    let need = round.need.into_inner().unwrap_or_else(|e| e.into_inner());
+    if let Some(request) = need {
         return Ok(Err(request));
     }
     Ok(Ok(result?))
@@ -320,8 +370,8 @@ impl LogoxideInstaller {
             message: String::from("an earlier call panicked"),
         })?;
         let round = Round {
-            given: RefCell::new(&mut given),
-            need: RefCell::default(),
+            given: Mutex::new(&mut given),
+            need: Mutex::default(),
         };
         let result = run(&round);
         finish(round, result)
@@ -425,6 +475,65 @@ impl LogoxideInstaller {
             Ok(inspected) => InspectStep::Found { inspected },
             Err(request) => InspectStep::Fetch { request },
         })
+    }
+
+    /**
+    Reads the project's catalogs (its `[settings] catalogs`, then the default ones unless it
+    turns them off) as lx does, through logoxide-app's `catalogs::load_catalogs`, asking for
+    each one it hasn't been given; then `catalog()` is all of them merged (the first catalog's
+    entry for an id). A catalog the host couldn't fetch (`provideDownloadFailed`) is a warning,
+    unless none could be read. A catalog given by path isn't read here (the host reads it and
+    merges `parseCatalogBytes`'s): a warning says so
+    */
+    pub fn load_catalogs(&self, project: &LogoxideProject) -> Result<CatalogsStep, LogoxideError> {
+        let mut warnings = vec![];
+        let (urls, paths): (Vec<String>, Vec<String>) = (project.project.manifest().catalogs())
+            .into_iter()
+            .partition(|l| l.starts_with("https://") || l.starts_with("http://"));
+        for path in paths {
+            warnings.push(format!(
+                "the catalog `{path}` is a path: read it and give it to parseCatalogBytes"
+            ));
+        }
+        let loaded = self.round(|round| {
+            let http = HostHttp { round };
+            let mut warn = |w: String| warnings.push(w);
+            logoxide_app::catalogs::load_catalogs(&http, &urls, project.project.dir(), &mut warn)
+        })?;
+        let catalogs = match loaded {
+            Ok(catalogs) => catalogs,
+            Err(request) => return Ok(CatalogsStep::Fetch { request }),
+        };
+        let mut merged: Option<logoxide_core::catalog::Catalog> = None;
+        for mut catalog in catalogs {
+            // Warned of once, below, with what couldn't be read
+            catalog.warnings.clear();
+            merged = Some(match merged {
+                None => catalog,
+                Some(merged) => merged.merge(catalog),
+            });
+        }
+        if let Some(merged) = &mut merged {
+            merged.warnings = warnings.clone();
+        }
+        locked(&self.given).catalog = merged;
+        Ok(CatalogsStep::Done { warnings })
+    }
+
+    /// The catalogs the last `loadCatalogs` read, merged (named for the first). An error before
+    /// one has finished
+    pub fn catalog(&self) -> Result<LogoxideCatalog, LogoxideError> {
+        let catalog = locked(&self.given).catalog.clone();
+        let catalog = catalog.ok_or_else(|| LogoxideError::NotFound {
+            message: String::from("no catalogs read yet: loadCatalogs first"),
+        })?;
+        Ok(LogoxideCatalog { catalog })
+    }
+
+    /// The answer to a `Download` request the host couldn't fetch from any of its `urls`:
+    /// `message` says why. Reading catalogs passes over it with a warning; installing stops
+    pub fn provide_download_failed(&self, url: String, message: String) {
+        locked(&self.given).failed.insert(url, message);
     }
 
     /// The answer to a `Download` request

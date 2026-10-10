@@ -74,7 +74,7 @@ struct CachedReferences {
 
 pub struct Cache {
     storage: Arc<dyn Storage>,
-    /// Where checksums are remembered by the files' stamps ([`crate::stamps`]); without one,
+    /// Where checksums are remembered by the files' stamps (`stamps.rs`); without one,
     /// every open hashes the package
     stamps: Option<Arc<dyn Storage>>,
 }
@@ -187,7 +187,7 @@ impl Cache {
         }
     }
 
-    /// With a place to remember checksums by the files' sizes and times ([`crate::stamps`]), so
+    /// With a place to remember checksums by the files' sizes and times (`stamps.rs`), so
     /// opening a package that hasn't changed doesn't hash it again
     pub fn with_stamps(mut self, stamps: Arc<dyn Storage>) -> Self {
         self.stamps = Some(stamps);

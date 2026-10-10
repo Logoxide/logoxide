@@ -140,7 +140,7 @@ impl Library {
     }
 
     /// The cache of parsed books, remembering each package's checksum by its files' stamps
-    /// (`<cache>/stamps/`, [`crate::stamps`])
+    /// (`<cache>/stamps/`, `stamps.rs`)
     pub fn book_cache(&self) -> Cache {
         Cache::new(Arc::new(FsStorage::new(self.cache.join("books"))))
             .with_stamps(Arc::new(FsStorage::new(self.cache.join("stamps"))))

@@ -1,7 +1,7 @@
 [package]
 name = "logoxide-ffi"
 # The workspace's version (a workspace of its own, so it can't inherit it): scripts/check-versions.sh
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "CC0-1.0"
 repository = "https://github.com/Logoxide/logoxide"
@@ -25,6 +25,9 @@ logoxide-text = { path = "../logoxide-text" }
 # Other publishers' catalogs and downloads as packages (eBible.org, fetch.bible, CCEL, SWORD):
 # the import methods, and reading publishers' lists as catalogs
 logoxide-import = { path = "../logoxide-import" }
+# What every front end does (reading catalogs, reading and comparing passages), without its ureq:
+# the host downloads (`HostHttp`)
+logoxide-app = { path = "../logoxide-app", default-features = false }
 # topos's whole API, re-exported (its library is named topos_bible, like its packages). BoltFFI only
 # exports the items of path dependencies, so this needs a topos checkout beside logoxide
 # (CI checks out the tag matching topos-bible's version). Without its `markup` feature: books are
