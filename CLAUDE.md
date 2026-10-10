@@ -422,7 +422,7 @@ before changing the design.
   a collection's packages; `LockedEntry.enabled` is false for one turned off (`setEnabled`) and
   what it brings in; `nameClashes` (Bibles answering to one name, from `NamedBible`s); `isEnabled`,
   `enabledDependencies`, `disabledDependencies`, and
-  `Logoxide.packageInfo` (a package's details from its `logoxide.toml` alone, to name one that's off). `LogoxideInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
+  `Logoxide.readPackageInfo` (a package's details from its `logoxide.toml` alone, to name one that's off; not `packageInfo`: BoltFFI's Python names each method `_boltffi_<class>_<method>` in snake case, so `Logoxide.package_info` was `LogoxidePackage.info`, and no two may meet that way). `LogoxideInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
   that answers, are registries' catalogs and archives, with their mirrors; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;
   `Dependency.registry`); whatever is missing (refs, an archive, an installed package's files) stops the round and

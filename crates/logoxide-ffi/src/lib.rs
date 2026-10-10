@@ -163,7 +163,7 @@ impl Logoxide {
 
     /// What a package is, from its `logoxide.toml`'s text alone (without reading its text): to name
     /// one that's turned off. An error for a manifest without `[package]` (a vault's)
-    pub fn package_info(&self, manifest: String) -> Result<PackageInfo, LogoxideError> {
+    pub fn read_package_info(&self, manifest: String) -> Result<PackageInfo, LogoxideError> {
         let parsed = logoxide_core::manifest::Manifest::parse(&manifest)?;
         let info = parsed
             .package

@@ -224,7 +224,7 @@ git = "https://example.org/romans"
     assert!(project.set_enabled("nope".into(), false).is_err());
     // A package that's off is named from its logoxide.toml alone
     let info = Logoxide::new()
-        .package_info("[package]\nid = \"gill\"\nname = \"Gill's Exposition\"\nversion = \"1.0.0\"\nabbreviation = \"Gill\"\nlanguage = \"en\"\nkind = \"collection\"\n".into())
+        .read_package_info("[package]\nid = \"gill\"\nname = \"Gill's Exposition\"\nversion = \"1.0.0\"\nabbreviation = \"Gill\"\nlanguage = \"en\"\nkind = \"collection\"\n".into())
         .unwrap();
     assert_eq!(
         (info.id.as_str(), info.name.as_str()),
@@ -232,7 +232,7 @@ git = "https://example.org/romans"
     );
     assert!(
         Logoxide::new()
-            .package_info("[dependencies]\n".into())
+            .read_package_info("[dependencies]\n".into())
             .is_err()
     );
     let on = off.set_enabled("books".into(), true).unwrap();

@@ -13,7 +13,7 @@ version = lx.version()
 assert version, "logoxide has a version"
 
 # A small package's manifest, read without any files
-info = lx.package_info(
+info = lx.read_package_info(
     '[package]\nid = "t"\nname = "Test"\nabbreviation = "T"\nversion = "1.0.0"\nlanguage = "en"\n\n'
     '[formats]\nusx = { path = "usx/" }\n'
 )
