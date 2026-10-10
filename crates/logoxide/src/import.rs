@@ -320,10 +320,14 @@ entry gives its id.
 
 Each verse becomes a marker and its entry (`<verse osisID="John.3.16" sID="John.3.16"/>…<verse
 eID="John.3.16"/>`, or ThML's `<scripture parsed="|John|3|16|0|0"/>`), in chapters, with a
-book's and a chapter's introductions before their first verse. A verse whose entry is the one
-before it again (SWORD links the verses of a range to one entry) makes that one a bridge
-(`n="16-17"`); an introduction that is an earlier verse's entry is left out. A locked module, or
-markup other than OSIS and ThML, is an error
+book's and a chapter's introductions before their first verse. Verses SWORD links to one entry
+(the verses of a range, [`VerseModule::iter_spans`]) are one verse, bridged (`n="16-17"`), or
+for a run into the next chapter one id (`osisID="John.3.36-John.4.2"`, ThML's
+`parsed="|John|3|36|4|2"`); verses that merely read the same stay apart. An introduction stored
+where an earlier verse's entry is (`EntryLocation`) is left out. A locked module, or markup other
+than OSIS and ThML, is an error
+
+[`VerseModule::iter_spans`]: sword_modules::VerseModule::iter_spans
 */
 pub fn sword(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()> {
     use sword_modules::{Markup, MemoryFiles, SwordLibrary};
@@ -368,43 +372,38 @@ pub fn sword(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()>
         ..described
     };
     let mut books: Vec<(sword_modules::BookId, Vec<SwordVerse>)> = vec![];
-    // Every verse's text so far: an introduction that is one of them points at that verse's
-    // entry (the ISV's John 1:0 is Luke 23:56), and isn't an introduction
+    // Where every verse's entry so far is stored: an introduction stored there points at that
+    // verse's entry (the ISV's John 1:0 is Luke 23:56), and isn't an introduction
     let mut seen = std::collections::HashSet::new();
-    for read in verses.iter() {
-        let (key, text) = read.map_err(failed)?;
-        let verse = SwordVerse {
-            chapter: key.chapter,
-            verse: key.verse,
-            last: key.verse,
-            text: match markup {
-                Markup::Osis => without_structure(&text.raw),
-                _ => text.raw,
-            },
-        };
-        if verse.verse == 0 && seen.contains(&verse.text) {
+    for read in verses.iter_spans() {
+        let span = read.map_err(failed)?;
+        let (first, last) = (span.first, span.last);
+        if first.verse == 0 && first == last && seen.contains(&span.location) {
             continue;
         }
-        if verse.verse > 0 {
-            seen.insert(verse.text.clone());
+        if last.verse > 0 {
+            seen.insert(span.location);
         }
+        // A run of linked verses is one verse, bridged (into the next chapter, when SWORD links
+        // John 3:36 and 4:1-2); one starting at an introduction linked to the verse after it is
+        // that verse's
+        let (chapter, verse) = match first.verse == 0 && last.verse > 0 {
+            true => (first.chapter.max(1), 1),
+            false => (first.chapter, first.verse),
+        };
+        let verse = SwordVerse {
+            chapter,
+            verse,
+            last_chapter: last.chapter,
+            last: last.verse,
+            text: match markup {
+                Markup::Osis => without_structure(&span.entry.raw),
+                _ => span.entry.raw,
+            },
+        };
         match books.last_mut() {
-            Some((book, list)) if *book == key.book => {
-                // A range's later verses link to its entry: one verse, bridged
-                if let Some(before) = list.last_mut()
-                    && verse.verse > 0
-                    && before.verse > 0
-                    && before.chapter == verse.chapter
-                    && before.last + 1 == verse.verse
-                    && before.text == verse.text
-                    && !verse.text.trim().is_empty()
-                {
-                    before.last = verse.verse;
-                    continue;
-                }
-                list.push(verse);
-            }
-            _ => books.push((key.book, vec![verse])),
+            Some((book, list)) if *book == first.book => list.push(verse),
+            _ => books.push((first.book, vec![verse])),
         }
     }
     let staged = MemoryStorage::new();
@@ -479,9 +478,21 @@ fn without_structure(raw: &str) -> String {
 struct SwordVerse {
     chapter: u8,
     verse: u8,
+    /// The chapter of `last`: `chapter`, unless linked verses run into the next
+    last_chapter: u8,
     /// The last verse a bridge covers (`verse` otherwise)
     last: u8,
     text: String,
+}
+
+impl SwordVerse {
+    fn across_chapters(&self) -> bool {
+        self.last_chapter > self.chapter
+    }
+
+    fn is_bridge(&self) -> bool {
+        self.across_chapters() || self.last > self.verse
+    }
 }
 
 /// A book of an OSIS module as an OSIS file: its entries between verse milestones, in chapters
@@ -508,18 +519,21 @@ fn osis_book_file(work: &str, language: &str, book: &str, verses: &[SwordVerse])
             continue;
         }
         let id = format!("{book}.{}.{}", v.chapter, v.verse);
-        let (ids, n) = match v.last > v.verse {
-            true => (
+        // A range into the next chapter is one id (`John.3.36-John.4.2`), numbered by it
+        let (ids, n) = match (v.across_chapters(), v.last > v.verse) {
+            (true, _) => (format!("{id}-{book}.{}.{}", v.last_chapter, v.last), None),
+            (false, true) => (
                 (v.verse..=v.last)
                     .map(|n| format!("{book}.{}.{n}", v.chapter))
                     .collect::<Vec<_>>()
                     .join(" "),
-                format!("{}-{}", v.verse, v.last),
+                Some(format!("{}-{}", v.verse, v.last)),
             ),
-            false => (id.clone(), v.verse.to_string()),
+            (false, false) => (id.clone(), Some(v.verse.to_string())),
         };
+        let n = n.map_or_else(String::new, |n| format!(" n=\"{n}\""));
         out.push_str(&format!(
-            "<verse osisID=\"{ids}\" sID=\"{id}\" n=\"{n}\"/>{}<verse eID=\"{id}\"/>\n",
+            "<verse osisID=\"{ids}\" sID=\"{id}\"{n}/>{}<verse eID=\"{id}\"/>\n",
             v.text
         ));
     }
@@ -549,8 +563,12 @@ fn thml_book_file(book: &str, verses: &[SwordVerse]) -> String {
             out.push_str(&format!("{}\n", v.text));
             continue;
         }
-        let (c, first, last) = (v.chapter, v.verse, v.last);
-        let (passage, parsed) = match last > first {
+        let (c, first, last, lc) = (v.chapter, v.verse, v.last, v.last_chapter);
+        let (passage, parsed) = match v.is_bridge() {
+            true if v.across_chapters() => (
+                format!("{book} {c}.{first}-{lc}.{last}"),
+                format!("|{book}|{c}|{first}|{lc}|{last}"),
+            ),
             true => (
                 format!("{book} {c}.{first}-{last}"),
                 format!("|{book}|{c}|{first}|{c}|{last}"),
@@ -1204,6 +1222,8 @@ mod tests {
                     r#"<chapter osisID="John.1" sID="c1"/> <title type="chapter">John 1</title>"#,
                 ),
                 ("John", 1, 1, "In the beginning was the Word."),
+                // The same words stored again aren't linked: two verses
+                ("John", 1, 2, "In the beginning was the Word.  "),
                 // 3:16-17 is one entry
                 (
                     "John",
@@ -1218,6 +1238,11 @@ mod tests {
                     "For God so loved the world, <w lemma=\"strong:G2889\">that</w> he gave.",
                 ),
                 ("John", 3, 18, "He that believeth.<chapter eID=\"c3\"/>"),
+                // 3:36 and 4:1-2 are one entry, across the chapter
+                ("John", 3, 36, "He that believeth on the Son."),
+                ("John", 4, 1, "He that believeth on the Son."),
+                ("John", 4, 2, "He that believeth on the Son."),
+                ("John", 4, 3, "He left Judaea."),
                 // An introduction that is a verse's entry isn't one
                 ("Rom", 1, 0, "He that believeth.<chapter eID=\"c3\"/>"),
                 ("Rom", 1, 1, "Paul, a servant."),
@@ -1239,6 +1264,8 @@ mod tests {
         assert!(
             john.contains(r#"<verse osisID="John.3.16 John.3.17" sID="John.3.16" n="16-17"/>"#)
         );
+        assert!(john.contains(r#"<verse osisID="John.3.36-John.4.2" sID="John.3.36"/>"#));
+        assert!(john.contains(r#"<verse osisID="John.1.2" sID="John.1.2" n="2"/>"#));
         let romans = String::from_utf8(dest.read("osis/Rom.xml").unwrap()).unwrap();
         assert!(!romans.contains("believeth"), "{romans}");
         let notice = String::from_utf8(dest.read("COPYRIGHT.txt").unwrap()).unwrap();
@@ -1271,9 +1298,22 @@ mod tests {
         // No Versification in the conf: SWORD's default
         assert_eq!(info.versification, "KJV");
         let john = crate::bible_data().books().search_usfm("JHN").unwrap();
-        assert_eq!(package.source().chapter_verses(john).unwrap(), [1, 0, 18]);
+        assert_eq!(
+            package.source().chapter_verses(john).unwrap(),
+            [2, 0, 36, 3]
+        );
         let book = package.source().book(john).unwrap();
-        let span = &book.spans[1];
+        let across = &book.spans[4];
+        assert_eq!(
+            (
+                across.chapter,
+                across.verse,
+                across.last_chapter,
+                across.last
+            ),
+            (3, 36, 4, 2)
+        );
+        let span = &book.spans[2];
         let words = topos_bible_markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
         assert_eq!(
             (
@@ -1411,7 +1451,12 @@ mod tests {
         let conf = SWORD_CONF.replace("SourceType=OSIS", "SourceType=ThML");
         let zip = sword_zip(
             &conf,
-            &[("John", 3, 16, "For God <i>so</i> loved the world.")],
+            &[
+                ("John", 3, 16, "For God <i>so</i> loved the world."),
+                ("John", 3, 36, "He that believeth."),
+                ("John", 4, 1, "He that believeth."),
+                ("John", 4, 2, "He that believeth."),
+            ],
         );
         let dest = MemoryStorage::new();
         sword(&entry, &zip, &dest).unwrap();
@@ -1420,9 +1465,15 @@ mod tests {
             file.contains(r#"<scripture passage="John 3.16" parsed="|John|3|16|0|0""#),
             "{file}"
         );
+        assert!(file.contains(r#"parsed="|John|3|36|4|2""#), "{file}");
         let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
         let john = crate::bible_data().books().search_usfm("JHN").unwrap();
-        assert_eq!(package.source().chapter_verses(john).unwrap()[2], 16);
+        assert_eq!(
+            package.source().chapter_verses(john).unwrap(),
+            [0, 0, 36, 2]
+        );
+        let book = package.source().book(john).unwrap();
+        assert_eq!((book.spans[1].last_chapter, book.spans[1].last), (4, 2));
     }
 
     #[test]

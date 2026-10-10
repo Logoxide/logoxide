@@ -198,6 +198,11 @@ Format names (case-insensitive) and the files each is made of:
 Other names are allowed and kept, but nothing reads them. Opening a Bible picks, among the formats
 its enabled features turn on, the first readable one in the order above.
 
+A verse's marker may name a range of verses: a bridge (`n="4-5"`, `osisID="John.3.4 John.3.5"`),
+or in OSIS a range into the next chapter (`osisID="John.3.36-John.4.2"`; in ThML
+`parsed="|John|3|36|4|2"`), one verse from its first to its last: what a SWORD module links to one
+entry (a commentary's note on both chapters' verses).
+
 A file a book is named by its book's USFM code (`JHN.usx`, `43-JHNeng-kjv.usfm`), else by the code
 it gives (`\id JHN`, `<book code="JHN">`); a whole file's books are the ones its verses name.
 What isn't a book of the Bible is passed over and noted: the peripherals `FRT`, `INT`, `BAK`, `CNC`,

@@ -97,28 +97,36 @@ struct Place {
     book: String,
     chapter: u8,
     verse: u8,
+    /// The chapter of `last`: `chapter`, unless the marker runs into a later one
+    last_chapter: u8,
     last: u8,
 }
 
-/// A marker's place, from `parsed` (`|Gen|1|2|0|0`, or `|Gen|1|2|1|3` for a bridge) or `osisRef`
-/// (`Bible:Gen.1.2`)
+/// A marker's place, from `parsed` (`|Gen|1|2|0|0`, `|Gen|1|2|1|3` for a bridge, `|John|3|36|4|2`
+/// into the next chapter) or `osisRef` (`Bible:Gen.1.2`)
 fn tag_place<'a>(attr: impl Fn(&str) -> Option<&'a str>) -> Option<Place> {
     let number = |s: &str| s.trim().parse::<u8>().ok().filter(|n| *n > 0);
     if let Some(parsed) = attr("parsed") {
         let parts: Vec<&str> = parsed.trim_matches('|').split('|').collect();
         if let [book, chapter, verse, rest @ ..] = parts.as_slice() {
             let (chapter, verse) = (number(chapter)?, number(verse)?);
-            let last = match rest {
+            let to = |s: &str| s.trim().parse::<u8>().ok();
+            let (last_chapter, last) = match rest {
                 [to_chapter, to_verse, ..] if number(to_chapter) == Some(chapter) => {
-                    number(to_verse).unwrap_or(verse)
+                    (chapter, number(to_verse).unwrap_or(verse).max(verse))
                 }
-                _ => verse,
+                [to_chapter, to_verse, ..] => match (number(to_chapter), to(to_verse)) {
+                    (Some(c), Some(v)) if c > chapter => (c, v),
+                    _ => (chapter, verse),
+                },
+                _ => (chapter, verse),
             };
             return Some(Place {
                 book: book.to_string(),
                 chapter,
                 verse,
-                last: last.max(verse),
+                last_chapter,
+                last,
             });
         }
     }
@@ -132,6 +140,7 @@ fn tag_place<'a>(attr: impl Fn(&str) -> Option<&'a str>) -> Option<Place> {
         book,
         chapter,
         verse,
+        last_chapter: chapter,
         last: verse,
     })
 }
@@ -191,14 +200,20 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
         }
         e.kind = Kind::Verse;
         e.milestone = Some(Milestone::Start);
+        let id = format!("{}.{}.{}", place.book, place.chapter, place.verse);
+        // A run into a later chapter is one id, which numbers it (`John.3.36-John.4.2`)
+        if place.last_chapter > place.chapter {
+            let end = format!("{}.{}.{}", place.book, place.last_chapter, place.last);
+            e.attrs
+                .push((String::from("osisID"), format!("{id}-{end}")));
+            out.push(Node::Element(e));
+            continue;
+        }
         let number = match place.last > place.verse {
             true => format!("{}-{}", place.verse, place.last),
             false => place.verse.to_string(),
         };
-        e.attrs.push((
-            String::from("osisID"),
-            format!("{}.{}.{}", place.book, place.chapter, place.verse),
-        ));
+        e.attrs.push((String::from("osisID"), id));
         e.attrs.push((String::from("n"), number));
         out.push(Node::Element(e));
     }
@@ -273,6 +288,7 @@ The vision of Obadiah. <scripRef passage="Ruth 1:1">Ruth 1:1</scripRef></p>
                 book: "Gen".into(),
                 chapter: 1,
                 verse: 2,
+                last_chapter: 1,
                 last: 2
             })
         );
@@ -283,6 +299,10 @@ The vision of Obadiah. <scripRef passage="Ruth 1:1">Ruth 1:1</scripRef></p>
         assert_eq!(
             tag_place(attrs(&[("osisRef", "Bible:1Sam.2.3")])).map(|p| (p.book, p.verse)),
             Some(("1Sam".into(), 3))
+        );
+        assert_eq!(
+            tag_place(attrs(&[("parsed", "|John|3|36|4|2")])).map(|p| (p.last_chapter, p.last)),
+            Some((4, 2))
         );
         assert_eq!(tag_place(attrs(&[("passage", "Gen 1")])), None);
     }

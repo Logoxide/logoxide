@@ -214,19 +214,35 @@ pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
     let Some(number) = Book::from_book_id(book.id) else {
         return vec![];
     };
-    (book.spans.iter())
-        .map(|span| VerseHash {
+    let mut out = Vec::with_capacity(book.spans.len());
+    for span in &book.spans {
+        let hash = verse_hash(&verse_text(
+            &slice(&book.nodes, &span.start, Some(&span.end)),
+            HashRule::CURRENT,
+        ));
+        let across = span.last_chapter > span.chapter;
+        out.push(VerseHash {
             book: number,
             chapter: span.chapter,
             verse: span.verse,
-            last: span.last,
+            last: if across { span.verse } else { span.last },
             part: span.part,
-            hash: verse_hash(&verse_text(
-                &slice(&book.nodes, &span.start, Some(&span.end)),
-                HashRule::CURRENT,
-            )),
-        })
-        .collect()
+            hash,
+        });
+        // A verse across chapters (a note on John 3:36 to 4:2) is two records with its words:
+        // its first verse, and the verses it covers in its last chapter
+        if across && span.last >= 1 {
+            out.push(VerseHash {
+                book: number,
+                chapter: span.last_chapter,
+                verse: 1,
+                last: span.last,
+                part: 0,
+                hash,
+            });
+        }
+    }
+    out
 }
 
 /// The first [`HASH_BYTES`] bytes of a text's SHA-256

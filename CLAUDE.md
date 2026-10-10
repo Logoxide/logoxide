@@ -168,8 +168,10 @@ before changing the design.
     `sword` unzips a module (`sword_zip_urls`: `packages/<Module>.zip`, then lowercase) into
     sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
     with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
-    milestones, making linked verses bridges (`n="16-17"`), and leaving out introductions that
-    are another verse's entry; the conf's `Versification` is kept (`sword_versification`: SWORD's
+    milestones, making linked verses bridges from sword-modules' `iter_spans` (`n="16-17"`, or
+    one id into the next chapter, `osisID="John.3.36-John.4.2"`, which topos-bible-markup reads
+    as one span to `last_chapter`), and leaving out introductions stored at an earlier verse's
+    entry (`EntryLocation`); the conf's `Versification` is kept (`sword_versification`: SWORD's
     names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
     version, license (`sword_license`) and rights (`sword_rights`: permission given to CrossWire
     or only in SWORD's format is `redistributable = false`, `derivatives = "none"`), language,

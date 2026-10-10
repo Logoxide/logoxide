@@ -89,6 +89,10 @@ error. A reader refuses a hash rule it doesn't know: the file was written by a n
 
 The verse is found by book, chapter, verse, and part: `20a` and `20b` are two verses.
 
+A verse across chapters (a commentary's note marked `osisID="John.3.36-John.4.2"`) is two
+records with the same hash: its first verse (`3:36`, `last` 36), and the verses it covers in its
+last chapter (`4:1` with `last` 2).
+
 `LXV1` was the layout before hash rules (no header, no part, 8 bytes of a hash of text that
 wasn't normalized). It's recognized only to be built again: a reader comparing versions builds an
 `LXV1` release's hashes from its text, as for a release without a summary.
