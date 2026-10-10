@@ -12,6 +12,7 @@ The library: installed package versions, side by side, as plain files.
 <cache>/                          per device, never synced: LOGOXIDE_CACHE, else config.toml's `cache`, else $XDG_CACHE_HOME/logoxide
   books/                          parsed books and verse counts (see cache.rs)
   git/                            scratch space while fetching
+  stamps/<id>/<version>-<place>.postcard   each package's checksum by its files' sizes and times (stamps.rs)
   locks/                          the library's and projects' lock files (locking.rs), unless $XDG_RUNTIME_DIR is set
 ```
 */
@@ -138,9 +139,11 @@ impl Library {
         }
     }
 
-    /// The cache of parsed books
+    /// The cache of parsed books, remembering each package's checksum by its files' stamps
+    /// (`<cache>/stamps/`, [`crate::stamps`])
     pub fn book_cache(&self) -> Cache {
         Cache::new(Arc::new(FsStorage::new(self.cache.join("books"))))
+            .with_stamps(Arc::new(FsStorage::new(self.cache.join("stamps"))))
     }
 
     /// Scratch space for fetching

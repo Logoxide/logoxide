@@ -71,6 +71,9 @@ struct CachedReferences {
 
 pub struct Cache {
     storage: Arc<dyn Storage>,
+    /// Where checksums are remembered by the files' stamps ([`crate::stamps`]); without one,
+    /// every open hashes the package
+    stamps: Option<Arc<dyn Storage>>,
 }
 
 /**
@@ -142,14 +145,40 @@ fn references(
 
 impl Cache {
     pub fn new(storage: Arc<dyn Storage>) -> Self {
-        Self { storage }
+        Self {
+            storage,
+            stamps: None,
+        }
+    }
+
+    /// With a place to remember checksums by the files' sizes and times ([`crate::stamps`]), so
+    /// opening a package that hasn't changed doesn't hash it again
+    pub fn with_stamps(mut self, stamps: Arc<dyn Storage>) -> Self {
+        self.stamps = Some(stamps);
+        self
+    }
+
+    /// The package's checksum: remembered by its files' stamps when it can be, else hashed now
+    fn checksum(&self, package: &Package) -> Result<String> {
+        let storage = package.storage().as_ref();
+        let declared = crate::package::declared_files(storage)?;
+        let info = package.info();
+        let path = storage
+            .location()
+            .map(|at| crate::stamps::stamps_path(&info.id, &info.version.to_string(), &at));
+        match (&self.stamps, path) {
+            (Some(store), Some(path)) => {
+                crate::stamps::checksum(Some(store.as_ref()), storage, &declared, &path)
+            }
+            _ => crate::package::checksum_of(storage, &declared),
+        }
     }
 
     /// A package's cache: read if it was built from this exact text, else built now by `reader`
     /// (verse counts only; books are cached as they're read)
     pub fn open(&self, package: Package, reader: &dyn TextReader) -> Result<CachedPackage> {
         let info = package.info();
-        let checksum = package.checksum()?;
+        let checksum = self.checksum(&package)?;
         let dir = version_dir(&package, &checksum);
         let path = format!("{dir}/manifest.postcard");
         let engine = env!("CARGO_PKG_VERSION");

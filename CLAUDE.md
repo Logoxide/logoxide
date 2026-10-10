@@ -96,7 +96,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through
     `write_atomic` (a unique temporary file beside the target, synced, renamed over it, the folder
     synced: whole or not at all; also for the manifest, the lock, `catalog.toml`, and what
-    `lx publish` writes); `FsStorage::no_symlinks()` never goes through a link under its root
+    `lx publish` writes); `stamp(path)` (size and mtime) and `location()` (the canonical root)
+    are `FsStorage`'s, `None` elsewhere; `FsStorage::no_symlinks()` never goes through a link under its root
     (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
     used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
     `lx import --update` (`apply_import`)
@@ -110,7 +111,14 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     naming `CACHE_FORMAT` (3: topos's `VerseSpan` has a part) and the logoxide version
     (`book_header`), else it's parsed again, since postcard can't tell a stale layout; `Cache::references`
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
-    aliases, and counts
+    aliases, and counts. `Library::book_cache` adds `with_stamps(<cache>/stamps)`, so `Cache::open`
+    takes a package's checksum from `stamps.rs` instead of hashing every file each time
+  - `stamps.rs`: checksums remembered by each declared file's `Storage::stamp` (size and
+    modification time; `None` for memory and a host's files, so they're always hashed) in
+    `<cache>/stamps/<id>/<version>-<hash of Storage::location>.postcard`, used only when the
+    paths and every stamp match and each file is at least `RACY` (2 s) older than the stamp file
+    (git's rule for racy files); `lx verify`, `--repair`, `lx release`, and `lx info`'s checksum
+    always hash
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one

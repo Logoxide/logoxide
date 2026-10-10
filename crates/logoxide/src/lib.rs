@@ -89,6 +89,7 @@ pub mod registry_build;
 pub mod release;
 pub mod resolve;
 pub mod roots;
+pub mod stamps;
 pub mod storage;
 pub mod summary;
 pub mod text;

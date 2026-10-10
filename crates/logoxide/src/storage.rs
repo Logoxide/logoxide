@@ -15,11 +15,33 @@ use std::{
     },
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::{LogoxideError, Result};
+
+/// A file's size and modification time, by which a checksum is remembered ([`crate::stamps`])
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stamp {
+    pub size: u64,
+    /// Seconds and nanoseconds since the Unix epoch
+    pub modified: (u64, u32),
+}
 
 pub trait Storage: Send + Sync {
     /// A file's bytes
     fn read(&self, path: &str) -> Result<Vec<u8>>;
+
+    /// A file's size and modification time, where the storage keeps them (a folder on disk);
+    /// `None` where it doesn't (memory, a host's files), so nothing is remembered by them
+    fn stamp(&self, _path: &str) -> Option<Stamp> {
+        None
+    }
+
+    /// Where this storage is, for what's kept per place (a folder's canonical path); `None` for
+    /// one that is nowhere (memory)
+    fn location(&self) -> Option<String> {
+        None
+    }
 
     /// The names of the files and folders in a folder (`""` is the root), sorted; folders end
     /// with `/`
@@ -269,6 +291,30 @@ impl Storage for FsStorage {
     fn exists(&self, path: &str) -> bool {
         self.path(path).is_ok_and(|p| p.exists()) && self.unlinked(path).is_ok()
     }
+
+    fn stamp(&self, path: &str) -> Option<Stamp> {
+        let full = self.path(path).ok()?;
+        self.unlinked(path).ok()?;
+        let meta = std::fs::metadata(full).ok()?;
+        let modified = meta
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        Some(Stamp {
+            size: meta.len(),
+            modified: (modified.as_secs(), modified.subsec_nanos()),
+        })
+    }
+
+    fn location(&self) -> Option<String> {
+        let root = self
+            .root
+            .canonicalize()
+            .or_else(|_| std::path::absolute(&self.root))
+            .ok()?;
+        Some(root.display().to_string())
+    }
 }
 
 /// Files in memory, for tests and for hosts that hand over a package's bytes
@@ -397,6 +443,13 @@ mod tests {
         assert_eq!(storage.list("").unwrap(), ["a/"]);
         assert_eq!(storage.walk("").unwrap(), ["a/b.txt"]);
         assert!(storage.exists("a/b.txt") && !storage.exists("a/c.txt"));
+        assert_eq!(storage.stamp("a/b.txt").map(|s| s.size), Some(5));
+        assert!(storage.stamp("a/c.txt").is_none());
+        assert!(
+            storage
+                .location()
+                .is_some_and(|l| l.ends_with(dir.file_name().unwrap().to_str().unwrap()))
+        );
         assert!(matches!(
             storage.read("/etc/passwd"),
             Err(LogoxideError::BadPath(_))

@@ -101,7 +101,11 @@ same (`logoxide::text::printable`).
 ## Caches and summaries
 
 The parsed-book cache is per device, keyed by package version and checksum, and never shared:
-it can always be built again from the text. Published summaries (`logoxide.summary.toml`,
+it can always be built again from the text. To find that checksum without hashing every file on
+every open, the cache remembers it with each file's size and modification time (`stamps/`), and
+uses it only while every file keeps both and none was changed within two seconds of the stamps
+being taken (git's rule for racy files). A file rewritten with the same size and time is not seen
+there; `lx verify`, `lx install --repair`, `lx release`, and `lx info`'s checksum always hash. Published summaries (`logoxide.summary.toml`,
 `logoxide.verses.bin`) are part of the package and covered by its checksum; `lx verify` rebuilds
 them from the text to check that they match.
 
