@@ -93,27 +93,101 @@ impl Refs {
         Ok(refs)
     }
 
-    /// The commit a reference names: a tag's, a branch's, `HEAD`'s, or a full revision itself
+    /// The commit a reference names: a tag's, a branch's, `HEAD`'s, or a full revision itself.
+    /// `None` when nothing does, or a revision is too short or names more than one commit
+    /// ([`Refs::find_commit`] says which)
     pub fn commit(&self, reference: &GitRef) -> Option<String> {
+        self.find_commit(reference).ok()
+    }
+
+    /**
+    [`Refs::commit`], with what went wrong. A revision is a commit's hex: in full (which needn't be
+    a ref's), or at least [`MIN_REV_PREFIX`] digits of one of the refs' commits, and only one
+    */
+    pub fn find_commit(&self, reference: &GitRef) -> Result<String> {
+        let missing = |what: String| LogoxideError::Fetch {
+            url: String::from("info/refs"),
+            message: what,
+        };
         let find = |list: &[(String, String)], name: &str| {
             list.iter().find(|(n, _)| n == name).map(|(_, c)| c.clone())
         };
         match reference {
-            GitRef::Tag(tag) => find(&self.tags, tag),
-            GitRef::Branch(branch) => find(&self.branches, branch),
-            GitRef::Head => self.head.clone(),
+            GitRef::Tag(tag) => {
+                find(&self.tags, tag).ok_or_else(|| missing(format!("no tag {tag}")))
+            }
+            GitRef::Branch(branch) => {
+                (find(&self.branches, branch)).ok_or_else(|| missing(format!("no branch {branch}")))
+            }
+            GitRef::Head => (self.head.clone()).ok_or_else(|| missing(String::from("no HEAD"))),
             GitRef::Rev(rev) => {
+                let rev = rev.to_ascii_lowercase();
+                let hex = rev.bytes().all(|b| b.is_ascii_hexdigit());
+                if !hex || rev.len() < MIN_REV_PREFIX || rev.len() > 64 {
+                    return Err(missing(format!(
+                        "revision `{rev}`: give at least {MIN_REV_PREFIX} hex digits of a commit"
+                    )));
+                }
                 let all = self.tags.iter().chain(&self.branches).map(|(_, c)| c);
-                let known = all.chain(&self.head).find(|c| c.starts_with(rev.as_str()));
-                match known {
-                    Some(commit) => Some(commit.clone()),
+                let mut known: Vec<&String> = (all.chain(&self.head))
+                    .filter(|c| c.to_ascii_lowercase().starts_with(&rev))
+                    .collect();
+                known.sort();
+                known.dedup();
+                match known.as_slice() {
+                    [commit] => Ok((*commit).clone()),
                     // A full commit id needn't be a ref's
-                    None => (rev.len() == 40 && rev.bytes().all(|b| b.is_ascii_hexdigit()))
-                        .then(|| rev.clone()),
+                    [] if rev.len() == 40 || rev.len() == 64 => Ok(rev),
+                    [] => Err(missing(format!(
+                        "revision `{rev}`: no ref names it (give the whole commit)"
+                    ))),
+                    many => Err(missing(format!(
+                        "revision `{rev}` is the start of {} commits: give more of it",
+                        many.len()
+                    ))),
                 }
             }
         }
     }
+}
+
+/// The fewest hex digits of a commit a revision may give over HTTP (as `git` shows them)
+pub const MIN_REV_PREFIX: usize = 7;
+
+/// The most an archive may unpack to in all (4 GiB), so a small download can't fill memory
+pub const MAX_UNPACKED_BYTES: u64 = 4 << 30;
+
+/// The most one file in an archive may be (1 GiB)
+pub const MAX_ENTRY_BYTES: u64 = 1 << 30;
+
+/// The most entries (files, folders, links) an archive may have
+pub const MAX_ENTRIES: usize = 200_000;
+
+/**
+Reads one archive entry's bytes (its size said to be `size`) within the limits, counting them in
+`total`: [`MAX_ENTRY_BYTES`] a file and [`MAX_UNPACKED_BYTES`] in all. What's read is capped, so an
+entry that says it's small and isn't is caught too
+*/
+pub(crate) fn read_limited(
+    reader: impl Read,
+    size: u64,
+    total: &mut u64,
+    name: &str,
+) -> std::result::Result<Vec<u8>, String> {
+    let room = MAX_ENTRY_BYTES.min(MAX_UNPACKED_BYTES.saturating_sub(*total));
+    if size > room {
+        return Err(format!("{name}: too large to unpack ({size} bytes)"));
+    }
+    let mut data = Vec::with_capacity(usize::try_from(size.min(1 << 20)).unwrap_or(0));
+    reader
+        .take(room + 1)
+        .read_to_end(&mut data)
+        .map_err(|e| format!("{name}: {e}"))?;
+    if data.len() as u64 > room {
+        return Err(format!("{name}: too large to unpack"));
+    }
+    *total += data.len() as u64;
+    Ok(data)
 }
 
 /// Where hosts serve a commit as a `.tar.gz`, most likely first: GitHub, Gitea, Forgejo, and
@@ -149,10 +223,19 @@ pub fn unpack(bytes: &[u8], dest: &dyn Storage) -> Result<()> {
         url: String::from("archive"),
         message: format!("not a .tar.gz: {e}"),
     };
+    let too_large = |message: String| LogoxideError::Fetch {
+        url: String::from("archive"),
+        message,
+    };
     let mut files: Vec<(String, Vec<u8>)> = vec![];
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    let (mut entries, mut total) = (0, 0);
     for entry in archive.entries().map_err(bad)? {
-        let mut entry = entry.map_err(bad)?;
+        let entry = entry.map_err(bad)?;
+        entries += 1;
+        if entries > MAX_ENTRIES {
+            return Err(too_large(format!("more than {MAX_ENTRIES} entries")));
+        }
         if !entry.header().entry_type().is_file() {
             continue;
         }
@@ -163,8 +246,8 @@ pub fn unpack(bytes: &[u8], dest: &dyn Storage) -> Result<()> {
         else {
             continue;
         };
-        let mut data = vec![];
-        entry.read_to_end(&mut data).map_err(bad)?;
+        let size = entry.header().size().map_err(bad)?;
+        let data = read_limited(entry, size, &mut total, &path).map_err(too_large)?;
         files.push((path, data));
     }
     // The one folder everything is in, unless the files are at the top
@@ -228,8 +311,20 @@ mod tests {
             refs.commit(&GitRef::Branch("main".into())),
             Some(head.clone())
         );
-        assert_eq!(refs.commit(&GitRef::Rev("dddd".into())), Some(light));
-        assert_eq!(refs.commit(&GitRef::Rev("eeee".into())), None);
+        assert_eq!(refs.commit(&GitRef::Rev("ddddddd".into())), Some(light));
+        assert_eq!(refs.commit(&GitRef::Rev("eeeeeee".into())), None);
+        // Too short to say which (an empty one matched the first commit once)
+        for short in ["", "d", "dddd", "dddddd"] {
+            assert_eq!(refs.commit(&GitRef::Rev(short.into())), None, "{short}");
+        }
+        assert!(refs.commit(&GitRef::Rev("--upload-pack".into())).is_none());
+        // Two commits starting the same: ambiguous, said so
+        let mut two = refs.clone();
+        let near = format!("{}e", "d".repeat(39));
+        two.branches.push(("other".into(), near.clone()));
+        let error = two.find_commit(&GitRef::Rev("ddddddd".into())).unwrap_err();
+        assert!(error.to_string().contains("2 commits"), "{error}");
+        assert_eq!(two.find_commit(&GitRef::Rev(near.clone())).unwrap(), near);
         assert_eq!(
             refs.commit(&GitRef::Rev("e".repeat(40))),
             Some("e".repeat(40))
@@ -291,5 +386,20 @@ mod tests {
         unpack(&bytes, &dest).unwrap();
         assert_eq!(dest.read_string("usfm/JHN.usfm").unwrap(), "\\id JHN");
         assert!(unpack(b"not gzip", &MemoryStorage::new()).is_err());
+    }
+
+    #[test]
+    fn unpacking_has_limits() {
+        // A file larger than it says, or than what's left, is refused
+        let mut total = 0;
+        assert_eq!(
+            read_limited(&b"hello"[..], 5, &mut total, "a").unwrap(),
+            b"hello"
+        );
+        assert_eq!(total, 5);
+        let mut total = MAX_UNPACKED_BYTES - 10;
+        assert!(read_limited(&[0u8; 20][..], 5, &mut total, "a").is_err());
+        assert!(read_limited(&[0u8; 5][..], 20, &mut total, "a").is_err());
+        assert!(read_limited(&b""[..], MAX_ENTRY_BYTES + 1, &mut 0, "a").is_err());
     }
 }

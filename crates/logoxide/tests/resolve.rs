@@ -559,3 +559,171 @@ fn archives_come_from_mirrors_when_their_url_fails() {
         assert!(error.contains(place), "{error}");
     }
 }
+
+/// A package's files in a folder of a repository, without committing
+fn package_in(dir: &Path, id: &str, version: &str, words: &str) {
+    std::fs::create_dir_all(dir.join("usx")).unwrap();
+    let manifest = format!(
+        "[package]\nid = \"{id}\"\nname = \"{id}\"\nabbreviation = \"{}\"\nversion = \"{version}\"\nlanguage = \"en\"\n\n[formats]\nusx = {{ path = \"usx/\" }}\n",
+        id.to_uppercase()
+    );
+    std::fs::write(dir.join("logoxide.toml"), manifest).unwrap();
+    std::fs::write(dir.join("usx/JHN.usx"), JHN.replace("WORDS", words)).unwrap();
+}
+
+#[test]
+fn packages_in_folders_of_a_repository() {
+    let world = World::new("folders");
+    let repo = world.path("repos/books");
+    std::fs::create_dir_all(&repo).unwrap();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    // Two packages, each released on its own (`lx release` tags `<folder>/v<version>`)
+    let commit = |folder: &str, id: &str, version: &str, words: &str| {
+        package_in(&repo.join(folder), id, version, words);
+        git(&repo, &["add", "-A"]);
+        git(&repo, &["commit", "-q", "-m", &format!("{id} {version}")]);
+        git(&repo, &["tag", &format!("{folder}/v{version}")]);
+    };
+    commit("romans", "romans", "1.0.0", "romans one");
+    commit("galatians", "galatians", "3.0.0", "galatians three");
+    commit("romans", "romans", "1.1.0", "romans one point one");
+    commit("romans", "romans", "2.0.0", "romans two");
+
+    let vault = world.path("vault");
+    std::fs::create_dir_all(&vault).unwrap();
+    std::fs::write(
+        vault.join("logoxide.toml"),
+        format!(
+            "[dependencies]\nromans = {{ git = \"{}\", folder = \"romans\", version = \"1\" }}\n",
+            repo.display()
+        ),
+    )
+    .unwrap();
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::open(&vault).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    // The newest of its own tags the requirement allows; only its folder's files
+    assert_eq!(locked(&project), ["romans 1.1.0"]);
+    let lock = project.lock().unwrap();
+    let romans = lock.get("romans").unwrap();
+    assert_eq!(romans.folder.as_deref(), Some("romans"));
+    assert_eq!(romans.tag.as_deref(), Some("romans/v1.1.0"));
+    let installed = library.open(romans, project.dir()).unwrap();
+    let files = installed.storage().walk("").unwrap();
+    assert_eq!(files, ["logoxide.toml", "usx/JHN.usx"]);
+    assert!(
+        (installed.storage().read_string("usx/JHN.usx").unwrap()).contains("romans one point one")
+    );
+
+    // Locked: the same again, here and on another device
+    project.save_manifest().unwrap();
+    let mut other = Project::open(&vault).unwrap();
+    other
+        .install(&world.library("other"), &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(other.lock(), project.lock());
+
+    // Another folder's tags are none of its versions
+    std::fs::write(
+        vault.join("logoxide.toml"),
+        format!(
+            "[dependencies]\nromans = {{ git = \"{}\", folder = \"romans\", version = \"3\" }}\n",
+            repo.display()
+        ),
+    )
+    .unwrap();
+    let mut project = Project::open(&vault).unwrap();
+    let error = project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap_err();
+    assert!(error.to_string().contains("for romans/"), "{error}");
+}
+
+/// Fetches `https://example.org/<name>` from the folder `root/<name>`: a stand-in for a remote
+/// host
+struct Remote {
+    root: PathBuf,
+    git: GitCli,
+}
+
+impl Remote {
+    fn local(&self, url: &str) -> String {
+        match url.strip_prefix("https://example.org/") {
+            Some(name) => self.root.join(name).display().to_string(),
+            None => url.to_string(),
+        }
+    }
+}
+
+impl logoxide::git::Fetcher for Remote {
+    fn tags(&self, url: &str) -> logoxide::Result<Vec<(String, String)>> {
+        self.git.tags(&self.local(url))
+    }
+
+    fn fetch(
+        &self,
+        url: &str,
+        reference: &logoxide::git::GitRef,
+        dest: &dyn logoxide::Storage,
+    ) -> logoxide::Result<String> {
+        self.git.fetch(&self.local(url), reference, dest)
+    }
+}
+
+#[test]
+fn packages_from_elsewhere_name_nothing_here() {
+    let world = World::new("remote");
+    let lexicon = world.path("repos/lexicon");
+    std::fs::create_dir_all(&lexicon).unwrap();
+    release(&lexicon, "lexicon", "1.0.0", "lexicon", "");
+    let fetcher = Remote {
+        root: world.path("repos"),
+        git: GitCli::default(),
+    };
+    // A package fetched from elsewhere may depend on another from elsewhere
+    let fine = world.path("repos/fine");
+    std::fs::create_dir_all(&fine).unwrap();
+    let extra = "\n[dependencies]\nlexicon = { git = \"https://example.org/lexicon\" }\n";
+    release(&fine, "fine", "1.0.0", "fine", extra);
+    let mut project = Project::init(world.path("vault")).unwrap();
+    let remote = |name: &str| DetailedDependency {
+        git: Some(format!("https://example.org/{name}")),
+        default_features: true,
+        ..DetailedDependency::default()
+    };
+    project.add("fine", &remote("fine")).unwrap();
+    project
+        .install(&world.library("lib"), &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(locked(&project), ["fine 1.0.0", "lexicon 1.0.0"]);
+
+    // But not on this machine: a local repository, a file:// one, or a local registry
+    for (i, dependency) in [
+        format!("lexicon = {{ git = \"{}\" }}", lexicon.display()),
+        format!("lexicon = {{ git = \"file://{}\" }}", lexicon.display()),
+        String::from("lexicon = { registry = \"/srv/registry/catalog.toml\" }"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let name = format!("sneaky{i}");
+        let repo = world.path(&format!("repos/{name}"));
+        std::fs::create_dir_all(&repo).unwrap();
+        release(
+            &repo,
+            &name,
+            "1.0.0",
+            "sneaky",
+            &format!("\n[dependencies]\n{dependency}\n"),
+        );
+        let mut project = Project::init(world.path(&format!("vault-{name}"))).unwrap();
+        project.add(&name, &remote(&name)).unwrap();
+        let error = project
+            .install(&world.library("lib"), &fetcher, Update::Nothing)
+            .unwrap_err();
+        assert!(error.to_string().contains("on this one"), "{error}");
+    }
+}

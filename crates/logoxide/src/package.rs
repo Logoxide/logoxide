@@ -196,23 +196,58 @@ pub fn glob(pattern: &str, path: &str) -> bool {
     glob_parts(&pattern, &path)
 }
 
+/// The path's parts against the pattern's: `**` is any number of parts, any other part one
 fn glob_parts(pattern: &[&str], path: &[&str]) -> bool {
-    match pattern.split_first() {
-        None => path.is_empty(),
-        Some((&"**", rest)) => (0..=path.len()).any(|skip| glob_parts(rest, &path[skip..])),
-        Some((first, rest)) => path.split_first().is_some_and(|(name, more)| {
-            glob_name(first.as_bytes(), name.as_bytes()) && glob_parts(rest, more)
-        }),
-    }
+    wildcard(
+        pattern,
+        path,
+        |part| *part == "**",
+        |part, name| glob_name(part.as_bytes(), name.as_bytes()),
+    )
 }
 
+/// A name against a part of the pattern: `*` is any characters, `?` one
 fn glob_name(pattern: &[u8], name: &[u8]) -> bool {
-    match pattern.split_first() {
-        None => name.is_empty(),
-        Some((b'*', rest)) => (0..=name.len()).any(|skip| glob_name(rest, &name[skip..])),
-        Some((b'?', rest)) => !name.is_empty() && glob_name(rest, &name[1..]),
-        Some((c, rest)) => name.first() == Some(c) && glob_name(rest, &name[1..]),
+    wildcard(pattern, name, |b| *b == b'*', |p, c| *p == b'?' || p == c)
+}
+
+/**
+Whether `text` matches `pattern`, where `star` items match any run of items (or none) and each
+other item matches one item as `one` says. Each star's run grows only when what follows fails,
+from the latest star alone (earlier stars' runs never need to change), so it takes at most
+pattern × text steps, however many stars there are
+*/
+fn wildcard<P, T>(
+    pattern: &[P],
+    text: &[T],
+    star: impl Fn(&P) -> bool,
+    one: impl Fn(&P, &T) -> bool,
+) -> bool {
+    let (mut p, mut t) = (0, 0);
+    // The latest star, and where its run ends
+    let mut last: Option<(usize, usize)> = None;
+    while t < text.len() {
+        match pattern.get(p) {
+            Some(item) if star(item) => {
+                last = Some((p, t));
+                p += 1;
+            }
+            Some(item) if one(item, &text[t]) => {
+                p += 1;
+                t += 1;
+            }
+            _ => match last {
+                // The latest star takes one more item, and what follows it is tried again
+                Some((star_at, run_end)) => {
+                    last = Some((star_at, run_end + 1));
+                    p = star_at + 1;
+                    t = run_end + 1;
+                }
+                None => return false,
+            },
+        }
     }
+    pattern[p..].iter().all(star)
 }
 
 /// A hash of a package's files ([`declared_files`]; `sha256:` and hex): it names this exact text,
@@ -283,6 +318,28 @@ mod tests {
         assert!(glob("ch?.txt", "ch1.txt"));
         assert!(glob("extras/", "extras/a/b"));
         assert!(!glob("extras/", "extras"));
+        assert!(glob("**", "a/b/c"));
+        assert!(glob("a/**/c/*.txt", "a/c/x.txt"));
+        assert!(glob("a/**/c/*.txt", "a/b/b/c/x.txt"));
+        assert!(!glob("a/**/c/*.txt", "a/b/c/d/x.txt"));
+        assert!(glob("*a*b", "xaxxab"));
+        assert!(!glob("*a*b", "xaxxa"));
+        assert!(!glob("ch?.txt", "ch.txt"));
+        assert!(glob("**/x/**/y", "x/y"));
+        assert!(!glob("**/x/**/y", "x/z"));
+    }
+
+    #[test]
+    fn pathological_globs_finish_fast() {
+        // Each of these took exponential time when matched by trying every split
+        let start = std::time::Instant::now();
+        let name = "a".repeat(200);
+        assert!(!glob(&format!("{}b", "*a".repeat(30)), &name));
+        let path = vec!["a"; 60].join("/");
+        let pattern = format!("{}b", "**/a/".repeat(25));
+        assert!(!glob(&pattern, &path));
+        assert!(glob(&vec!["**"; 25].join("/"), &path));
+        assert!(start.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

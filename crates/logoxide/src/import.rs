@@ -16,8 +16,6 @@ package (or which can be pushed anywhere as a git repository).
 The catalog entry ([`crate::catalog`]) gives the package's name, language, license, and version.
 */
 
-use std::io::Read;
-
 use crate::{
     catalog::{CatalogEntry, CatalogSource},
     error::{LogoxideError, Result},
@@ -35,9 +33,17 @@ pub fn ebible_zip_url(id: &str) -> String {
 pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
     let bad = |e: &dyn std::fmt::Display| LogoxideError::Import(format!("not a .zip: {e}"));
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| bad(&e))?;
+    // The same limits as a repository's archive ([`crate::archive::read_limited`])
+    if archive.len() > crate::archive::MAX_ENTRIES {
+        return Err(LogoxideError::Import(format!(
+            "more than {} files in the .zip",
+            crate::archive::MAX_ENTRIES
+        )));
+    }
     let mut files = vec![];
+    let mut total = 0;
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| bad(&e))?;
+        let file = archive.by_index(i).map_err(|e| bad(&e))?;
         if !file.is_file() {
             continue;
         }
@@ -47,8 +53,9 @@ pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
         else {
             continue;
         };
-        let mut data = vec![];
-        file.read_to_end(&mut data).map_err(|e| bad(&e))?;
+        let size = file.size();
+        let data = crate::archive::read_limited(file, size, &mut total, &path)
+            .map_err(LogoxideError::Import)?;
         files.push((path.replace('\\', "/"), data));
     }
     Ok(files)

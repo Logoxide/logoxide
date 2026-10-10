@@ -48,7 +48,6 @@ use crate::{
 
 /// A package's `[media]`
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Media {
     /// Where each file's verse timings are (a folder in the package)
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,7 +58,6 @@ pub struct Media {
 
 /// One audio or video file, by where it's served and what it hashes to
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct MediaFile {
     /// Its name in the package (what timings name it by): `JHN.mp3`
     pub path: String,
@@ -69,7 +67,8 @@ pub struct MediaFile {
     pub mirrors: Vec<String>,
     /// In bytes
     pub size: u64,
-    /// Lowercase hex
+    /// 64 hex digits (lowercase as written; either case is read)
+    #[serde(deserialize_with = "sha256_field")]
     pub sha256: String,
     /// The book it reads (a USFM code), if one
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -93,6 +92,23 @@ impl MediaFile {
     pub fn urls(&self) -> impl Iterator<Item = &str> {
         std::iter::once(self.url.as_str()).chain(self.mirrors.iter().map(String::as_str))
     }
+}
+
+/// Whether a listed SHA-256 is one: 64 hex digits. It names where the file is kept
+/// ([`store_path`]), so nothing else is allowed
+pub fn check_sha256(sha256: &str) -> Result<()> {
+    match sha256.len() == 64 && sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+        true => Ok(()),
+        false => Err(LogoxideError::Media(format!(
+            "sha256 `{sha256}` isn't a SHA-256 (64 hex digits)"
+        ))),
+    }
+}
+
+fn sha256_field<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String, D::Error> {
+    let sha256 = String::deserialize(d)?;
+    check_sha256(&sha256).map_err(serde::de::Error::custom)?;
+    Ok(sha256)
 }
 
 /// A file's SHA-256, as lowercase hex
@@ -350,7 +366,11 @@ pub fn check_package_timings(package: &Package) -> Result<Vec<String>> {
 /// Where a host keeps a media file, by its hash: `media/9f/9f86…` (relative to its cache), so
 /// every version that lists it shares one copy
 pub fn store_path(file: &MediaFile) -> String {
-    let hash = file.sha256.to_ascii_lowercase();
+    // Only hex digits, even from a file listed without reading a manifest
+    let hash: String = (file.sha256.chars())
+        .filter(char::is_ascii_hexdigit)
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
     format!("media/{}/{hash}", hash.get(..2).unwrap_or("00"))
 }
 
@@ -401,6 +421,19 @@ book = "JHN"
             store_path(file),
             "media/2c/2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
+        // A hash that isn't one is refused: it names a folder
+        let bad = |sha256: &str| {
+            let text = format!(
+                "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\n\
+                 language = \"en\"\n[formats]\nusx = {{ path = \"usx/\" }}\n[[media.files]]\n\
+                 path = \"a.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"{sha256}\"\n"
+            );
+            crate::Manifest::parse(&text).is_err()
+        };
+        assert!(bad("../../etc"));
+        assert!(bad("e3b0"));
+        assert!(bad(&"g".repeat(64)));
+        assert!(!bad(&"e".repeat(64)));
         assert_eq!(
             MediaFile::of("a.mp3", "u", b"hello").sha256,
             file.sha256.to_lowercase()
@@ -475,7 +508,7 @@ book = "JHN"
             storage::{MemoryStorage, Storage},
         };
         let usx = r#"<usx version="3.0"><book code="JHN" style="id"/><chapter number="3" style="c"/><para style="p"><verse number="16" style="v"/>For God so loved the world. <verse number="17" style="v"/>For God did not send. <verse number="18" style="v"/>Whoever believes.</para></usx>"#;
-        let manifest = "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusx = { path = \"usx/\" }\n\n[media]\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"JHN.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0\"\nbook = \"JHN\"\n\n[[media.files]]\npath = \"ACT.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0\"\n";
+        let manifest = "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusx = { path = \"usx/\" }\n\n[media]\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"JHN.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\nbook = \"JHN\"\n\n[[media.files]]\npath = \"ACT.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n";
         let open = |extra: &[(&str, &str)]| {
             let storage = MemoryStorage::with([
                 (crate::manifest::MANIFEST, manifest),

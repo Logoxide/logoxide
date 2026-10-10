@@ -8,8 +8,11 @@ Paths are relative, `/`-separated, and never leave the storage's root.
 
 use std::{
     collections::BTreeMap,
-    path::{Path, PathBuf},
-    sync::RwLock,
+    path::{Component, Path, PathBuf},
+    sync::{
+        RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use crate::error::{LogoxideError, Result};
@@ -94,9 +97,31 @@ impl FsStorage {
         &self.root
     }
 
+    /**
+    A path's place under the root. Besides [`checked`]'s rules, each part is a plain name: no
+    `:` (a Windows drive, `C:x`, or an alternate stream), no NUL, and nothing the platform reads
+    as a root, a prefix, or a step up
+    */
     fn path(&self, path: &str) -> Result<PathBuf> {
-        Ok(self.root.join(checked(path)?))
+        let path = checked(path)?;
+        let plain = !path.contains([':', '\0'])
+            && (Path::new(path).components()).all(|c| matches!(c, Component::Normal(_)));
+        if !plain {
+            return Err(LogoxideError::BadPath(path.to_string()));
+        }
+        Ok(self.root.join(path))
     }
+}
+
+/// A name for a file being written, beside it and unlike any other's: `.JHN.usx.<pid>.<n>.tmp`
+fn staging_path(full: &Path) -> PathBuf {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let name = full
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    full.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()))
 }
 
 impl Storage for FsStorage {
@@ -132,9 +157,15 @@ impl Storage for FsStorage {
             std::fs::create_dir_all(parent).map_err(|e| LogoxideError::io(path, e))?;
         }
         // Written beside it, then moved into place, so a reader never sees half a file
-        let partial = full.with_extension("partial");
-        std::fs::write(&partial, bytes).map_err(|e| LogoxideError::io(path, e))?;
-        std::fs::rename(&partial, &full).map_err(|e| LogoxideError::io(path, e))
+        // (a name of its own, so no other file, like `JHN.partial`, is written over)
+        let partial = staging_path(&full);
+        let written =
+            std::fs::write(&partial, bytes).and_then(|()| std::fs::rename(&partial, &full));
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&partial);
+            return Err(LogoxideError::io(path, e));
+        }
+        Ok(())
     }
 
     /// Removes a file, then the folders it leaves empty (never the root)
@@ -279,6 +310,20 @@ mod tests {
             storage.read("/etc/passwd"),
             Err(LogoxideError::BadPath(_))
         ));
+        for bad in ["C:x", "a/C:/b", "a/b:stream", "a/\0"] {
+            assert!(
+                matches!(storage.write(bad, b"x"), Err(LogoxideError::BadPath(_))),
+                "{bad}"
+            );
+        }
+        // Writing never touches a file named like a staging one
+        storage.write("a/JHN.partial", b"mine").unwrap();
+        storage.write("a/JHN.usx", b"book").unwrap();
+        assert_eq!(storage.read_string("a/JHN.partial").unwrap(), "mine");
+        assert_eq!(
+            storage.walk("a").unwrap(),
+            ["a/JHN.partial", "a/JHN.usx", "a/b.txt"]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

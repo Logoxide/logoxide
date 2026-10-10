@@ -106,6 +106,8 @@ pub fn add_release(
             .map_err(|e| LogoxideError::Catalog(format!("catalog.toml: {e}")))?,
         None => {
             let mut doc = toml_edit::DocumentMut::new();
+            let format = i64::from(crate::catalog::CATALOG_FORMAT);
+            doc.insert("format", toml_edit::value(format));
             doc.insert("name", toml_edit::value(name));
             doc
         }

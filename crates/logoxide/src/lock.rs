@@ -69,6 +69,9 @@ pub struct LockedPackage {
     pub rev: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
+    /// Its folder in the repository, for a repository of many packages (tagged `<folder>/v…`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     /// A folder used in place (not copied into the library), relative to the manifest
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
@@ -107,15 +110,54 @@ impl LockedPackage {
     archive's, the version and its hash (`1.2.0+a9f86d081`); a path package's, its version
     */
     pub fn key(&self) -> String {
+        // Only hex digits name the folder, whatever a lock built elsewhere holds ([`Self::check`])
+        let short = |hex: &str| -> String {
+            (hex.chars().filter(char::is_ascii_hexdigit))
+                .take(8)
+                .collect()
+        };
         match (&self.commit, &self.sha256) {
-            (Some(commit), _) => format!("{}+g{}", self.version, &commit[..commit.len().min(8)]),
+            (Some(commit), _) => format!("{}+g{}", self.version, short(commit)),
             // A registry's archive: by its hash, so two registries' releases never share one
             (None, Some(sha256)) => {
                 let hex = sha256.strip_prefix("sha256:").unwrap_or(sha256);
-                format!("{}+a{}", self.version, &hex[..hex.len().min(8)])
+                format!("{}+a{}", self.version, short(hex))
             }
             (None, None) => self.version.to_string(),
         }
+    }
+
+    /**
+    Checks what names its folder in the library: its id is an id, its commit lowercase hex (7 to
+    64 digits), its archive's hash `sha256:` and 64 of them, its folder a plain relative path
+    */
+    pub fn check(&self) -> Result<()> {
+        let bad = |message: String| Err(LogoxideError::Lock(message));
+        if !crate::manifest::is_valid_id(&self.id) {
+            return bad(format!("`{}` isn't a package id", self.id));
+        }
+        let hex = |s: &str| {
+            s.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        if let Some(commit) = &self.commit
+            && !((7..=64).contains(&commit.len()) && hex(commit))
+        {
+            return bad(format!("{}: commit `{commit}` isn't a commit", self.id));
+        }
+        if let Some(sha256) = &self.sha256 {
+            let digits = sha256.strip_prefix("sha256:").unwrap_or_default();
+            if digits.len() != 64 || !hex(digits) {
+                return bad(format!("{}: sha256 `{sha256}` isn't a SHA-256", self.id));
+            }
+        }
+        if let Some(folder) = &self.folder {
+            let plain = |p: &str| !p.is_empty() && p != "." && p != ".." && !p.starts_with('-');
+            if !folder.split('/').all(plain) || folder.contains([':', '\\', '\0']) {
+                return bad(format!("{}: folder `{folder}` isn't a folder", self.id));
+            }
+        }
+        Ok(())
     }
 
     /// `id key`, how the lock file's `dependencies` name it
@@ -146,6 +188,9 @@ impl Lockfile {
                 "version {} (this logoxide reads version {LOCK_VERSION})",
                 lock.version
             )));
+        }
+        for package in &lock.packages {
+            package.check()?;
         }
         Ok(lock)
     }
@@ -189,6 +234,7 @@ mod tests {
             branch: None,
             rev: None,
             commit: Some("3f9c2a1b77".into()),
+            folder: None,
             path: None,
             registry: None,
             archive: None,
@@ -229,5 +275,31 @@ mod tests {
         };
         assert_eq!(Lockfile::parse(&lock.to_toml().unwrap()).unwrap(), lock);
         assert!(Lockfile::parse("version = 9").is_err());
+    }
+
+    #[test]
+    fn what_names_folders_is_checked() {
+        let lock = |entry: &str| {
+            Lockfile::parse(&format!(
+                "version = 1\n[[package]]\nid = \"bsb\"\nversion = \"1.0.0\"\n{entry}\n"
+            ))
+        };
+        let sha = format!("sha256:{}", "9f".repeat(32));
+        assert!(lock(&format!("commit = \"{}\"", "a1".repeat(20))).is_ok());
+        assert!(lock(&format!("sha256 = \"{sha}\"")).is_ok());
+        assert!(lock("folder = \"books/romans\"").is_ok());
+        for bad in [
+            "commit = \"../../x\"",
+            "commit = \"é\"",
+            "commit = \"ABCDEF12\"",
+            "commit = \"\"",
+            "sha256 = \"sha256:../../x\"",
+            "sha256 = \"9f86d081\"",
+            "folder = \"../x\"",
+        ] {
+            assert!(lock(bad).is_err(), "{bad}");
+        }
+        let bad_id = "version = 1\n[[package]]\nid = \"../x\"\nversion = \"1.0.0\"\n";
+        assert!(Lockfile::parse(bad_id).is_err());
     }
 }
