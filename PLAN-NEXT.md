@@ -52,7 +52,7 @@ Check: CI green on main once the tags exist.
 
 Can run beside phase I in worktrees; each item a commit.
 
-1. **C6** (N2): `logoxide_text::cache` (`BookStore` trait: `read(path)`, `write(path, bytes)`;
+1. **C6** (N2), done 2026-10-11 on `phase-c6`: `logoxide_text::cache` (`BookStore` trait: `read(path)`, `write(path, bytes)`;
    `BookCache::book(store, key, source, id)` with `CACHE_FORMAT` and the header moved from
    `logoxide/src/cache.rs:77`); the core's `cache.rs` keeps `manifest.postcard` and
    `references.postcard` and, under `read`, `CachedPackage::book` through the text crate's

@@ -654,12 +654,14 @@ impl Settings {
         machine: Option<&Path>,
     ) -> Result<Bibles, String> {
         let mut list = vec![];
+        let cache = book_cache_dir(machine);
         if let Some(folder) = &self.bible {
             list.push(Bible::load(
                 &expand_home(folder),
                 None,
                 data.clone(),
                 self.markup.clone(),
+                cache.as_deref(),
             )?);
         }
         let add = |bible: Bible, list: &mut Vec<Bible>| {
@@ -670,9 +672,14 @@ impl Settings {
             BiblesSetting::Folders(folders) => {
                 for (name, setting) in folders {
                     let path = expand_home(setting.path());
-                    let mut bible =
-                        Bible::load(&path, Some(name), data.clone(), self.markup.clone())
-                            .map_err(|e| format!("bibles.{name}: {e}"))?;
+                    let mut bible = Bible::load(
+                        &path,
+                        Some(name),
+                        data.clone(),
+                        self.markup.clone(),
+                        cache.as_deref(),
+                    )
+                    .map_err(|e| format!("bibles.{name}: {e}"))?;
                     if !setting.aliases().is_empty() {
                         bible.aliases = setting.aliases().to_vec();
                     }
@@ -776,8 +783,14 @@ impl Settings {
             ));
         }
         let dir = library.package_dir(locked, project.dir());
-        let mut bible = Bible::load(&dir, None, data.clone(), self.markup.clone())
-            .map_err(|e| format!("bibles: {id}: {e}"))?;
+        let mut bible = Bible::load(
+            &dir,
+            None,
+            data.clone(),
+            self.markup.clone(),
+            Some(library.cache_dir()),
+        )
+        .map_err(|e| format!("bibles: {id}: {e}"))?;
         // The project's own names for it, if it gives any (a fork named `KJVB`)
         let package = library
             .open(locked, project.dir())
@@ -785,6 +798,14 @@ impl Settings {
         (bible.name, bible.aliases) = project.names(locked, package.info());
         Ok(bible)
     }
+}
+
+/// Where parsed books are kept: logoxide's cache (its config's, as `lx` and the library's
+/// packages use it); none without a machine library (the tests), so books stay in memory
+fn book_cache_dir(machine: Option<&Path>) -> Option<PathBuf> {
+    machine?;
+    let config = logoxide::config::Config::load().unwrap_or_default();
+    Some(config.library(None, None).cache_dir().to_path_buf())
 }
 
 /// Whether a project's package is a Bible (not a lexicon or cross references)

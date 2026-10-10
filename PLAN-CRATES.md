@@ -135,7 +135,9 @@ and the LSP. The arrow that matters still points one way (logoxide-text never de
 logoxide), the package manager alone still builds with `--no-default-features`, and the adapter
 is one module that can move later if the owner prefers. Moved as the table says, except:
 `books.rs` stays in the core (the text crate hashes by topos `BookId`, the adapter numbers);
-the parsed-book cache stays in `cache.rs` under `read` (C6 deferred); `check_package_timings`
+the parsed-book cache stayed in `cache.rs` under `read` until C6 was done (2026-10-11,
+PLAN-NEXT.md H.1: `logoxide_text::cache`, the core's `CachedPackage::book` over it, the LSP and
+the bindings reading the same files); `check_package_timings`
 and `[media] versification`'s counts (sword-modules) stay in the core under `read` until phase
 D; the LSP's `Bible::passage` and `search` aren't moved yet (E.3). `TextFormat` is the text
 crate's own enum of the four readable formats; `Format::text_format` maps to it.
@@ -152,7 +154,7 @@ implementation moves beside each binary.
 | `versification::{Verse, VerseRange, Mapping, VersificationMap (parse, from_files, problems, excluded, counts, passed_over), Versifications, route, map, Mapped, parse_reference}` | `versification.rs`; `logoxide` keeps `Project::numbering` and `map_reference` as thin calls on what the wiring layer hands it (or they move to the wiring layer: decide when the adapter is written) |
 | `media::{VerseTiming, timings_path, parse_timings, check_timings, timings, check_package_timings}` | `timings.rs`; `logoxide::media` keeps `Media`, `MediaFile`, `verify`, `store_path`, `check_sha256` |
 | `references::{FoundReference, epub_files, find}` (topos-formats' EPUB reader) | `citations.rs`; `logoxide::references` keeps `Cited`, `cited`, `encode`, `decode` (`LXR1`) |
-| `cache.rs`'s parsed books (`book_header`, `CACHE_FORMAT`, postcard of `Book`) | `cache.rs` (C6), keyed `<checksum>-<format>/<book>` |
+| `cache.rs`'s parsed books (`book_header`, `CACHE_FORMAT`, postcard of `Book`) | `cache.rs` (C6, done 2026-10-11): `BookCache` keyed `<checksum>-<format>/<CODE>.postcard` under a `BookStore`; the core keeps `manifest.postcard` and `references.postcard` and adapts its `Storage` |
 | `create::{file_format, epub_metadata, opf_metadata, FileMetadata}` | `metadata.rs`; `create::new_from_file` in `logoxide` takes a `FileMetadata` instead of bytes |
 | `language::dominant_script` | `script.rs` |
 | `package::open`'s choice of a source by the enabled formats | `open.rs`: `read_package(files, manifest, enabled) -> Box<dyn Source>`; `logoxide::Package` keeps the manifest, features, `declared_files`, `checksum`, `other_files`, `glob` |
