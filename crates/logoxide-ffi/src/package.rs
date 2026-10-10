@@ -465,7 +465,9 @@ const john = pkg.book(43); // a LogoxideBook, for passages as HTML or text
 
 - Opening counts every book's verses unless the cache has them, which for USFM means parsing it
   (seconds for a whole Bible); give the cache's files back next time to skip that
-- Books are parsed when first asked for, and cached
+- Books are parsed when first asked for, and cached: each as logoxide-text's book cache writes
+  it (`books/<CODE>.postcard` under the package version's folder), the files `lx` and the
+  language server read and write too, so a cache folder shared with them parses nothing twice
 */
 pub struct LogoxidePackage {
     cached: CachedPackage,

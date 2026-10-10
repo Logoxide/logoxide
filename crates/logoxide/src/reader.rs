@@ -141,10 +141,10 @@ impl std::fmt::Display for Skipped {
 #[cfg(feature = "read")]
 pub(crate) use with_text::verse_hashes;
 #[cfg(feature = "read")]
-pub use with_text::{DefaultReader, StorageFiles, versification_map};
+pub use with_text::{DefaultReader, StorageBooks, StorageFiles, versification_map};
 
-/// The reader built on logoxide-text, and the bridge from a package's [`Storage`] to its
-/// [`Files`](logoxide_text::Files)
+/// The reader built on logoxide-text, and the bridges from a package's [`Storage`] to its
+/// [`Files`](logoxide_text::Files) and from a cache's to its book store
 #[cfg(feature = "read")]
 mod with_text {
     use std::sync::Arc;
@@ -184,6 +184,21 @@ mod with_text {
 
         fn read_string(&self, path: &str) -> logoxide_text::Result<String> {
             self.0.read_string(path).map_err(files_error)
+        }
+    }
+
+    /// A cache's storage as the store logoxide-text's book cache writes to
+    /// ([`BookStore`](logoxide_text::cache::BookStore)), paths as the cache names them
+    /// (`<key>/JHN.postcard` under the storage's root)
+    pub struct StorageBooks(pub Arc<dyn Storage>);
+
+    impl logoxide_text::cache::BookStore for StorageBooks {
+        fn read(&self, path: &str) -> Option<Vec<u8>> {
+            self.0.read(path).ok()
+        }
+
+        fn write(&self, path: &str, bytes: &[u8]) -> logoxide_text::Result<()> {
+            self.0.write(path, bytes).map_err(files_error)
         }
     }
 

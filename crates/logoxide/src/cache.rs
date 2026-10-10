@@ -6,22 +6,24 @@ source again. A cache is per device and never synced: it can always be built aga
 <cache>/<id>/<version>-<checksum>-<format>/
   manifest.postcard     the verse counts of every book, and what the cache was built from (and
                         by which logoxide: another's is built again)
-  books/<CODE>.postcard each book's tree and verse spans, written when first read, after a
-                        line naming the cache format and logoxide version (others are read again)
+  books/<CODE>.postcard each book's tree and verse spans, written when first read: logoxide-text's
+                        book cache (`logoxide_text::cache`), which starts each file with a line
+                        naming its cache format and version (others are parsed again)
   references.postcard   the Bible references in its EPUBs, written when first found
 ```
 
 The folder names the format read (`usx`, `usfm`, `none` for a package without text), so a package
 read in one format and then another (its features changed) never takes one's books for the
-other's: they can number verses differently.
+other's: they can number verses differently. The books are logoxide-text's cache keyed by
+`<checksum>-<format>` (the same facts this folder's name carries, so the key is dropped from the
+path: `VersionBooks`), and whoever else keys a text that way (the language server, a host of the
+bindings) reads the books this wrote.
 
 References are found by reading every EPUB (a tenth of a second a book natively, a quarter in
 WebAssembly), so they're kept like parsed books. They're kept per logoxide version too, since a
 newer topos may find references an older one missed.
 */
 
-#[cfg(feature = "read")]
-use std::collections::HashMap;
 use std::sync::Arc;
 #[cfg(feature = "read")]
 use std::sync::Mutex;
@@ -38,9 +40,10 @@ use crate::{
     storage::Storage,
 };
 #[cfg(feature = "read")]
-use logoxide_text::Book;
+use logoxide_text::{Book, cache::BookCache};
 
-/// Bumped when what the cache holds changes shape, so older caches are built again
+/// Bumped when what the cache holds changes shape, so older caches are built again (the books'
+/// own format is logoxide-text's `cache::CACHE_FORMAT`)
 pub const CACHE_FORMAT: u32 = 4;
 
 /// What a package version's cache was built from, and its verse counts
@@ -73,19 +76,6 @@ pub struct Cache {
     storage: Arc<dyn Storage>,
 }
 
-/**
-What a parsed book's file starts with: the cache format and the logoxide that wrote it. Postcard
-isn't self-describing, so a book written by another logoxide (whose logoxide-markup may lay
-its trees out otherwise) could decode into the wrong tree; one without this header is parsed again
-*/
-#[cfg(feature = "read")]
-fn book_header() -> String {
-    format!(
-        "logoxide-book {CACHE_FORMAT} {}\n",
-        env!("CARGO_PKG_VERSION")
-    )
-}
-
 /// The format a package is read in, as the cache names it (`usx`, `usfm`; `none` without text)
 fn format_name(package: &Package) -> String {
     (package.text_format()).map_or(String::from("none"), |(f, _)| {
@@ -93,19 +83,65 @@ fn format_name(package: &Package) -> String {
     })
 }
 
+/// The first 16 hex digits of a checksum
+fn short_checksum(checksum: &str) -> &str {
+    checksum
+        .trim_start_matches("sha256:")
+        .get(..16)
+        .unwrap_or_default()
+}
+
 /// A package version's folder in the cache, for the format it's read in
 fn version_dir(package: &Package, checksum: &str) -> String {
     let info = package.info();
-    let short = checksum
-        .trim_start_matches("sha256:")
-        .get(..16)
-        .unwrap_or_default();
     format!(
-        "{}/{}-{short}-{}",
+        "{}/{}-{}-{}",
         info.id,
         info.version,
+        short_checksum(checksum),
         format_name(package)
     )
+}
+
+/// What logoxide-text's book cache keys the package's text by: `<checksum>-<format>`
+#[cfg(feature = "read")]
+fn book_key(package: &Package, checksum: &str) -> String {
+    format!("{}-{}", short_checksum(checksum), format_name(package))
+}
+
+/**
+A version's `books/` folder as the store logoxide-text's book cache writes to. The cache names
+each file by the text's key (`<key>/JHN.postcard`); the folder's name already says what the
+key does, so the key is dropped: `books/JHN.postcard` under the version's folder, where the
+books have always been
+*/
+#[cfg(feature = "read")]
+struct VersionBooks {
+    storage: Arc<dyn Storage>,
+    dir: String,
+    key: String,
+}
+
+#[cfg(feature = "read")]
+impl VersionBooks {
+    fn path(&self, path: &str) -> String {
+        let name = (path.strip_prefix(self.key.as_str()))
+            .and_then(|rest| rest.strip_prefix('/'))
+            .unwrap_or(path);
+        format!("{}/books/{name}", self.dir)
+    }
+}
+
+#[cfg(feature = "read")]
+impl logoxide_text::cache::BookStore for VersionBooks {
+    fn read(&self, path: &str) -> Option<Vec<u8>> {
+        self.storage.read(&self.path(path)).ok()
+    }
+
+    fn write(&self, path: &str, bytes: &[u8]) -> logoxide_text::Result<()> {
+        (self.storage.write(&self.path(path), bytes))
+            .map_err(|e| logoxide_text::TextError::Files(e.to_string()))
+    }
 }
 
 /// The references in a package's EPUBs: from the cache if they were found in this exact text by
@@ -181,6 +217,16 @@ impl Cache {
                 manifest
             }
         };
+        #[cfg(feature = "read")]
+        let books = {
+            let key = book_key(&package, &manifest.checksum);
+            let store = VersionBooks {
+                storage: self.storage.clone(),
+                dir: dir.clone(),
+                key: key.clone(),
+            };
+            BookCache::new(Arc::new(store), key)
+        };
         Ok(CachedPackage {
             #[cfg(feature = "read")]
             storage: self.storage.clone(),
@@ -191,7 +237,7 @@ impl Cache {
             dir,
             manifest,
             #[cfg(feature = "read")]
-            books: Mutex::default(),
+            books,
         })
     }
 
@@ -214,8 +260,9 @@ pub struct CachedPackage {
     #[cfg(feature = "read")]
     dir: String,
     manifest: CachedManifest,
+    /// logoxide-text's cache of its parsed books, over `storage`
     #[cfg(feature = "read")]
-    books: Mutex<HashMap<BookId, Arc<Book>>>,
+    books: BookCache,
     #[cfg(feature = "read")]
     references: Mutex<Option<Arc<Vec<FoundReference>>>>,
 }
@@ -229,39 +276,11 @@ impl CachedPackage {
         &self.manifest
     }
 
-    /// A book: from memory, else the cache, else its source (then cached)
+    /// A book: from memory, else the cache, else its source (then cached), through
+    /// logoxide-text's book cache
     #[cfg(feature = "read")]
     pub fn book(&self, id: BookId) -> Result<Arc<Book>> {
-        if let Some(book) = self.books.lock().ok().and_then(|b| b.get(&id).cloned()) {
-            return Ok(book);
-        }
-        let code = crate::bible_data()
-            .books()
-            .get_usfm(id)
-            .cloned()
-            .unwrap_or_else(|| id.0.to_string());
-        let path = format!("{}/books/{code}.postcard", self.dir);
-        let header = book_header();
-        let cached = (self.storage.read(&path).ok()).and_then(|bytes| {
-            let body = bytes.strip_prefix(header.as_bytes())?;
-            postcard::from_bytes::<Book>(body).ok()
-        });
-        let book = match cached {
-            Some(book) => book,
-            None => {
-                let book = self.package.source().book(id)?;
-                if let Ok(body) = postcard::to_stdvec(&book) {
-                    let bytes = [header.as_bytes(), &body].concat();
-                    let _ = self.storage.write(&path, &bytes);
-                }
-                book
-            }
-        };
-        let book = Arc::new(book);
-        if let Ok(mut books) = self.books.lock() {
-            books.insert(id, book.clone());
-        }
-        Ok(book)
+        Ok(self.books.book(self.package.source(), id)?)
     }
 
     /// The Bible references in its EPUBs: from memory, else the cache, else found by reading
@@ -315,6 +334,7 @@ mod tests {
     use super::*;
     use crate::reader::DefaultReader;
     use crate::{Features, MemoryStorage};
+    use logoxide_text::cache::book_header;
 
     const MANIFEST: &str = r#"
 [package]

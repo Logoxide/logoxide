@@ -104,9 +104,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     so no verses in its summary). `checksum()` hashes every file but `.git`
   - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard; the
     counts and references also per logoxide version) per `<id>/<version>-<checksum>-<format>`
-    (a package read as USX and then USFM shares nothing); each book file starts with a line
-    naming `CACHE_FORMAT` (3: topos's `VerseSpan` has a part) and the logoxide version
-    (`book_header`), else it's parsed again, since postcard can't tell a stale layout; `Cache::references`
+    (a package read as USX and then USFM shares nothing). The books are logoxide-text's
+    `cache::BookCache` (C6, the owner's N2) keyed `<checksum>-<format>`, over the version's
+    `books/` folder (`VersionBooks`, under `read`: a `BookStore` over the `Storage` that drops
+    the key, since the folder's name carries it, so nothing moved on disk);
+    `reader::StorageBooks` is the plain adapter for other callers. `Cache::references`
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
     aliases, and counts
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
@@ -371,6 +373,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `count_elements`. `titles`: a file's own title (`own_title`, `book_file_titles`,
   `epub_title`). `versification`: `.vrs` maps and routing (below, under the core's bullet).
   `timings`: WebVTT cues by verse (`parse_timings`, `check_timings`, `book_verses`).
+  `cache`: parsed books kept between runs (`BookCache::book(source, id)`: memory, else the
+  `BookStore`'s `<key>/<CODE>.postcard`, else parsed and written; `MemoryBookStore`; each file
+  starts with `book_header`'s line naming `CACHE_FORMAT` (4) and the crate's version, else
+  it's parsed again, since postcard can't tell a stale layout; `decode` also refuses another
+  book's file), the one format the core's `Cache`, the LSP, and the bindings share.
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
   label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
   templates, `width` to `wrap` at), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
@@ -389,7 +396,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   no_panic` check it; never read libsword or other SWORD readers' code (its `CLEANROOM.md`)
 - `crates/logoxide-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on logoxide). `bible.rs`'s `Bible` reads a package or a plain
-  USX folder through logoxide sources, and renders hover text and whole books through
+  USX folder through logoxide sources (`Books`: a package through the core's `Cache` in
+  logoxide's cache folder, the one `lx` fills, so a book parsed by either is found by the other,
+  and its verse counts with it; a USX folder through logoxide-text's `BookCache` keyed by its
+  files' checksum under `<cache>/folders/`; the cache is the config's, taken only when the
+  server has a machine library, so tests keep books in memory), and renders hover text and whole books through
   logoxide-text's `passage` (`MarkupSettings::style()` makes its `Style`; `bible::tokens` maps
   the markup's kinds to the editor's semantic tokens; `Part` and `Rendered` are logoxide-text's);
   `settings.rs` finds the project (the `project` setting, a

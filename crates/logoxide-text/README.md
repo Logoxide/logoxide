@@ -14,6 +14,9 @@ What's in a Bible or a book: verses, hashes, titles, numbering. It knows no pack
 - **Passages as text**: a passage or a whole book as plain text in a style (labels, hidden
   elements, templates, a width), with where each verse is and what marks each run (`passage`)
 - **Timings**: WebVTT cues named by verse, checked against a text (`timings`)
+- **Cache**: parsed books kept between runs under any `BookStore` (a folder, memory, a host's
+  files), keyed by the files' checksum and format, each file naming the version that wrote it
+  so another's is parsed again, never misread (`cache`)
 - **Citations**: the passages an EPUB cites, found by topos (`citations`); an EPUB's metadata
   (`metadata`); the script a text is written in (`script`)
 

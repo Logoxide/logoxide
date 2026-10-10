@@ -4,7 +4,7 @@ read as verses ([`source`]: USX, USFM, OSIS, ThML into logoxide-markup's tree), 
 words hashed by a rule that never changes ([`hash`]), a file's own title ([`titles`]), a
 versification map's lines and the mapping of references through them ([`versification`]), a
 passage or a whole book as plain text with where each verse is ([`passage`]), a recording's verse
-timings ([`timings`]), an EPUB's metadata ([`metadata`]) and the passages it cites
+timings ([`timings`]), parsed books kept between runs ([`cache`]), an EPUB's metadata ([`metadata`]) and the passages it cites
 ([`citations`]), and the script a text is written in ([`script`]).
 
 Files come through [`Files`], a read-only view of a folder, memory, or a host's files, so it runs
@@ -13,6 +13,7 @@ depends on this crate: whoever runs both hands it the facts this crate finds.
 */
 
 pub mod archive;
+pub mod cache;
 pub mod citations;
 pub mod error;
 pub mod files;

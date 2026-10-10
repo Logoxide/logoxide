@@ -22,10 +22,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use logoxide::{Features, FsStorage, Package, Storage, manifest::MANIFEST, reader::StorageFiles};
+use logoxide::{
+    Cache, CachedPackage, Features, FsStorage, MemoryStorage, Package, Storage,
+    manifest::MANIFEST,
+    reader::{DefaultReader, StorageBooks, StorageFiles},
+};
 use logoxide_markup::Kind;
 pub use logoxide_text::passage::{Part, Rendered};
-use logoxide_text::{Book, Source, passage, source::UsxSource};
+use logoxide_text::{Book, Source, cache::BookCache, passage, source::UsxSource};
 use topos_bible::{
     data::{
         bible_data::BibleData,
@@ -161,16 +165,35 @@ pub struct Bible {
     pub aliases: Vec<String>,
     /// The folder (canonical), whose files workspace searches leave out
     pub folder: PathBuf,
-    source: Box<dyn Source>,
+    books: Books,
     data: BibleData,
     pub markup: MarkupSettings,
-    books: Mutex<HashMap<BookId, Arc<Book>>>,
     rendered: Mutex<HashMap<BookId, Arc<Rendered>>>,
+}
+
+/**
+Where a Bible's books come from, each parsed once and kept in logoxide-text's book cache
+- A package: logoxide's cache of it (`<cache>/books/<id>/<version>-<checksum>-<format>/`), the
+  one `lx` fills, so a book either parsed is found by the other, with its verse counts too
+- A folder of USX files: logoxide-text's cache keyed by the files' checksum
+  (`<cache>/folders/<checksum>-usx/JHN.postcard`), so an edited file is parsed again (its old
+  books stay until the folder is cleared: nothing removes them)
+
+Without a cache folder (the tests; a server with no machine library), both are in memory for the
+process
+*/
+enum Books {
+    Package(Box<CachedPackage>),
+    Folder {
+        source: Box<dyn Source>,
+        books: BookCache,
+    },
 }
 
 impl Bible {
     /**
-    The Bible in a folder, named `name` (else the package's abbreviation, else the folder's name)
+    The Bible in a folder, named `name` (else the package's abbreviation, else the folder's name),
+    its parsed books kept in logoxide's `cache` folder (the config's; see [`Books`])
     - With a `logoxide.toml`: the package, in the format its default features turn on (USX, USFM)
     - Without: its USX files (not its subfolders'), named for their books or by their `<book code>`
     */
@@ -179,6 +202,7 @@ impl Bible {
         name: Option<&str>,
         data: BibleData,
         markup: MarkupSettings,
+        cache: Option<&Path>,
     ) -> Result<Bible, String> {
         if !folder.is_dir() {
             return Err(format!("bible: {}: not a folder", folder.display()));
@@ -188,63 +212,86 @@ impl Bible {
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Bible");
-        let (source, default_name, aliases): (Box<dyn Source>, String, Vec<String>) =
-            if folder.join(MANIFEST).is_file() {
-                let package = Package::open(storage, Features::default())
-                    .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-                let info = package.info();
-                let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
-                (package.into_source(), abbreviation, aliases)
-            } else {
-                let source = UsxSource::open(Arc::new(StorageFiles(storage)), "")
-                    .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-                (Box::new(source), folder_name.to_string(), vec![])
+        let store = |name: &str| -> Arc<dyn Storage> {
+            match cache {
+                Some(cache) => Arc::new(FsStorage::new(cache.join(name))),
+                None => Arc::new(MemoryStorage::new()),
+            }
+        };
+        let (books, default_name, aliases) = if folder.join(MANIFEST).is_file() {
+            let package = Package::open(storage, Features::default())
+                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+            let info = package.info();
+            let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
+            let cached = Cache::new(store("books"))
+                .open(package, &DefaultReader)
+                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+            (Books::Package(Box::new(cached)), abbreviation, aliases)
+        } else {
+            let source = UsxSource::open(Arc::new(StorageFiles(storage.clone())), "")
+                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+            let key = folder_key(storage.as_ref(), &source)
+                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+            let books = BookCache::new(Arc::new(StorageBooks(store("folders"))), key);
+            let books = Books::Folder {
+                source: Box::new(source),
+                books,
             };
-        if source.books().is_empty() {
-            return Err(format!("bible: no books in {}", folder.display()));
-        }
-        Ok(Bible {
+            (books, folder_name.to_string(), vec![])
+        };
+        let bible = Bible {
             name: name.map_or(default_name, String::from),
             aliases,
             folder: folder
                 .canonicalize()
                 .unwrap_or_else(|_| folder.to_path_buf()),
-            source,
+            books,
             data,
             markup,
-            books: Mutex::default(),
             rendered: Mutex::default(),
-        })
+        };
+        if bible.source().books().is_empty() {
+            return Err(format!("bible: no books in {}", folder.display()));
+        }
+        Ok(bible)
     }
 
-    /// Each book's verse counts, from its verse markers (USX is scanned without being parsed, so
-    /// a whole Bible takes milliseconds)
+    fn source(&self) -> &dyn Source {
+        match &self.books {
+            Books::Package(cached) => cached.package().source(),
+            Books::Folder { source, .. } => source.as_ref(),
+        }
+    }
+
+    /// Each book's verse counts: a package's from its cache, a folder's from its verse markers
+    /// (USX is scanned without being parsed, so a whole Bible takes milliseconds)
     fn chapter_verses(&self) -> Vec<(BookId, ChapterVerses)> {
-        self.source
-            .books()
-            .into_iter()
-            .filter_map(|id| {
-                let counts = self.source.chapter_verses(id).ok()?;
-                (!counts.is_empty()).then(|| (id, ChapterVerses::new(counts)))
-            })
+        let counts: Vec<(BookId, Vec<u8>)> = match &self.books {
+            Books::Package(cached) => cached.manifest().books.clone(),
+            Books::Folder { source, .. } => (source.books().into_iter())
+                .filter_map(|id| Some((id, source.chapter_verses(id).ok()?)))
+                .collect(),
+        };
+        (counts.into_iter())
+            .filter(|(_, counts)| !counts.is_empty())
+            .map(|(id, counts)| (id, ChapterVerses::new(counts)))
             .collect()
     }
 
     /// The books it has, in order, as USFM codes (`JHN`)
     pub fn book_codes(&self) -> Vec<String> {
         let books = self.data.books();
-        (self.source.books().into_iter())
+        (self.source().books().into_iter())
             .filter_map(|id| books.get_usfm(id).cloned())
             .collect()
     }
 
+    /// A book from the cache (memory, then disk), else parsed and cached
     fn book(&self, id: BookId) -> Option<Arc<Book>> {
-        if let Some(book) = self.books.lock().ok()?.get(&id) {
-            return Some(book.clone());
+        match &self.books {
+            Books::Package(cached) => cached.book(id).ok(),
+            Books::Folder { source, books } => books.book(source.as_ref(), id).ok(),
         }
-        let book = Arc::new(self.source.book(id).ok()?);
-        self.books.lock().ok()?.insert(id, book.clone());
-        Some(book)
     }
 
     /**
@@ -369,6 +416,17 @@ impl Bibles {
     pub fn folders(&self) -> Vec<&Path> {
         self.list.iter().map(|b| b.folder.as_path()).collect()
     }
+}
+
+/// What a folder of USX files is keyed by in the book cache: the checksum of the files its
+/// books are in (as a package's is made), and the format: `0123456789abcdef-usx`
+fn folder_key(storage: &dyn Storage, source: &UsxSource) -> logoxide::Result<String> {
+    let mut paths: Vec<String> = source.files().values().cloned().collect();
+    paths.sort();
+    paths.dedup();
+    let checksum = logoxide::package::checksum_of(storage, &paths)?;
+    let short = (checksum.trim_start_matches("sha256:").get(..16)).unwrap_or_default();
+    Ok(format!("{short}-usx"))
 }
 
 /// Whether a URI is a whole-book document

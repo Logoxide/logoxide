@@ -100,8 +100,9 @@ same (`logoxide::text::printable`).
 
 ## Caches and summaries
 
-The parsed-book cache is per device, keyed by package version and checksum, and never shared:
-it can always be built again from the text. Published summaries (`logoxide.summary.toml`,
+The parsed-book cache is per device, keyed by package version, checksum, and format, and never
+shared: it can always be built again from the text. Each cached book names the version that
+wrote it, and one written by another version is parsed again rather than decoded. Published summaries (`logoxide.summary.toml`,
 `logoxide.verses.bin`) are part of the package and covered by its checksum; `lx verify` rebuilds
 them from the text to check that they match.
 
