@@ -241,9 +241,14 @@ reader's setting, off by default (logoxide-text's `source::book_notes(book, pass
 the LSP's `stretch-notes`, lx's `show --notes --stretch`, the MCP's `read_notes` `stretch`, the
 FFI's `notes(passage, options, stretch)`, the plugin's *Stretch notes over the verses after them*
 (plugin 4e2fb86), logoxide.nvim's `stretch_notes` (46ef780)). On hold until the owner says:
-K.2 (topos's MCP), the MCP's other writes, and Door43. New: remote catalogs cached with an
-expiry (the config's, 7 days by default), `lx catalog refresh`, `lx search --refresh`. Still
-the owner's: topos's layer table in `doc/logoxide.md` (a `logoxide-app` row), tags, publishing.
+K.2 (topos's MCP), the MCP's other writes, and Door43. New, the owner's request: web catalogs
+cached in `<cache>/catalogs/` (logoxide-app's `catalog_cache.rs`) for the config's
+`catalog-max-age` (7 days by default, `0` off), an old copy used and warned of when a download
+fails; `lx catalog refresh [names]`, `lx search --refresh` and `--offline`; `lx import --update`
+and adding through a registry always download (branch `phase-catalog-cache`, merged). Every
+check green (400 workspace tests, the FFI's 22, the plugin's 90); lx, logoxide-lsp,
+logoxide-mcp, and topos's CLI reinstalled. Still the owner's: topos's layer table in
+`doc/logoxide.md` (a `logoxide-app` row), tags, publishing.
 
 ## Status (2026-10-10, after the second session; logoxide main 8f5cf61, plugin main 4348011)
 
