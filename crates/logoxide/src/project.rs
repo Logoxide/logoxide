@@ -565,6 +565,47 @@ impl Project {
             (detailed.and_then(|d| d.aliases.clone())).unwrap_or_else(|| info.aliases.clone());
         (abbreviation, aliases)
     }
+
+    /**
+    Lists a media file in `[media]` (a package's `logoxide.toml`: `lx media add`), as a
+    `[[media.files]]` table; one already listed under its path is replaced. The manifest must still
+    read afterwards
+    */
+    pub fn add_media(&mut self, entry: &crate::media::MediaFile) -> Result<()> {
+        let media = self
+            .doc
+            .entry("media")
+            .or_insert(Item::Table(Table::new()))
+            .as_table_mut()
+            .ok_or_else(|| LogoxideError::Manifest(String::from("[media] isn't a table")))?;
+        let files = media
+            .entry("files")
+            .or_insert(Item::ArrayOfTables(toml_edit::ArrayOfTables::new()))
+            .as_array_of_tables_mut()
+            .ok_or_else(|| LogoxideError::Manifest(String::from("media.files isn't a list")))?;
+        // Listed again: replaced
+        let mut kept = toml_edit::ArrayOfTables::new();
+        for table in files.iter() {
+            if table.get("path").and_then(|p| p.as_str()) != Some(&entry.path) {
+                kept.push(table.clone());
+            }
+        }
+        let mut table = Table::new();
+        table.insert("path", value(&entry.path));
+        table.insert("url", value(&entry.url));
+        if !entry.mirrors.is_empty() {
+            let mirrors: Array = entry.mirrors.iter().collect();
+            table.insert("mirrors", value(mirrors));
+        }
+        table.insert("size", value(entry.size as i64));
+        table.insert("sha256", value(&entry.sha256));
+        if let Some(book) = &entry.book {
+            table.insert("book", value(book));
+        }
+        kept.push(table);
+        *files = kept;
+        self.reparse()
+    }
 }
 
 #[cfg(test)]
@@ -730,6 +771,31 @@ path = "gill"
         assert!(
             new.manifest_text()
                 .contains("[settings]\ncatalogs = [\"catalog.toml\"]")
+        );
+    }
+
+    #[test]
+    fn media_is_listed_and_replaced() {
+        let manifest = "# a recording\n[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusx = { path = \"usx/\" }\n";
+        let mut project = Project::from_text("", Some(manifest), None).unwrap();
+        let mut entry =
+            crate::media::MediaFile::of("JHN.mp3", "https://example.org/JHN.mp3", b"abc");
+        entry.mirrors = vec![String::from("https://mirror.example.org/JHN.mp3")];
+        entry.book = Some(String::from("JHN"));
+        project.add_media(&entry).unwrap();
+        let other = crate::media::MediaFile::of("MRK.mp3", "https://example.org/MRK.mp3", b"de");
+        project.add_media(&other).unwrap();
+        let files = |p: &Project| p.manifest().media.clone().unwrap_or_default().files;
+        assert_eq!(files(&project), [entry.clone(), other.clone()]);
+        assert!(project.manifest_text().starts_with("# a recording\n"));
+        // Listed again: replaced, not added
+        let changed =
+            crate::media::MediaFile::of("JHN.mp3", "https://example.org/v2/JHN.mp3", b"abcd");
+        project.add_media(&changed).unwrap();
+        assert_eq!(files(&project), [other, changed]);
+        assert_eq!(
+            project.manifest_text().matches("[[media.files]]").count(),
+            2
         );
     }
 }
