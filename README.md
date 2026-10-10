@@ -94,6 +94,11 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
   passages) behind one `Logoxide` facade; lx is argument parsing and printing on top of it. See
   `crates/logoxide-app/README.md`
 
+- `logoxide-mcp`: an MCP server over stdio (`claude mcp add logoxide -- logoxide-mcp --project
+  ~/notes`): catalogs searched, passages read and compared with their licenses, references
+  mapped, summaries and diffs, commentaries' notes, dictionary entries, and cross-references;
+  read-only unless `--allow-writes`. See `crates/logoxide-mcp/README.md`
+
 - `logoxide-lsp`: the language server for Bible references and text (topos's `topos-lsp` until
   October 2026). Its Bibles are packages from the workspace's `logoxide.toml` (a vault), else the
   library's own, or folders (`bible`, `bibles`); see `crates/logoxide-lsp/README.md`

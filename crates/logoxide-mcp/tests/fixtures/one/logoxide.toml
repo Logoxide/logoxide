@@ -1,0 +1,11 @@
+[package]
+id = "one"
+name = "A Free Bible"
+abbreviation = "ONE"
+version = "1.0.0"
+language = "en"
+license = "CC0-1.0"
+versification = "English"
+
+[formats]
+usx = { path = "usx/" }

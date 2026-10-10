@@ -172,6 +172,14 @@ After J (it is `logoxide-app`'s first server).
 
 Check: a scripted client session against the KJV and BSB; `doc/trust.md`'s MCP section.
 
+**K.1 done** (2026-10-11, branch phase-k): `crates/logoxide-mcp` on rmcp 3.5.1, the twelve read
+tools and, behind `--allow-writes`, `install` and `import` (from the project's catalogs only; the
+other writes PLAN.md 6.2 lists, `add`, `update_import`, `enable`, `disable`, `remove`, are left
+for later). Untrusted fields in `untrusted` objects with their `source`, cleaned and capped;
+pages of about 20k characters with cursors; D15's cap (500 verses, half a book) for text not
+known to be free, its text withheld with the reason. `tests/session.rs` speaks JSON-RPC to the
+binary on the fixtures and on the KJV and BSB; `doc/trust.md` has the MCP section.
+
 ## Phase L: importers' leftovers (topos's `doc/logoxide.md` step 7)
 
 Any order, as they're reachable; each in `logoxide-import`.
@@ -290,7 +298,7 @@ checkpoint before writing code; the designs below are theirs, so the next agent 
    `comparePassage` native-only like `openPackageDir`, taking folder paths and
    `BookTextStyle`. Then J.2 (lx on it, `lx read`, `lx compare`) and J.4 (exports, docs,
    topos's layer table, `check-versions.sh`).
-6. **K MCP**, after J, as written above.
+6. **K MCP**: K.1 (logoxide-mcp) **done** on branch phase-k (see Phase K); K.2 (topos-mcp) is topos's.
 7. **L.2 Door43** (still unreachable: on 2026-10-10 and 2026-10-11 the catalog API, swagger,
    and archive URLs all time out; `api.door43.org` doesn't resolve). Write it on fixtures:
    `door43.rs` (prefix `door43`, `door43:<owner>/<repo>`, `tracks_versions: true`, archive

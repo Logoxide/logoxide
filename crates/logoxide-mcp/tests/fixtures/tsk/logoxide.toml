@@ -1,0 +1,11 @@
+[package]
+id = "tsk"
+name = "Treasury"
+abbreviation = "TSK"
+version = "1.0.0"
+language = "en"
+license = "CC0-1.0"
+kind = "cross-references"
+
+[formats]
+xref = { path = "xref/" }

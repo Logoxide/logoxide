@@ -576,6 +576,34 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
   Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
   through `text::printable`), so catalogs', manifests', and git's text can't drive the terminal
+- `crates/logoxide-mcp` (binary `logoxide-mcp`): the MCP server (PLAN-NEXT.md K.1, `PLAN.md` 6,
+  the owner's D14 and D15) on rmcp 3.5 over stdio, on logoxide-app's `Logoxide` (read, compare,
+  catalogs, registries, install, import) and the core's `Project`, `Library`, `Cache`, and
+  `Summary`, as lx is; the project is chosen as lx chooses it (`--project`, else the current
+  folder with a `logoxide.toml`, else the library's own), `--library`/`--cache-dir` too.
+  `tools.rs`: each tool a plain function `(&Context, Params) -> Result<Value, String>` (tested
+  without a client in `src/tests.rs` on `tests/fixtures/`: Bibles `one` (CC0, `English`) and
+  `arr` (`LicenseRef-AllRightsReserved`, `Shifted`), the map `eng-shi`, `mhcc`, `strongs`, `tsk`,
+  and the `vault` using them with a `catalog.toml`); `server.rs`: rmcp's `#[tool_router]`, each
+  call in `spawn_blocking`, its JSON as structured content (and text), its failure a tool error;
+  `install` and `import` are removed from the router without `--allow-writes`. Tools:
+  `search_catalogs` (registries then catalogs, loaded once a session; 20 a page, at most 100),
+  `list_packages`, `package_info` (a package by name, id, abbreviation, or alias: `find`),
+  `read_passage`, `compare_passage`, `map_reference`, `show_summary` (installed: published, else
+  built; a version: `release::summary_in` through the app's fetcher from the lock's git URL),
+  `diff_versions`, `cited_references`, `read_notes`, `lookup_entry`, `cross_references`;
+  `install` (`Update::Nothing`, `locked`), `import` (only an entry of the project's own catalogs,
+  never a URL or path, then `import::run`). `limits.rs`: `Untrusted` (an object with `source` and
+  fields through `text::printable`, capped: `SHORT` 300, `LONG` 2,000, `TEXT` 16,000), `page`
+  (about `PAGE_CHARS` 20,000 of JSON a page; cursors `<FNV of the question>.<offset>`, refused for
+  another question), `chunks` (a passage's text cut at lines); D15: text not known to be free
+  (`is_free`: a free SPDX license, or rights saying redistributable, commercial, derivatives) is
+  withheld past `MAX_VERSES` (500) a call or more than half a book (by the package's cached
+  counts), every passage with `license` (or `licenses` by package). `tests/session.rs` spawns the
+  binary and speaks JSON-RPC over stdio: the fixture vault, and the real KJV and BSB (as git
+  dependencies) when `~/Development/logoxide-packages` has them (their tags before v1.0.3 are
+  from before the rename: `biblix.toml`, so a diff from 1.0.0 is a tool error). Nothing but
+  JSON-RPC on stdout; notes to stderr
 - `crates/logoxide-ffi`: BoltFFI 0.31 bindings (npm and PyPI `logoxide`), re-exporting topos-ffi
   (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
   package. Its library is `logoxide` (BoltFFI names artifacts after the package), so it depends on

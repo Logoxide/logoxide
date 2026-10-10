@@ -1,0 +1,12 @@
+[package]
+id = "arr"
+name = "A Bible Under Copyright"
+abbreviation = "ARR"
+version = "1.0.0"
+language = "en"
+license = "LicenseRef-AllRightsReserved"
+versification = "Shifted"
+publisher = "A Publisher"
+
+[formats]
+usx = { path = "usx/" }

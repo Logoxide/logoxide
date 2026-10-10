@@ -1,0 +1,11 @@
+[package]
+id = "mhcc"
+name = "A Commentary"
+abbreviation = "MHCC"
+version = "1.0.0"
+language = "en"
+license = "CC0-1.0"
+kind = "commentary"
+
+[formats]
+osis = { path = "osis/" }
