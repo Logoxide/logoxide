@@ -1,6 +1,6 @@
 //! `Flat`, `Flattener`, spans, entries, and sources (docs/spec/flatten.md).
 
-use topos_bible_markup::{Flattener, Kind, Markup, NodePath, TextOptions, flatten::flatten, parse};
+use logoxide_markup::{Flattener, Kind, Markup, NodePath, TextOptions, flatten::flatten, parse};
 
 fn path(p: &[usize]) -> NodePath {
     NodePath(p.to_vec())

@@ -1,7 +1,7 @@
 //! Inputs on which version 0.5.0 panicked; the required behaviour is in docs/spec/entities.md
 //! and docs/spec/gaps.md. These are not in the golden files.
 
-use topos_bible_markup::{Markup, Node, TextOptions, decode_entities, parse, plain_text};
+use logoxide_markup::{Markup, Node, TextOptions, decode_entities, parse, plain_text};
 
 #[test]
 fn empty_reference_name_is_kept() {

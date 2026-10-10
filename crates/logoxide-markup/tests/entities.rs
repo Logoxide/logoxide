@@ -1,6 +1,6 @@
 //! `decode_entities` (docs/spec/entities.md).
 
-use topos_bible_markup::decode_entities as decode;
+use logoxide_markup::decode_entities as decode;
 
 #[test]
 fn known_numeric_unknown_and_bare() {

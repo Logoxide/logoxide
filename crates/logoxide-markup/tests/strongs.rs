@@ -1,6 +1,6 @@
 //! Strong's numbers and morphology (docs/spec/strongs.md).
 
-use topos_bible_markup::{Element, Kind, Markup, Strongs, StrongsLang, parse, strongs_numbers};
+use logoxide_markup::{Element, Kind, Markup, Strongs, StrongsLang, parse, strongs_numbers};
 
 fn parsed(token: &str) -> Option<(StrongsLang, u32, Option<String>)> {
     Strongs::parse(token).map(|s| (s.lang, s.number, s.suffix))

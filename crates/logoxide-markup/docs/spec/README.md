@@ -1,4 +1,4 @@
-# topos-bible-markup: behavioural specification
+# logoxide-markup: behavioural specification
 
 These files say what the crate does, observably, through its public interface. They are written
 so that it can be implemented again without the original source. Where a rule comes from a public
@@ -6,7 +6,7 @@ standard it is cited; everything else is the behaviour of version 0.5.0, recorde
 
 | File | Area |
 |---|---|
-| [api.md](api.md) | Every public item: signatures, derives, doc comments, the `serde` feature |
+| [api.md](api.md) | Every public item: signatures, derives, doc comments, the `serde` and `html` features |
 | [parsing.md](parsing.md) | `parse`: reading OSIS, ThML, TEI, USX (XML-like), GBF, and plain text into the tree |
 | [tree.md](tree.md) | `Node`, `Element`, `Kind`, `Milestone`, the element accessors, and each format's element-to-kind table |
 | [entities.md](entities.md) | `decode_entities` and the named-entity table |

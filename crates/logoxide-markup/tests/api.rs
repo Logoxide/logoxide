@@ -4,11 +4,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
-use topos_bible_markup::{
-    Action, Element, Filter, Flat, Flattener, HtmlOptions, HtmlRenderer, Kind, Markup, Milestone,
-    Node, NodePath, Point, Span, Strongs, StrongsLang, TextOptions, refs::TaggedReference,
-    verses::VerseSpan,
+use logoxide_markup::{
+    Action, Element, Filter, Flat, Flattener, Kind, Markup, Milestone, Node, NodePath, Point, Span,
+    Strongs, StrongsLang, TextOptions, refs::TaggedReference, verses::VerseSpan,
 };
+#[cfg(feature = "html")]
+use logoxide_markup::{HtmlOptions, HtmlRenderer};
 
 fn send_sync<T: Send + Sync>() {}
 fn value<T: Debug + Clone + PartialEq + Eq>() {}
@@ -18,7 +19,9 @@ fn key<T: Hash + Eq + Ord + Copy>() {}
 fn traits() {
     send_sync::<Filter>();
     send_sync::<TextOptions>();
+    #[cfg(feature = "html")]
     send_sync::<HtmlOptions>();
+    #[cfg(feature = "html")]
     send_sync::<HtmlRenderer>();
     send_sync::<Flattener>();
     send_sync::<Flat>();
@@ -48,7 +51,9 @@ fn traits() {
     shown::<NodePath>();
     fn defaults<T: Default + Clone + Debug>() {}
     defaults::<TextOptions>();
+    #[cfg(feature = "html")]
     defaults::<HtmlOptions>();
+    #[cfg(feature = "html")]
     defaults::<HtmlRenderer>();
     defaults::<Filter>();
     defaults::<Flat>();
@@ -70,12 +75,15 @@ fn shapes() {
         line_breaks: false,
         ..opts
     };
-    let html = HtmlOptions {
-        class_prefix: "x-".into(),
-        filter: Filter::text(),
-    };
-    let renderer = HtmlRenderer::with_options(html);
-    let _: &HtmlOptions = &renderer.opts;
+    #[cfg(feature = "html")]
+    {
+        let html = HtmlOptions {
+            class_prefix: "x-".into(),
+            filter: Filter::text(),
+        };
+        let renderer = HtmlRenderer::with_options(html);
+        let _: &HtmlOptions = &renderer.opts;
+    }
     let span = VerseSpan {
         chapter: 1,
         verse: 2,

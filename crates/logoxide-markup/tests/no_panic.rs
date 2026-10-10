@@ -3,13 +3,14 @@
 //!
 //! `NO_PANIC_ROUNDS=100000 cargo test --release --test no_panic` for a longer run.
 
-use topos_bible::data::BibleData;
-use topos_bible_markup::{
-    Filter, Flattener, HtmlOptions, HtmlRenderer, Kind, Markup, Strongs, TextOptions,
-    decode_entities, parse, plain_text,
+use logoxide_markup::{
+    Filter, Flattener, Kind, Markup, Strongs, TextOptions, decode_entities, parse, plain_text,
     refs::tagged_references,
     verses::{chapter_verses, slice, usx_chapter_verses, verses},
 };
+#[cfg(feature = "html")]
+use logoxide_markup::{HtmlOptions, HtmlRenderer};
+use topos_bible::data::BibleData;
 
 const PIECES: &[&str] = &[
     "<",
@@ -189,21 +190,24 @@ fn exercise(input: &str, data: &BibleData) {
                     assert!(point.offset <= text.len());
                 }
             }
-            let mut html = HtmlRenderer::new();
-            let len = flat.text.len();
-            for (a, b) in [(0, len), (len / 3, len / 2), (len / 2, len), (len, 0)] {
-                if let Some((start, end)) = flat.source_range(a..b) {
-                    html.mark(start, end);
+            #[cfg(feature = "html")]
+            {
+                let mut html = HtmlRenderer::new();
+                let len = flat.text.len();
+                for (a, b) in [(0, len), (len / 3, len / 2), (len / 2, len), (len, 0)] {
+                    if let Some((start, end)) = flat.source_range(a..b) {
+                        html.mark(start, end);
+                    }
                 }
+                let _ = html.render(&nodes);
+                let _ = html.render(&nodes);
+                let mut bare = HtmlRenderer::with_options(HtmlOptions {
+                    class_prefix: "".into(),
+                    filter: Filter::all(),
+                });
+                let _ = bare.render(&nodes);
+                let _ = bare.wrap(input);
             }
-            let _ = html.render(&nodes);
-            let _ = html.render(&nodes);
-            let mut bare = HtmlRenderer::with_options(HtmlOptions {
-                class_prefix: "".into(),
-                filter: Filter::all(),
-            });
-            let _ = bare.render(&nodes);
-            let _ = bare.wrap(input);
         }
         let _ = tagged_references(&nodes, data);
         let spans = verses(&nodes);
@@ -211,7 +215,10 @@ fn exercise(input: &str, data: &BibleData) {
         for verse in &spans {
             assert!(verse.start <= verse.end, "{verse:?} in {input:?}");
             let part = slice(&nodes, &verse.start, Some(&verse.end));
+            #[cfg(feature = "html")]
             let _ = HtmlRenderer::new().render(&part);
+            #[cfg(not(feature = "html"))]
+            let _ = part;
             let _ = slice(&nodes, &verse.end, Some(&verse.start));
             let _ = slice(&nodes, &verse.marker, None);
         }

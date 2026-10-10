@@ -1,4 +1,4 @@
-# topos-bible-markup
+# logoxide-markup
 
 Bible markup as one tree: OSIS, ThML, GBF, TEI, USX, and plain text parse into the same
 [`Node`]s, each element with a [`Kind`] that means the same in every format (a word, a note,
@@ -9,7 +9,7 @@ From the tree:
 
 - **Plain text** for terminals and editors ([`plain_text`]), and a [`Flat`] text with a map
   back to the tree and the span of every element, for highlighting
-- **HTML** with prefixed classes (`topos-woj`, `topos-note topos-crossref`) and data attributes
+- **HTML** (the `html` feature, on by default) with prefixed classes (`topos-woj`, `topos-note topos-crossref`) and data attributes
   (`data-strong`, `data-osis-ref`), never inline styles ([`HtmlRenderer`]), and `<mark>`s for
   search matches ([`HtmlRenderer::mark`])
 - **Filters** that keep, unwrap, or drop elements by kind, note type, or a custom rule
@@ -21,7 +21,7 @@ From the tree:
   in the tree
 
 ```rust
-use topos_bible_markup::{Filter, HtmlRenderer, Kind, Markup, TextOptions, parse, plain_text};
+use logoxide_markup::{Filter, HtmlRenderer, Kind, Markup, TextOptions, parse, plain_text};
 
 let nodes = parse(Markup::Osis, r#"<w lemma="strong:G2316">God</w> so loved the world<note type="explanation">Or, cosmos</note>"#);
 assert_eq!(plain_text(&nodes, &TextOptions::default()), "God so loved the world");

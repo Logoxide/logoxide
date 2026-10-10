@@ -59,7 +59,7 @@ Keep one renderer for a passage, so words of Jesus that continue from one verse 
 passage in one element whose class is the bare prefix (`<div class="topos">`).
 
 ```
-use topos_bible_markup::{HtmlRenderer, Markup, parse};
+use logoxide_markup::{HtmlRenderer, Markup, parse};
 
 let mut html = HtmlRenderer::new();
 let verse = html.render(&parse(Markup::Osis, r#"<w lemma="strong:G2424">Jesus</w> said, <q who="Jesus">Follow me</q>"#));
@@ -182,7 +182,7 @@ impl HtmlRenderer {
     - Add marks before rendering the entries they are in
 
     ```
-    use topos_bible_markup::{HtmlRenderer, Markup, TextOptions, flatten::flatten, parse};
+    use logoxide_markup::{HtmlRenderer, Markup, TextOptions, flatten::flatten, parse};
 
     let nodes = parse(Markup::Osis, "See <hi type=\"italic\">John</hi> 3:16 today.");
     let flat = flatten(&nodes, &TextOptions::default());

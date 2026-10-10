@@ -1,9 +1,9 @@
 //! The depth limit (docs/spec/parsing.md, "Depth limit"): at most 1,000 open elements, so crafted
 //! input can't overflow the stack. Run in a thread with a 2 MB stack, smaller than a main thread's
 
-use topos_bible_markup::{
-    HtmlRenderer, Markup, Node, TextOptions, flatten::flatten, parse, plain_text,
-};
+#[cfg(feature = "html")]
+use logoxide_markup::HtmlRenderer;
+use logoxide_markup::{Markup, Node, TextOptions, flatten::flatten, parse, plain_text};
 
 const LIMIT: usize = 1_000;
 /// The cut elements sit inside the innermost open element: one level more
@@ -71,6 +71,7 @@ fn deep_xml_is_cut_at_the_limit() {
             let _ = format!("{nodes:?}");
             let _ = plain_text(&nodes, &TextOptions::default());
             let _ = flatten(&nodes, &TextOptions::default());
+            #[cfg(feature = "html")]
             let _ = HtmlRenderer::new().render(&nodes);
         }
     });
@@ -81,6 +82,7 @@ fn deep_gbf_is_cut_at_the_limit() {
     on_small_stack(|| {
         let nodes = parse(Markup::Gbf, &format!("{}x", "<FR>".repeat(DEEP)));
         assert_eq!(depth(&nodes), LEVELS);
+        #[cfg(feature = "html")]
         let _ = HtmlRenderer::new().render(&nodes);
     });
 }

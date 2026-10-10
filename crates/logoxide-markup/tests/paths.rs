@@ -1,6 +1,6 @@
 //! `NodePath` (docs/spec/node-paths.md).
 
-use topos_bible_markup::{Markup, NodePath, parse};
+use logoxide_markup::{Markup, NodePath, parse};
 
 #[test]
 fn display_resolve_ancestors() {

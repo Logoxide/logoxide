@@ -7,12 +7,14 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use topos_bible::data::BibleData;
-use topos_bible_markup::{
-    Filter, Flat, Flattener, HtmlOptions, HtmlRenderer, Kind, Markup, Milestone, Node, TextOptions,
+use logoxide_markup::{
+    Filter, Flat, Flattener, Kind, Markup, Milestone, Node, TextOptions,
     refs::tagged_references,
     verses::{chapter_verses, slice, usx_chapter_verses, verses},
 };
+#[cfg(feature = "html")]
+use logoxide_markup::{HtmlOptions, HtmlRenderer};
+use topos_bible::data::BibleData;
 
 /// Escapes a string for one line of a dump: `\\`, `\"`, `\n`, `\r`, `\t`, and other control
 /// characters as `\u{hex}`
@@ -188,7 +190,7 @@ fn dump_verses(nodes: &[Node]) -> String {
         ..TextOptions::default()
     };
     for s in &spans {
-        let text = topos_bible_markup::plain_text(&slice(nodes, &s.start, Some(&s.end)), &all);
+        let text = logoxide_markup::plain_text(&slice(nodes, &s.start, Some(&s.end)), &all);
         let _ = writeln!(
             out,
             "{}:{}{}-{}{} marker={} start={} end={} {}",
@@ -233,7 +235,7 @@ fn dump_refs(nodes: &[Node], data: &BibleData) -> String {
 pub fn outputs(markup: Markup, inputs: &[String]) -> Vec<(String, String)> {
     let entries: Vec<Vec<Node>> = inputs
         .iter()
-        .map(|i| topos_bible_markup::parse(markup, i))
+        .map(|i| logoxide_markup::parse(markup, i))
         .collect();
     let mut out = Vec::new();
     for nodes in &entries {
@@ -249,16 +251,20 @@ pub fn outputs(markup: Markup, inputs: &[String]) -> Vec<(String, String)> {
     out.push((String::from("text-nobreaks"), flat(&entries, nobreaks).text));
     out.push((String::from("spans"), dump_spans(&default)));
     out.push((String::from("sources"), dump_sources(&default)));
-    let mut html = HtmlRenderer::new();
-    for nodes in &entries {
-        out.push((String::from("html"), html.render(nodes)));
-    }
-    let mut bare = HtmlRenderer::with_options(HtmlOptions {
-        class_prefix: "".into(),
-        filter: Filter::all(),
-    });
-    for nodes in &entries {
-        out.push((String::from("html-bare"), bare.render(nodes)));
+    // Without the `html` feature these sections are passed over (golden-format.md)
+    #[cfg(feature = "html")]
+    {
+        let mut html = HtmlRenderer::new();
+        for nodes in &entries {
+            out.push((String::from("html"), html.render(nodes)));
+        }
+        let mut bare = HtmlRenderer::with_options(HtmlOptions {
+            class_prefix: "".into(),
+            filter: Filter::all(),
+        });
+        for nodes in &entries {
+            out.push((String::from("html-bare"), bare.render(nodes)));
+        }
     }
     for nodes in &entries {
         out.push((String::from("verses"), dump_verses(nodes)));

@@ -23,7 +23,7 @@ The target is read as OSIS (`John.3.16-John.3.18 Rom.8.28`, with or without a wo
 all three, the element's text is
 ```
 use topos_bible::data::BibleData;
-use topos_bible_markup::{Markup, parse, refs::tagged_references};
+use logoxide_markup::{Markup, parse, refs::tagged_references};
 
 let data = BibleData::default();
 let nodes = parse(Markup::Osis, r#"See <reference osisRef="Bible:John.3.16-John.3.18 Rom.8.28">these</reference>."#);

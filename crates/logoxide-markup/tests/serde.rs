@@ -4,8 +4,8 @@
 
 #![cfg(feature = "serde")]
 
+use logoxide_markup::{Element, Kind, Milestone, Node, NodePath, verses::VerseSpan};
 use serde::{Serialize, de::DeserializeOwned};
-use topos_bible_markup::{Element, Kind, Milestone, Node, NodePath, verses::VerseSpan};
 
 fn both<T: Serialize + DeserializeOwned>() {}
 
@@ -22,15 +22,15 @@ fn derives() {
 
 #[test]
 fn json_shape() {
-    let nodes = topos_bible_markup::parse(
-        topos_bible_markup::Markup::Osis,
+    let nodes = logoxide_markup::parse(
+        logoxide_markup::Markup::Osis,
         r#"<q who="Jesus" sID="q1"/>Hi <w lemma="strong:G1">x</w><verse osisID="John.1.1">y</verse>"#,
     );
     assert_eq!(
         serde_json::to_string(&nodes).expect("serializes"),
         r#"[{"Element":{"kind":"WordsOfJesus","name":"q","attrs":[["who","Jesus"],["sID","q1"]],"children":[],"milestone":"Start","unclosed":false}},{"Text":"Hi "},{"Element":{"kind":"Word","name":"w","attrs":[["lemma","strong:G1"]],"children":[{"Text":"x"}],"milestone":null,"unclosed":false}},{"Element":{"kind":"Verse","name":"verse","attrs":[["osisID","John.1.1"]],"children":[{"Text":"y"}],"milestone":null,"unclosed":false}}]"#
     );
-    let spans = topos_bible_markup::verses::verses(&nodes);
+    let spans = logoxide_markup::verses::verses(&nodes);
     let json = serde_json::to_string(&spans).expect("serializes");
     assert_eq!(
         json,

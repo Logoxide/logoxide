@@ -3,11 +3,13 @@
 // Expected passage parts are lists of index ranges, often just one
 #![allow(clippy::single_range_in_vec_init)]
 
-use topos_bible::data::BibleData;
-use topos_bible_markup::{
-    Filter, HtmlRenderer, Kind, Markup, Node, NodePath, TextOptions, find_all, parse, plain_text,
+#[cfg(feature = "html")]
+use logoxide_markup::HtmlRenderer;
+use logoxide_markup::{
+    Filter, Kind, Markup, Node, NodePath, TextOptions, find_all, parse, plain_text,
     verses::{VerseSpan, chapter_verses, passage_ranges, slice, usx_chapter_verses, verses},
 };
+use topos_bible::data::BibleData;
 
 const PSALMS: &str = r#"<usx version="3.0"><book code="PSA" style="id"/>
 <para style="mt1">Psalms</para>
@@ -131,12 +133,15 @@ fn module_doc_example() {
     let nodes = parse(Markup::Usx, usx);
     let spans = verses(&nodes);
     assert_eq!((spans[1].chapter, spans[1].verse), (3, 17));
-    let html = HtmlRenderer::new().render(&slice(&nodes, &spans[0].start, Some(&spans[0].end)));
-    assert!(
-        html.contains("Jesus and Nicodemus")
-            && html.contains("so loved")
-            && !html.contains("did not send")
-    );
+    #[cfg(feature = "html")]
+    {
+        let html = HtmlRenderer::new().render(&slice(&nodes, &spans[0].start, Some(&spans[0].end)));
+        assert!(
+            html.contains("Jesus and Nicodemus")
+                && html.contains("so loved")
+                && !html.contains("did not send")
+        );
+    }
 }
 
 #[test]

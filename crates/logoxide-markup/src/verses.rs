@@ -9,7 +9,8 @@ keeping the elements around the cut (a paragraph cut in two is two paragraphs), 
 renders with its paragraphs and poetry intact.
 
 ```
-use topos_bible_markup::{HtmlRenderer, Markup, parse, verses::{slice, verses}};
+# #[cfg(feature = "html")] {
+use logoxide_markup::{HtmlRenderer, Markup, parse, verses::{slice, verses}};
 
 let usx = r#"<usx><book code="JHN"/><chapter number="3" sid="JHN 3"/>
 <para style="s1">Jesus and Nicodemus</para>
@@ -22,6 +23,7 @@ assert_eq!((spans[1].chapter, spans[1].verse), (3, 17));
 // A verse starts where the one before it ends, so the heading before 3:16 belongs to it
 let html = HtmlRenderer::new().render(&slice(&nodes, &spans[0].start, Some(&spans[0].end)));
 assert!(html.contains("Jesus and Nicodemus") && html.contains("so loved") && !html.contains("did not send"));
+# }
 ```
 */
 

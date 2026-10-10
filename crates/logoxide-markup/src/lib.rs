@@ -1,10 +1,17 @@
-#![doc = include_str!("../README.md")]
+// The README's example renders HTML, so it is the crate's documentation (and a doc test) only
+// with the `html` feature
+#![cfg_attr(feature = "html", doc = include_str!("../README.md"))]
+#![cfg_attr(
+    not(feature = "html"),
+    doc = "Bible markup as one tree: OSIS, ThML, GBF, TEI, USX, and plain text (built without the `html` feature; see the README)"
+)]
 
 mod classify;
 mod entities;
 pub mod filter;
 pub mod flatten;
 mod gbf;
+#[cfg(feature = "html")]
 pub mod html;
 pub mod path;
 pub mod refs;
@@ -17,6 +24,7 @@ mod xml;
 pub use entities::decode_entities;
 pub use filter::{Action, Filter};
 pub use flatten::{Flat, Flattener, Point, Span};
+#[cfg(feature = "html")]
 pub use html::{HtmlOptions, HtmlRenderer};
 pub use path::NodePath;
 pub use strongs::{Strongs, StrongsLang};

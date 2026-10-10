@@ -1,10 +1,10 @@
 //! References the markup tags (docs/spec/references.md).
 
-use topos_bible::data::BibleData;
-use topos_bible_markup::{
+use logoxide_markup::{
     Kind, Markup, find_all, parse,
     refs::{passages, tagged_references},
 };
+use topos_bible::data::BibleData;
 
 fn osis_list(markup: Markup, input: &str) -> Vec<Vec<String>> {
     let data = BibleData::default();

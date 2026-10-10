@@ -54,6 +54,9 @@ Sections, in order:
 | `usx-chapter-verses` | one per input, USX only | `usx_chapter_verses` of that input, as Rust's `Debug` of the `Vec<u8>` (`[4, 1]`), then `\n` |
 | `refs` | one per input | `refs::tagged_references` with `BibleData::default()` (below) |
 
+Without the `html` feature (api.md) the `html` and `html-bare` sections are passed over: they are
+neither computed nor compared, and the golden files can't be rewritten.
+
 The "all" options are: `Filter::all()`, `strongs: true`, `line_breaks: true`, verse label
 `[{book} {chapter}:{verse}]`, chapter label `{book} {chapter}`, and templates `“{text}”` for
 `WordsOfJesus`, `## {text}` for `Title`, `({text})` for `Note`, `{text}*` for `Added`, and `^` for

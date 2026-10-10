@@ -4,7 +4,7 @@
 
 pub mod golden;
 
-use topos_bible_markup::{Element, Kind, Markup, Node, find_all, parse};
+use logoxide_markup::{Element, Kind, Markup, Node, find_all, parse};
 
 /// Parses and returns the elements of a kind, cloned
 pub fn elements(markup: Markup, input: &str, kind: Kind) -> Vec<Element> {

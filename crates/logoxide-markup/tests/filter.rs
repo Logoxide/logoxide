@@ -1,9 +1,8 @@
 //! `Filter` and `Action` (docs/spec/filters.md).
 
-use topos_bible_markup::{
-    Action, Element, Filter, HtmlOptions, HtmlRenderer, Kind, Markup, TextOptions, parse,
-    plain_text,
-};
+use logoxide_markup::{Action, Element, Filter, Kind, Markup, TextOptions, parse, plain_text};
+#[cfg(feature = "html")]
+use logoxide_markup::{HtmlOptions, HtmlRenderer};
 
 fn element(kind: Kind, attrs: &[(&str, &str)]) -> Element {
     Element {
@@ -103,6 +102,7 @@ fn notes_and_cross_references() {
 }
 
 #[test]
+#[cfg(feature = "html")]
 fn unwrap_keeps_the_contents_only() {
     let nodes = parse(
         Markup::Osis,

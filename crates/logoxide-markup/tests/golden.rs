@@ -6,7 +6,7 @@ mod common;
 use std::path::{Path, PathBuf};
 
 use common::golden;
-use topos_bible_markup::Markup;
+use logoxide_markup::Markup;
 
 fn files(dir: &Path, out: &mut Vec<PathBuf>) {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(dir)
@@ -77,6 +77,8 @@ fn golden_files() {
         let expected: Vec<&(String, String)> = sections
             .iter()
             .filter(|(n, _)| n != "markup" && n != "input")
+            // Without the `html` feature its sections are passed over (golden-format.md)
+            .filter(|(n, _)| cfg!(feature = "html") || (n != "html" && n != "html-bare"))
             .collect();
         let actual = match std::panic::catch_unwind(|| golden::outputs(markup, &inputs)) {
             Ok(actual) => actual,
@@ -87,6 +89,9 @@ fn golden_files() {
         };
         // `GOLDEN_BLESS=1` writes what was computed (check the diff)
         if std::env::var_os("GOLDEN_BLESS").is_some() {
+            if !cfg!(feature = "html") {
+                panic!("GOLDEN_BLESS needs the html feature, or the html sections would be lost");
+            }
             let mut sections: Vec<(String, String)> = sections
                 .iter()
                 .filter(|(n, _)| n == "markup" || n == "input")

@@ -5,12 +5,13 @@ fields (and their order, which matters to `serde` formats such as postcard), and
 Bodies and private fields are left out; a struct shown with `/* private fields */` has private
 state the implementation chooses. Behaviour is in the other spec files.
 
-The crate is `topos-bible-markup` 0.5.0 (library name `topos_bible_markup`), edition 2024.
+The crate is `logoxide-markup` (library name `logoxide_markup`), edition 2024. It was topos's
+`topos-bible-markup` 0.5.0 when this was recorded, and moved to logoxide in October 2026.
 
 ## Crate layout
 
 ```text
-topos_bible_markup
+logoxide_markup
 ├── (root)    Markup, Node, Kind, Milestone, Element, StrongsLang, Strongs,
 │             parse, walk, find_all, strongs_numbers
 │             re-exports: decode_entities, Action, Filter, Flat, Flattener, Point, Span,
@@ -26,8 +27,8 @@ topos_bible_markup
 
 The modules `filter`, `flatten`, `html`, `path`, `refs`, `text`, and `verses` are public. There is
 no public `entities` module: `decode_entities` is reachable only at the root. The crate-level
-documentation is the README (`#![doc = include_str!("../README.md")]`), so the README's example is
-a doc test.
+documentation is the README (`#![doc = include_str!("../README.md")]`, with the `html`
+feature, since its example renders HTML), so the README's example is a doc test.
 
 ## Dependents and what they use
 
@@ -60,6 +61,13 @@ Nothing else derives them: not `Markup`, `Strongs`, `StrongsLang`, `Filter`, `Ac
 formats such as postcard depend on field and variant order, the field order of `Element` and
 `VerseSpan` and the variant order of `Node`, `Kind`, and `Milestone` below are part of the
 interface (logoxide caches parsed books this way).
+
+## The `html` feature
+
+`html = []`, on by default. The `html` module and the root's re-export of `HtmlOptions` and
+`HtmlRenderer` exist only with it; without it nothing else changes (the tree, text, flattening,
+filters, verses, and references are the same). The `html` and `html-bare` sections of the golden
+files are checked only with it.
 
 ## Root
 
@@ -294,7 +302,7 @@ The first that applies wins:
 4. [`Action::Keep`]
 
 ```
-use topos_bible_markup::{Action, Filter, Kind, Markup, TextOptions, parse, plain_text};
+use logoxide_markup::{Action, Filter, Kind, Markup, TextOptions, parse, plain_text};
 
 let nodes = parse(Markup::Osis, r#"<title>The Word</title>In the beginning<note type="crossReference">Gen 1:1</note><note type="explanation">Or, origin</note>"#);
 // The default is the verse text: no notes or titles
@@ -413,7 +421,7 @@ Flattens entries one after another, carrying words of Jesus that continue from o
 next (with `sID`/`eID` milestones or an unclosed `<q>`)
 
 ```
-use topos_bible_markup::{Flattener, Kind, Markup, TextOptions, parse};
+use logoxide_markup::{Flattener, Kind, Markup, TextOptions, parse};
 
 let mut flat = Flattener::new(TextOptions::default());
 flat.push(&parse(Markup::Osis, r#"He said, <q who="Jesus">Follow"#));
@@ -493,7 +501,7 @@ Keep one renderer for a passage, so words of Jesus that continue from one verse 
 passage in one element whose class is the bare prefix (`<div class="topos">`).
 
 ```
-use topos_bible_markup::{HtmlRenderer, Markup, parse};
+use logoxide_markup::{HtmlRenderer, Markup, parse};
 
 let mut html = HtmlRenderer::new();
 let verse = html.render(&parse(Markup::Osis, r#"<w lemma="strong:G2424">Jesus</w> said, <q who="Jesus">Follow me</q>"#));
@@ -528,7 +536,7 @@ impl HtmlRenderer {
     - Add marks before rendering the entries they are in
 
     ```
-    use topos_bible_markup::{HtmlRenderer, Markup, TextOptions, flatten::flatten, parse};
+    use logoxide_markup::{HtmlRenderer, Markup, TextOptions, flatten::flatten, parse};
 
     let nodes = parse(Markup::Osis, "See <hi type=\"italic\">John</hi> 3:16 today.");
     let flat = flatten(&nodes, &TextOptions::default());
@@ -603,7 +611,7 @@ The target is read as OSIS (`John.3.16-John.3.18 Rom.8.28`, with or without a wo
 all three, the element's text is
 ```
 use topos_bible::data::BibleData;
-use topos_bible_markup::{Markup, parse, refs::tagged_references};
+use logoxide_markup::{Markup, parse, refs::tagged_references};
 
 let data = BibleData::default();
 let nodes = parse(Markup::Osis, r#"See <reference osisRef="Bible:John.3.16-John.3.18 Rom.8.28">these</reference>."#);
@@ -681,7 +689,8 @@ keeping the elements around the cut (a paragraph cut in two is two paragraphs), 
 renders with its paragraphs and poetry intact.
 
 ```
-use topos_bible_markup::{HtmlRenderer, Markup, parse, verses::{slice, verses}};
+# #[cfg(feature = "html")] {
+use logoxide_markup::{HtmlRenderer, Markup, parse, verses::{slice, verses}};
 
 let usx = r#"<usx><book code="JHN"/><chapter number="3" sid="JHN 3"/>
 <para style="s1">Jesus and Nicodemus</para>
@@ -694,6 +703,7 @@ assert_eq!((spans[1].chapter, spans[1].verse), (3, 17));
 // A verse starts where the one before it ends, so the heading before 3:16 belongs to it
 let html = HtmlRenderer::new().render(&slice(&nodes, &spans[0].start, Some(&spans[0].end)));
 assert!(html.contains("Jesus and Nicodemus") && html.contains("so loved") && !html.contains("did not send"));
+# }
 ```
 */
 ````
@@ -789,7 +799,7 @@ Note: `passage_ranges` returns ranges of indexes into `spans` (not places); a ra
 
 ## Dependencies (Cargo.toml)
 
-- `topos-bible` 0.5.0 (path `../topos/crates/topos-lib`): `BibleData`, `Passage`, `Books`
+- `topos-bible` (logoxide's workspace dependency, from crates.io): `BibleData`, `Passage`, `Books`
   (`parse_osis`, `parse_usfm`), `BibleData::parse`, `Passage::ranges`.
 - `quick-xml` 0.42 (optional to use; it is what the XML-like readers' lexical behaviour in
   parsing.md was observed with).

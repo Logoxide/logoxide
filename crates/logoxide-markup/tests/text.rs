@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use topos_bible_markup::{Filter, Kind, Markup, TextOptions, parse, plain_text};
+use logoxide_markup::{Filter, Kind, Markup, TextOptions, parse, plain_text};
 
 fn text(markup: Markup, input: &str, opts: &TextOptions) -> String {
     plain_text(&parse(markup, input), opts)

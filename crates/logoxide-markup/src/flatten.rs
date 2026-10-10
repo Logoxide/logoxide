@@ -153,7 +153,7 @@ Flattens entries one after another, carrying words of Jesus that continue from o
 next (with `sID`/`eID` milestones or an unclosed `<q>`)
 
 ```
-use topos_bible_markup::{Flattener, Kind, Markup, TextOptions, parse};
+use logoxide_markup::{Flattener, Kind, Markup, TextOptions, parse};
 
 let mut flat = Flattener::new(TextOptions::default());
 flat.push(&parse(Markup::Osis, r#"He said, <q who="Jesus">Follow"#));

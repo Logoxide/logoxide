@@ -27,7 +27,7 @@ The first that applies wins:
 4. [`Action::Keep`]
 
 ```
-use topos_bible_markup::{Action, Filter, Kind, Markup, TextOptions, parse, plain_text};
+use logoxide_markup::{Action, Filter, Kind, Markup, TextOptions, parse, plain_text};
 
 let nodes = parse(Markup::Osis, r#"<title>The Word</title>In the beginning<note type="crossReference">Gen 1:1</note><note type="explanation">Or, origin</note>"#);
 // The default is the verse text: no notes or titles

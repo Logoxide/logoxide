@@ -1,6 +1,8 @@
-//! `HtmlRenderer` and `HtmlOptions` (docs/spec/html.md).
+//! `HtmlRenderer` and `HtmlOptions` (docs/spec/html.md), with the `html` feature.
 
-use topos_bible_markup::{
+#![cfg(feature = "html")]
+
+use logoxide_markup::{
     Action, Filter, Flattener, HtmlOptions, HtmlRenderer, Kind, Markup, TextOptions,
     flatten::flatten, parse,
 };

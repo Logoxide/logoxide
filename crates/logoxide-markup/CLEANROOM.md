@@ -146,3 +146,10 @@ tests.
   so a verse's parts are told apart. Written by Claude (Opus 5.5, Anthropic) in a Claude Code
   session for the owner that had read this crate's code; it didn't read libsword or any other SWORD
   reader's code.
+- The move (October 10, 2026): the crate left topos for logoxide, as `logoxide-markup`
+  (`crates/logoxide-markup`, library `logoxide_markup`; it was topos's `crates/topos-markup`,
+  `topos-bible-markup`), with its history. The HTML renderer is now behind an `html` feature, on
+  by default (`docs/spec/api.md`); nothing else changed. The rules are unchanged: the
+  specification first, then the code and its tests, and never libsword or any other SWORD
+  reader's code. Done by Claude (Opus 5.5, Anthropic) in a Claude Code session for the owner that
+  read this crate and topos's notes on it, not libsword or any other SWORD reader's code.

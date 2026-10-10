@@ -4,7 +4,7 @@
 mod common;
 
 use common::{elements, first_element, tree};
-use topos_bible_markup::{
+use logoxide_markup::{
     Element, Kind, Markup, Milestone, Node, find_all, parse, strongs_numbers, walk,
 };
 
