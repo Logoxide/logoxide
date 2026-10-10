@@ -14,7 +14,7 @@ use std::{
     time::Duration,
 };
 
-use logoxide::LogoxideError;
+use logoxide::{LogoxideError, Storage, git::GitCli};
 use sha2::{Digest, Sha256};
 
 /// How many times a download is tried
@@ -130,4 +130,46 @@ pub fn verify_media(url: &str, file: &logoxide::media::MediaFile) -> logoxide::R
         )));
     }
     Ok(())
+}
+
+/// Git through the `git` command, and downloads (registries' catalogs and archives) over HTTPS
+pub(crate) struct Web(pub(crate) GitCli);
+
+impl std::ops::Deref for Web {
+    type Target = GitCli;
+    fn deref(&self) -> &GitCli {
+        &self.0
+    }
+}
+
+impl logoxide::git::Fetcher for Web {
+    fn tags(&self, url: &str) -> logoxide::Result<Vec<(String, String)>> {
+        self.0.tags(url)
+    }
+
+    fn fetch(
+        &self,
+        url: &str,
+        reference: &logoxide::git::GitRef,
+        dest: &dyn Storage,
+    ) -> logoxide::Result<String> {
+        self.0.fetch(url, reference, dest)
+    }
+
+    fn fetch_files(
+        &self,
+        url: &str,
+        reference: &logoxide::git::GitRef,
+        paths: &[&str],
+        dest: &dyn Storage,
+    ) -> logoxide::Result<String> {
+        self.0.fetch_files(url, reference, paths, dest)
+    }
+
+    fn download(&self, url: &str) -> logoxide::Result<Vec<u8>> {
+        match url.starts_with("https://") || url.starts_with("http://") {
+            true => get(url),
+            false => logoxide::git::read_local(url),
+        }
+    }
 }

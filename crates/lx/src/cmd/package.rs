@@ -1,0 +1,792 @@
+//! Commands on a package's own folder: show, check, new, release, diff, verify
+
+use std::{path::PathBuf, sync::Arc, time::Instant};
+
+use logoxide::{
+    Cache, Features, FsStorage, MemoryStorage, Package, Storage, bible_data,
+    manifest::{Dependency, MANIFEST},
+};
+
+use crate::{
+    book_names,
+    cli::{Cli, Format, NewArgs, PackageArgs},
+    print_json,
+};
+
+pub(crate) fn show(
+    cli: &Cli,
+    args: &PackageArgs,
+    references: Option<(&str, bool)>,
+) -> logoxide::Result<()> {
+    let package = args.open()?;
+    let info = package.info();
+    let manifest = package.manifest();
+    println!(
+        "{} {} ({}), {}",
+        info.id, info.version, info.abbreviation, info.name
+    );
+    if let Some(description) = &info.description {
+        println!("{description}");
+    }
+    if !info.authors.is_empty() {
+        println!("by {}", info.authors.join(", "));
+    }
+    println!(
+        "kind: {:?}, language: {}, direction: {:?}",
+        info.kind, info.language, info.direction
+    );
+    println!(
+        "license: {}",
+        info.license
+            .as_deref()
+            .or(info.license_file.as_deref())
+            .unwrap_or("none given")
+    );
+    if let Some(media) = manifest.media.as_ref().filter(|m| !m.files.is_empty()) {
+        let bytes: u64 = media.files.iter().map(|f| f.size).sum();
+        println!(
+            "media: {} files, {:.1} MB, listed by URL and hash",
+            media.files.len(),
+            bytes as f64 / 1e6
+        );
+    }
+    if !info.about_books.is_empty() {
+        println!("about: {}", book_names(&info.about_books));
+    }
+    if !info.categories.is_empty() {
+        println!("categories: {}", info.categories.join(", "));
+    }
+    if !info.keywords.is_empty() {
+        println!("keywords: {}", info.keywords.join(", "));
+    }
+    for (label, link) in [
+        ("homepage", &info.homepage),
+        ("repository", &info.repository),
+        ("documentation", &info.documentation),
+        ("readme", &info.readme),
+    ] {
+        if let Some(link) = link {
+            println!("{label}: {link}");
+        }
+    }
+    if let Some(upstream) = &info.upstream {
+        println!("upstream: {upstream}");
+    }
+    let enabled: Vec<&str> = manifest
+        .formats(package.enabled())
+        .iter()
+        .map(|(n, _)| *n)
+        .collect();
+    let all: Vec<&str> = manifest.formats.keys().map(String::as_str).collect();
+    println!(
+        "formats: {} (enabled: {}; reading {})",
+        all.join(", "),
+        enabled.join(", "),
+        match package.source().format() {
+            Some(format) if format.readable() => format!("{format:?}"),
+            _ => String::from("no verse text"),
+        }
+    );
+    let features: Vec<&str> = package
+        .enabled()
+        .features
+        .iter()
+        .map(String::as_str)
+        .collect();
+    println!(
+        "features: {}",
+        if features.is_empty() {
+            "none".into()
+        } else {
+            features.join(", ")
+        }
+    );
+    for (name, dependency) in &manifest.dependencies {
+        match dependency {
+            Dependency::Version(req) => println!("dependency {name}: {req}"),
+            Dependency::Detailed(d) => println!(
+                "dependency {name}: {}{}",
+                (d.git
+                    .as_deref()
+                    .or(d.registry.as_deref())
+                    .or(d.path.as_deref()))
+                .unwrap_or_default(),
+                d.version
+                    .as_ref()
+                    .map(|v| format!(" ({v})"))
+                    .unwrap_or_default()
+            ),
+        }
+    }
+    let books = package.books();
+    let codes: Vec<&str> = books
+        .iter()
+        .filter_map(|b| bible_data().books().get_usfm(*b).map(String::as_str))
+        .collect();
+    if !books.is_empty() {
+        println!("books: {} ({})", books.len(), codes.join(" "));
+    }
+    println!("checksum: {}", package.checksum()?);
+    // Found once per version, then read from the cache
+    let found = cli.library().book_cache().references(&package)?;
+    if !found.is_empty() {
+        println!("references: {} (in its books)", found.len());
+    }
+    match references {
+        Some((format, true)) => print_references(&found, format)?,
+        Some((format, false)) => print_cited(&logoxide::references::cited(&found), format)?,
+        None => {}
+    }
+    Ok(())
+}
+
+/// The passages cited, with how often, as text, TSV, or JSON
+fn print_cited(cited: &[logoxide::references::Cited], format: &str) -> logoxide::Result<()> {
+    match format {
+        "json" => println!(
+            "{}",
+            serde_json::to_string_pretty(cited)
+                .map_err(|e| logoxide::LogoxideError::Manifest(e.to_string()))?
+        ),
+        "tsv" => {
+            println!("passage\tcount");
+            for c in cited {
+                println!("{}\t{}", c.passage, c.count);
+            }
+        }
+        "text" => {
+            for c in cited {
+                match c.count {
+                    1 => println!("{}", c.passage),
+                    n => println!("{} ({n})", c.passage),
+                }
+            }
+        }
+        other => {
+            return Err(logoxide::LogoxideError::Manifest(format!(
+                "--format {other}: text, tsv, or json"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Every reference, with where it is: as text (its passage, chapter, and paragraph, shortened),
+/// TSV, or JSON
+fn print_references(
+    found: &[logoxide::references::FoundReference],
+    format: &str,
+) -> logoxide::Result<()> {
+    match format {
+        "json" => println!(
+            "{}",
+            serde_json::to_string_pretty(found)
+                .map_err(|e| logoxide::LogoxideError::Manifest(e.to_string()))?
+        ),
+        "tsv" => {
+            println!("passage\tfile\tchapter\tcfi\tstart\tend\tline\tcolumn\tspine\tline_text");
+            let clean = |s: &str| s.replace(['\t', '\n', '\r'], " ");
+            for r in found {
+                println!(
+                    "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    r.passage,
+                    r.file,
+                    clean(r.chapter.as_deref().unwrap_or("")),
+                    r.cfi,
+                    r.start,
+                    r.end,
+                    r.line,
+                    r.column,
+                    r.spine,
+                    clean(&r.line_text)
+                );
+            }
+        }
+        "text" => {
+            for r in found {
+                let text: String = r.line_text.split_whitespace().collect::<Vec<_>>().join(" ");
+                let short: String = text.chars().take(80).collect();
+                let more = if short.len() < text.len() { "…" } else { "" };
+                println!(
+                    "{}  [{}]  {short}{more}",
+                    r.passage,
+                    r.chapter.as_deref().unwrap_or("-")
+                );
+            }
+        }
+        other => {
+            return Err(logoxide::LogoxideError::Manifest(format!(
+                "--format {other}: text, tsv, or json"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// What `lx check --format json` prints
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CheckReport {
+    id: String,
+    version: String,
+    kind: logoxide::manifest::PackageKind,
+    books: usize,
+    verses: usize,
+    /// A versification map's: what it maps from and to, its lines, and the verses it maps
+    #[serde(skip_serializing_if = "Option::is_none")]
+    map: Option<serde_json::Value>,
+    /// Each file's title (none when it has none)
+    titles: Vec<serde_json::Value>,
+    untitled: Vec<String>,
+    /// Problems with the timings, and books whose cached counts differ
+    problems: Vec<String>,
+    ok: bool,
+}
+
+pub(crate) fn check(
+    args: &PackageArgs,
+    cache: Option<PathBuf>,
+    json: bool,
+) -> logoxide::Result<()> {
+    let package = args.open()?;
+    let (id, version) = (
+        package.info().id.clone(),
+        package.info().version.to_string(),
+    );
+    let mut problems = vec![];
+    let package_kind = package.info().kind;
+    let timings = logoxide::media::check_package_timings(&package)?;
+    let titles = logoxide::titles::titles(&package)?;
+    // A map is read whole: its lines parse, name known books, and don't overlap
+    let map = (package_kind == logoxide::manifest::PackageKind::VersificationMap)
+        .then(|| logoxide::versification::VersificationMap::from_package(&package))
+        .transpose()?;
+    let start = Instant::now();
+    let (mut verses, mut books) = (0, 0);
+    match cache {
+        Some(dir) => {
+            let cache = Cache::new(Arc::new(FsStorage::new(dir)));
+            let cached = cache.open(package)?;
+            for id in cached.package().books() {
+                let book = cached.book(id)?;
+                verses += book.spans.len();
+                books += 1;
+                let counts = cached
+                    .manifest()
+                    .books
+                    .iter()
+                    .find(|(b, _)| *b == id)
+                    .map(|(_, c)| c);
+                if counts != Some(&book.chapter_verses()) {
+                    let problem = format!("{}: the cached counts differ from the book's", id.0);
+                    if !json {
+                        println!("{problem}");
+                    }
+                    problems.push(problem);
+                }
+            }
+        }
+        None => {
+            for id in package.books() {
+                verses += package.source().book(id)?.spans.len();
+                books += 1;
+            }
+        }
+    }
+    // Each file's title: a few are listed, many counted
+    let untitled: Vec<&str> = (titles.iter())
+        .filter(|t| t.title.is_none())
+        .map(|t| t.path.as_str())
+        .collect();
+    let no_title = || {
+        logoxide::LogoxideError::Manifest(format!(
+            "no title for {} (give one in logoxide.toml's [titles])",
+            untitled.join(", ")
+        ))
+    };
+    if json {
+        problems.extend(timings.iter().map(|p| format!("timings: {p}")));
+        let ok = problems.is_empty() && untitled.is_empty();
+        print_json(&CheckReport {
+            id,
+            version,
+            kind: package_kind,
+            books,
+            verses,
+            map: map.as_ref().map(|map| {
+                serde_json::json!({
+                    "from": map.from,
+                    "to": map.to,
+                    "lines": map.mappings().len(),
+                    "verses": map.len(),
+                })
+            }),
+            titles: (titles.iter())
+                .map(|t| serde_json::json!({ "path": t.path, "title": t.title }))
+                .collect(),
+            untitled: untitled.iter().map(|p| p.to_string()).collect(),
+            problems,
+            ok,
+        })?;
+        timings_result(&timings)?;
+        return match untitled.is_empty() {
+            true => Ok(()),
+            false => Err(no_title()),
+        };
+    }
+    match (package_kind, map) {
+        (_, Some(map)) => {
+            println!(
+                "a versification map from {} to {}: {} lines, {} verses mapped",
+                map.from,
+                map.to,
+                map.mappings().len(),
+                map.len()
+            )
+        }
+        (logoxide::manifest::PackageKind::Collection, _) => {
+            println!("a collection: no text of its own, only its dependencies")
+        }
+        _ if books == 0 => {
+            println!("no verse text (a {package_kind:?}): its files are kept as they are")
+        }
+        _ => println!(
+            "{books} books, {verses} verses, read in {:.0?}",
+            start.elapsed()
+        ),
+    }
+    let titled: Vec<String> = (titles.iter())
+        .filter_map(|t| Some(format!("{} ({})", t.title.as_deref()?, t.path)))
+        .collect();
+    match titled.len() {
+        0 => {}
+        1..=5 => println!("titles: {}", titled.join(", ")),
+        n => println!("{n} files titled: {} … {}", titled[0], titled[n - 1]),
+    }
+    timings_report(&timings)?;
+    if !untitled.is_empty() {
+        return Err(no_title());
+    }
+    Ok(())
+}
+
+/// Prints a package's timing problems; an error if it has any
+pub(crate) fn timings_report(problems: &[String]) -> logoxide::Result<()> {
+    for problem in problems {
+        println!("timings: {problem}");
+    }
+    timings_result(problems)
+}
+
+/// An error if a package has timing problems
+fn timings_result(problems: &[String]) -> logoxide::Result<()> {
+    match problems.len() {
+        0 => Ok(()),
+        n => Err(logoxide::LogoxideError::Media(format!(
+            "{n} problem{} with the timings",
+            if n == 1 { "" } else { "s" }
+        ))),
+    }
+}
+
+pub(crate) fn new(args: &NewArgs) -> logoxide::Result<()> {
+    use logoxide::{create, manifest::PackageKind};
+    let kind = (args.kind.as_deref())
+        .map(|k| {
+            serde_json::from_value::<PackageKind>(serde_json::Value::String(k.to_string()))
+                .map_err(|_| {
+                    logoxide::LogoxideError::Manifest(format!(
+                        "--kind {k}: bible, commentary, lexicon, cross-references, versification-map, book, or collection"
+                    ))
+                })
+        })
+        .transpose()?;
+    // Like `cargo new <dir>`: the folder names it, unless --id does
+    let from_dir = (args.dir.as_ref())
+        .and_then(|d| d.file_name())
+        .map(|n| create::id_from(&n.to_string_lossy()));
+    let given = create::NewPackage {
+        id: args.id.clone().or(from_dir),
+        name: args.name.clone(),
+        abbreviation: args.abbreviation.clone(),
+        authors: args.authors.clone(),
+        description: args.description.clone(),
+        version: (args.version.as_deref())
+            .map(|v| {
+                v.parse()
+                    .map_err(|e| logoxide::LogoxideError::Manifest(format!("--version {v}: {e}")))
+            })
+            .transpose()?,
+        kind,
+        language: args.language.clone(),
+        license: args.license.clone(),
+        publisher: args.publisher.clone(),
+        homepage: args.homepage.clone(),
+        repository: args.repository.clone(),
+        keywords: args.keywords.clone(),
+        categories: args.categories.clone(),
+        about_books: args.about_books.clone(),
+    };
+    let staged = MemoryStorage::new();
+    let (manifest, rights) = match (&args.from, kind) {
+        (Some(file), _) => {
+            let bytes = std::fs::read(file).map_err(|e| logoxide::LogoxideError::Io {
+                path: file.display().to_string(),
+                message: e.to_string(),
+            })?;
+            let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
+            let name = name.unwrap_or_default();
+            let rights = match create::file_format(&name, &bytes) {
+                Some(("epub", _)) => create::epub_metadata(&bytes)?.rights,
+                _ => None,
+            };
+            (
+                create::new_from_file(&name, &bytes, &given, &staged)?,
+                rights,
+            )
+        }
+        (None, Some(PackageKind::Collection)) => (create::new_collection(&given, &staged)?, None),
+        (None, _) => {
+            return Err(logoxide::LogoxideError::Manifest(String::from(
+                "give the file it's made from (--from), or --kind collection",
+            )));
+        }
+    };
+    let info = manifest
+        .package
+        .as_ref()
+        .ok_or_else(|| logoxide::LogoxideError::Manifest(String::from("no [package]")))?;
+    let dir = args.dir.clone().unwrap_or_else(|| PathBuf::from(&info.id));
+    if dir.exists() && std::fs::read_dir(&dir).map_or(true, |mut d| d.next().is_some()) {
+        return Err(logoxide::LogoxideError::Manifest(format!(
+            "{} already exists",
+            dir.display()
+        )));
+    }
+    let dest = FsStorage::new(&dir);
+    for path in staged.walk("")? {
+        dest.write(&path, &staged.read(&path)?)?;
+    }
+    if !args.no_git {
+        let status = std::process::Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&dir)
+            .status();
+        if !status.is_ok_and(|s| s.success()) {
+            eprintln!("warning: `git init` failed in {}", dir.display());
+        }
+    }
+    println!("created {} ({:?}) in {}", info.id, info.kind, dir.display());
+    print!("{}", staged.read_string(MANIFEST)?);
+    if info.license.is_none() {
+        println!(
+            "no license given: add one with --license (an SPDX expression, CC0-1.0); it's shown, never enforced"
+        );
+    }
+    if let Some(rights) = rights {
+        println!("the file says of its rights: {rights}");
+    }
+    match info.kind {
+        PackageKind::Collection => println!(
+            "next: lx add --project {} <each package's git URL>, then lx release there",
+            dir.display()
+        ),
+        _ => println!(
+            "next: lx release in {} (commits and tags it)",
+            dir.display()
+        ),
+    }
+    Ok(())
+}
+
+fn print_summary(summary: &logoxide::summary::Summary) {
+    match summary.verses {
+        0 => println!("{} {}", summary.id, summary.version),
+        verses => println!(
+            "{} {}: {} books, {verses} verses",
+            summary.id,
+            summary.version,
+            summary.books.len(),
+        ),
+    }
+    let codes: Vec<&str> = summary.books.keys().map(String::as_str).collect();
+    if !codes.is_empty() {
+        println!("books: {}", codes.join(" "));
+    }
+    for (format, size) in &summary.sizes {
+        println!("{format}: {:.1} MB", *size as f64 / 1_000_000.0);
+    }
+    let contents: Vec<String> = summary
+        .contents
+        .iter()
+        .map(|(k, n)| format!("{k} {n}"))
+        .collect();
+    if !contents.is_empty() {
+        println!("contents: {}", contents.join(", "));
+    }
+    if summary.references > 0 {
+        println!("references: {} (in its books)", summary.references);
+    }
+    println!("text checksum: {}", summary.text_checksum);
+}
+
+pub(crate) fn show_remote(
+    cli: &Cli,
+    url: &str,
+    tag: Option<&str>,
+    references: Option<&str>,
+) -> logoxide::Result<()> {
+    use logoxide::git::Fetcher;
+    let library = cli.library();
+    let fetcher = cli.fetcher(&library);
+    let tag = match tag {
+        Some(tag) => tag.to_string(),
+        None => {
+            let tags = fetcher.tags(url)?;
+            let newest = tags
+                .into_iter()
+                .filter_map(|(t, _)| Some((logoxide::resolve::tag_version(&t)?, t)))
+                .max();
+            newest
+                .map(|(_, t)| t)
+                .ok_or_else(|| logoxide::LogoxideError::Resolve(format!("{url} has no releases")))?
+        }
+    };
+    let paths = [
+        MANIFEST,
+        logoxide::summary::SUMMARY,
+        logoxide::summary::VERSES,
+        logoxide::references::REFERENCES,
+    ];
+    let files = MemoryStorage::new();
+    fetcher.fetch_files(
+        url,
+        &logoxide::git::GitRef::Tag(tag.clone()),
+        &paths,
+        &files,
+    )?;
+    let manifest = logoxide::Manifest::parse(&files.read_string(MANIFEST)?)?;
+    let summary = logoxide::summary::Summary::read(&files).map(|(s, _)| s);
+    if let Some(info) = &manifest.package {
+        println!(
+            "{} ({}), {}",
+            info.abbreviation,
+            info.name,
+            info.license.as_deref().unwrap_or("no license given")
+        );
+    }
+    match summary {
+        Ok(summary) => {
+            print_summary(&summary);
+            if let Some(format) = references {
+                print_cited(&summary.cited, format)?;
+            }
+        }
+        Err(_) => println!(
+            "{tag} has no summary (released before `lx release`): install it to see what it holds"
+        ),
+    }
+    Ok(())
+}
+
+pub(crate) fn release(
+    cli: &Cli,
+    path: &std::path::Path,
+    set_version: bool,
+    dry_run: bool,
+) -> logoxide::Result<()> {
+    let library = cli.library();
+    let git = cli.fetcher(&library);
+    let mut plan = logoxide::release::plan(path, &git)?;
+    if let Some((old, d)) = &plan.previous {
+        println!(
+            "since {old}: {} ({:?} change)",
+            logoxide::release::describe(d),
+            d.change()
+        );
+        for v in d.changed.iter().take(10) {
+            println!("  reworded {}", v.reference());
+        }
+        for (from, to) in d.moved.iter().take(10) {
+            println!("  {} is now {}", from.reference(), to.reference());
+        }
+        for v in d.removed.iter().take(10) {
+            println!("  removed {}", v.reference());
+        }
+    }
+    if logoxide::release::check(&plan).is_err()
+        && set_version
+        && let Some(minimum) = plan.minimum.clone()
+    {
+        let manifest_path = path.join(MANIFEST);
+        let text =
+            std::fs::read_to_string(&manifest_path).map_err(|e| logoxide::LogoxideError::Io {
+                path: manifest_path.display().to_string(),
+                message: e.to_string(),
+            })?;
+        let mut doc: toml_edit::DocumentMut = text
+            .parse()
+            .map_err(|e: toml_edit::TomlError| logoxide::LogoxideError::Manifest(e.to_string()))?;
+        doc["package"]["version"] = toml_edit::value(minimum.to_string());
+        if !dry_run {
+            std::fs::write(&manifest_path, doc.to_string()).map_err(|e| {
+                logoxide::LogoxideError::Io {
+                    path: manifest_path.display().to_string(),
+                    message: e.to_string(),
+                }
+            })?;
+        }
+        println!("version set to {minimum}");
+        plan.summary.version = minimum;
+        // The manifest changed: summarize again (its checksum covers logoxide.toml)
+        if !dry_run {
+            plan = logoxide::release::plan(path, &git)?;
+        }
+    }
+    logoxide::release::check(&plan)?;
+    if dry_run {
+        let (_, prefix) = git.package_in(path)?;
+        let tag = logoxide::release::tag_for(&prefix, &plan.summary.version);
+        println!("would release {tag}");
+        return Ok(());
+    }
+    let (tag, commit) = logoxide::release::release(path, &plan, &git)?;
+    println!("released {tag} ({})", &commit[..commit.len().min(12)]);
+    Ok(())
+}
+
+/// What changed between two versions, as `--format json` prints it (`lx diff`, `lx import
+/// --update`)
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DiffReport {
+    /// In words: `3 verses reworded, 1 removed`
+    description: String,
+    /// `patch`, `minor`, or `major`
+    change: String,
+    reworded: Vec<String>,
+    /// Each verse's old reference and its new one
+    moved: Vec<[String; 2]>,
+    removed: Vec<String>,
+    added: Vec<String>,
+    bridged: Vec<String>,
+    /// Files whose title changed: each one's path, old title, and new title
+    retitled: Vec<[String; 3]>,
+    /// For packages without verses: whether their files changed
+    files_changed: bool,
+}
+
+impl DiffReport {
+    pub(crate) fn of(d: &logoxide::summary::Diff) -> DiffReport {
+        let references = |verses: &[logoxide::summary::VerseHash]| -> Vec<String> {
+            verses.iter().map(|v| v.reference()).collect()
+        };
+        DiffReport {
+            description: logoxide::release::describe(d),
+            change: format!("{:?}", d.change()).to_lowercase(),
+            reworded: references(&d.changed),
+            moved: (d.moved.iter())
+                .map(|(from, to)| [from.reference(), to.reference()])
+                .collect(),
+            removed: references(&d.removed),
+            added: references(&d.added),
+            bridged: references(&d.bridged),
+            retitled: (d.retitled.iter())
+                .map(|(path, old, new)| [path.clone(), old.clone(), new.clone()])
+                .collect(),
+            files_changed: d.files_changed,
+        }
+    }
+}
+
+pub(crate) fn diff(
+    cli: &Cli,
+    path: &std::path::Path,
+    from: &str,
+    to: Option<&str>,
+) -> logoxide::Result<()> {
+    let library = cli.library();
+    let git = cli.fetcher(&library);
+    // A package in a folder of its repository: its tags are `<folder>/v…`
+    let (root, prefix) = git.package_in(path)?;
+    let url = root.display().to_string();
+    let tag = |t: &str| match t.starts_with(&prefix) {
+        true => t.to_string(),
+        false => format!("{prefix}{t}"),
+    };
+    let old = logoxide::release::summary_in(&git, &url, &tag(from), &prefix)?;
+    let new = match to {
+        Some(to) => logoxide::release::summary_in(&git, &url, &tag(to), &prefix)?,
+        None => {
+            let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(path));
+            logoxide::summary::summarize(&Package::open(storage, Features::default())?)?
+        }
+    };
+    let d = logoxide::summary::diff_summaries((&old.0, &old.1), (&new.0, &new.1));
+    if cli.format == Format::Json {
+        return print_json(&DiffReport::of(&d));
+    }
+    println!(
+        "{}: a {:?} change",
+        logoxide::release::describe(&d),
+        d.change()
+    );
+    for v in &d.changed {
+        println!("reworded {}", v.reference());
+    }
+    for (from, to) in &d.moved {
+        println!("{} is now {}", from.reference(), to.reference());
+    }
+    for v in &d.removed {
+        println!("removed {}", v.reference());
+    }
+    for v in &d.added {
+        println!("added {}", v.reference());
+    }
+    for v in &d.bridged {
+        println!("bridged differently {}", v.reference());
+    }
+    Ok(())
+}
+
+pub(crate) fn verify(args: &PackageArgs, json: bool) -> logoxide::Result<()> {
+    let package = args.open()?;
+    let (built, verses) = logoxide::summary::summarize(&package)?;
+    let (published, published_verses) =
+        logoxide::summary::Summary::read(package.storage().as_ref()).map_err(|e| {
+            logoxide::LogoxideError::Manifest(format!(
+                "no published summary ({e}): run `lx release`"
+            ))
+        })?;
+    let mut problems = vec![];
+    if built != published {
+        problems.push(String::from("logoxide.summary.toml doesn't match the text"));
+    }
+    if verses != published_verses {
+        let d = logoxide::summary::diff(&published_verses, &verses);
+        problems.push(format!(
+            "logoxide.verses.bin doesn't match the text: {}",
+            logoxide::release::describe(&d)
+        ));
+    }
+    if json {
+        print_json(&serde_json::json!({
+            "id": built.id,
+            "version": built.version.to_string(),
+            "matches": problems.is_empty(),
+            "problems": problems,
+        }))?;
+    }
+    if problems.is_empty() {
+        if json {
+            return Ok(());
+        }
+        println!(
+            "{} {}: the summary matches its text",
+            built.id, built.version
+        );
+        Ok(())
+    } else {
+        Err(logoxide::LogoxideError::Manifest(problems.join("; ")))
+    }
+}
