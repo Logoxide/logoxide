@@ -920,3 +920,185 @@ fn clean_keeps_what_other_projects_locked_until_their_roots_are_pruned() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("bad.toml"));
 }
+
+/// A repository for `lx release` to commit in, with an identity (the test's HOME has none)
+fn repository(dir: &Path) {
+    git(dir, &["init", "-q", "-b", "main"]);
+    git(dir, &["config", "user.name", "t"]);
+    git(dir, &["config", "user.email", "t@t"]);
+    git(dir, &["config", "commit.gpgsign", "false"]);
+    git(dir, &["config", "tag.gpgsign", "false"]);
+}
+
+/// A two-entry Strong's dictionary (`doc/entries.md`): a TEI entry with a headword, and a plain one
+fn dictionary(dir: &Path, version: &str, g25: &str) {
+    std::fs::create_dir_all(dir.join("entries")).unwrap();
+    std::fs::write(
+        dir.join("logoxide.toml"),
+        format!("[package]\nid = \"strongs\"\nname = \"Strong's Greek\"\nabbreviation = \"STR\"\nversion = \"{version}\"\nlanguage = \"grc\"\nlicense = \"CC0-1.0\"\nkind = \"lexicon\"\nkeys = \"strongs-greek\"\n\n[formats]\ndictionary = {{ path = \"entries/\" }}\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("entries/greek.xml"),
+        format!("<entries keys=\"strongs-greek\" markup=\"tei\">\n<entry key=\"G0025\" headword=\"ἀγαπάω\"><entryFree><orth>ἀγαπάω</orth> {g25}</entryFree></entry>\n<entry key=\"G26\">love</entry>\n</entries>\n"),
+    )
+    .unwrap();
+}
+
+/// A two-line cross-reference package
+fn xref(dir: &Path, version: &str, lines: &str) {
+    std::fs::create_dir_all(dir.join("xref")).unwrap();
+    std::fs::write(
+        dir.join("logoxide.toml"),
+        format!("[package]\nid = \"tsk\"\nname = \"Treasury\"\nabbreviation = \"TSK\"\nversion = \"{version}\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\nkind = \"cross-references\"\n\n[formats]\nxref = {{ path = \"xref/\" }}\n"),
+    )
+    .unwrap();
+    std::fs::write(dir.join("xref/gen.tsv"), lines).unwrap();
+}
+
+/// A commentary in OSIS as SWORD imports write it: a note on 3:16 and one on 3:17-18
+fn commentary(dir: &Path) {
+    std::fs::create_dir_all(dir.join("osis")).unwrap();
+    std::fs::write(
+        dir.join("logoxide.toml"),
+        "[package]\nid = \"mhcc\"\nname = \"A Commentary\"\nabbreviation = \"MHCC\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\nkind = \"commentary\"\n\n[formats]\nosis = { path = \"osis/\" }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("osis/John.xml"),
+        r#"<osis><osisText osisIDWork="MHCC"><div type="book" osisID="John"><chapter osisID="John.3" sID="John.3"/><verse osisID="John.3.16" sID="John.3.16" n="16"/>God so loved: the <hi type="italic">world</hi>.<verse eID="John.3.16"/><verse osisID="John.3.17 John.3.18" sID="John.3.17" n="17-18"/>Not to condemn.<verse eID="John.3.17"/><chapter eID="John.3"/></div></osisText></osis>"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_dictionarys_entries_are_shown_released_and_verified() {
+    let world = World::new("dictionary");
+    let dir = world.path("strongs");
+    dictionary(&dir, "1.0.0", "to love");
+    let path = dir.display().to_string();
+    assert!(world.ok(&["check", &path]).contains("2 entries"));
+    assert_eq!(
+        world.json(&["check", &path, "--format", "json"])["entries"],
+        2
+    );
+    // The entry by its key in any form; its headword and text; keys in file order
+    let shown = world.ok(&["show", &path, "--entry", "g0025"]);
+    assert_eq!(shown, "G25 ἀγαπάω\nἀγαπάω to love\n");
+    let entry = world.json(&["--format", "json", "show", &path, "--entry", "G25"]);
+    assert_eq!(entry["key"], "G25");
+    assert_eq!(entry["headword"], "ἀγαπάω");
+    assert_eq!(entry["text"], "ἀγαπάω to love");
+    assert_eq!(world.ok(&["show", &path, "--entry", "G26"]), "G26\nlove\n");
+    assert_eq!(world.ok(&["show", &path, "--keys"]), "G25\nG26\n");
+    assert_eq!(
+        world.ok(&["show", &path, "--keys", "--limit", "1"]),
+        "G25\n"
+    );
+    assert_eq!(
+        world.json(&["--format", "json", "show", &path, "--keys"]),
+        serde_json::json!(["G25", "G26"])
+    );
+    // A key it lacks: an error as text, null as JSON
+    let out = world.lx(&["show", &path, "--entry", "G27"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no entry `G27`"));
+    assert_eq!(
+        world.json(&["--format", "json", "show", &path, "--entry", "G27"]),
+        serde_json::Value::Null
+    );
+    // Released with its entries hashed, and verified; a reworded entry no longer matches
+    repository(&dir);
+    assert!(world.ok(&["release", &path]).contains("released v1.0.0"));
+    assert!(dir.join("logoxide.entries.bin").is_file());
+    assert!(world.ok(&["verify", &path]).contains("matches"));
+    dictionary(&dir, "1.0.0", "to love, cherish");
+    let out = world.lx(&["verify", &path]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("doesn't match"));
+    let d = world.json(&["--format", "json", "diff", "--path", &path, "v1.0.0"]);
+    assert_eq!(d["change"], "minor");
+    assert_eq!(d["description"], "1 entry reworded");
+}
+
+#[test]
+fn cross_references_are_shown_released_and_checked() {
+    let world = World::new("xref");
+    let dir = world.path("tsk");
+    xref(
+        &dir,
+        "1.0.0",
+        "# Genesis\nGen.1.1\tJohn.1.1-John.1.3\t1\nGen.1.2\tHeb.11.3\n",
+    );
+    let path = dir.display().to_string();
+    assert!(world.ok(&["check", &path]).contains("2 entries"));
+    // Lines covering the verse, or any verse of a passage, with their weights
+    assert_eq!(
+        world.ok(&["show", &path, "--xref", "Genesis 1:1"]),
+        "Gen.1.1\tJohn.1.1-John.1.3\t1\n"
+    );
+    assert_eq!(
+        world.json(&["--format", "json", "show", &path, "--xref", "Gen 1:1-2"]),
+        serde_json::json!([
+            { "from": "Gen.1.1", "to": "John.1.1-John.1.3", "weight": 1.0 },
+            { "from": "Gen.1.2", "to": "Heb.11.3", "weight": null }
+        ])
+    );
+    assert!(
+        world
+            .ok(&["show", &path, "--xref", "Genesis 2:1"])
+            .contains("no cross-references")
+    );
+    let out = world.lx(&["show", &path, "--xref", "nowhere 1:1"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(world.ok(&["show", &path, "--keys"]), "Gen.1.1\nGen.1.2\n");
+    repository(&dir);
+    assert!(world.ok(&["release", &path]).contains("released v1.0.0"));
+    assert!(world.ok(&["verify", &path]).contains("matches"));
+    // A bad line is refused, naming the file and line
+    xref(&dir, "1.0.0", "Gen.1.1\tJohn.1.1\nGen.1.2\tNowhere.1.1\n");
+    let out = world.lx(&["check", &path]);
+    assert_eq!(out.status.code(), Some(1));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("xref/gen.tsv:2"), "{said}");
+}
+
+#[test]
+fn a_commentarys_notes_are_shown() {
+    let world = World::new("commentary");
+    let dir = world.path("mhcc");
+    commentary(&dir);
+    let path = dir.display().to_string();
+    assert!(world.ok(&["check", &path]).contains("1 books, 2 notes"));
+    // Each note covering the passage, labeled with its verses
+    assert_eq!(
+        world.ok(&["show", &path, "--notes", "John 3:17"]),
+        "John 3:17-18\nNot to condemn.\n"
+    );
+    assert_eq!(
+        world.ok(&["show", &path, "--notes", "John 3:16-18"]),
+        "John 3:16\nGod so loved: the world.\n\nJohn 3:17-18\nNot to condemn.\n"
+    );
+    let notes = world.json(&["--format", "json", "show", &path, "--notes", "John 3:16"]);
+    assert_eq!(
+        notes,
+        serde_json::json!([{
+            "reference": "John 3:16",
+            "chapter": 3, "verse": 16, "last": 16, "lastChapter": 3, "part": 0,
+            "text": "God so loved: the world."
+        }])
+    );
+    // A book or verse it lacks: nothing
+    assert!(
+        world
+            .ok(&["show", &path, "--notes", "Romans 1:1"])
+            .contains("no notes")
+    );
+    assert_eq!(
+        world.json(&["--format", "json", "show", &path, "--notes", "John 4:1"]),
+        serde_json::json!([])
+    );
+    // Only one lookup at a time
+    let out = world.lx(&["show", &path, "--notes", "John 3:16", "--keys"]);
+    assert_eq!(out.status.code(), Some(2));
+}

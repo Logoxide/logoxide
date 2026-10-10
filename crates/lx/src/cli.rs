@@ -30,7 +30,8 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub(crate) cache_dir: Option<PathBuf>,
     /// How to print: text, or json (list, info, check, diff, verify, search, catalog list,
-    /// import --update, show --references); tsv for show --references
+    /// import --update, show --references, --notes, --entry, --keys, and --xref); tsv for show
+    /// --references
     #[arg(long, global = true, value_enum, default_value_t = Format::Text)]
     pub(crate) format: Format,
 }
@@ -86,7 +87,9 @@ impl Cli {
 #[derive(Subcommand)]
 pub(crate) enum Command {
     /// What a package is: its manifest, the format read, its books, and its checksum; with --git, a
-    /// release's summary, without downloading its text
+    /// release's summary, without downloading its text. For what isn't a Bible, what it says:
+    /// a commentary's notes on a passage (--notes), a dictionary's entry (--entry) or keys
+    /// (--keys), a verse's cross-references (--xref), each as text or `--format json`
     Show {
         #[command(flatten)]
         package: PackageArgs,
@@ -104,6 +107,25 @@ pub(crate) enum Command {
         /// tsv, or json
         #[arg(long, requires = "references", conflicts_with = "git")]
         locations: bool,
+        /// A commentary's notes on a passage (`--notes "John 3:16-18"`), each labeled with the
+        /// verses it covers; a Bible's are its verses
+        #[arg(long, value_name = "REFERENCE", conflicts_with_all = ["git", "references", "entry", "keys", "xref"])]
+        notes: Option<String>,
+        /// A dictionary's entry by key (`--entry G25`; `G0025` and `g25` find it too, a
+        /// headword ignoring case and accents): its key, headword, and text
+        #[arg(long, value_name = "KEY", conflicts_with_all = ["git", "references", "keys", "xref"])]
+        entry: Option<String>,
+        /// A dictionary's keys in its files' order (a cross-reference package's passages), one
+        /// a line
+        #[arg(long, conflicts_with_all = ["git", "references", "xref"])]
+        keys: bool,
+        /// With --keys: how many to list (all by default)
+        #[arg(long, requires = "keys")]
+        limit: Option<usize>,
+        /// A cross-reference package's references for a verse or passage (`--xref "John
+        /// 3:16"`): each line whose passage covers it, with its weight
+        #[arg(long, value_name = "REFERENCE", conflicts_with_all = ["git", "references"])]
+        xref: Option<String>,
     },
     /// Writes the package's summary, checks its version against what changed since the last
     /// release, then commits and tags it

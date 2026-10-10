@@ -172,6 +172,157 @@ pub(crate) fn show(
     Ok(())
 }
 
+/// What `lx show` looks up in a package that isn't a Bible's text
+pub(crate) enum Lookup<'a> {
+    /// A commentary's notes on a passage (`--notes "John 3:16"`)
+    Notes(&'a str),
+    /// A dictionary's entry (`--entry G25`)
+    Entry(&'a str),
+    /// A dictionary's keys, the first so many (`--keys --limit 10`)
+    Keys(Option<usize>),
+    /// A verse's or passage's cross-references (`--xref "John 3:16"`)
+    CrossReferences(&'a str),
+}
+
+/// The plain text of a note's or an entry's tree: everything but metadata (notes in brackets)
+fn entry_text(nodes: &[logoxide_text::markup::Node]) -> String {
+    use logoxide_text::markup::{Filter, Kind, TextOptions, plain_text};
+    let options = TextOptions {
+        filter: Filter::all().drop(Kind::Metadata),
+        ..TextOptions::default()
+    };
+    plain_text(nodes, &options).trim().to_string()
+}
+
+/// A note's verses as a reference: `John 3:16`, `John 3:16-18`, `John 3:36-4:2`, `John 3:20a`
+fn note_reference(book: &str, note: &logoxide_text::Note) -> String {
+    let part = match note.part {
+        0 => String::new(),
+        n => char::from(b'a' + (n - 1).min(25)).to_string(),
+    };
+    let first = format!("{book} {}:{}{part}", note.chapter, note.verse);
+    if note.last_chapter != note.chapter {
+        format!("{first}-{}:{}", note.last_chapter, note.last)
+    } else if note.last != note.verse {
+        format!("{first}-{}", note.last)
+    } else {
+        first
+    }
+}
+
+/// A reference as topos reads it (`John 3:16-18`, `Jn 3`), or an error naming it
+fn parse_reference(reference: &str) -> logoxide::Result<topos_bible::segments::Passage> {
+    bible_data().parse(reference).ok_or_else(|| {
+        logoxide::LogoxideError::Manifest(format!("`{reference}` isn't a Bible reference"))
+    })
+}
+
+/// `lx show --notes`, `--entry`, `--keys`, and `--xref`: what a commentary, a dictionary, or a
+/// cross-reference package says, as text or JSON
+pub(crate) fn lookup(args: &PackageArgs, lookup: Lookup, json: bool) -> logoxide::Result<()> {
+    let package = args.open()?;
+    let source = package.source();
+    match lookup {
+        Lookup::Notes(reference) => {
+            let passage = parse_reference(reference)?;
+            let books = bible_data().books();
+            let name = (books.get_name(passage.book).cloned()).unwrap_or_default();
+            // A book the package lacks has no notes (no error: a commentary may cover a few)
+            let notes = match package.books().contains(&passage.book) {
+                true => source.notes(&passage)?,
+                false => vec![],
+            };
+            if json {
+                let notes: Vec<serde_json::Value> = (notes.iter())
+                    .map(|n| {
+                        serde_json::json!({
+                            "reference": note_reference(&name, n),
+                            "chapter": n.chapter,
+                            "verse": n.verse,
+                            "last": n.last,
+                            "lastChapter": n.last_chapter,
+                            "part": n.part,
+                            "text": entry_text(&n.nodes),
+                        })
+                    })
+                    .collect();
+                return print_json(&notes);
+            }
+            if notes.is_empty() {
+                outln!("no notes on {reference}");
+            }
+            for (i, note) in notes.iter().enumerate() {
+                if i > 0 {
+                    outln!();
+                }
+                outln!("{}", note_reference(&name, note));
+                outln!("{}", entry_text(&note.nodes));
+            }
+        }
+        Lookup::Entry(key) => {
+            let entry = source.entry(key)?;
+            if json {
+                let entry = entry.as_ref().map(|e| {
+                    serde_json::json!({
+                        "key": e.key,
+                        "headword": e.headword,
+                        "text": entry_text(&e.nodes),
+                    })
+                });
+                return print_json(&entry);
+            }
+            let entry = entry.ok_or_else(|| {
+                logoxide::LogoxideError::NotFound(format!(
+                    "{}: no entry `{key}`",
+                    package.info().id
+                ))
+            })?;
+            match &entry.headword {
+                Some(headword) => outln!("{} {headword}", entry.key),
+                None => outln!("{}", entry.key),
+            }
+            outln!("{}", entry_text(&entry.nodes));
+        }
+        Lookup::Keys(limit) => {
+            let mut keys = source.keys();
+            if let Some(limit) = limit {
+                keys.truncate(limit);
+            }
+            if json {
+                return print_json(&keys);
+            }
+            for key in keys {
+                outln!("{key}");
+            }
+        }
+        Lookup::CrossReferences(reference) => {
+            let passage = parse_reference(reference)?;
+            let osis = (passage.to_osis(bible_data().books())).ok_or_else(|| {
+                logoxide::LogoxideError::Manifest(format!(
+                    "`{reference}` can't be written as an OSIS reference"
+                ))
+            })?;
+            let found = source.cross_references(&osis)?;
+            if json {
+                let found: Vec<serde_json::Value> = (found.iter())
+                    .map(|x| serde_json::json!({ "from": x.from, "to": x.to, "weight": x.weight }))
+                    .collect();
+                return print_json(&found);
+            }
+            if found.is_empty() {
+                outln!("no cross-references for {osis}");
+            }
+            for x in found {
+                match x.weight {
+                    Some(weight) => outln!("{}\t{}\t{weight}", x.from, x.to),
+                    None => outln!("{}\t{}", x.from, x.to),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 /// The passages cited, with how often, as text, TSV, or JSON
 fn print_cited(cited: &[logoxide::references::Cited], format: &str) -> logoxide::Result<()> {
     match format {
@@ -458,6 +609,11 @@ pub(crate) fn check(
         _ if books == 0 => {
             outln!("no verse text (a {package_kind:?}): its files are kept as they are")
         }
+        // A commentary's verse spans are its notes, each read
+        (logoxide::manifest::PackageKind::Commentary, _) => outln!(
+            "{books} books, {verses} notes, read in {:.0?}",
+            start.elapsed()
+        ),
         _ => outln!(
             "{books} books, {verses} verses, read in {:.0?}",
             start.elapsed()

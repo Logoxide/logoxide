@@ -490,7 +490,13 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
-  release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
+  release's summary through a partial clone; `--notes "<reference>"` a commentary's notes on a
+  passage, each labeled with its verses (`cmd/package.rs`'s `lookup`, `Source::notes`),
+  `--entry <key>` a dictionary's entry (key, headword, text; a missing one is an error as text,
+  `null` as JSON), `--keys [--limit N]` its keys, `--xref "<reference>"` a cross-reference
+  package's lines covering any verse of it, with weights; text or JSON), `check` (counts a
+  commentary's notes and a dictionary's or cross-reference package's entries, reading each),
+  `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
   reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
@@ -513,7 +519,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   naming where it was redirected); packages through git. The
   project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
   own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
-  import --update, show --references; others refuse it). `lx publish` prints
+  import --update, show --references, --notes, --entry, --keys, and --xref; others refuse it). `lx publish` prints
   `license::assess`'s concerns, and for a package whose rights say it isn't redistributable
   warns loudly and asks (`--yes` answers; required outside a terminal: the owner's D8, still
   never enforced); `lx info` prints the rights. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
