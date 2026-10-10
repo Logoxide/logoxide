@@ -83,45 +83,22 @@ pub fn epub_files(package: &Package) -> Result<Vec<String>> {
 /// each file's in the order they're in it. Empty for a package without EPUBs
 #[cfg(feature = "read")]
 pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
-    use topos_bible::matcher::{BibleMatcher, matches::ComplexFilter};
-    use topos_bible_formats::epub::{CfiOptions, search_epub_reader};
-    let storage = package.storage();
-    let files = epub_files(package)?;
-    if files.is_empty() {
-        return Ok(vec![]);
-    }
-    let data = crate::bible_data();
-    let matcher = BibleMatcher::new(data.clone(), ComplexFilter::default());
-    let mut found = vec![];
-    for file in files {
-        let bytes = storage.read(&file)?;
-        let matches =
-            search_epub_reader(&matcher, std::io::Cursor::new(bytes), CfiOptions::default())
-                .map_err(|e| LogoxideError::Book {
-                    book: file.clone(),
-                    message: e.to_string(),
-                })?;
-        for m in matches {
-            let Some(passage) = m.psg.to_osis(data.books()) else {
-                continue;
-            };
-            let at = m.location;
-            let whole = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
-            found.push(FoundReference {
-                passage,
-                file: file.clone(),
-                cfi: at.cfi,
-                chapter: at.chapter,
-                start: whole(at.text_utf16.start),
-                end: whole(at.text_utf16.end),
-                line: whole(at.line),
-                column: whole(at.utf16_column),
-                spine: whole(at.spine_index),
-                line_text: at.line_text,
-            });
-        }
-    }
-    Ok(found)
+    let files = crate::reader::StorageFiles(package.storage().clone());
+    let found = logoxide_text::citations::find(&files, &epub_files(package)?)?;
+    Ok((found.into_iter())
+        .map(|c| FoundReference {
+            passage: c.passage,
+            file: c.file,
+            cfi: c.cfi,
+            chapter: c.chapter,
+            start: c.start,
+            end: c.end,
+            line: c.line,
+            column: c.column,
+            spine: c.spine,
+            line_text: c.line_text,
+        })
+        .collect())
 }
 
 /// The passages references cite, each once with how many times, in Bible order (then as

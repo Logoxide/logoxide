@@ -57,8 +57,8 @@ fn text(package: &Package, chapter: u8, verse: u8) -> String {
         .iter()
         .find(|s| s.chapter == chapter && s.verse == verse)
         .unwrap();
-    let nodes = logoxide::markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
-    logoxide::markup::plain_text(&nodes, &Default::default())
+    let nodes = logoxide_text::markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
+    logoxide_text::markup::plain_text(&nodes, &Default::default())
         .trim()
         .to_string()
 }

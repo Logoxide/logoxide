@@ -21,7 +21,8 @@ use std::collections::BTreeMap;
 
 use topos_bible::data::{books::BookId, chapter_verses::ChapterVerses, translations::Translations};
 
-use crate::versification::{Mapped, VersificationMap, Versifications};
+#[cfg(feature = "read")]
+use logoxide_text::versification::{Mapped, Versifications};
 
 /// What a Bible (or a versification named alone) numbers verses by: [`Project::numbering`]
 #[derive(Clone, Debug)]
@@ -624,12 +625,13 @@ impl Project {
 
     /// The versification maps in use (any package of the lock in use, so a Bible's own
     /// dependency on a map counts too; see [`Project::in_use`])
+    #[cfg(feature = "read")]
     pub fn versifications(&self, library: &Library) -> Result<Versifications> {
         let mut maps = Versifications::default();
         for locked in self.in_use() {
             let package = library.open(locked, &self.dir)?;
             if package.info().kind == PackageKind::VersificationMap {
-                maps.add(VersificationMap::from_package(&package)?);
+                maps.add(crate::reader::versification_map(&package)?);
             }
         }
         Ok(maps)
@@ -641,6 +643,7 @@ impl Project {
     verse counts; any other name is a versification's (`English`). A Bible numbered its own
     way (`versification = "own"`) is an error: it says nothing a map can use
     */
+    #[cfg(feature = "read")]
     pub fn numbering(
         &self,
         library: &Library,
@@ -679,6 +682,7 @@ impl Project {
 
     /// Where a reference numbered by one Bible or versification is in another's numbering
     /// (see [`Project::numbering`]), through the project's maps
+    #[cfg(feature = "read")]
     pub fn map_reference(
         &self,
         library: &Library,
@@ -687,18 +691,18 @@ impl Project {
         from: &str,
         to: &str,
     ) -> Result<Mapped> {
-        let passage = crate::versification::parse_reference(reference)?;
+        let passage = logoxide_text::versification::parse_reference(reference)?;
         let (from, to) = (
             self.numbering(library, reader, from)?,
             self.numbering(library, reader, to)?,
         );
         let counts = from.counts.get(&passage.book);
-        (self.versifications(library)?).map(
+        Ok((self.versifications(library)?).map(
             &passage,
             &from.versification,
             &to.versification,
             counts,
-        )
+        )?)
     }
 
     /**

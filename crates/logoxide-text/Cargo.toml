@@ -1,0 +1,28 @@
+[package]
+name = "logoxide-text"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "What's in a Bible or a book: verses from USX, USFM, OSIS, and ThML, verse hashes, titles, versification maps, timings, and an EPUB's citations"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bible", "usx", "usfm", "osis", "versification"]
+categories = ["text-processing", "parser-implementations"]
+
+[dependencies]
+topos-bible.workspace = true
+# Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
+topos-bible-formats.workspace = true
+logoxide-markup.workspace = true
+serde.workspace = true
+sha2 = "0.10"
+thiserror = "2"
+usfm3 = "0.2"
+# Reading an EPUB (a .zip) for its metadata and its references
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Reading an EPUB's package document
+quick-xml = "0.42"
+# Normalizing a verse's words before hashing them
+unicode-normalization = "0.1"

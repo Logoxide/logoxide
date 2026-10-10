@@ -8,9 +8,9 @@ use topos_bible::data::books::BookId;
 
 use super::{Book, Skipped, Source, book_files};
 use crate::{
-    error::{LogoxideError, Result},
-    manifest::Format,
-    storage::Storage,
+    error::{Result, TextError},
+    files::Files as Storage,
+    source::TextFormat,
 };
 
 /// A folder of USX files, one book each, as Paratext, the Digital Bible Library, eBible.org, and
@@ -37,8 +37,8 @@ impl UsxSource {
 }
 
 impl Source for UsxSource {
-    fn format(&self) -> Option<Format> {
-        Some(Format::Usx)
+    fn format(&self) -> Option<TextFormat> {
+        Some(TextFormat::Usx)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {
@@ -53,7 +53,7 @@ impl Source for UsxSource {
         let path = self
             .files
             .get(&id)
-            .ok_or_else(|| LogoxideError::NotFound(format!("book {}", id.0)))?;
+            .ok_or_else(|| TextError::NotFound(format!("book {}", id.0)))?;
         let text = self.storage.read_string(path)?;
         let nodes = parse(Markup::Usx, &text);
         let spans = verses(&nodes);
@@ -64,7 +64,7 @@ impl Source for UsxSource {
         let path = self
             .files
             .get(&id)
-            .ok_or_else(|| LogoxideError::NotFound(format!("book {}", id.0)))?;
+            .ok_or_else(|| TextError::NotFound(format!("book {}", id.0)))?;
         Ok(usx_chapter_verses(&self.storage.read_string(path)?))
     }
 }

@@ -125,6 +125,18 @@ Check: topos's and sword-modules' own checks; `cargo test` here; `NO_PANIC_ROUND
 
 ## Phase C: `logoxide-text`
 
+**Done (2026-10-11)**, with one change to C5: the trait's implementation (`DefaultReader`)
+stayed in `logoxide` as a feature-gated adapter (`reader::with_text`, under `read`, which now
+means `dep:logoxide-text` and `dep:sword-modules`) rather than three copies beside lx, the FFI,
+and the LSP. The arrow that matters still points one way (logoxide-text never depends on
+logoxide), the package manager alone still builds with `--no-default-features`, and the adapter
+is one module that can move later if the owner prefers. Moved as the table says, except:
+`books.rs` stays in the core (the text crate hashes by topos `BookId`, the adapter numbers);
+the parsed-book cache stays in `cache.rs` under `read` (C6 deferred); `check_package_timings`
+and `[media] versification`'s counts (sword-modules) stay in the core under `read` until phase
+D; the LSP's `Bible::passage` and `search` aren't moved yet (E.3). `TextFormat` is the text
+crate's own enum of the four readable formats; `Format::text_format` maps to it.
+
 After A and B. The `read` feature's modules leave `logoxide` for the new crate, and the trait's
 implementation moves beside each binary.
 

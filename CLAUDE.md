@@ -16,10 +16,15 @@ before changing the design.
     the untitled files, cited passages, the mapping count, and `Skipped`; `timing_problems`) is
     taken by `summary::summarize`, `release::plan`/`summary_in`, `Cache::open`,
     `Project::translations`/`numbering`/`map_reference`, and `import::compare_import`. `NoReader`
-    reads nothing (tests, hosts that only install); `DefaultReader` (`read`) reads through
-    `source/`, and will move beside the binaries (lx, the FFI, the LSP) with the parsers in
-    phase C. `Skipped`, `SkipReason`, and `PERIPHERALS` live here (`source` re-exports them).
-    `Package::text_format` says which format is read as verses without a parser
+    reads nothing (tests, hosts that only install); `DefaultReader` (`read`) is the adapter onto
+    `crates/logoxide-text` (the owner's C5, taken as a feature-gated adapter in the core rather
+    than three copies beside lx, the FFI, and the LSP; logoxide-text never depends on logoxide):
+    `StorageFiles` makes a `Storage` the `Files` logoxide-text reads, `From<TextError>` maps its
+    errors, `versification_map(package)` reads a map package's `.vrs` files, and the text crate's
+    `Skipped` and `VerseRecord` (topos `BookId`) become the core's `Skipped` and `VerseHash`
+    (`books.rs` numbers, which stay the summary format's). `Package::text_format` says which
+    format is read as verses without a parser; `Package::source()` (`read`) is logoxide-text's
+    `Source`
   - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
     `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`, machine-wide (flags and env win over
     library/cache; a project's catalogs come first and its registry names win). lx reads it once
@@ -92,24 +97,10 @@ before changing the design.
     (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
     used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
     `lx import --update` (`apply_import`)
-  - `source/`: one `Source` per format, each giving logoxide-markup's tree (`Book`: nodes and
-    verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
-    between adjacent `\w` words; both gave the KJV's 31,102 verses). OSIS and ThML Bibles
-    through logoxide-markup (`whole.rs`: a file can hold every book; it's scanned for the
-    books its verse markers name, cut into books, and its last parse kept). ThML's empty
-    `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers. Preference: USX,
-    USFM, OSIS, ThML. `Source::skipped` says what was passed over (`Skipped`, `SkipReason`):
-    peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know (JUB until it
-    does) and files naming no book warned of (the owner's D4); a book in two files is an error
-    naming both. `lx check` (and its JSON's `skipped`), `lx release`, and `lx import` print them;
-    the FFI has `LogoxidePackage.skipped()`. Esther's lettered chapters (`Esth.A.1`, CCEL's
-    `|Esth|A|1|`) aren't in the format (the owner's D6; the simpler choice, skipping, was taken:
-    no import makes them): OSIS and ThML markers naming one are passed over with what follows
-    them (`whole::without_lettered`) and warned of (`SkipReason::LetteredChapter`)
-  - `package.rs`: opening a package picks the best readable format its enabled features turn on;
-    a package that isn't a Bible (a book, a collection) may have none and opens with
-    `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but
-    `.git`
+  - `package.rs`: opening a package picks the best readable format its enabled features turn on
+    (`Format::text_format`, opened by logoxide-text's `source::open` under `read`); a package
+    that isn't a Bible (a book, a collection) may have none and opens with `NoText` (no books,
+    so no verses in its summary). `checksum()` hashes every file but `.git`
   - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard; the
     counts and references also per logoxide version) per `<id>/<version>-<checksum>-<format>`
     (a package read as USX and then USFM shares nothing); each book file starts with a line
@@ -281,10 +272,11 @@ before changing the design.
     `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
     verses) change: a minor change. The passages a book cites go in `logoxide.references.bin`
     (the summary counts its references)
-  - `references.rs`: the Bible references in a package's EPUBs, found by topos-formats
-    (`search_epub_reader`, pure Rust, so WebAssembly too). `find` reads the books: each
-    reference's OSIS passage, file, CFI, chapter, UTF-16 range, line, column, spine item, and
-    paragraph (about 0.1 s a book natively, 0.25 s in WebAssembly). Only `cited` is published
+  - `references.rs`: the Bible references in a package's EPUBs, found by logoxide-text's
+    `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly too). `find`
+    (`read`) reads the books: each reference's OSIS passage, file, CFI, chapter, UTF-16 range,
+    line, column, spine item, and paragraph (about 0.1 s a book natively, 0.25 s in
+    WebAssembly). Only `cited` is published
     (`LXR1`: deflate over postcard of each passage and its count, in Bible order; 2.6 KB for 937
     references; inflated to at most `MAX_REFERENCES_BYTES`): locations are only of use with the
     book, which gives them again
@@ -296,9 +288,10 @@ before changing the design.
     releases before summaries), check the version, write, commit, tag `v{version}`. A package in
     a folder of its repository (`GitCli::package_in`) has its own tags, `<folder>/v{version}`,
     and its commits take only its folder (nothing new: the current commit is tagged)
-  - `titles.rs`: each file's title (a Bible book's or an EPUB's): `[titles]` in the manifest,
-    else the file's (`\toc2`, `\h`, `\toc1`; `dc:title`), else the book's English name (a file of
-    many books: the package's name). Summaries list them (`titles`); a changed title is a minor
+  - `titles.rs` (`read`): each file's title (a Bible book's or an EPUB's): `[titles]` in the
+    manifest, else the file's own as logoxide-text's `titles` reads it (`\toc2`, `\h`, `\toc1`;
+    `dc:title`), else the book's English name (a file of many books: the package's name).
+    Summaries list them (`titles`); a changed title is a minor
     change (`Diff::retitled`, the owner's choice); `lx check` and `lx release` refuse an untitled file. Hosts name
     what they show by it (`BookFile.title`, `LogoxidePackage.titles()`)
   - `text.rs`: `printable` drops control characters (but `\n`, `\t`), whole ANSI/OSC escape
@@ -310,11 +303,12 @@ before changing the design.
     published version never changes), `yank` (`yanked = true`: `CatalogEntry::release`
     passes over it; locks still install it). `CatalogSource::Registry { catalog }` and
     `CatalogEntry::releases`/`release(req)`; `relative_url`
-  - `versification.rs`: versification maps (`kind = "versification-map"`: `[package]
-    versification` to `maps-to`, a `vrs` format of Paratext `.vrs` mapping lines, so `eng.vrs`
-    reads as it is; verse 0 is a psalm's title). Unnamed verses keep their number unless another
+  - Versification maps (`kind = "versification-map"`: `[package] versification` to `maps-to`, a
+    `vrs` format of Paratext `.vrs` mapping lines, so `eng.vrs` reads as it is; verse 0 is a
+    psalm's title) are read by logoxide-text's `versification` (`reader::versification_map`
+    gathers a package's `.vrs` files). Unnamed verses keep their number unless another
     took it (then no counterpart); `Versifications::route` follows maps both ways and through
-    each other (names ignore case); `Project::numbering` turns a Bible's name into its
+    each other (names ignore case); `Project::numbering` (`read`) turns a Bible's name into its
     versification and counts, `Project::map_reference` maps. Partial verses (`ESG 1:1a`) map as
     whole verses, the part kept in `VerseRange` (`first_part`, `last_part`, its `Display`), and
     lines naming parts overlap nothing; excluded lines (`-PSA 9:21`, `excluded()`) map to `None`
@@ -329,6 +323,34 @@ before changing the design.
     package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs).
     The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) loads whole (2424
     verses; its `S3Y = DAG` lines map), with two lines past its counts warned of
+- `crates/logoxide-text`: what's in a Bible or a book, knowing no packages (PLAN-CRATES.md phase
+  C, October 2026; logoxide's `source/`, `versification.rs`, and the parsing halves of `summary`,
+  `titles`, `media`, `references`, `create`, and `language` until then). Files come through its
+  read-only `Files` (`MemoryFiles`; the core's `reader::StorageFiles` wraps a `Storage`); errors
+  are `TextError`. `source/`: one `Source` per `TextFormat` (`source::open`), each giving
+  logoxide-markup's tree (`Book`: nodes and verse spans). USX, and USFM through `usfm3` (chosen
+  over usfm-onion, whose USX drops the space between adjacent `\w` words; both gave the KJV's
+  31,102 verses). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
+  book; it's scanned for the books its verse markers name, cut into books, and its last parse
+  kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers.
+  Preference: USX, USFM, OSIS, ThML. `Source::skipped` says what was passed over (`Skipped`,
+  `SkipReason`): peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know
+  (JUB until it does) and files naming no book warned of (the owner's D4); a book in two files is
+  an error naming both. `lx check` (and its JSON's `skipped`), `lx release`, and `lx import`
+  print them; the FFI has `LogoxidePackage.skipped()`. Esther's lettered chapters (`Esth.A.1`,
+  CCEL's `|Esth|A|1|`) aren't in the format (the owner's D6; the simpler choice, skipping, was
+  taken: no import makes them): OSIS and ThML markers naming one are passed over with what
+  follows them (`whole::without_lettered`) and warned of (`SkipReason::LetteredChapter`).
+  `hash`: `HashRule` (rule 1, the owner's D3: `plain_text` with `Filter::text()`, NFC,
+  U+200B/FEFF/00AD/2060 dropped, ZWJ/ZWNJ kept, Unicode whitespace collapsed; a rule never
+  changes: `tests/verse_hash.rs` pins it on USFM, USX, and OSIS, so a markup upgrade that breaks
+  it means rule 2), `book_hashes` (`VerseRecord`s by topos `BookId`; the core numbers them),
+  `count_elements`. `titles`: a file's own title (`own_title`, `book_file_titles`,
+  `epub_title`). `versification`: `.vrs` maps and routing (below, under the core's bullet).
+  `timings`: WebVTT cues by verse (`parse_timings`, `check_timings`, `book_verses`).
+  `citations::find`: an EPUB's references through topos-formats. `metadata`: an EPUB's
+  `FileMetadata` (`epub_metadata`, `opf_metadata`, `elements`); `archive::unzip` (limits);
+  `script::dominant_script`. Its `bible_data()` is topos's with the deuterocanon, as the core's
 - `crates/logoxide-markup`: Bible markup (OSIS, ThML, GBF, TEI, USX, plain text) parsed into one
   tolerant tree (`Node`, `Element`, `Kind`), `Filter`, `Flattener`/`plain_text`, verses found in a
   book (`verses::verses`, `slice`, `passage_ranges`), references the markup tags, and HTML

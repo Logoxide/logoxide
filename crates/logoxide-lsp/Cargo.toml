@@ -17,6 +17,7 @@ path = "src/main.rs"
 
 [dependencies]
 logoxide.workspace = true
+logoxide-text.workspace = true
 ignore = "0.4.23"
 lsp-server = "0.10.0"
 lsp-types = "0.97.0"
