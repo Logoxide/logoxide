@@ -131,6 +131,49 @@ pub fn folder_tag_version(tag: &str, folder: Option<&str>) -> Option<semver::Ver
     tag_version(own)
 }
 
+/**
+Tags that look like releases of the package in `folder` (or at the top) but aren't semver
+(`v1.0`, `2.1`), so no requirement ever matches them: worth saying, since a publisher may think
+they're releases
+*/
+pub fn not_semver_tags<'t>(
+    tags: impl IntoIterator<Item = &'t str>,
+    folder: Option<&str>,
+) -> Vec<&'t str> {
+    let folder = folder
+        .map(|f| f.trim_matches('/'))
+        .filter(|f| !f.is_empty());
+    (tags.into_iter())
+        .filter(|tag| {
+            let own = match folder {
+                Some(folder) => tag.strip_prefix(folder).and_then(|t| t.strip_prefix('/')),
+                None => Some(*tag),
+            };
+            own.filter(|own| !own.contains('/'))
+                .map(|own| own.strip_prefix('v').unwrap_or(own))
+                .is_some_and(|own| own.starts_with(|c: char| c.is_ascii_digit()))
+                && folder_tag_version(tag, folder).is_none()
+        })
+        .collect()
+}
+
+/// What [`not_semver_tags`] finds, said after a message (` (v1.0 names no version: …)`), or
+/// nothing
+pub fn not_semver_note<'t>(
+    tags: impl IntoIterator<Item = &'t str>,
+    folder: Option<&str>,
+) -> String {
+    let odd = not_semver_tags(tags, folder);
+    match odd.len() {
+        0 => String::new(),
+        n => format!(
+            " ({} {} no version: releases are tagged with three numbers, v1.0.0)",
+            odd.join(", "),
+            if n == 1 { "names" } else { "name" }
+        ),
+    }
+}
+
 /// Whether a locked package came from another machine (not a path, a local repository, or a
 /// file): what it names may come only from other machines too
 fn is_remote(locked: &LockedPackage) -> bool {
@@ -511,10 +554,19 @@ impl Resolver<'_> {
             .max_by(|a, b| a.0.cmp(&b.0));
         match (newest, &d.version) {
             (Some((_, tag)), _) => Ok((GitRef::Tag(tag.clone()), Some(tag.clone()))),
-            (None, Some(req)) => Err(LogoxideError::Resolve(match &d.folder {
-                Some(folder) => format!("`{name}`: no tag of {url} for {folder}/ matches {req}"),
-                None => format!("`{name}`: no tag of {url} matches {req}"),
-            })),
+            (None, Some(req)) => {
+                let mut message = match &d.folder {
+                    Some(folder) => {
+                        format!("`{name}`: no tag of {url} for {folder}/ matches {req}")
+                    }
+                    None => format!("`{name}`: no tag of {url} matches {req}"),
+                };
+                message.push_str(&not_semver_note(
+                    tags.iter().map(|(t, _)| t.as_str()),
+                    d.folder.as_deref(),
+                ));
+                Err(LogoxideError::Resolve(message))
+            }
             (None, None) => Ok((GitRef::Head, None)),
         }
     }
@@ -820,5 +872,20 @@ mod tests {
         assert_eq!(relative_join("", "Bibles/Mine"), "Bibles/Mine");
         assert_eq!(relative_join("Bibles/Mine", "../Lexicon"), "Bibles/Lexicon");
         assert_eq!(relative_join("Bibles/Mine", "/srv/Lexicon"), "/srv/Lexicon");
+    }
+
+    #[test]
+    fn tags_that_look_like_releases() {
+        let tags = [
+            "v1.0",
+            "2.1",
+            "v1.0.0",
+            "release",
+            "v2",
+            "books/v1.0",
+            "books/v1.0.0",
+        ];
+        assert_eq!(not_semver_tags(tags, None), ["v1.0", "2.1", "v2"]);
+        assert_eq!(not_semver_tags(tags, Some("books")), ["books/v1.0"]);
     }
 }

@@ -107,8 +107,25 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
                     })
                     .filter(|v| v.pre.is_empty())
                     .max();
-                if let Some(newest) = newest {
-                    dependency.version = Some(version_req(&newest.to_string())?);
+                let odd = logoxide::resolve::not_semver_note(
+                    tags.iter().map(|(t, _)| t.as_str()),
+                    args.folder.as_deref(),
+                );
+                match newest {
+                    Some(newest) => {
+                        dependency.version = Some(version_req(&newest.to_string())?);
+                        if !odd.is_empty() {
+                            eprintln!("warning: {url}: some tags aren't releases{odd}");
+                        }
+                    }
+                    // Without a release, what would be locked is whatever its default branch
+                    // holds now: say so by asking for the branch, or a commit
+                    None => {
+                        return Err(logoxide::LogoxideError::Resolve(format!(
+                            "{url} has no releases (tags like v1.0.0){odd}: give --branch or --rev \
+                             to follow a branch or keep a commit, or --tag"
+                        )));
+                    }
                 }
             }
             info.into()

@@ -236,7 +236,8 @@ before changing the design.
   versification> --to …` (`--with <map package>` adds one not in the project). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash lx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
-  installs and locks what it adds, and `lx add` and `lx remove` write the manifest only once that
+  installs and locks what it adds (a repository without release tags needs `--branch`, `--rev`, or
+  `--tag`; tags like `v1.0` that aren't semver are warned of: `resolve::not_semver_tags`), and `lx add` and `lx remove` write the manifest only once that
   succeeds. Catalogs and
   imports come over HTTPS with ureq (`net.rs`: one agent, timeouts, `lx/<version>` user agent,
   the environment's proxy, three tries; media hashed as it's read); packages through git. The

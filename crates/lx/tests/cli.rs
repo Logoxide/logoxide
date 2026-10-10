@@ -411,6 +411,35 @@ fn a_gone_commit_and_a_moved_tag_are_said() {
 }
 
 #[test]
+fn tags_that_are_not_releases() {
+    let world = World::new("tags");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    package(&repo, "tb", "1.0.0");
+    tagged(&repo, "v1.0");
+    let url = repo.display().to_string();
+    // No release: refused, naming the tag that isn't one
+    let out = world.lx(&["add", "--git", &url]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("has no releases"), "{error}");
+    assert!(error.contains("v1.0 names no version"), "{error}");
+    assert!(error.contains("--branch or --rev"), "{error}");
+    // Following a branch is asked for by name
+    let added = world.ok(&["add", "--git", &url, "--branch", "main"]);
+    assert!(added.contains("added tb 1.0.0"), "{added}");
+
+    // A release beside one that isn't: added, and the other warned of
+    world.ok(&["remove", "tb"]);
+    git(&repo, &["tag", "v1.0.0"]);
+    let out = world.lx(&["add", "--git", &url]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(warned.contains("warning:"), "{warned}");
+    assert!(warned.contains("v1.0 names no version"), "{warned}");
+}
+
+#[test]
 fn locked_and_offline_installs() {
     let world = World::new("frozen");
     world.ok(&["init"]);
