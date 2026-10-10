@@ -70,7 +70,7 @@ impl Cli {
         // Keys this lx doesn't know (a newer one's) are passed over, like Cargo's
         let keys = logoxide::manifest::Manifest::unknown_keys(&project.manifest_text())?;
         for key in keys {
-            eprintln!("warning: {MANIFEST}: unknown key `{key}`");
+            errln!("warning: {MANIFEST}: unknown key `{key}`");
         }
         Ok(project)
     }

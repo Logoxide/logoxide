@@ -321,6 +321,8 @@ pub const CATALOG_FORMAT: u32 = 1;
 pub struct Catalog {
     pub name: String,
     pub entries: Vec<CatalogEntry>,
+    /// What reading it passed over, and why (an entry whose id isn't one), for a warning
+    pub warnings: Vec<String>,
 }
 
 impl Catalog {
@@ -380,6 +382,7 @@ impl Catalog {
         Ok(Catalog {
             name: format!("SWORD: {short}"),
             entries,
+            warnings: vec![],
         })
     }
 
@@ -495,6 +498,7 @@ impl Catalog {
         Ok(Catalog {
             name: String::from("fetch.bible"),
             entries,
+            warnings: vec![],
         })
     }
 
@@ -568,6 +572,7 @@ impl Catalog {
         Ok(Catalog {
             name: String::from("CCEL"),
             entries,
+            warnings: vec![],
         })
     }
 
@@ -598,8 +603,15 @@ impl Catalog {
             ))),
             false => Ok(()),
         };
-        let mut entries = vec![];
+        let (mut entries, mut warnings) = (vec![], vec![]);
         for e in catalog.packages {
+            // An id names a folder in the library and a lock entry: one that isn't is passed
+            // over, not the whole catalog
+            if let Err(LogoxideError::Manifest(why)) = crate::manifest::check_id("package", &e.id) {
+                let at = location.map(|l| format!("{l}: ")).unwrap_or_default();
+                warnings.push(format!("{at}passed over {why}"));
+                continue;
+            }
             if let Some(git) = &e.git {
                 check(&e.id, git)?;
             }
@@ -660,6 +672,7 @@ impl Catalog {
         Ok(Catalog {
             name: catalog.name.unwrap_or_default(),
             entries,
+            warnings,
         })
     }
 
@@ -768,6 +781,7 @@ impl Catalog {
         Ok(Catalog {
             name: String::from("eBible.org"),
             entries,
+            warnings: vec![],
         })
     }
 
@@ -841,6 +855,7 @@ impl Catalog {
         Catalog {
             name: name.to_string(),
             entries,
+            warnings: vec![],
         }
     }
 
@@ -895,13 +910,15 @@ impl Catalog {
             .collect()
     }
 
-    /// This catalog with another's entries after its own (an id listed twice keeps the first)
+    /// This catalog with another's entries (and warnings) after its own (an id listed twice
+    /// keeps the first)
     pub fn merge(mut self, other: Catalog) -> Catalog {
         for entry in other.entries {
             if !self.entries.iter().any(|e| e.id == entry.id) {
                 self.entries.push(entry);
             }
         }
+        self.warnings.extend(other.warnings);
         self
     }
 
@@ -1767,6 +1784,28 @@ usx = { path = "usx/" }
         let written = Catalog::toml_document(Some("mine"), vec![]);
         assert!(written.starts_with("format = 1\n"), "{written}");
         assert!(Catalog::parse_toml(&written).is_ok());
+    }
+
+    #[test]
+    fn entries_whose_ids_arent_are_passed_over() {
+        let entry = |id: &str| {
+            ENTRY.replace("\"kjv\"", &format!("\"{id}\"")) + "git = \"https://example.com/x\"\n"
+        };
+        let text: String = ["kjv", "../../etc", "KJV", "", "bsb"].map(entry).concat();
+        let catalog =
+            Catalog::parse_toml_at(Some("https://example.com/catalog.toml"), &text).unwrap();
+        let ids: Vec<&str> = catalog.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["kjv", "bsb"]);
+        assert_eq!(catalog.warnings.len(), 3, "{:?}", catalog.warnings);
+        assert!(
+            catalog.warnings[0].starts_with("https://example.com/catalog.toml: passed over")
+                && catalog.warnings[0].contains("`../../etc`"),
+            "{:?}",
+            catalog.warnings
+        );
+        // Merging keeps every catalog's warnings
+        let merged = Catalog::default().merge(catalog);
+        assert_eq!(merged.warnings.len(), 3);
     }
 
     #[test]

@@ -21,21 +21,26 @@ pub(crate) fn show(
     let package = args.open()?;
     let info = package.info();
     let manifest = package.manifest();
-    println!(
+    outln!(
         "{} {} ({}), {}",
-        info.id, info.version, info.abbreviation, info.name
+        info.id,
+        info.version,
+        info.abbreviation,
+        info.name
     );
     if let Some(description) = &info.description {
-        println!("{description}");
+        outln!("{description}");
     }
     if !info.authors.is_empty() {
-        println!("by {}", info.authors.join(", "));
+        outln!("by {}", info.authors.join(", "));
     }
-    println!(
+    outln!(
         "kind: {:?}, language: {}, direction: {:?}",
-        info.kind, info.language, info.direction
+        info.kind,
+        info.language,
+        info.direction
     );
-    println!(
+    outln!(
         "license: {}",
         info.license
             .as_deref()
@@ -44,20 +49,20 @@ pub(crate) fn show(
     );
     if let Some(media) = manifest.media.as_ref().filter(|m| !m.files.is_empty()) {
         let bytes: u64 = media.files.iter().map(|f| f.size).sum();
-        println!(
+        outln!(
             "media: {} files, {:.1} MB, listed by URL and hash",
             media.files.len(),
             bytes as f64 / 1e6
         );
     }
     if !info.about_books.is_empty() {
-        println!("about: {}", book_names(&info.about_books));
+        outln!("about: {}", book_names(&info.about_books));
     }
     if !info.categories.is_empty() {
-        println!("categories: {}", info.categories.join(", "));
+        outln!("categories: {}", info.categories.join(", "));
     }
     if !info.keywords.is_empty() {
-        println!("keywords: {}", info.keywords.join(", "));
+        outln!("keywords: {}", info.keywords.join(", "));
     }
     for (label, link) in [
         ("homepage", &info.homepage),
@@ -66,11 +71,11 @@ pub(crate) fn show(
         ("readme", &info.readme),
     ] {
         if let Some(link) = link {
-            println!("{label}: {link}");
+            outln!("{label}: {link}");
         }
     }
     if let Some(upstream) = &info.upstream {
-        println!("upstream: {upstream}");
+        outln!("upstream: {upstream}");
     }
     let enabled: Vec<&str> = manifest
         .formats(package.enabled())
@@ -78,7 +83,7 @@ pub(crate) fn show(
         .map(|(n, _)| *n)
         .collect();
     let all: Vec<&str> = manifest.formats.keys().map(String::as_str).collect();
-    println!(
+    outln!(
         "formats: {} (enabled: {}; reading {})",
         all.join(", "),
         enabled.join(", "),
@@ -93,7 +98,7 @@ pub(crate) fn show(
         .iter()
         .map(String::as_str)
         .collect();
-    println!(
+    outln!(
         "features: {}",
         if features.is_empty() {
             "none".into()
@@ -103,8 +108,8 @@ pub(crate) fn show(
     );
     for (name, dependency) in &manifest.dependencies {
         match dependency {
-            Dependency::Version(req) => println!("dependency {name}: {req}"),
-            Dependency::Detailed(d) => println!(
+            Dependency::Version(req) => outln!("dependency {name}: {req}"),
+            Dependency::Detailed(d) => outln!(
                 "dependency {name}: {}{}",
                 (d.git
                     .as_deref()
@@ -124,13 +129,13 @@ pub(crate) fn show(
         .filter_map(|b| bible_data().books().get_usfm(*b).map(String::as_str))
         .collect();
     if !books.is_empty() {
-        println!("books: {} ({})", books.len(), codes.join(" "));
+        outln!("books: {} ({})", books.len(), codes.join(" "));
     }
-    println!("checksum: {}", package.checksum()?);
+    outln!("checksum: {}", package.checksum()?);
     // Found once per version, then read from the cache
     let found = cli.library().book_cache().references(&package)?;
     if !found.is_empty() {
-        println!("references: {} (in its books)", found.len());
+        outln!("references: {} (in its books)", found.len());
     }
     match references {
         Some((format, true)) => print_references(&found, format)?,
@@ -149,16 +154,16 @@ fn print_cited(cited: &[logoxide::references::Cited], format: &str) -> logoxide:
                 .map_err(|e| logoxide::LogoxideError::Manifest(e.to_string()))?
         ),
         "tsv" => {
-            println!("passage\tcount");
+            outln!("passage\tcount");
             for c in cited {
-                println!("{}\t{}", c.passage, c.count);
+                outln!("{}\t{}", c.passage, c.count);
             }
         }
         "text" => {
             for c in cited {
                 match c.count {
-                    1 => println!("{}", c.passage),
-                    n => println!("{} ({n})", c.passage),
+                    1 => outln!("{}", c.passage),
+                    n => outln!("{} ({n})", c.passage),
                 }
             }
         }
@@ -184,10 +189,10 @@ fn print_references(
                 .map_err(|e| logoxide::LogoxideError::Manifest(e.to_string()))?
         ),
         "tsv" => {
-            println!("passage\tfile\tchapter\tcfi\tstart\tend\tline\tcolumn\tspine\tline_text");
+            outln!("passage\tfile\tchapter\tcfi\tstart\tend\tline\tcolumn\tspine\tline_text");
             let clean = |s: &str| s.replace(['\t', '\n', '\r'], " ");
             for r in found {
-                println!(
+                outln!(
                     "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
                     r.passage,
                     r.file,
@@ -207,7 +212,7 @@ fn print_references(
                 let text: String = r.line_text.split_whitespace().collect::<Vec<_>>().join(" ");
                 let short: String = text.chars().take(80).collect();
                 let more = if short.len() < text.len() { "…" } else { "" };
-                println!(
+                outln!(
                     "{}  [{}]  {short}{more}",
                     r.passage,
                     r.chapter.as_deref().unwrap_or("-")
@@ -280,7 +285,7 @@ pub(crate) fn check(
                 if counts != Some(&book.chapter_verses()) {
                     let problem = format!("{}: the cached counts differ from the book's", id.0);
                     if !json {
-                        println!("{problem}");
+                        outln!("{problem}");
                     }
                     problems.push(problem);
                 }
@@ -336,7 +341,7 @@ pub(crate) fn check(
     }
     match (package_kind, map) {
         (_, Some(map)) => {
-            println!(
+            outln!(
                 "a versification map from {} to {}: {} lines, {} verses mapped",
                 map.from,
                 map.to,
@@ -345,12 +350,12 @@ pub(crate) fn check(
             )
         }
         (logoxide::manifest::PackageKind::Collection, _) => {
-            println!("a collection: no text of its own, only its dependencies")
+            outln!("a collection: no text of its own, only its dependencies")
         }
         _ if books == 0 => {
-            println!("no verse text (a {package_kind:?}): its files are kept as they are")
+            outln!("no verse text (a {package_kind:?}): its files are kept as they are")
         }
-        _ => println!(
+        _ => outln!(
             "{books} books, {verses} verses, read in {:.0?}",
             start.elapsed()
         ),
@@ -360,8 +365,8 @@ pub(crate) fn check(
         .collect();
     match titled.len() {
         0 => {}
-        1..=5 => println!("titles: {}", titled.join(", ")),
-        n => println!("{n} files titled: {} … {}", titled[0], titled[n - 1]),
+        1..=5 => outln!("titles: {}", titled.join(", ")),
+        n => outln!("{n} files titled: {} … {}", titled[0], titled[n - 1]),
     }
     timings_report(&timings)?;
     if !untitled.is_empty() {
@@ -373,7 +378,7 @@ pub(crate) fn check(
 /// Prints a package's timing problems; an error if it has any
 pub(crate) fn timings_report(problems: &[String]) -> logoxide::Result<()> {
     for problem in problems {
-        println!("timings: {problem}");
+        outln!("timings: {problem}");
     }
     timings_result(problems)
 }
@@ -473,25 +478,25 @@ pub(crate) fn new(args: &NewArgs) -> logoxide::Result<()> {
             .current_dir(&dir)
             .status();
         if !status.is_ok_and(|s| s.success()) {
-            eprintln!("warning: `git init` failed in {}", dir.display());
+            errln!("warning: `git init` failed in {}", dir.display());
         }
     }
-    println!("created {} ({:?}) in {}", info.id, info.kind, dir.display());
-    print!("{}", staged.read_string(MANIFEST)?);
+    outln!("created {} ({:?}) in {}", info.id, info.kind, dir.display());
+    out!("{}", staged.read_string(MANIFEST)?);
     if info.license.is_none() {
-        println!(
+        outln!(
             "no license given: add one with --license (an SPDX expression, CC0-1.0); it's shown, never enforced"
         );
     }
     if let Some(rights) = rights {
-        println!("the file says of its rights: {rights}");
+        outln!("the file says of its rights: {rights}");
     }
     match info.kind {
-        PackageKind::Collection => println!(
+        PackageKind::Collection => outln!(
             "next: lx add --project {} <each package's git URL>, then lx release there",
             dir.display()
         ),
-        _ => println!(
+        _ => outln!(
             "next: lx release in {} (commits and tags it)",
             dir.display()
         ),
@@ -501,8 +506,8 @@ pub(crate) fn new(args: &NewArgs) -> logoxide::Result<()> {
 
 fn print_summary(summary: &logoxide::summary::Summary) {
     match summary.verses {
-        0 => println!("{} {}", summary.id, summary.version),
-        verses => println!(
+        0 => outln!("{} {}", summary.id, summary.version),
+        verses => outln!(
             "{} {}: {} books, {verses} verses",
             summary.id,
             summary.version,
@@ -511,10 +516,10 @@ fn print_summary(summary: &logoxide::summary::Summary) {
     }
     let codes: Vec<&str> = summary.books.keys().map(String::as_str).collect();
     if !codes.is_empty() {
-        println!("books: {}", codes.join(" "));
+        outln!("books: {}", codes.join(" "));
     }
     for (format, size) in &summary.sizes {
-        println!("{format}: {:.1} MB", *size as f64 / 1_000_000.0);
+        outln!("{format}: {:.1} MB", *size as f64 / 1_000_000.0);
     }
     let contents: Vec<String> = summary
         .contents
@@ -522,12 +527,12 @@ fn print_summary(summary: &logoxide::summary::Summary) {
         .map(|(k, n)| format!("{k} {n}"))
         .collect();
     if !contents.is_empty() {
-        println!("contents: {}", contents.join(", "));
+        outln!("contents: {}", contents.join(", "));
     }
     if summary.references > 0 {
-        println!("references: {} (in its books)", summary.references);
+        outln!("references: {} (in its books)", summary.references);
     }
-    println!("text checksum: {}", summary.text_checksum);
+    outln!("text checksum: {}", summary.text_checksum);
 }
 
 pub(crate) fn show_remote(
@@ -568,7 +573,7 @@ pub(crate) fn show_remote(
     let manifest = logoxide::Manifest::parse(&files.read_string(MANIFEST)?)?;
     let summary = logoxide::summary::Summary::read(&files).map(|(s, _)| s);
     if let Some(info) = &manifest.package {
-        println!(
+        outln!(
             "{} ({}), {}",
             info.abbreviation,
             info.name,
@@ -582,7 +587,7 @@ pub(crate) fn show_remote(
                 print_cited(&summary.cited, format)?;
             }
         }
-        Err(_) => println!(
+        Err(_) => outln!(
             "{tag} has no summary (released before `lx release`): install it to see what it holds"
         ),
     }
@@ -599,19 +604,19 @@ pub(crate) fn release(
     let git = cli.fetcher(&library);
     let mut plan = logoxide::release::plan(path, &git)?;
     if let Some((old, d)) = &plan.previous {
-        println!(
+        outln!(
             "since {old}: {} ({:?} change)",
             logoxide::release::describe(d),
             d.change()
         );
         for v in d.changed.iter().take(10) {
-            println!("  reworded {}", v.reference());
+            outln!("  reworded {}", v.reference());
         }
         for (from, to) in d.moved.iter().take(10) {
-            println!("  {} is now {}", from.reference(), to.reference());
+            outln!("  {} is now {}", from.reference(), to.reference());
         }
         for v in d.removed.iter().take(10) {
-            println!("  removed {}", v.reference());
+            outln!("  removed {}", v.reference());
         }
     }
     if logoxide::release::check(&plan).is_err()
@@ -636,7 +641,7 @@ pub(crate) fn release(
                 }
             })?;
         }
-        println!("version set to {minimum}");
+        outln!("version set to {minimum}");
         plan.summary.version = minimum;
         // The manifest changed: summarize again (its checksum covers logoxide.toml)
         if !dry_run {
@@ -647,11 +652,11 @@ pub(crate) fn release(
     if dry_run {
         let (_, prefix) = git.package_in(path)?;
         let tag = logoxide::release::tag_for(&prefix, &plan.summary.version);
-        println!("would release {tag}");
+        outln!("would release {tag}");
         return Ok(());
     }
     let (tag, commit) = logoxide::release::release(path, &plan, &git)?;
-    println!("released {tag} ({})", &commit[..commit.len().min(12)]);
+    outln!("released {tag} ({})", &commit[..commit.len().min(12)]);
     Ok(())
 }
 
@@ -726,25 +731,25 @@ pub(crate) fn diff(
     if cli.format == Format::Json {
         return print_json(&DiffReport::of(&d));
     }
-    println!(
+    outln!(
         "{}: a {:?} change",
         logoxide::release::describe(&d),
         d.change()
     );
     for v in &d.changed {
-        println!("reworded {}", v.reference());
+        outln!("reworded {}", v.reference());
     }
     for (from, to) in &d.moved {
-        println!("{} is now {}", from.reference(), to.reference());
+        outln!("{} is now {}", from.reference(), to.reference());
     }
     for v in &d.removed {
-        println!("removed {}", v.reference());
+        outln!("removed {}", v.reference());
     }
     for v in &d.added {
-        println!("added {}", v.reference());
+        outln!("added {}", v.reference());
     }
     for v in &d.bridged {
-        println!("bridged differently {}", v.reference());
+        outln!("bridged differently {}", v.reference());
     }
     Ok(())
 }
@@ -781,9 +786,10 @@ pub(crate) fn verify(args: &PackageArgs, json: bool) -> logoxide::Result<()> {
         if json {
             return Ok(());
         }
-        println!(
+        outln!(
             "{} {}: the summary matches its text",
-            built.id, built.version
+            built.id,
+            built.version
         );
         Ok(())
     } else {

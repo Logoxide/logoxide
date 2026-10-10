@@ -5,6 +5,24 @@ use std::process::ExitCode;
 use clap::{CommandFactory, Parser};
 use logoxide::{bible_data, manifest::MANIFEST, resolve::Update};
 
+/// `println!` with what isn't safe for a terminal taken out ([`logoxide::text::printable`]): what
+/// lx prints holds catalogs', manifests', and git's text, which could hold escape sequences
+macro_rules! outln {
+    () => { println!() };
+    ($($arg:tt)*) => { println!("{}", logoxide::text::printable(&format!($($arg)*))) };
+}
+
+/// `print!` through [`logoxide::text::printable`], as [`outln`]
+macro_rules! out {
+    ($($arg:tt)*) => { print!("{}", logoxide::text::printable(&format!($($arg)*))) };
+}
+
+/// `eprintln!` through [`logoxide::text::printable`], as [`outln`]
+macro_rules! errln {
+    () => { eprintln!() };
+    ($($arg:tt)*) => { eprintln!("{}", logoxide::text::printable(&format!($($arg)*))) };
+}
+
 mod cli;
 mod cmd;
 mod complete;
@@ -55,12 +73,12 @@ fn main() -> ExitCode {
             let _ = CONFIG.set(loaded);
         }
         Err(e) => {
-            eprintln!("lx: {e}");
+            errln!("lx: {e}");
             return ExitCode::FAILURE;
         }
     }
     if let Err(error) = check_format(&cli) {
-        eprintln!("lx: {error}");
+        errln!("lx: {error}");
         return ExitCode::FAILURE;
     }
     let json = cli.format == Format::Json;
@@ -91,7 +109,7 @@ fn main() -> ExitCode {
         Command::Check { package, cache } => check(package, cache.clone(), json),
         Command::New(args) => new(args),
         Command::Init { dir } => logoxide::Project::init(dir)
-            .map(|p| println!("created {}", p.dir().join(MANIFEST).display())),
+            .map(|p| outln!("created {}", p.dir().join(MANIFEST).display())),
         Command::Add(args) => add(&cli, args),
         Command::Remove { id } => remove(&cli, id),
         Command::Disable { name } => set_enabled(&cli, name, false),
@@ -119,7 +137,7 @@ fn main() -> ExitCode {
                 Ok(true) => ExitCode::SUCCESS,
                 Ok(false) => ExitCode::FAILURE,
                 Err(error) => {
-                    eprintln!("lx: {error}");
+                    errln!("lx: {error}");
                     ExitCode::from(2)
                 }
             };
@@ -210,7 +228,7 @@ fn main() -> ExitCode {
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("lx: {error}");
+            errln!("lx: {error}");
             ExitCode::FAILURE
         }
     }

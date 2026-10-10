@@ -267,3 +267,62 @@ fn formats_are_only_where_a_command_has_them() {
             .is_some_and(|c| !c.is_empty())
     );
 }
+
+#[test]
+fn catalog_text_is_printed_without_escapes() {
+    let world = World::new("escapes");
+    world.ok(&["init"]);
+    let catalog = world.path("catalog.toml");
+    std::fs::write(
+        &catalog,
+        "[[package]]\nid = \"kjv\"\nname = \"King James\\u001b]0;owned\\u0007 \\u001b[2JVersion\\u202e\"\nabbreviation = \"KJV\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\\r\\u001b[1A\"\ngit = \"https://example.com/kjv\"\n",
+    )
+    .unwrap();
+    let out = world.ok(&["search", "kjv", "--catalog", catalog.to_str().unwrap()]);
+    assert!(out.contains("KJV (kjv): King James Version, "), "{out}");
+    assert!(
+        !out.contains(['\u{1b}', '\u{7}', '\r', '\u{202e}']),
+        "{out:?}"
+    );
+}
+
+#[test]
+fn catalog_ids_are_checked_and_shadowing_is_said() {
+    let world = World::new("ids");
+    world.ok(&["init"]);
+    // An entry whose id isn't one is passed over, with a warning; the rest are read
+    let catalog = world.path("catalog.toml");
+    std::fs::write(
+        &catalog,
+        "[[package]]\nid = \"../kjv\"\nname = \"Bad\"\nabbreviation = \"BAD\"\nlanguage = \"en\"\ngit = \"https://example.com/bad\"\n\n[[package]]\nid = \"kjv\"\nname = \"King James Version\"\nabbreviation = \"KJV\"\nlanguage = \"en\"\ngit = \"https://example.com/kjv\"\n",
+    )
+    .unwrap();
+    let out = world.lx(&["search", "--catalog", catalog.to_str().unwrap()]);
+    let (stdout, stderr) = (
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        stdout.contains("KJV (kjv)") && !stdout.contains("BAD"),
+        "{stdout}"
+    );
+    assert!(
+        stderr.contains("warning: ") && stderr.contains("passed over package `../kjv`"),
+        "{stderr}"
+    );
+    // Two registries list `tb`: adding one's says so
+    released(&world.path("a/tb"), "tb", "1.0.0");
+    released(&world.path("b/tb"), "tb", "1.0.0");
+    for name in ["a", "b"] {
+        let folder = world.path(name).display().to_string();
+        world.ok(&["catalog", "add", &folder, "--name", name]);
+    }
+    let out = world.lx(&["add", "b:tb"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("warning: `tb` is in b, a; b's is used"),
+        "{stderr}"
+    );
+}

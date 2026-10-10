@@ -30,11 +30,11 @@ pub(crate) fn map(
     let counts = from.counts.get(&passage.book);
     let mapped = maps.map(&passage, &from.versification, &to.versification, counts)?;
     match mapped.verses.is_empty() {
-        true => println!("(no counterpart in {})", to.versification),
-        false => println!("{} ({})", mapped.text(), to.versification),
+        true => outln!("(no counterpart in {})", to.versification),
+        false => outln!("{} ({})", mapped.text(), to.versification),
     }
     if !mapped.missing.is_empty() {
-        println!(
+        outln!(
             "not in {}: {} ({})",
             to.versification,
             mapped.missing_text(),

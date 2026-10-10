@@ -10,7 +10,7 @@ use logoxide::{
 
 use crate::{
     cli::{AddArgs, Cli, Format},
-    cmd::catalog::{load_registry, registry_url},
+    cmd::catalog::{load_registry, registry_url, warn_other_registries},
     config, print_json,
 };
 
@@ -186,7 +186,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
     let fetcher = cli.fetcher(&library);
     let lock = project.install(&library, &fetcher, Update::Only([name.clone()].into()))?;
     let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
-    println!(
+    outln!(
         "added {locked} to {}: installed, and locked in {}",
         project.dir().join(MANIFEST).display(),
         logoxide::lock::LOCKFILE
@@ -235,6 +235,7 @@ fn archive_entry(
     })?;
     match &entry.source {
         logoxide::catalog::CatalogSource::Registry { catalog } => {
+            warn_other_registries(project, &loaded, &location, &entry.id);
             Ok(Some((catalog.clone(), entry.clone())))
         }
         _ if catalog.is_some() => Err(logoxide::LogoxideError::Catalog(format!(
@@ -254,7 +255,7 @@ pub(crate) fn remove(cli: &Cli, id: &str) -> logoxide::Result<()> {
     }
     project.save_manifest()?;
     project.install(&library, &cli.fetcher(&library), Update::Nothing)?;
-    println!("removed {id}");
+    outln!("removed {id}");
     Ok(())
 }
 
@@ -270,11 +271,11 @@ pub(crate) fn set_enabled(cli: &Cli, name: &str, enabled: bool) -> logoxide::Res
     // Nothing to install or lock: it stays as it is either way
     project.save_manifest()?;
     match (was, enabled) {
-        (true, true) => println!("{name} is already on"),
-        (false, false) => println!("{name} is already off"),
-        (_, true) => println!("turned {name} on"),
+        (true, true) => outln!("{name} is already on"),
+        (false, false) => outln!("{name} is already off"),
+        (_, true) => outln!("turned {name} on"),
         (_, false) => {
-            println!("turned {name} off (still installed: `lx enable {name}` turns it on)")
+            outln!("turned {name} off (still installed: `lx enable {name}` turns it on)")
         }
     }
     Ok(())
@@ -295,9 +296,9 @@ pub(crate) fn repair(cli: &Cli) -> logoxide::Result<()> {
         .collect();
     let lock = project.repair(&library, &cli.fetcher(&library))?;
     for label in &changed {
-        println!("repaired {label}");
+        outln!("repaired {label}");
     }
-    println!(
+    outln!(
         "{} packages, {} repaired, locked in {}",
         lock.packages.len(),
         changed.len(),
@@ -320,9 +321,9 @@ pub(crate) fn install(cli: &Cli, update: Update) -> logoxide::Result<()> {
         } else {
             " (new)"
         };
-        println!("{}{note}", package.label());
+        outln!("{}{note}", package.label());
     }
-    println!(
+    outln!(
         "{} packages, locked in {}",
         lock.packages.len(),
         project.dir().join(logoxide::lock::LOCKFILE).display()
@@ -340,7 +341,7 @@ pub(crate) fn is_enabled(cli: &Cli, name: &str) -> logoxide::Result<bool> {
         )));
     }
     let enabled = project.is_enabled(name);
-    println!("{}", if enabled { "on" } else { "off" });
+    outln!("{}", if enabled { "on" } else { "off" });
     Ok(enabled)
 }
 
@@ -377,8 +378,8 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
     let json = cli.format == Format::Json;
     let Some(lock) = project.lock() else {
         match json {
-            true => println!("[]"),
-            false => println!("nothing installed yet: `lx add --git URL`, then `lx install`"),
+            true => outln!("[]"),
+            false => outln!("nothing installed yet: `lx add --git URL`, then `lx install`"),
         }
         return Ok(());
     };
@@ -458,7 +459,7 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
                 info.license.as_deref().unwrap_or("no license given")
             )
         });
-        println!(
+        outln!(
             "{}  {}  {}{root}{off}{installed}",
             locked.label(),
             about.unwrap_or_default(),
@@ -561,11 +562,11 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
             format: cached.manifest().source_format.to_string(),
         });
     }
-    println!("{} ({}), {}", locked.label(), abbreviation, i.name);
+    outln!("{} ({}), {}", locked.label(), abbreviation, i.name);
     if !aliases.is_empty() {
-        println!("aliases: {}", aliases.join(", "));
+        outln!("aliases: {}", aliases.join(", "));
     }
-    println!(
+    outln!(
         "kind: {:?}, language: {}, license: {}",
         i.kind,
         i.language,
@@ -578,24 +579,24 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
         (_, Some(path)) => format!("path {path}"),
         _ => String::from("?"),
     };
-    println!("from: {from}");
-    println!(
+    outln!("from: {from}");
+    outln!(
         "in: {} ({} files, {:.1} MB)",
         dir.display(),
         files.len(),
         size as f64 / 1e6
     );
     match &locked.checksum {
-        Some(expected) if *expected == checksum => println!("checksum: {checksum} (as locked)"),
-        Some(expected) => println!(
+        Some(expected) if *expected == checksum => outln!("checksum: {checksum} (as locked)"),
+        Some(expected) => outln!(
             "checksum: {checksum} (CHANGED: locked as {expected}; lx install --repair puts its files back)"
         ),
-        None => println!("checksum: {checksum}"),
+        None => outln!("checksum: {checksum}"),
     }
     if !others.is_empty() {
-        println!("not the package's (kept): {}", others.join(", "));
+        outln!("not the package's (kept): {}", others.join(", "));
     }
-    println!(
+    outln!(
         "{} books, {verses} verses ({})",
         books.len(),
         cached.manifest().source_format
@@ -619,7 +620,7 @@ pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Resu
         .filter(|v| !used.contains(v))
         .collect();
     if unused.is_empty() {
-        println!("every installed version is used");
+        outln!("every installed version is used");
         return Ok(());
     }
     for (id, key) in &unused {
@@ -628,7 +629,7 @@ pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Resu
         // stays, and says why
         let others = logoxide::package::other_files(&FsStorage::new(&dir))?;
         if !others.is_empty() {
-            println!(
+            outln!(
                 "kept {id} {key}: {} file{} not the package's ({})",
                 others.len(),
                 if others.len() == 1 { " is" } else { "s are" },
@@ -653,13 +654,13 @@ pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Resu
             let _ = std::fs::remove_dir_all(cache.join(format!("{version}-{short}")));
             // The id's folder too, once it has no versions (remove_dir only removes empty ones)
             let _ = std::fs::remove_dir(library.root().join("packages").join(id));
-            println!("removed {id} {key}");
+            outln!("removed {id} {key}");
         } else {
-            println!("unused: {id} {key} ({})", dir.display());
+            outln!("unused: {id} {key} ({})", dir.display());
         }
     }
     if !remove {
-        println!(
+        outln!(
             "{} unused (other vaults may use them: --keep <their folder>); lx clean --remove deletes them",
             unused.len()
         );

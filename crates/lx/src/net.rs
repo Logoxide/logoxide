@@ -67,7 +67,7 @@ fn with_retries<T>(
     read: impl Fn(ureq::http::Response<ureq::Body>) -> Result<T, ureq::Error>,
 ) -> logoxide::Result<T> {
     if !QUIET.load(Ordering::Relaxed) {
-        eprintln!("Downloading {url}");
+        errln!("Downloading {url}");
     }
     let (mut attempt, warned) = (1, std::cell::Cell::new(false));
     loop {
@@ -76,8 +76,8 @@ fn with_retries<T>(
             let at = response.get_uri().to_string();
             if !warned.replace(true) && (is_insecure(url) || is_insecure(&at)) {
                 match at == url {
-                    true => eprintln!("warning: {url} is plain HTTP: what it sends can't be checked"),
-                    false => eprintln!(
+                    true => errln!("warning: {url} is plain HTTP: what it sends can't be checked"),
+                    false => errln!(
                         "warning: {url} (redirected to {at}) is plain HTTP: what it sends can't be checked"
                     ),
                 }
@@ -187,7 +187,7 @@ fn warn_insecure(url: &str) {
     }
     let warned = WARNED.get_or_init(Default::default);
     if warned.lock().is_ok_and(|mut w| w.insert(url.to_string())) {
-        eprintln!("warning: {url} isn't encrypted: what it sends could be changed on the way");
+        errln!("warning: {url} isn't encrypted: what it sends could be changed on the way");
     }
 }
 

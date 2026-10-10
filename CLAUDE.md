@@ -40,7 +40,10 @@ before changing the design.
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
     `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
-    unique temporary file
+    unique temporary file; `FsStorage::no_symlinks()` never goes through a link under its root
+    (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
+    used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
+    `lx import --update` (`apply_import`)
   - `source/`: one `Source` per format, each giving topos-bible-markup's tree (`Book`: nodes and
     verse spans). USX, and USFM through `usfm3` (chosen over usfm-onion, whose USX drops the space
     between adjacent `\w` words; both gave the KJV's 31,102 verses). OSIS and ThML Bibles
@@ -81,8 +84,10 @@ before changing the design.
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
-    and GitHub's own archives). Unpacking (and `import::unzip`) stops at `MAX_UNPACKED_BYTES`,
-    `MAX_ENTRY_BYTES`, and `MAX_ENTRIES`; `Refs::find_commit` takes a revision of at least
+    and GitHub's own archives). Unpacking (and `import::unzip`) stops at `MAX_UNPACKED_BYTES`
+    (1 GiB), `MAX_ENTRY_BYTES`, and `MAX_ENTRIES`; `unpack` reads the archive twice, first its
+    names and declared sizes (the top folder, the limits, before anything is written), then
+    writing each file to storage as it's read; `Refs::find_commit` takes a revision of at least
     `MIN_REV_PREFIX` hex digits naming one commit
   - `catalog.rs`: catalogs to search (`Catalog::parse` by extension: a `catalog.toml` of git
     packages, eBible.org's `translations.csv` (its downloadable, redistributable rows), or
@@ -107,8 +112,11 @@ before changing the design.
     `dorean-local:<id>` or `dorean-local:<path in the folder>` names a package (`Catalog::find`,
     `split_registry_name`); a shared id needs the path. A `catalog.toml` may say `format = 1`
     (`CATALOG_FORMAT`; a higher one asks for a newer lx); a remote catalog can't list a local
-    path or `file://` URL; `Catalog::shadowed` gives ids more than one catalog lists (lx search
-    warns). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
+    path or `file://` URL; an entry whose id isn't one (`check_id`) is passed over, said in
+    `Catalog::warnings` (lx prints them as it loads a catalog; `LogoxideCatalog.warnings()`);
+    `Catalog::shadowed` gives ids more than one catalog lists (lx search and lx import warn,
+    `warn_shadowed`; lx add through a registry warns when another registry lists the id,
+    `warn_other_registries`). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
     `newest_release`, read with `git show`)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
     `logoxide.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
@@ -197,6 +205,9 @@ before changing the design.
     many books: the package's name). Summaries list them (`titles`); a changed title is a major
     change (`Diff::retitled`); `lx check` and `lx release` refuse an untitled file. Hosts name
     what they show by it (`BookFile.title`, `LogoxidePackage.titles()`)
+  - `text.rs`: `printable` drops control characters (but `\n`, `\t`), whole ANSI/OSC escape
+    sequences (7-bit and C1), and bidi controls (U+202A–202E, U+2066–2069) from text bound for a
+    terminal
   - `publish.rs`: release archives for registries: `pack` (declared files, sorted, no times or
     owners, so the same files make the same bytes), `sha256`, `add_release` (a catalog.toml's
     `[[package.release]]`: version, url relative to the catalog, optional `mirrors`, sha256, checksum, size; a
@@ -251,7 +262,9 @@ before changing the design.
   import --update, show --references; others refuse it). `lx publish` warns of a license that
   isn't free or the public domain. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
   `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
-  folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly
+  folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
+  Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
+  through `text::printable`), so catalogs', manifests', and git's text can't drive the terminal
 - `crates/logoxide-ffi`: BoltFFI 0.31 bindings (npm and PyPI `logoxide`), re-exporting topos-ffi
   (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
   package. Its library is `logoxide` (BoltFFI names artifacts after the package), so it depends on

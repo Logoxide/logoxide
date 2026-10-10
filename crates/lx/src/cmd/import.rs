@@ -11,7 +11,7 @@ use logoxide::{
 use crate::{
     cli::{Cli, Format},
     cmd::{
-        catalog::{load_catalog, load_catalogs},
+        catalog::{load_catalog, load_catalogs, warn_shadowed},
         package::DiffReport,
     },
     config,
@@ -44,13 +44,15 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     {
         catalogs.push(load_catalog(&url, project.dir())?);
     }
-    let entry = (catalogs.iter())
-        .find_map(|c| c.find_import(source))
+    let (used, entry) = (catalogs.iter())
+        .find_map(|c| Some((c, c.find_import(source)?)))
         .ok_or_else(|| {
             logoxide::LogoxideError::Import(format!(
                 "{source}: in none of this project's catalogs (lx catalog list)"
             ))
         })?;
+    // Another catalog listing this id would have its own package under the same name
+    warn_shadowed(&catalogs, &entry.id, &used.name);
     let relative = format!("imports/{}", entry.id);
     let dir = project.dir().join(&relative);
     if dir.exists() {
@@ -100,7 +102,7 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
         };
         return Err(error);
     }
-    println!(
+    outln!(
         "imported {} ({}) into {}",
         entry.id,
         entry.name,
@@ -162,7 +164,7 @@ pub(crate) fn import_update(
     let (mut reports, mut failed) = (vec![], vec![]);
     for (dep, path) in paths {
         let dir = project.dir().join(&path);
-        let current: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir));
+        let current: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir).no_symlinks());
         let Ok(package) = Package::open(current.clone(), Features::default()) else {
             continue;
         };
@@ -178,7 +180,7 @@ pub(crate) fn import_update(
         {
             match load_catalog(&format!("{root}/mods.d.tar.gz"), project.dir()) {
                 Ok(catalog) => catalogs.push(catalog),
-                Err(e) => eprintln!("warning: {dep}: {e}"),
+                Err(e) => errln!("warning: {dep}: {e}"),
             }
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
@@ -219,7 +221,7 @@ pub(crate) fn import_update(
             }
             Ok(()) => {}
             Err(error) => {
-                eprintln!("lx: {dep}: {error}");
+                errln!("lx: {dep}: {error}");
                 report.status = "failed";
                 report.error = Some(error.to_string());
                 failed.push(dep);
@@ -235,7 +237,7 @@ pub(crate) fn import_update(
         )));
     }
     if found == 0 && !json {
-        println!("this project has no imports");
+        outln!("this project has no imports");
     }
     // Those replaced are locked again, whatever else failed
     let locked = match changed.is_empty() {
@@ -307,7 +309,7 @@ fn update_import(
     );
     let say = |text: String| {
         if !json {
-            println!("{text}");
+            outln!("{text}");
         }
     };
     if logoxide::import::import_is_current(entry, version) {
@@ -366,7 +368,7 @@ fn update_import(
             return Ok(());
         }
     }
-    apply_import(&FsStorage::new(dir), fresh.as_ref())?;
+    apply_import(&FsStorage::new(dir).no_symlinks(), fresh.as_ref())?;
     report.status = "updated";
     Ok(())
 }

@@ -77,10 +77,24 @@ sources. To keep a fetched manifest from reaching into the machine it is install
   didn't make: a package being released, a registry's folder), and SSH never asks for a
   passphrase or to trust a host (`BatchMode`), unless you set `GIT_SSH_COMMAND` or
   `core.sshCommand` yourself
+- links in your own folders aren't followed where lx writes over or publishes what's there:
+  `lx import --update` won't write or remove a file through a link, and `lx release` and
+  `lx publish` pass links over, so a link can't put a file from elsewhere on the machine into a
+  published package
 
 What a package can still do is name other public repositories and catalogs, which are then
 trusted on first use like your own dependencies. `lx` never runs anything a package contains:
 packages are text, read by parsers.
+
+## What lx prints
+
+Names, descriptions, licenses, titles, and other text from catalogs and manifests, and what `git`
+says when it fails, are printed with control characters (but newlines and tabs), terminal escape
+sequences (colors, cursor movement, window titles, links), and bidirectional controls (U+202A to
+U+202E, U+2066 to U+2069) taken out, so a catalog can't rewrite the terminal or make text read
+in another order than it's shown. JSON output (`--format json`) is left as it is: JSON escapes
+control characters itself. Other implementations that show such text in a terminal should do the
+same (`logoxide::text::printable`).
 
 ## Caches and summaries
 

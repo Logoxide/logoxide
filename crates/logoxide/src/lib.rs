@@ -83,6 +83,7 @@ pub mod resolve;
 pub mod source;
 pub mod storage;
 pub mod summary;
+pub mod text;
 pub mod titles;
 pub mod topos_config;
 pub mod versification;

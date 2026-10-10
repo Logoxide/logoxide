@@ -116,16 +116,16 @@ pub fn init(host: &Host, name: Option<&str>, private: bool) -> logoxide::Result<
             std::fs::create_dir_all(dir).map_err(|e| io(dir, e))?;
             let path = dir.join(CATALOG);
             if path.exists() {
-                println!("{} is a registry already", dir.display());
+                outln!("{} is a registry already", dir.display());
             } else {
                 std::fs::write(&path, &catalog).map_err(|e| io(&path, e))?;
                 let readme = dir.join("README.md");
                 if !readme.exists() {
                     std::fs::write(&readme, README).map_err(|e| io(&readme, e))?;
                 }
-                println!("Made the registry {name} in {}", dir.display());
+                outln!("Made the registry {name} in {}", dir.display());
             }
-            println!(
+            outln!(
                 "Publish to it:  lx publish <package folder> --to {}\n\
                  Use it here:    lx catalog add {} --name {name}\n\
                  Host it:        serve the folder from any static host, then\n                \
@@ -146,10 +146,10 @@ pub fn init(host: &Host, name: Option<&str>, private: bool) -> logoxide::Result<
                     "--description",
                     "A logoxide registry: each package release is a GitHub release",
                 ])?;
-                println!("Made the repository github.com/{repo}");
+                outln!("Made the repository github.com/{repo}");
             }
             if gh(&["release", "view", INDEX, "-R", repo]).is_ok() {
-                println!("github.com/{repo} is a registry already");
+                outln!("github.com/{repo} is a registry already");
             } else {
                 let dir = scratch("registry")?;
                 let path = dir.join(CATALOG);
@@ -168,9 +168,9 @@ pub fn init(host: &Host, name: Option<&str>, private: bool) -> logoxide::Result<
                     "--latest=false",
                 ])?;
                 let _ = std::fs::remove_dir_all(&dir);
-                println!("Made the registry {name} in github.com/{repo}'s releases");
+                outln!("Made the registry {name} in github.com/{repo}'s releases");
             }
-            println!(
+            outln!(
                 "Publish to it:  lx publish <package folder> --to github:{repo}\n\
                  Use it:         lx catalog add {} --name {name}",
                 host.catalog_location()
@@ -195,9 +195,9 @@ The package in `dir` at its release tag for the version its `logoxide.toml` give
 */
 fn pack(dir: &Path, git: &logoxide::git::GitCli) -> logoxide::Result<Packed> {
     let (root, prefix) = git.package_in(dir)?;
-    let manifest = logoxide::Manifest::parse(
-        &std::fs::read_to_string(dir.join(logoxide::manifest::MANIFEST)).map_err(|e| io(dir, e))?,
-    )?;
+    // Never through a link: what's packed comes from the release's commit, which has none
+    let folder = logoxide::FsStorage::new(dir).no_symlinks();
+    let manifest = logoxide::Manifest::parse(&folder.read_string(logoxide::manifest::MANIFEST)?)?;
     let version = (manifest.package.as_ref())
         .map(|p| p.version.clone())
         .ok_or_else(|| LogoxideError::Manifest(format!("{}: no [package]", dir.display())))?;
@@ -294,7 +294,7 @@ pub fn publish(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide
     let packed = pack(dir, git)?;
     let info = &packed.info;
     if let Some(warning) = license_warning(info) {
-        eprintln!("warning: {warning}");
+        errln!("warning: {warning}");
     }
     let file = publish::archive_name(info);
     let sha256 = publish::sha256(&packed.bytes);
@@ -329,14 +329,14 @@ pub fn publish(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide
                 &release,
             )?
             else {
-                println!("{label} is published there already");
+                outln!("{label} is published there already");
                 return Ok(());
             };
             let archive = registry.join(&relative);
             std::fs::create_dir_all(registry.join(&info.id)).map_err(|e| io(registry, e))?;
             std::fs::write(&archive, &packed.bytes).map_err(|e| io(&archive, e))?;
             std::fs::write(&catalog, updated).map_err(|e| io(&catalog, e))?;
-            println!("Published {label} ({size:.1} MB) to {}", registry.display());
+            outln!("Published {label} ({size:.1} MB) to {}", registry.display());
         }
         Host::GitHub(repo) => {
             let work = scratch("publish")?;
@@ -369,7 +369,7 @@ pub fn publish(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide
                 &release(url),
             )?
             else {
-                println!("{label} is published there already");
+                outln!("{label} is published there already");
                 return Ok(());
             };
             let archive = work.join(&file);
@@ -404,10 +404,10 @@ pub fn publish(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logoxide
                 "--clobber",
             ])?;
             let _ = std::fs::remove_dir_all(&work);
-            println!("Published {label} ({size:.1} MB) to github.com/{repo}");
+            outln!("Published {label} ({size:.1} MB) to github.com/{repo}");
         }
     }
-    println!(
+    outln!(
         "Readers add it with:  lx catalog add {} --name <name>, then lx add <name>:{}",
         host.catalog_location(),
         packed.path.as_deref().unwrap_or(&info.id)
@@ -439,7 +439,7 @@ pub fn publish_all(dir: &Path, host: &Host, git: &logoxide::git::GitCli) -> logo
     for package in found {
         match publish(&package, host, git) {
             Err(LogoxideError::Resolve(message)) if message.contains("lx release first") => {
-                println!("{}: not released yet, passed over", package.display())
+                outln!("{}: not released yet, passed over", package.display())
             }
             // A vault's manifest, or a folder that isn't a package
             Err(LogoxideError::Manifest(message)) if message.contains("no [package]") => {}
@@ -458,7 +458,7 @@ pub fn yank(host: &Host, id: &str, version: &str, undo: bool) -> logoxide::Resul
             let text = std::fs::read_to_string(&catalog).map_err(|e| io(&catalog, e))?;
             let updated = publish::yank(&text, id, version, !undo)?;
             std::fs::write(&catalog, updated).map_err(|e| io(&catalog, e))?;
-            println!("{what} {id} {version} in {}", registry.display());
+            outln!("{what} {id} {version} in {}", registry.display());
         }
         Host::GitHub(repo) => {
             let work = scratch("yank")?;
@@ -488,10 +488,10 @@ pub fn yank(host: &Host, id: &str, version: &str, undo: bool) -> logoxide::Resul
                 "--clobber",
             ])?;
             let _ = std::fs::remove_dir_all(&work);
-            println!("{what} {id} {version} in github.com/{repo}");
+            outln!("{what} {id} {version} in github.com/{repo}");
         }
     }
-    println!("Lock files that have it still install it; new installs and updates pass over it");
+    outln!("Lock files that have it still install it; new installs and updates pass over it");
     Ok(())
 }
 

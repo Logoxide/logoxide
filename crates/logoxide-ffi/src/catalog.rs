@@ -253,6 +253,11 @@ impl LogoxideCatalog {
         self.catalog.entries.len() as u32
     }
 
+    /// What reading it passed over, and why (an entry whose id isn't one), to warn of
+    pub fn warnings(&self) -> Vec<String> {
+        self.catalog.warnings.clone()
+    }
+
     /// The packages every word of `query` matches (id, name, abbreviation, aliases, language,
     /// or description, ignoring case), best first; at most `limit` (all for 0)
     pub fn search(&self, query: String, limit: u32) -> Vec<CatalogEntry> {
