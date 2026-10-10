@@ -1438,11 +1438,12 @@ fn score(entry: &CatalogEntry, words: &[(String, Option<String>)]) -> Option<u32
         .into_iter()
         .chain(&entry.aliases)
         .chain(&entry.language_name)
-        .chain([&entry.language])
         .chain(&entry.keywords)
         .chain(work.map(|w| &w.name))
         .chain(work.into_iter().flat_map(|w| &w.aliases))
         .map(|s| fold(s))
+        // Its language by any of its codes (`eng` finds `en`, and `en` finds `eng`)
+        .chain(crate::language::search_codes(&entry.language))
         // `church-history` is two words
         .chain(entry.categories.iter().map(|c| fold(&c.replace('-', " "))))
         .collect();
@@ -1548,7 +1549,7 @@ mod tests {
                 asv.abbreviation.as_str(),
                 asv.language.as_str()
             ),
-            ("ebible-eng-asv", "ASV", "eng")
+            ("ebible-eng-asv", "ASV", "en")
         );
         assert_eq!(asv.license.as_deref(), Some("LicenseRef-PublicDomain"));
         assert_eq!(
@@ -1703,6 +1704,13 @@ abbreviation = "RV"
 language = "es"
 description = "Traducción de Casiodoro de Reina, revisada por Cipriano de Valera; José"
 git = "https://example.org/rv"
+
+[[package]]
+id = "luther"
+name = "Lutherbibel"
+abbreviation = "LUT"
+language = "deu"
+git = "https://example.org/luther"
 "#,
         )
         .unwrap();
@@ -1713,6 +1721,11 @@ git = "https://example.org/rv"
         assert_eq!(ids("תורה"), ["wlc"]);
         assert_eq!(ids("jose"), ["rv"]);
         assert_eq!(ids("traduccion"), ["rv"]);
+        // A language by any of its codes: `spa` finds `es`, and `de` finds a package that
+        // says `deu`
+        assert_eq!(ids("spa"), ["rv"]);
+        assert_eq!(ids("ger"), ["luther"]);
+        assert_eq!(ids("de").first().map(String::as_str), Some("luther"));
     }
 
     #[test]
@@ -1831,7 +1844,7 @@ usx = { path = "usx/" }
                 bsb.abbreviation.as_str(),
                 bsb.language.as_str()
             ),
-            ("fetch-eng_bsb", "BSB", "eng")
+            ("fetch-eng_bsb", "BSB", "en")
         );
         assert_eq!(bsb.license.as_deref(), Some("LicenseRef-PublicDomain"));
         let CatalogSource::FetchBible { books, .. } = &bsb.source else {

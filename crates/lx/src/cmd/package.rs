@@ -273,6 +273,8 @@ struct CheckReport {
     skipped: Vec<logoxide::source::Skipped>,
     /// Problems with the timings, and books whose cached counts differ
     problems: Vec<String>,
+    /// What's allowed but should change: a language tag that isn't canonical
+    warnings: Vec<String>,
     ok: bool,
 }
 
@@ -311,8 +313,13 @@ pub(crate) fn check(
     );
     let mut problems = vec![];
     let skipped = package.source().skipped().to_vec();
+    // A language tag that isn't canonical (`eng`): what it should be
+    let warnings = package.manifest().warnings();
     if !json {
         print_skipped(&skipped);
+        for warning in &warnings {
+            errln!("warning: {warning}");
+        }
     }
     let package_kind = package.info().kind;
     let text = crate::cmd::media::media_text(&args.path, &package, library);
@@ -398,6 +405,7 @@ pub(crate) fn check(
             untitled: untitled.iter().map(|p| p.to_string()).collect(),
             skipped,
             problems,
+            warnings,
             ok,
         })?;
         timings_result(&timings)?;

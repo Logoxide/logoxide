@@ -48,10 +48,17 @@ before changing the design.
     `works::describe` for lx info and show. The FFI's `PackageInfo` and `CatalogEntry` carry
     `work`, `edition`, `editionYear`; `LogoxideCatalog.searchGrouped`
   - `language.rs`: `language` is checked as well-formed BCP 47 (`language-tags`, its grammar
-    only, so eBible.org's `eng` stays), `script` as ISO 15924's form; `Package::text_script` is
+    only), `script` as ISO 15924's form. `canonical` gives a tag's canonical form: the registry's
+    replacements (`language-tags`' `canonicalize`, but a suppressed script is kept: `en-Latn`
+    stays), then the shortest ISO 639 code (`ISO_639_1`, the 184 two-letter codes with their
+    639-3/639-2T and 639-2B forms, made from SIL's `iso-639-3.tab`: `eng`→`en`, `ger`/`deu`→`de`,
+    `hbs`→`sh`; `grc`, `hbo` stay); a manifest's tag that isn't canonical is warned of
+    (`Manifest::warnings`, printed when lx opens a project and by `lx check`, JSON `warnings`),
+    not refused; `search_codes` lets `Catalog::search` match `eng` to `en` and back; `Package::text_script` is
     `script`, else the tag's subtag, and `text_direction` is `direction`, else the script's
     (`RTL_SCRIPTS`), else left to right (`direction` is an `Option` in the manifest). Imports:
-    `normalize_language` (SWORD's `en_US` is `en-US`; what isn't a tag is `und`, the publisher's
+    `normalize_language` (SWORD's `en_US` is `en-US`, then canonical, so eBible.org's, fetch.bible's,
+    CCEL's, and SWORD's codes are written canonical; what isn't a tag is `und`, the publisher's
     text kept in `language-name`), eBible.org's `script` column by name (`script_code`), and
     CCEL's script judged from its letters (`dominant_script`), which sets the direction. An
     import writes `direction` only where the script doesn't imply it

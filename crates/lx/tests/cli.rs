@@ -290,6 +290,22 @@ fn check_reads_every_book() {
     assert!(said.contains("usx/JHN.usx and usx/john.usx"), "{said}");
     std::fs::remove_file(world.path("tb/usx/john.usx")).unwrap();
 
+    // A language that isn't canonical is warned of, saying what it should be, and not refused
+    let manifest = std::fs::read_to_string(world.path("tb/logoxide.toml")).unwrap();
+    let eng = manifest.replace("language = \"en\"", "language = \"eng\"");
+    std::fs::write(world.path("tb/logoxide.toml"), &eng).unwrap();
+    let out = world.lx(&["check", &dir]);
+    assert!(out.status.success());
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("warning: language `eng` isn't canonical BCP 47: use `en`"),
+        "{said}"
+    );
+    let report = world.json(&["check", &dir, "--format", "json"]);
+    assert_eq!(report["ok"], true);
+    assert!(report["warnings"][0].as_str().unwrap().contains("use `en`"));
+    std::fs::write(world.path("tb/logoxide.toml"), manifest).unwrap();
+
     // The versification map fixture is read whole
     let map =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../logoxide/tests/fixtures/english-original");

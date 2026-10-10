@@ -801,7 +801,7 @@ fn ccel_catalog_and_import() {
             info.version.as_str(),
             package.books()
         ),
-        ("eng", "1.0.0", vec![43])
+        ("en", "1.0.0", vec![43])
     );
     assert!(
         logoxide

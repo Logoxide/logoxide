@@ -43,7 +43,7 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `name` | string | yes | Its full name |
 | `abbreviation` | string | yes | What references name it by (`John 3:16 BSB`) |
 | `version` | string | yes | A [semantic version](https://semver.org); see [Versions](#versions) |
-| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`, `sr-Latn`; `und` when unknown), well-formed by RFC 5646's grammar (`en_US` is refused). Its subtags aren't looked up, so an ISO 639-3 code (`eng`) is kept |
+| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`, `sr-Latn`; `und` when unknown), well-formed by RFC 5646's grammar (`en_US` is refused). It should be canonical, as BCP 47 asks: the language by its shortest ISO 639 code (`en`, not ISO 639-3's `eng` or 639-2/B's `ger` for `de`; `grc` and `hbo`, without a two-letter code, stay), deprecated subtags replaced as the IANA registry says (`iw` is `he`), and each subtag in its case (language lowercase, script title case, region uppercase: `en-Latn-US`). A tag that isn't canonical is read, and warned of (`lx check` says what it should be). Imports write canonical tags |
 | `language-name` | string | no | The language's name (`English`); an import keeps the publisher's own text here when it isn't a tag, and says `und` |
 | `script` | string | no | Its script, an ISO 15924 code (`Latn`, `Hebr`, `Grek`: four letters, the first a capital). Without it, the language tag's script subtag (`sr-Latn`), if any |
 | `kind` | string | no | One of the [kinds](#kinds); `bible` when absent |
