@@ -16,7 +16,10 @@ before changing the design.
     `about-books` (USFM codes of the books it's mainly about: the owner wants these said by the
     author, never derived from the text; `book_code` turns names into codes for `lx new --about`).
     Catalogs carry keywords, categories, and about-books; `Catalog::search` matches them (a word
-    naming a book matches what's about it) and `lx search --book/--category` filter. A dependency can name another package
+    naming a book matches what's about it) and `lx search --category` filters. `topos_config.rs` reads topos's `config.toml` book data
+    (`data`/`merge-data`/`remove-data`, as the CLI and logoxide-lsp do) and `BookFilters`
+    (topos's `BibleFilter`: testaments, genres, books, and exclusions) gives the codes kept;
+    `lx search -t/--nt/--ot/-g/-b/--exclude-*` keeps packages with any about-book among them. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
     `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
     locked and installed, so `lx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and

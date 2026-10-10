@@ -412,8 +412,17 @@ readme = "README.md"
 ```
 
 Catalogs (`lx catalog build`, `lx catalog entry`) carry `keywords`, `categories`, and
-`about-books`, so a search finds them: `lx search romans` lists what's about Romans,
-`lx search --book romans` lists only that, and `--category church-history` keeps that category's.
+`about-books`, so a search finds them: `lx search romans` lists what's about Romans, and
+`--category church-history` keeps that category's. Books filter as they do in topos, with the
+genres and names your topos `config.toml` gives (`merge-data`, ...): including a testament limits
+to it, included genres and books add up, and exclusions win. A package is kept when one of the
+books it's about is:
+
+```sh
+lx search -b romans                      # about Romans
+lx search --nt -g epistles commentary    # commentaries on a New Testament epistle
+lx search -g pauline --exclude-book Philemon
+```
 
 Its release also publishes the passages topos finds it citing, with how often
 (`logoxide.references.bin`, a few KB), so which books cite a passage can be known without

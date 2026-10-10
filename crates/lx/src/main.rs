@@ -252,10 +252,8 @@ enum Command {
         /// Search only this registry (lx catalog list); with no words, list its packages
         #[arg(long, conflicts_with = "catalog", add = ArgValueCompleter::new(complete::registry))]
         registry: Option<String>,
-        /// Only packages mainly about this book (`--book romans`, `--book ROM`), as their
-        /// `about-books` says
-        #[arg(long)]
-        book: Option<String>,
+        #[command(flatten)]
+        books: BookFilterArgs,
         /// Only packages in this category (`--category systematic-theology`)
         #[arg(long, value_parser = category_values())]
         category: Option<String>,
@@ -636,7 +634,7 @@ fn main() -> ExitCode {
             query,
             catalog,
             registry,
-            book,
+            books,
             category,
             limit,
             json,
@@ -646,7 +644,7 @@ fn main() -> ExitCode {
             catalog,
             registry.as_deref(),
             Filters {
-                book: book.as_deref(),
+                books: books.filters(),
                 category: category.as_deref(),
             },
             *limit,
@@ -2216,9 +2214,59 @@ fn category_values() -> clap::builder::PossibleValuesParser {
         .into()
 }
 
+/**
+Which books packages must be about (their `about-books`), as topos filters references: including
+a testament limits to it, included genres and books add up, and exclusions always win
+(`--nt -g Gospels` is the four Gospels). Genres and names are topos's, with the data its
+config.toml gives (`merge-data`, ...). A package is kept when one of its books is
+*/
+#[derive(Args, Debug)]
+struct BookFilterArgs {
+    /// Only packages about a book of this testament (old/new)
+    #[arg(long = "testament", short = 't')]
+    testaments: Vec<String>,
+    /// Same as `-t new`
+    #[arg(long)]
+    nt: bool,
+    /// Same as `-t old`
+    #[arg(long)]
+    ot: bool,
+    /// Leave out books of this testament
+    #[arg(long = "exclude-testament")]
+    exclude_testaments: Vec<String>,
+    /// Only packages about a book of this genre (`-g epistles`; topos's genres)
+    #[arg(long = "genre", short = 'g')]
+    genres: Vec<String>,
+    /// Leave out books of this genre
+    #[arg(long = "exclude-genre")]
+    exclude_genres: Vec<String>,
+    /// Only packages about this book (`-b romans`, `-b ROM`)
+    #[arg(long = "book", short = 'b')]
+    books: Vec<String>,
+    /// Leave out this book
+    #[arg(long = "exclude-book")]
+    exclude_books: Vec<String>,
+}
+
+impl BookFilterArgs {
+    fn filters(&self) -> logoxide::topos_config::BookFilters {
+        let mut testaments = self.testaments.clone();
+        testaments.extend(self.nt.then(|| String::from("new")));
+        testaments.extend(self.ot.then(|| String::from("old")));
+        logoxide::topos_config::BookFilters {
+            testaments,
+            exclude_testaments: self.exclude_testaments.clone(),
+            genres: self.genres.clone(),
+            exclude_genres: self.exclude_genres.clone(),
+            books: self.books.clone(),
+            exclude_books: self.exclude_books.clone(),
+        }
+    }
+}
+
 /// What `lx search` keeps besides what its words match
 struct Filters<'a> {
-    book: Option<&'a str>,
+    books: logoxide::topos_config::BookFilters,
     category: Option<&'a str>,
 }
 
@@ -2231,13 +2279,14 @@ fn search(
     limit: usize,
     json: bool,
 ) -> logoxide::Result<()> {
-    let book = (filters.book)
-        .map(|name| {
-            logoxide::manifest::book_code(name).ok_or_else(|| {
-                logoxide::LogoxideError::Catalog(format!("--book {name}: no book of the Bible"))
-            })
-        })
-        .transpose()?;
+    // The books packages must be about, with the genres and names topos's config gives
+    let books = match filters.books.is_empty() {
+        true => None,
+        false => {
+            let config = logoxide::topos_config::read(None)?;
+            (filters.books).codes(&logoxide::topos_config::bible_data(&config)?)?
+        }
+    };
     // The project's registries come first, then its catalogs
     let mut registries = vec![];
     let (catalogs, base) = match catalogs.is_empty() {
@@ -2287,7 +2336,7 @@ fn search(
     }
     let mut found = all.search(query);
     found.retain(|e| {
-        book.as_deref().is_none_or(|b| e.is_about(b))
+        (books.as_ref()).is_none_or(|codes| e.about_books.iter().any(|b| codes.contains(b)))
             && (filters.category).is_none_or(|c| e.categories.iter().any(|x| x == c))
     });
     if json {
