@@ -185,7 +185,67 @@ impl LockedPackage {
     }
 }
 
+/// A release that came back with other contents than a previous lock file had: [`Lockfile::moved_since`]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Moved {
+    /// The package, as people read it (`kjv 2.0.0`)
+    pub label: String,
+    /// What should have pinned it: its tag (`v2.0.0`), or its registry version
+    pub release: String,
+    /// What it was, and what it is now: commits, else archive hashes, else checksums
+    pub before: String,
+    pub after: String,
+}
+
 impl Lockfile {
+    /**
+    Releases in this lock that a previous one had with other contents: a tag that now names
+    another commit (it was moved), or a registry version whose archive or files changed. A branch
+    moving is what branches do, and isn't one
+    */
+    pub fn moved_since(&self, previous: &Lockfile) -> Vec<Moved> {
+        let mut moved = vec![];
+        for now in &self.packages {
+            let release = match (&now.tag, &now.registry) {
+                (Some(tag), _) => tag.clone(),
+                (None, Some(_)) => format!("version {}", now.version),
+                (None, None) => continue,
+            };
+            let before = (previous.packages.iter()).find(|p| {
+                p.id == now.id
+                    && p.git == now.git
+                    && p.folder == now.folder
+                    && p.registry == now.registry
+                    && match &now.tag {
+                        Some(tag) => p.tag.as_ref() == Some(tag),
+                        None => p.version == now.version,
+                    }
+            });
+            let Some(before) = before else {
+                continue;
+            };
+            let changed = [
+                (&before.commit, &now.commit),
+                (&before.sha256, &now.sha256),
+                (&before.checksum, &now.checksum),
+            ]
+            .into_iter()
+            .find_map(|(was, is)| match (was, is) {
+                (Some(was), Some(is)) if was != is => Some((was.clone(), is.clone())),
+                _ => None,
+            });
+            if let Some((was, is)) = changed {
+                moved.push(Moved {
+                    label: now.label(),
+                    release,
+                    before: was,
+                    after: is,
+                });
+            }
+        }
+        moved
+    }
+
     pub fn parse(text: &str) -> Result<Lockfile> {
         let lock: Lockfile =
             toml::from_str(text).map_err(|e| LogoxideError::Lock(e.to_string()))?;
@@ -291,6 +351,46 @@ mod tests {
         };
         assert_eq!(Lockfile::parse(&lock.to_toml().unwrap()).unwrap(), lock);
         assert!(Lockfile::parse("version = 9").is_err());
+    }
+
+    #[test]
+    fn moved_releases_are_found() {
+        let lock = |entries: &str| Lockfile::parse(&format!("version = 1\n{entries}")).unwrap();
+        let tagged = |commit: &str, checksum: &str| {
+            format!(
+                "[[package]]\nid = \"tb\"\nversion = \"1.0.0\"\ngit = \"https://e.org/tb\"\ntag = \"v1.0.0\"\ncommit = \"{commit}\"\nchecksum = \"sha256:{checksum}\"\n"
+            )
+        };
+        let branch = |commit: &str| {
+            format!(
+                "[[package]]\nid = \"nb\"\nversion = \"1.0.0\"\ngit = \"https://e.org/nb\"\nbranch = \"main\"\ncommit = \"{commit}\"\n"
+            )
+        };
+        let before = lock(&format!(
+            "{}{}",
+            tagged("aaaa1111", "01"),
+            branch("cccc3333")
+        ));
+        // The same: nothing moved
+        assert!(before.moved_since(&before).is_empty());
+        // A tag naming another commit was moved; a branch moving isn't
+        let after = lock(&format!(
+            "{}{}",
+            tagged("bbbb2222", "02"),
+            branch("dddd4444")
+        ));
+        assert_eq!(
+            after.moved_since(&before),
+            [Moved {
+                label: "tb 1.0.0".into(),
+                release: "v1.0.0".into(),
+                before: "aaaa1111".into(),
+                after: "bbbb2222".into(),
+            }]
+        );
+        // Another version isn't the same release
+        let newer = lock(&tagged("bbbb2222", "02").replace("1.0.0", "1.1.0"));
+        assert!(newer.moved_since(&before).is_empty());
     }
 
     #[test]

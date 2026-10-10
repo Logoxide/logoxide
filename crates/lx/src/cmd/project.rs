@@ -337,11 +337,19 @@ pub(crate) fn repair(cli: &Cli) -> logoxide::Result<()> {
 pub(crate) fn install(cli: &Cli, update: Update) -> logoxide::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
-    let before: Vec<String> = project
-        .lock()
-        .map(|l| l.packages.iter().map(|p| p.name()).collect())
-        .unwrap_or_default();
+    let previous = project.lock().cloned();
+    let before: Vec<String> = (previous.iter())
+        .flat_map(|l| l.packages.iter().map(|p| p.name()))
+        .collect();
     let lock = project.install(&library, &cli.fetcher(&library), update)?;
+    // A release whose tag now names another commit: what was read before may not be what's
+    // read now
+    for moved in previous.map(|p| lock.moved_since(&p)).unwrap_or_default() {
+        eprintln!(
+            "warning: {}: {} was moved ({} before, {} now): its text may not be what was locked",
+            moved.label, moved.release, moved.before, moved.after
+        );
+    }
     for package in &lock.packages {
         let note = if before.contains(&package.name()) {
             ""

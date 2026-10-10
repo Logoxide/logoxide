@@ -374,6 +374,43 @@ fn update_names_only_what_is_there() {
 }
 
 #[test]
+fn a_gone_commit_and_a_moved_tag_are_said() {
+    let world = World::new("moved");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+
+    // The release is made again, its tag moved, and the old commit dropped from the repository
+    std::fs::write(repo.join("usx/JHN.usx"), JHN.replace("loved", "LOVED")).unwrap();
+    git(
+        &repo,
+        &["commit", "-q", "-a", "--amend", "-m", "1.0.0 again"],
+    );
+    git(&repo, &["tag", "-f", "v1.0.0"]);
+    git(&repo, &["reflog", "expire", "--expire=now", "--all"]);
+    git(&repo, &["gc", "-q", "--prune=now"]);
+
+    // Another device (a new library) can't fetch what's locked, and is told what to do
+    std::fs::remove_dir_all(world.path("library/packages")).unwrap();
+    let out = world.lx(&["install"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("may no longer be on the host"), "{error}");
+    assert!(error.contains("`lx update tb`"), "{error}");
+
+    let out = world.lx(&["update", "tb"]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        warned.contains("warning: tb 1.0.0: v1.0.0 was moved"),
+        "{warned}"
+    );
+    // Once only: the lock now has the new commit
+    assert!(!String::from_utf8_lossy(&world.lx(&["update"]).stderr).contains("moved"));
+}
+
+#[test]
 fn two_bibles_with_one_name_are_warned_of() {
     let world = World::new("clash");
     world.ok(&["init"]);

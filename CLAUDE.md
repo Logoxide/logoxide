@@ -62,7 +62,9 @@ before changing the design.
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one
     commit are two entries sharing a folder; older lock files' `id version` still read; `rename`
-    is the manifest's name when it isn't the id; `get` finds by that name). `LockedPackage::check`
+    is the manifest's name when it isn't the id; `get` finds by that name). `moved_since` finds
+    releases that came back changed (a moved tag), which `lx install`/`lx update` warn of; a kept
+    commit that can't be fetched says it may be gone from the host. `LockedPackage::check`
     refuses a commit or sha256 that isn't hex and an id that isn't one, so a lock can't name a
     folder outside the library
   - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).

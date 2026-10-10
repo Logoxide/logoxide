@@ -47,8 +47,10 @@ package it records:
   what is unpacked must hash to it, and installed copies are checked against it on every install
 
 So a catalog changed after you locked a release, a moved tag, a compromised mirror, or a file
-edited in the library is caught. Updating (`lx update`) is a new first use: it reads the source
-again and trusts its new answer.
+edited in the library is caught. A locked commit the host no longer has (its tag was moved, its
+branch rewritten) fails to install, saying so. Updating (`lx update`) is a new first use: it reads
+the source again and trusts its new answer, but warns when a release comes back changed (a tag now
+naming another commit, a registry version with another archive or checksum: "v2.0.0 was moved").
 
 Path packages (`path = "…"`) are the project's own files and aren't checksummed in the lock.
 

@@ -96,6 +96,10 @@ never share a folder.
   package's files to `checksum`. An installed copy whose checksum no longer matches (its files
   were edited) is an error unless the user asks to repair it, which puts back its declared files
   and leaves other files alone.
+- A locked commit is fetched by itself; one the host no longer has (a moved tag, a rewritten
+  branch) is an error saying to update that package. Updating warns of a release that came back
+  changed: a tag naming another commit, or a registry version with another archive or checksum
+  (`Lockfile::moved_since`).
 - A git tag's version must equal the `version` in its `logoxide.toml`.
 - A git or registry package can't have `path` dependencies.
 - Dependencies with `enabled = false` stay locked and installed; nothing reads them.
