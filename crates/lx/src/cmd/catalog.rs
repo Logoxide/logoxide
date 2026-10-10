@@ -37,10 +37,8 @@ pub(crate) fn load_catalog(
     location: &str,
     base: &Path,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
+    // A plain HTTP catalog is warned of by `get`, which sees where it was redirected
     let bytes = if location.starts_with("https://") || location.starts_with("http://") {
-        if logoxide::git::is_insecure(location) {
-            eprintln!("warning: {location} is plain HTTP: its packages' hashes can't be trusted");
-        }
         get(location)?
     } else {
         let path = base.join(location);

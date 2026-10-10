@@ -122,9 +122,7 @@ fn import_files(
             entry.id, download.name
         )));
         for url in &download.urls {
-            if logoxide::git::is_insecure(url) {
-                eprintln!("warning: {url} is plain HTTP: what it sends can't be checked");
-            }
+            // `get` warns of plain HTTP
             bytes = get(url);
             if bytes.is_ok() {
                 break;

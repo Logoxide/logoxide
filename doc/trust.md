@@ -30,7 +30,9 @@ When a dependency is first resolved, logoxide takes what its source says:
 
 Catalogs and archives fetched over **plain HTTP** (any `http://` URL, including one SWORD
 repository in CrossWire's list) give no integrity at all on first use: anyone on the network
-path can change them. The lock still protects later installs. Prefer HTTPS sources.
+path can change them. The lock still protects later installs. Prefer HTTPS sources. An HTTPS
+URL stays HTTPS: `lx` refuses a redirect from one to plain HTTP, and its warning of plain HTTP
+names where a download was redirected.
 
 There are **no signatures**: no package, catalog, tag, or archive is signed, and logoxide doesn't
 check git commit or tag signatures. Trust in a publisher is trust in their hosting account.

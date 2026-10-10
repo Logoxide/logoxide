@@ -238,7 +238,9 @@ before changing the design.
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
   installs and locks what it adds. Catalogs and
   imports come over HTTPS with ureq (`net.rs`: one agent, timeouts, `lx/<version>` user agent,
-  the environment's proxy, three tries; media hashed as it's read); packages through git. The
+  the environment's proxy, three tries; media hashed as it's read; an HTTPS URL is fetched
+  `https_only`, so a redirect to plain HTTP is refused, and plain HTTP is warned of there,
+  naming where it was redirected); packages through git. The
   project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
   own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
   import --update, show --references; others refuse it). `lx publish` warns of a license that
