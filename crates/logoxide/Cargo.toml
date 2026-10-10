@@ -2,11 +2,12 @@
 name = "logoxide"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Bibles, commentaries, lexicons, books, and media as versioned packages: read from USX, USFM, and more, cached, and shared"
 homepage.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["bible", "package-manager", "usx", "usfm", "sword"]
 categories = ["text-processing", "parser-implementations"]
 

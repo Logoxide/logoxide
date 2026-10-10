@@ -3,6 +3,7 @@
 name = "logoxide-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "lx, logoxide's command line: Bibles, commentaries, lexicons, books, and media as versioned packages"
