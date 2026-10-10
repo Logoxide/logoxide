@@ -24,3 +24,7 @@ topos-ffi = { path = "../../../topos/crates/topos-ffi" }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
+
+[features]
+# Indexing PDFs (`Topos.indexPdf`; builds MuPDF, so native only: Python, not WebAssembly)
+pdf = ["topos-ffi/pdf"]

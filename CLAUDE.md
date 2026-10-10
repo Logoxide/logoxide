@@ -28,8 +28,10 @@ before changing the design.
     a package that isn't a Bible (a book, a collection) may have none and opens with
     `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but
     `.git`
-  - `cache.rs`: verse counts and parsed books (postcard) per `<id>/<version>-<checksum>`;
-    `CachedPackage::add_to` gives topos's `Translations` the name, aliases, and counts
+  - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard;
+    references also per biblix version) per `<id>/<version>-<checksum>`; `Cache::references`
+    without the counts (`bx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
+    aliases, and counts
   - `lock.rs`: `biblix.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, older lock files' `id version` still read; `rename` is the
@@ -130,7 +132,10 @@ before changing the design.
   USX folder through biblix sources; `settings.rs` finds the project (the `project` setting, a
   workspace folder with a `biblix.toml`, else the library's own; the server's machine library is
   set by `main.rs`, and tests have none) and loads `bibles = ["id"]` or, with no Bible settings,
-  the project's Bibles. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
+  the project's Bibles. `epub = true` (opt-in) searches EPUBs (and `pdf = true` PDFs, with
+  `--features pdf`) through topos's file cache on disk (the CLI's: same fingerprint), as
+  `topos-file://` documents whose text `topos/fileText` gives (`workspace.rs`: `BookSearch`,
+  `book_text`); topos-bible.nvim opens them read-only. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/topos-bible.nvim`) runs it
 - `crates/bx`: `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,

@@ -52,6 +52,12 @@ pub struct BookParams {
     pub uri: String,
 }
 
+/**
+The request for a book's text (an EPUB's or PDF's, `{ "uri": "topos-file:///…/Gill.epub" }`),
+which the `epub` and `pdf` settings' references are in: gives [`BookText`] (its title is the file's name)
+*/
+pub const FILE_TEXT_REQUEST: &str = "topos/fileText";
+
 /// The request for the Bibles: no parameters, gives [`BiblesList`]
 pub const BIBLES_REQUEST: &str = "topos/bibles";
 
@@ -168,6 +174,8 @@ pub struct Server {
     editor: Map<String, Value>,
     /// Each workspace file's references, reused while it is unchanged
     cache: workspace::Cache,
+    /// Searching EPUBs and PDFs too (the `epub` and `pdf` settings)
+    books: Option<workspace::BookSearch>,
     /// The `bible` and `bibles` settings' text, the default first
     bibles: Bibles,
     /// The Bibles whose text hover shows, after the one a reference names
@@ -191,6 +199,7 @@ impl Server {
             roots: vec![],
             editor: Map::new(),
             cache: workspace::Cache::default(),
+            books: None,
             bibles: Bibles::default(),
             hover_bibles: vec![],
             library: None,
@@ -225,7 +234,11 @@ impl Server {
             bibles,
             hover_bibles,
             insertions,
+            epub,
+            pdf,
+            fingerprint,
         } = settings::settings(config, &editor)?.configure(&self.roots, self.library.as_deref())?;
+        self.books = workspace::BookSearch::new(epub, pdf, &fingerprint);
         self.bibles = bibles;
         self.hover_bibles = hover_bibles;
         self.insertions = insertions;
@@ -1105,6 +1118,19 @@ impl Server {
         })
     }
 
+    /// [`FILE_TEXT_REQUEST`]: a book's text (an EPUB or a PDF), where workspace searches with
+    /// the `epub` and `pdf` settings put its references
+    pub fn file_text(&self, params: BookParams) -> Result<BookText, String> {
+        let path = workspace::book_path(&params.uri)
+            .ok_or_else(|| format!("{} isn't a {} URI", params.uri, workspace::BOOK_SCHEME))?;
+        Ok(BookText {
+            title: (path.file_stem())
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            text: workspace::book_text(&path)?,
+        })
+    }
+
     /// [`SAME_VERSE_REQUEST`]: where the verse at a position in a whole book is in another
     /// Bible's book (its verse with that number, else its chapter, else the next chapter it has,
     /// else the book's start)
@@ -1246,7 +1272,10 @@ impl Server {
         let (mut files, complete) = workspace::references(
             &self.roots,
             &self.documents,
-            &self.extensions,
+            workspace::Scope {
+                extensions: &self.extensions,
+                books: self.books.as_ref(),
+            },
             &self.matcher,
             &self.cache,
             &self.bibles.folders(),
@@ -1632,6 +1661,90 @@ mod tests {
                 format!("{name}: {}", &text[start..end])
             })
             .collect()
+    }
+
+    /// A one-chapter EPUB with these paragraphs
+    fn epub(paragraphs: &[&str]) -> Vec<u8> {
+        use std::io::Write;
+        let body: String = paragraphs.iter().map(|p| format!("<p>{p}</p>")).collect();
+        let files = [
+            ("mimetype", "application/epub+zip".to_string()),
+            (
+                "META-INF/container.xml",
+                r#"<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"#.to_string(),
+            ),
+            (
+                "content.opf",
+                r#"<?xml version="1.0"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>T</dc:title></metadata><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c"/></spine></package>"#.to_string(),
+            ),
+            (
+                "c.xhtml",
+                format!(r#"<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c</title></head><body>{body}</body></html>"#),
+            ),
+        ];
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        for (name, text) in files {
+            zip.start_file(name, options).unwrap();
+            zip.write_all(text.as_bytes()).unwrap();
+        }
+        zip.finish().unwrap().into_inner()
+    }
+
+    #[test]
+    fn books_are_searched_when_asked() {
+        let (mut server, _, dir) = workspace("", "books");
+        std::fs::write(
+            dir.join("Gill.epub"),
+            epub(&["Preface", "On grace, see John 3:16 and 📖 Rom 8:28."]),
+        )
+        .unwrap();
+        let book = |locations: &[Location]| -> Vec<Location> {
+            (locations.iter())
+                .filter(|l| l.uri.as_str().starts_with("topos-file:"))
+                .cloned()
+                .collect()
+        };
+        // Off by default; `pdf` alone does nothing without the `pdf` feature
+        assert!(workspace::BookSearch::new(false, false, "test").is_none());
+        if !cfg!(feature = "pdf") {
+            assert!(workspace::BookSearch::new(false, true, "test").is_none());
+        }
+        let search = |server: &Server| server.search(SearchMode::AnyOverlap, "Rom 8").unwrap();
+        assert!(book(&search(&server)).is_empty());
+
+        // On: in the book's text, at the reference
+        let cache_dir = dir.with_extension("cache");
+        let _ = std::fs::remove_dir_all(&cache_dir);
+        server.books = Some(workspace::BookSearch {
+            disk: topos_bible_index::files::Cache::open_in(&cache_dir, "test"),
+            epub: true,
+            pdf: false,
+        });
+        // As configuring does
+        server.cache.clear();
+        let found = book(&search(&server));
+        assert_eq!(found.len(), 1, "{found:?}");
+        let uri = found[0].uri.as_str();
+        let text = server
+            .file_text(BookParams { uri: uri.into() })
+            .unwrap()
+            .text;
+        let range = found[0].range;
+        let line: Vec<u16> = (text.lines().nth(range.start.line as usize).unwrap())
+            .encode_utf16()
+            .collect();
+        let (start, end) = (range.start.character as usize, range.end.character as usize);
+        assert_eq!(String::from_utf16(&line[start..end]).unwrap(), "Rom 8:28");
+
+        // Kept in topos's cache, and found again from it
+        server.cache.clear();
+        let entries = std::fs::read_dir(&cache_dir).unwrap().flatten();
+        let options = entries.filter(|e| e.path().is_dir()).count();
+        assert!(options > 0);
+        assert_eq!(book(&search(&server)).len(), 1);
+        let _ = std::fs::remove_dir_all(&cache_dir);
     }
 
     #[test]

@@ -365,10 +365,11 @@ impl BiblixPackage {
     }
 
     /// The Bible references in its books (EPUBs), in book order, each with its chapter and CFI;
-    /// empty for a package without books. Found by reading them (well under a second a book)
+    /// empty for a package without books. Found by reading them (well under a second a book) the
+    /// first time, then kept in the cache (see `cacheWrites`)
     pub fn references(&self) -> Result<Vec<crate::FoundReference>, BiblixError> {
-        let found = biblix_core::references::find(self.cached.package())?;
-        Ok(found.into_iter().map(Into::into).collect())
+        let found = self.cached.references()?;
+        Ok(found.iter().cloned().map(Into::into).collect())
     }
 
     /// Its books' EPUBs, relative to its folder (`epub/the-dorean-principle.epub`), for hosts

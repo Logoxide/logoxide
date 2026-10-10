@@ -337,6 +337,12 @@ pub struct Settings {
     /// Extensions searched for workspace references (`"md,txt"` or a list; empty means every
     /// text file)
     pub ext: OneOrMany,
+    /// Search EPUBs for workspace references too, whatever `ext` says: off by default, since a
+    /// book takes a while to read the first time. Their references are kept in topos's cache (the
+    /// CLI's, shared with it), and they open as `topos-file://` documents of the book's text
+    pub epub: bool,
+    /// Search PDFs the same way (in a build with the `pdf` feature; otherwise ignored)
+    pub pdf: bool,
     pub inlay_hints: InlayHints,
     pub reference_diagnostics: ReferenceDiagnostics,
     /// What the hover shows below the reference (`"osis,book"` or a list; `[]` for none)
@@ -379,6 +385,12 @@ pub struct Configured {
     /// The `hover-bibles` setting, as the Bibles' names
     pub hover_bibles: Vec<String>,
     pub insertions: Vec<Insertion>,
+    /// The `epub` and `pdf` settings
+    pub epub: bool,
+    pub pdf: bool,
+    /// Everything that changes which references are found, for topos's cache (the CLI's form, so
+    /// the two share its entries)
+    pub fingerprint: String,
 }
 
 /// `psg_fmt` and `psg-fmt` are the same key (only at the top level: the format's own fields are
@@ -530,6 +542,27 @@ impl Settings {
         };
         let bibles = self.bibles(&data, roots, machine)?;
         let matcher = BibleFilter::new(data).create_matcher();
+        // As the CLI writes it: the data files' text and the book context
+        let contents = |paths: Vec<String>| -> Vec<Option<String>> {
+            (paths.iter())
+                .map(|path| std::fs::read_to_string(expand_home(path)).ok())
+                .collect()
+        };
+        let config = format!(
+            "{:?}",
+            (
+                &self.context_book,
+                &self.context_heading,
+                contents(self.data.iter().cloned().collect()),
+                contents(self.merge_data.values()),
+                contents(self.remove_data.values()),
+            )
+        );
+        let fingerprint = topos_bible_index::files::fingerprint(
+            &config,
+            false,
+            topos_bible_index::files::CfiOptions::default(),
+        );
         let extensions = self
             .ext
             .values()
@@ -575,6 +608,9 @@ impl Settings {
                 .collect::<Result<_, _>>()?,
             bibles,
             insertions: self.insertions.clone(),
+            epub: self.epub,
+            pdf: self.pdf,
+            fingerprint,
         })
     }
 

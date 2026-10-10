@@ -22,3 +22,12 @@ toml = "1.1"
 topos-bible = { workspace = true }
 topos-bible-markup = { workspace = true }
 topos-bible-index = { workspace = true }
+topos-bible-formats = { workspace = true }
+
+[dev-dependencies]
+# Builds a small EPUB for the tests
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[features]
+# Searching PDFs too, with the `books` setting (builds MuPDF)
+pdf = ["topos-bible-index/pdf", "topos-bible-formats/pdf"]

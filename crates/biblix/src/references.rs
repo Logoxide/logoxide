@@ -31,7 +31,7 @@ pub const REFERENCES: &str = "biblix.references.bin";
 const MAGIC: &[u8; 4] = b"BXR1";
 
 /// A reference found in a book
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FoundReference {
     /// The passage, as an OSIS reference (`John.3.16`, `John.3.16-John.3.18`)
     pub passage: String,

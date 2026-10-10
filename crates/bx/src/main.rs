@@ -516,7 +516,11 @@ fn main() -> ExitCode {
             locations,
             format,
             ..
-        } => show(package, references.then_some((format.as_str(), *locations))),
+        } => show(
+            &cli,
+            package,
+            references.then_some((format.as_str(), *locations)),
+        ),
         Command::Show {
             git: Some(url),
             tag,
@@ -634,7 +638,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn show(args: &PackageArgs, references: Option<(&str, bool)>) -> biblix::Result<()> {
+fn show(cli: &Cli, args: &PackageArgs, references: Option<(&str, bool)>) -> biblix::Result<()> {
     let package = args.open()?;
     let info = package.info();
     let manifest = package.manifest();
@@ -725,7 +729,8 @@ fn show(args: &PackageArgs, references: Option<(&str, bool)>) -> biblix::Result<
         println!("books: {} ({})", books.len(), codes.join(" "));
     }
     println!("checksum: {}", package.checksum()?);
-    let found = biblix::references::find(&package)?;
+    // Found once per version, then read from the cache
+    let found = cli.library().book_cache().references(&package)?;
     if !found.is_empty() {
         println!("references: {} (in its books)", found.len());
     }

@@ -111,6 +111,20 @@ fn a_book_from_an_epub() {
     assert_eq!(matthew.end - matthew.start, "Matthew 10:8".len() as u32);
     assert_eq!(found[1].spine, 1);
 
+    // Found once, then kept in the cache beside the parsed books
+    let cache_files = Arc::new(MemoryStorage::new());
+    let cache = biblix::Cache::new(cache_files.clone());
+    assert_eq!(cache.references(&package).unwrap(), found);
+    let entries = cache_files.walk("").unwrap();
+    assert!(
+        entries.iter().any(|f| f.ends_with("/references.postcard")),
+        "{entries:?}"
+    );
+    assert_eq!(cache.references(&package).unwrap(), found);
+    let reopened = Package::open(package.storage().clone(), Features::default()).unwrap();
+    let cached = cache.open(reopened).unwrap();
+    assert_eq!(*cached.references().unwrap(), found);
+
     // Its summary: how many, and the passages cited, in Bible order
     let (summary, verses) = summarize(&package).unwrap();
     assert!(verses.is_empty());

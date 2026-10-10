@@ -33,12 +33,15 @@ stays references only:
 
 Workspace searches cover every text file in the workspace folders, skipping hidden, binary, and
 ignored files (`.gitignore`, `.ignore`, `.toposignore`), like the CLI. Open files are searched
-as they are in the editor, including unsaved changes.
+as they are in the editor, including unsaved changes. With `epub` (and `pdf`), books are searched
+too: each is read once, then its references come from topos's cache (the CLI's), and a result
+opens the book's text at the reference (topos-bible.nvim opens `topos-file://` documents).
 
 Install with:
 
 ```sh
 cargo install --path crates/biblix-lsp     # in a biblix checkout, next to a topos checkout
+cargo install --path crates/biblix-lsp --features pdf   # for the `pdf` setting (builds MuPDF)
 ```
 
 ## Settings
@@ -52,6 +55,8 @@ so one file configures both. It uses these keys and ignores the others:
 | `data`, `merge-data`, `remove-data` | Custom book data |
 | `context-book`, `context-heading` | References without a book (`3:16`) |
 | `ext` | Extensions searched in the workspace, like `"md,txt"` (all text files by default) |
+| `epub` | Search EPUBs too, whatever `ext` says (`false` by default). Their references are kept in topos's cache, shared with the CLI, and are in `topos-file:///…/Gill.epub` documents: the book's text, from the `topos/fileText` request (`{ uri }`, giving `{ title, text }`) |
+| `pdf` | Search PDFs the same way (`false` by default; only in a build with `--features pdf`) |
 | `inlay-hints` | `"changed"` (default), `"always"`, `"osis"`, or `"never"` |
 | `reference-diagnostics` | The diagnostic on each reference: `"info"` (default), `"hint"`, or `"never"` |
 | `hover` | What a hover shows below the reference, in order (a list or `"osis,book"`; `[]` for none): `text` (the passage, from `bible`), `written`, `name`, `abbreviation`, `osis`, `book`, `testament`, `genres`, `verses`, `bcv`, `location`. The default is every one but `written` and `bcv`. `name` and `abbreviation` are left out when the reference is already written that way |

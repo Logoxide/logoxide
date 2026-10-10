@@ -6,7 +6,12 @@ source again. A cache is per device and never synced: it can always be built aga
 <cache>/<id>/<version>-<checksum>/
   manifest.postcard     the verse counts of every book, and what the cache was built from
   books/<CODE>.postcard each book's tree and verse spans, written when first read
+  references.postcard   the Bible references in its EPUBs, written when first found
 ```
+
+References are found by reading every EPUB (a tenth of a second a book natively, a quarter in
+WebAssembly), so they're kept like parsed books. They're kept per biblix version too, since a
+newer topos may find references an older one missed.
 */
 
 use std::{
@@ -20,6 +25,7 @@ use topos_bible::data::{books::BookId, chapter_verses::ChapterVerses, translatio
 use crate::{
     error::{BiblixError, Result},
     package::Package,
+    references::FoundReference,
     source::Book,
     storage::Storage,
 };
@@ -40,8 +46,59 @@ pub struct CachedManifest {
     pub books: Vec<(BookId, Vec<u8>)>,
 }
 
+/// A package version's references, and what found them
+#[derive(Serialize, Deserialize)]
+struct CachedReferences {
+    cache_format: u32,
+    /// The biblix that found them
+    engine: String,
+    checksum: String,
+    references: Vec<FoundReference>,
+}
+
 pub struct Cache {
     storage: Arc<dyn Storage>,
+}
+
+/// A package version's folder in the cache
+fn version_dir(package: &Package, checksum: &str) -> String {
+    let info = package.info();
+    let short = checksum
+        .trim_start_matches("sha256:")
+        .get(..16)
+        .unwrap_or_default();
+    format!("{}/{}-{short}", info.id, info.version)
+}
+
+/// The references in a package's EPUBs: from the cache if they were found in this exact text by
+/// this biblix, else found now and cached (a package without EPUBs has none, and writes nothing)
+fn references(
+    storage: &dyn Storage,
+    package: &Package,
+    dir: &str,
+    checksum: &str,
+) -> Result<Vec<FoundReference>> {
+    if crate::references::epub_files(package)?.is_empty() {
+        return Ok(vec![]);
+    }
+    let engine = env!("CARGO_PKG_VERSION");
+    let path = format!("{dir}/references.postcard");
+    let cached = (storage.read(&path).ok())
+        .and_then(|bytes| postcard::from_bytes::<CachedReferences>(&bytes).ok())
+        .filter(|c| c.cache_format == CACHE_FORMAT && c.engine == engine && c.checksum == checksum);
+    if let Some(cached) = cached {
+        return Ok(cached.references);
+    }
+    let cached = CachedReferences {
+        cache_format: CACHE_FORMAT,
+        engine: engine.to_string(),
+        checksum: checksum.to_string(),
+        references: crate::references::find(package)?,
+    };
+    if let Ok(bytes) = postcard::to_stdvec(&cached) {
+        let _ = storage.write(&path, &bytes);
+    }
+    Ok(cached.references)
 }
 
 impl Cache {
@@ -54,11 +111,7 @@ impl Cache {
     pub fn open(&self, package: Package) -> Result<CachedPackage> {
         let info = package.info();
         let checksum = package.checksum()?;
-        let short = checksum
-            .trim_start_matches("sha256:")
-            .get(..16)
-            .unwrap_or_default();
-        let dir = format!("{}/{}-{short}", info.id, info.version);
+        let dir = version_dir(&package, &checksum);
         let path = format!("{dir}/manifest.postcard");
         let cached = self
             .storage
@@ -91,11 +144,21 @@ impl Cache {
         };
         Ok(CachedPackage {
             storage: self.storage.clone(),
+            references: Mutex::default(),
             package,
             dir,
             manifest,
             books: Mutex::default(),
         })
+    }
+
+    /// The Bible references in a package's EPUBs, found once per version (see
+    /// [`crate::references::find`]), without reading its verse counts as [`open`](Self::open)
+    /// does
+    pub fn references(&self, package: &Package) -> Result<Vec<FoundReference>> {
+        let checksum = package.checksum()?;
+        let dir = version_dir(package, &checksum);
+        references(self.storage.as_ref(), package, &dir, &checksum)
     }
 }
 
@@ -106,6 +169,7 @@ pub struct CachedPackage {
     dir: String,
     manifest: CachedManifest,
     books: Mutex<HashMap<BookId, Arc<Book>>>,
+    references: Mutex<Option<Arc<Vec<FoundReference>>>>,
 }
 
 impl CachedPackage {
@@ -145,6 +209,24 @@ impl CachedPackage {
             books.insert(id, book.clone());
         }
         Ok(book)
+    }
+
+    /// The Bible references in its EPUBs: from memory, else the cache, else found by reading
+    /// them (then cached)
+    pub fn references(&self) -> Result<Arc<Vec<FoundReference>>> {
+        if let Some(found) = self.references.lock().ok().and_then(|r| r.clone()) {
+            return Ok(found);
+        }
+        let found = Arc::new(references(
+            self.storage.as_ref(),
+            &self.package,
+            &self.dir,
+            &self.manifest.checksum,
+        )?);
+        if let Ok(mut references) = self.references.lock() {
+            *references = Some(found.clone());
+        }
+        Ok(found)
     }
 
     /// `translations` with this package added: its abbreviation, its aliases, and each book's
