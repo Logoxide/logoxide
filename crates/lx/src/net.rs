@@ -142,8 +142,22 @@ impl std::ops::Deref for Web {
     }
 }
 
+/// Warns, once a URL, of a repository fetched without encryption (`git://`, `http://`), which a
+/// package from elsewhere can't name (`git://`) but the project itself may
+fn warn_insecure(url: &str) {
+    static WARNED: OnceLock<std::sync::Mutex<std::collections::BTreeSet<String>>> = OnceLock::new();
+    if !logoxide::git::is_insecure(url) {
+        return;
+    }
+    let warned = WARNED.get_or_init(Default::default);
+    if warned.lock().is_ok_and(|mut w| w.insert(url.to_string())) {
+        eprintln!("warning: {url} isn't encrypted: what it sends could be changed on the way");
+    }
+}
+
 impl logoxide::git::Fetcher for Web {
     fn tags(&self, url: &str) -> logoxide::Result<Vec<(String, String)>> {
+        warn_insecure(url);
         self.0.tags(url)
     }
 
@@ -153,6 +167,7 @@ impl logoxide::git::Fetcher for Web {
         reference: &logoxide::git::GitRef,
         dest: &dyn Storage,
     ) -> logoxide::Result<String> {
+        warn_insecure(url);
         self.0.fetch(url, reference, dest)
     }
 
@@ -163,6 +178,7 @@ impl logoxide::git::Fetcher for Web {
         paths: &[&str],
         dest: &dyn Storage,
     ) -> logoxide::Result<String> {
+        warn_insecure(url);
         self.0.fetch_files(url, reference, paths, dest)
     }
 

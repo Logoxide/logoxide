@@ -71,7 +71,12 @@ before changing the design.
     and `GIT_PROTOCOL_FROM_USER=0`, and never follows a symlink in a checkout. Every git command
     has a deadline (`run`: spawned, waited on, killed): `fetch_timeout` (`FETCH_TIMEOUT`, 10
     minutes) and `list_timeout` for `ls-remote` (`LIST_TIMEOUT`, 60 s), set from the config's
-    `git-timeout`/`git-list-timeout` (`Config::git`); the error names the limit. `is_insecure`
+    `git-timeout`/`git-list-timeout` (`Config::git`); the error names the limit. `core.fsmonitor`
+    is off for every git command (also `registry_build::git_in`); fetching (`Mode::Fetching`, in
+    a new repository, `in_clone`) also turns off LFS's filters (`GIT_LFS_SKIP_SMUDGE`, pointers
+    kept), points `core.hooksPath` at an empty folder, and runs SSH with `BatchMode=yes` unless
+    the user chose their own (`GIT_SSH_COMMAND`, `GIT_SSH`, `core.sshCommand`). Fetched packages'
+    dependencies can't use `git://` (resolve.rs); lx warns of the project's own. `is_insecure`
     (`http://`, `git://`, `ftp://`: warned of) and `is_local`
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the

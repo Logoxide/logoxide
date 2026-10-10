@@ -274,6 +274,15 @@ impl Resolver<'_> {
                     want.name
                 )));
             }
+            // git's own protocol has no encryption: anyone on the way could change the text
+            if let Some(url) =
+                (d.git.as_deref()).filter(|u| u.trim().to_ascii_lowercase().starts_with("git://"))
+            {
+                return Err(LogoxideError::Resolve(format!(
+                    "`{}`: a package from another machine names `{url}`, over git's unencrypted protocol",
+                    want.name
+                )));
+            }
         }
         let mut features: Vec<String> = d.features.clone();
         features.sort();
