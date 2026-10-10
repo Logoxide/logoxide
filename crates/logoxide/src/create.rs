@@ -48,6 +48,26 @@ pub struct NewPackage {
     pub license: Option<String>,
     pub publisher: Option<String>,
     pub homepage: Option<String>,
+    pub repository: Option<String>,
+    pub keywords: Vec<String>,
+    pub categories: Vec<String>,
+    /// The books it's mainly about, by USFM code or name (`ROM`, `Romans`)
+    pub about_books: Vec<String>,
+}
+
+impl NewPackage {
+    /// `about_books` as USFM codes (`Romans` is `ROM`)
+    fn about_book_codes(&self) -> Result<Vec<String>> {
+        (self.about_books.iter())
+            .map(|name| {
+                crate::manifest::book_code(name).ok_or_else(|| {
+                    LogoxideError::Manifest(format!(
+                        "about-books: `{name}` is no book of the Bible"
+                    ))
+                })
+            })
+            .collect()
+    }
 }
 
 /// The format a file is in, from its extension (and, for `.xml`, its root element), and the kind
@@ -271,6 +291,12 @@ pub fn new_from_file(
         license_file: None,
         publisher: given.publisher.clone().or(metadata.publisher.clone()),
         homepage: given.homepage.clone(),
+        repository: given.repository.clone(),
+        documentation: None,
+        readme: None,
+        keywords: given.keywords.clone(),
+        categories: given.categories.clone(),
+        about_books: given.about_book_codes()?,
         upstream: None,
         versification: String::from("own"),
         maps_to: None,
@@ -319,6 +345,12 @@ pub fn new_collection(given: &NewPackage, dest: &dyn Storage) -> Result<Manifest
         license_file: None,
         publisher: given.publisher.clone(),
         homepage: given.homepage.clone(),
+        repository: given.repository.clone(),
+        documentation: None,
+        readme: None,
+        keywords: given.keywords.clone(),
+        categories: given.categories.clone(),
+        about_books: given.about_book_codes()?,
         upstream: None,
         versification: String::from("own"),
         maps_to: None,

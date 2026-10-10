@@ -228,9 +228,19 @@ pub struct CatalogEntry {
     pub path: Option<String>,
     /// The releases a registry publishes as archives, oldest first (none for other sources)
     pub releases: Vec<CatalogRelease>,
+    /// Its manifest's `keywords`, `categories`, and `about-books` (a logoxide catalog's entries;
+    /// other catalogs don't say)
+    pub keywords: Vec<String>,
+    pub categories: Vec<String>,
+    pub about_books: Vec<String>,
 }
 
 impl CatalogEntry {
+    /// Whether it's mainly about the book with this USFM code (`ROM`), as its `about-books` says
+    pub fn is_about(&self, book: &str) -> bool {
+        self.about_books.iter().any(|b| b == book)
+    }
+
     /**
     The newest release `req` allows (without one, the newest that isn't a pre-release), from a
     registry's archives; a yanked one never
@@ -275,6 +285,12 @@ struct TomlEntry {
     /// A registry's archives (`[[package.release]]`)
     #[serde(default, rename = "release")]
     releases: Vec<CatalogRelease>,
+    #[serde(default)]
+    keywords: Vec<String>,
+    #[serde(default)]
+    categories: Vec<String>,
+    #[serde(default)]
+    about_books: Vec<String>,
     /// Its path in the folder the catalog was built from (`lx catalog build`), which names it
     /// as its id does
     #[serde(default)]
@@ -459,6 +475,9 @@ impl Catalog {
                 },
                 path: None,
                 releases: vec![],
+                keywords: vec![],
+                categories: vec![],
+                about_books: vec![],
             });
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
@@ -524,6 +543,9 @@ impl Catalog {
                 },
                 path: None,
                 releases: vec![],
+                keywords: vec![],
+                categories: vec![],
+                about_books: vec![],
             });
         }
         if entries.is_empty() {
@@ -595,6 +617,9 @@ impl Catalog {
                 source,
                 path: e.path,
                 releases,
+                keywords: e.keywords,
+                categories: e.categories,
+                about_books: e.about_books,
             });
         }
         Ok(Catalog {
@@ -700,6 +725,9 @@ impl Catalog {
                 source: CatalogSource::Ebible { id: ebible_id },
                 path: None,
                 releases: vec![],
+                keywords: vec![],
+                categories: vec![],
+                about_books: vec![],
             });
         }
         Ok(Catalog {
@@ -709,10 +737,13 @@ impl Catalog {
     }
 
     /// The entries `query` matches, best first: every word of it must be in the entry's id,
-    /// name, abbreviation, aliases, language, or description (ignoring case); an exact
-    /// abbreviation or id comes first, then names and languages, then descriptions
+    /// name, abbreviation, aliases, language, keywords, categories, or description (ignoring
+    /// case), or name a book it's about (`romans`); an exact abbreviation or id comes first, then
+    /// names, languages, keywords, categories, and books, then descriptions
     pub fn search(&self, query: &str) -> Vec<&CatalogEntry> {
-        let words: Vec<String> = query.split_whitespace().map(fold).collect();
+        let words: Vec<(String, Option<String>)> = (query.split_whitespace())
+            .map(|word| (fold(word), crate::manifest::book_code(word)))
+            .collect();
         let mut found: Vec<(u32, &CatalogEntry)> = (self.entries.iter())
             .filter_map(|entry| Some((score(entry, &words)?, entry)))
             .collect();
@@ -765,6 +796,9 @@ impl Catalog {
                     },
                     path: Some(path),
                     releases: vec![],
+                    keywords: info.keywords,
+                    categories: info.categories,
+                    about_books: info.about_books,
                 })
             })
             .collect();
@@ -859,6 +893,16 @@ impl Catalog {
         }
         if info.direction == Direction::Rtl {
             table.insert("direction", toml_edit::value("rtl"));
+        }
+        for (key, list) in [
+            ("keywords", &info.keywords),
+            ("categories", &info.categories),
+            ("about-books", &info.about_books),
+        ] {
+            if !list.is_empty() {
+                let list: toml_edit::Array = list.iter().map(String::as_str).collect();
+                table.insert(key, toml_edit::value(list));
+            }
         }
         table.insert("git", toml_edit::value(git));
         table
@@ -1006,6 +1050,9 @@ pub(crate) fn sword_entry(
         },
         path: None,
         releases: vec![],
+        keywords: vec![],
+        categories: vec![],
+        about_books: vec![],
     }
 }
 
@@ -1071,7 +1118,8 @@ fn fold(text: &str) -> String {
         .collect()
 }
 
-fn score(entry: &CatalogEntry, words: &[String]) -> Option<u32> {
+/// How well `words` (each with the book it names, if any) match `entry`, if every one does
+fn score(entry: &CatalogEntry, words: &[(String, Option<String>)]) -> Option<u32> {
     if words.is_empty() {
         return Some(0);
     }
@@ -1081,18 +1129,23 @@ fn score(entry: &CatalogEntry, words: &[String]) -> Option<u32> {
         .chain(&entry.aliases)
         .chain(&entry.language_name)
         .chain([&entry.language])
+        .chain(&entry.keywords)
         .map(|s| fold(s))
+        // `church-history` is two words
+        .chain(entry.categories.iter().map(|c| fold(&c.replace('-', " "))))
         .collect();
     let description = entry.description.as_deref().map(fold).unwrap_or_default();
     let mut total = 0;
-    for word in words {
+    for (word, book) in words {
+        let about = book.as_ref().is_some_and(|b| entry.about_books.contains(b));
         total += if exact.iter().any(|e| e == word) {
             100
         } else if exact.iter().any(|e| e.contains(word.as_str())) {
             40
-        } else if names
-            .iter()
-            .any(|n| n.split_whitespace().any(|w| w == word))
+        } else if about
+            || names
+                .iter()
+                .any(|n| n.split_whitespace().any(|w| w == word))
         {
             30
         } else if names.iter().any(|n| n.contains(word.as_str())) {
@@ -1260,6 +1313,61 @@ git = "https://example.org/bsb"
         assert!(ids("nothing like this").is_empty());
         assert_eq!(ids("").len(), 3);
         assert!(Catalog::parse_toml("[[package]]\nid = 1").is_err());
+    }
+
+    #[test]
+    fn finds_what_a_package_is_about() {
+        let info = crate::manifest::Manifest::parse(
+            r#"[package]
+id = "gill-romans"
+name = "Gill on Romans"
+abbreviation = "GILL"
+version = "1.0.0"
+language = "en"
+kind = "commentary"
+keywords = ["justification"]
+categories = ["church-history"]
+about-books = ["ROM"]
+[formats]
+usx = { path = "usx/" }
+"#,
+        )
+        .unwrap()
+        .package
+        .unwrap();
+        // A catalog keeps them, and reads them back
+        let text = Catalog::toml_entry(&info, "https://example.org/gill");
+        assert!(text.contains("about-books = [\"ROM\"]"), "{text}");
+        let catalog = Catalog::parse_toml(&text)
+            .unwrap()
+            .merge(Catalog::parse("translations.csv", EBIBLE).unwrap());
+        let gill = &catalog.entries[0];
+        assert_eq!(
+            (
+                &gill.keywords[..],
+                &gill.categories[..],
+                &gill.about_books[..]
+            ),
+            (
+                &["justification".to_string()][..],
+                &["church-history".to_string()][..],
+                &["ROM".to_string()][..]
+            )
+        );
+        assert!(gill.is_about("ROM") && !gill.is_about("GAL"));
+        let ids = |q: &str| {
+            catalog
+                .search(q)
+                .iter()
+                .map(|e| e.id.clone())
+                .collect::<Vec<_>>()
+        };
+        // By the book's name or code, a keyword, or a category's words
+        assert_eq!(ids("romans"), ["gill-romans"]);
+        assert_eq!(ids("rom"), ["gill-romans"]);
+        assert_eq!(ids("justification"), ["gill-romans"]);
+        assert_eq!(ids("church history"), ["gill-romans"]);
+        assert!(ids("galatians").is_empty());
     }
 
     #[test]

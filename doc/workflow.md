@@ -392,6 +392,29 @@ abbreviation from its initials (`--abbreviation`), and `--author` (repeated, in 
 others. An EPUB names no license logoxide can trust, so give one (`--license`). A book has no verses
 to compare, so `lx release` compares its files: any change is a minor version.
 
+Like `Cargo.toml`, `[package]` can say more to help people find it: `keywords` (words a search
+finds it by), `categories` (lowercase slugs: `systematic-theology`), `repository`,
+`documentation`, `readme` (a file in the package, which is then part of it), and `about-books`,
+the books of the Bible it's mainly about, as USFM codes. These are its author's to say: logoxide
+never works them out from the text (a book citing Romans often isn't about Romans).
+`lx new` takes `--keyword`, `--category`, `--repository`, and `--about` (a book's name or code,
+repeated):
+
+```toml
+[package]
+id = "gill-romans"
+kind = "commentary"
+keywords = ["justification", "puritan"]
+categories = ["commentary", "reformed"]
+about-books = ["ROM"]
+repository = "https://github.com/someone/gill-romans"
+readme = "README.md"
+```
+
+Catalogs (`lx catalog build`, `lx catalog entry`) carry `keywords`, `categories`, and
+`about-books`, so a search finds them: `lx search romans` lists what's about Romans,
+`lx search --book romans` lists only that, and `--category reformed` keeps that category's.
+
 Its release also publishes the passages topos finds it citing, with how often
 (`logoxide.references.bin`, a few KB), so which books cite a passage can be known without
 downloading them. Where each reference is (its chapter, paragraph, and an EPUB CFI readers open

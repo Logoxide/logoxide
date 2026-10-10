@@ -363,6 +363,9 @@ pub fn sword(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()>
         source: entry.source.clone(),
         path: entry.path.clone(),
         releases: vec![],
+        keywords: vec![],
+        categories: vec![],
+        about_books: vec![],
         ..described
     };
     let mut books: Vec<(sword_modules::BookId, Vec<SwordVerse>)> = vec![];
@@ -750,6 +753,12 @@ fn finish(
         license_file: made.license_file,
         publisher: Some(made.publisher.to_string()),
         homepage: Some(made.homepage),
+        repository: None,
+        documentation: None,
+        readme: None,
+        keywords: entry.keywords.clone(),
+        categories: entry.categories.clone(),
+        about_books: entry.about_books.clone(),
         upstream: Some(made.upstream),
         versification: String::from("own"),
         maps_to: None,

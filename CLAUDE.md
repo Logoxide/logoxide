@@ -10,7 +10,12 @@ before changing the design.
 - `crates/logoxide`: the library
   - `manifest.rs`: `logoxide.toml`. One manifest name for packages and vaults (a vault's has no
     `[package]`), like `Cargo.toml`. "Index" means only a registry. Formats, Cargo-style features,
-    and `git`/`path` dependencies; no default registry. A dependency can name another package
+    and `git`/`path` dependencies; no default registry. Cargo-like metadata: `keywords`,
+    `categories` (slugs), `repository`, `documentation`, `readme` (a declared file), and
+    `about-books` (USFM codes of the books it's mainly about: the owner wants these said by the
+    author, never derived from the text; `book_code` turns names into codes for `lx new --about`).
+    Catalogs carry keywords, categories, and about-books; `Catalog::search` matches them (a word
+    naming a book matches what's about it) and `lx search --book/--category` filter. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
     `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
     locked and installed, so `lx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and

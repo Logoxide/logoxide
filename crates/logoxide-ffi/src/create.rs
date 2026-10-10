@@ -57,6 +57,13 @@ pub struct NewPackage {
     pub license: Option<String>,
     pub publisher: Option<String>,
     pub homepage: Option<String>,
+    pub repository: Option<String>,
+    /// Words a search should find it by
+    pub keywords: Vec<String>,
+    /// Lowercase slugs (`systematic-theology`)
+    pub categories: Vec<String>,
+    /// The books of the Bible it's mainly about, by USFM code or name (`ROM`, `Romans`)
+    pub about_books: Vec<String>,
 }
 
 impl TryFrom<NewPackage> for core::NewPackage {
@@ -81,6 +88,10 @@ impl TryFrom<NewPackage> for core::NewPackage {
             license: n.license,
             publisher: n.publisher,
             homepage: n.homepage,
+            repository: n.repository,
+            keywords: n.keywords,
+            categories: n.categories,
+            about_books: n.about_books,
         })
     }
 }

@@ -10,6 +10,8 @@ abbreviation = "BSB"
 version = "1.0.0"
 language = "en"
 license = "LicenseRef-PublicDomain"
+keywords = ["modern english", "literal"]
+repository = "https://github.com/someone/bsb"
 
 [formats]
 usx = { path = "usx/" }
@@ -97,6 +99,26 @@ pub struct Package {
     pub publisher: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub homepage: Option<String>,
+    /// Where its files are kept (its git repository's page)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repository: Option<String>,
+    /// Where it's documented, if not in its README
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub documentation: Option<String>,
+    /// Its README's path in the package (part of the package, like `license-file`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readme: Option<String>,
+    /// Words a search should find it by, besides its names (`justification`, `puritan`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub keywords: Vec<String>,
+    /// What it's about, as lowercase slugs (`systematic-theology`, `church-history`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub categories: Vec<String>,
+    /// The books of the Bible it's mainly about, as their USFM codes (`["ROM", "GAL"]` for a
+    /// commentary on Romans and Galatians). Said by its author, never worked out from its text;
+    /// not the books a Bible has
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub about_books: Vec<String>,
     /// Where the text was imported from, if anywhere
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<String>,
@@ -374,6 +396,62 @@ impl Manifest {
     }
 }
 
+/// Checks `keywords`, `categories`, and `about-books`
+fn check_metadata(package: &Package) -> Result<()> {
+    let err = |message: String| Err(LogoxideError::Manifest(message));
+    let mut seen = BTreeSet::new();
+    for keyword in &package.keywords {
+        if keyword.trim().is_empty() || keyword.trim() != keyword {
+            return err(format!(
+                "keyword `{keyword}`: give words, without spaces around them"
+            ));
+        }
+        if !seen.insert(keyword.to_lowercase()) {
+            return err(format!("keyword `{keyword}` is listed twice"));
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for category in &package.categories {
+        let slug = !category.is_empty()
+            && !category.starts_with('-')
+            && !category.ends_with('-')
+            && (category.bytes())
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+        if !slug {
+            return err(format!(
+                "category `{category}`: use lowercase letters, digits, and `-` (`church-history`)"
+            ));
+        }
+        if !seen.insert(category) {
+            return err(format!("category `{category}` is listed twice"));
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for book in &package.about_books {
+        if crate::bible_data().books().search_usfm(book).is_none()
+            || book.to_ascii_uppercase() != *book
+        {
+            return err(match book_code(book) {
+                Some(code) => format!("about-books: `{book}` is written `{code}`"),
+                None => format!("about-books: `{book}` is no book's USFM code (`ROM`, `1CO`)"),
+            });
+        }
+        if !seen.insert(book) {
+            return err(format!("about-books: `{book}` is listed twice"));
+        }
+    }
+    Ok(())
+}
+
+/// A book's USFM code from its code in any case or its name (`rom`, `Romans`, `1 Cor` are `ROM`,
+/// `ROM`, `1CO`)
+pub fn book_code(name: &str) -> Option<String> {
+    let books = crate::bible_data().books();
+    let id = (books.search_usfm(&name.trim().to_ascii_uppercase()))
+        .or_else(|| books.search(name.trim()))?;
+    books.get_usfm(id).cloned()
+}
+
 /// What a feature selection turns on
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Enabled {
@@ -411,6 +489,7 @@ impl Manifest {
                     package.id
                 ));
             }
+            check_metadata(package)?;
             // A collection is only its dependencies
             match (
                 package.kind == PackageKind::Collection,
@@ -546,6 +625,56 @@ impl Manifest {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A commentary's manifest with these lines added to its `[package]`
+    fn commentary(lines: &str) -> Result<Manifest> {
+        Manifest::parse(&format!(
+            "[package]\nid = \"gill\"\nname = \"Gill on Romans\"\nabbreviation = \"GILL\"\n\
+             version = \"1.0.0\"\nlanguage = \"en\"\nkind = \"commentary\"\n{lines}\n\
+             [formats]\nusx = {{ path = \"usx/\" }}\n"
+        ))
+    }
+
+    #[test]
+    fn metadata_like_cargos() {
+        let manifest = commentary(
+            r#"keywords = ["justification", "Puritan"]
+categories = ["commentary", "church-history"]
+about-books = ["ROM", "1CO"]
+repository = "https://github.com/someone/gill"
+documentation = "https://example.org/gill"
+readme = "README.md""#,
+        )
+        .unwrap();
+        let info = manifest.package.as_ref().unwrap();
+        assert_eq!(info.about_books, ["ROM", "1CO"]);
+        assert_eq!(info.categories, ["commentary", "church-history"]);
+        assert_eq!(info.readme.as_deref(), Some("README.md"));
+        // Written back the same way
+        assert_eq!(
+            Manifest::parse(&manifest.to_toml().unwrap()).unwrap(),
+            manifest
+        );
+        assert!(manifest.to_toml().unwrap().contains("about-books = ["));
+
+        let error = |lines: &str| commentary(lines).unwrap_err().to_string();
+        assert!(error(r#"about-books = ["Romans"]"#).contains("`Romans` is written `ROM`"));
+        assert!(error(r#"about-books = ["rom"]"#).contains("`rom` is written `ROM`"));
+        assert!(error(r#"about-books = ["XYZ"]"#).contains("no book's USFM code"));
+        assert!(error(r#"about-books = ["ROM", "ROM"]"#).contains("listed twice"));
+        assert!(error(r#"categories = ["Church History"]"#).contains("lowercase letters"));
+        assert!(error(r#"keywords = [" grace"]"#).contains("without spaces"));
+        assert!(error(r#"keywords = ["grace", "Grace"]"#).contains("listed twice"));
+    }
+
+    #[test]
+    fn book_codes_from_names() {
+        assert_eq!(book_code("Romans").as_deref(), Some("ROM"));
+        assert_eq!(book_code("rom").as_deref(), Some("ROM"));
+        assert_eq!(book_code("1 Corinthians").as_deref(), Some("1CO"));
+        assert_eq!(book_code("Song of Songs").as_deref(), Some("SNG"));
+        assert_eq!(book_code("nothing"), None);
+    }
 
     const BSB: &str = r#"
 [package]

@@ -131,7 +131,7 @@ impl Package {
 
 /// The files a package is made of: what its manifest declares, so other files in its folder (a
 /// reader's annotations beside a book, `.DS_Store`) are never part of it. In path order:
-/// - `logoxide.toml`, its license file, and the summary's files
+/// - `logoxide.toml`, its license file and README, and the summary's files
 /// - each format's files, by the format's extensions (`usx/*.usx`; a format logoxide doesn't read,
 ///   like SWORD, is every file under its path)
 /// - the media's timings (`*.vtt` in `[media] timings`)
@@ -172,6 +172,7 @@ pub fn declares(manifest: &Manifest, path: &str) -> bool {
     path == MANIFEST
         || crate::summary::is_summary_file(path)
         || info.and_then(|i| i.license_file.as_deref()) == Some(path)
+        || info.and_then(|i| i.readme.as_deref()) == Some(path)
         || manifest.formats.iter().any(|(name, entry)| {
             under(&entry.path)
                 && (Format::from_name(name).and_then(Format::extensions))

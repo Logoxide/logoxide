@@ -117,6 +117,11 @@ pub struct CatalogEntry {
     pub path: Option<String>,
     /// A registry's releases of it, oldest first (none for other sources)
     pub releases: Vec<CatalogRelease>,
+    /// Its manifest's keywords, categories, and books of the Bible it's mainly about (USFM
+    /// codes); only a logoxide catalog's entries have them
+    pub keywords: Vec<String>,
+    pub categories: Vec<String>,
+    pub about_books: Vec<String>,
 }
 
 impl From<&CoreEntry> for CatalogEntry {
@@ -169,6 +174,9 @@ impl From<&CoreEntry> for CatalogEntry {
             },
             path: e.path.clone(),
             releases: e.releases.iter().map(Into::into).collect(),
+            keywords: e.keywords.clone(),
+            categories: e.categories.clone(),
+            about_books: e.about_books.clone(),
         }
     }
 }
@@ -213,6 +221,9 @@ impl From<CatalogEntry> for CoreEntry {
             },
             path: e.path,
             releases: e.releases.into_iter().map(Into::into).collect(),
+            keywords: e.keywords,
+            categories: e.categories,
+            about_books: e.about_books,
         }
     }
 }

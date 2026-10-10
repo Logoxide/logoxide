@@ -252,11 +252,18 @@ enum Command {
         /// Search only this registry (lx catalog list); with no words, list its packages
         #[arg(long, conflicts_with = "catalog", add = ArgValueCompleter::new(complete::registry))]
         registry: Option<String>,
+        /// Only packages mainly about this book (`--book romans`, `--book ROM`), as their
+        /// `about-books` says
+        #[arg(long)]
+        book: Option<String>,
+        /// Only packages in this category (`--category systematic-theology`)
+        #[arg(long)]
+        category: Option<String>,
         /// How many to show
         #[arg(long, default_value_t = 20)]
         limit: usize,
-        /// One JSON array, for editors: each package's id, names, language, license, and the lx
-        /// arguments that install it
+        /// One JSON array, for editors: each package's id, names, language, license, keywords,
+        /// categories, books it's about, and the lx arguments that install it
         #[arg(long)]
         json: bool,
     },
@@ -510,6 +517,19 @@ struct NewArgs {
     publisher: Option<String>,
     #[arg(long)]
     homepage: Option<String>,
+    /// Where its repository is (its page: `https://github.com/someone/romans`)
+    #[arg(long)]
+    repository: Option<String>,
+    /// A word a search should find it by (repeat for more)
+    #[arg(long = "keyword")]
+    keywords: Vec<String>,
+    /// What it's about, as a lowercase slug (`systematic-theology`; repeat for more)
+    #[arg(long = "category")]
+    categories: Vec<String>,
+    /// A book of the Bible it's mainly about, by name or USFM code (`--about Romans`; repeat for
+    /// more)
+    #[arg(long = "about")]
+    about_books: Vec<String>,
     /// Don't make the folder a git repository
     #[arg(long)]
     no_git: bool,
@@ -616,6 +636,8 @@ fn main() -> ExitCode {
             query,
             catalog,
             registry,
+            book,
+            category,
             limit,
             json,
         } => search(
@@ -623,6 +645,10 @@ fn main() -> ExitCode {
             &query.join(" "),
             catalog,
             registry.as_deref(),
+            Filters {
+                book: book.as_deref(),
+                category: category.as_deref(),
+            },
             *limit,
             *json,
         ),
@@ -695,6 +721,20 @@ fn main() -> ExitCode {
     }
 }
 
+/// Books by their USFM codes, named: `ROM GAL` is `Romans, Galatians`
+fn book_names(codes: &[String]) -> String {
+    let books = bible_data().books();
+    let names: Vec<String> = (codes.iter())
+        .map(|code| {
+            (books.search_usfm(code))
+                .and_then(|id| books.get_name(id))
+                .cloned()
+                .unwrap_or_else(|| code.clone())
+        })
+        .collect();
+    names.join(", ")
+}
+
 fn show(cli: &Cli, args: &PackageArgs, references: Option<(&str, bool)>) -> logoxide::Result<()> {
     let package = args.open()?;
     let info = package.info();
@@ -727,6 +767,25 @@ fn show(cli: &Cli, args: &PackageArgs, references: Option<(&str, bool)>) -> logo
             media.files.len(),
             bytes as f64 / 1e6
         );
+    }
+    if !info.about_books.is_empty() {
+        println!("about: {}", book_names(&info.about_books));
+    }
+    if !info.categories.is_empty() {
+        println!("categories: {}", info.categories.join(", "));
+    }
+    if !info.keywords.is_empty() {
+        println!("keywords: {}", info.keywords.join(", "));
+    }
+    for (label, link) in [
+        ("homepage", &info.homepage),
+        ("repository", &info.repository),
+        ("documentation", &info.documentation),
+        ("readme", &info.readme),
+    ] {
+        if let Some(link) = link {
+            println!("{label}: {link}");
+        }
     }
     if let Some(upstream) = &info.upstream {
         println!("upstream: {upstream}");
@@ -1259,6 +1318,10 @@ fn new(args: &NewArgs) -> logoxide::Result<()> {
         license: args.license.clone(),
         publisher: args.publisher.clone(),
         homepage: args.homepage.clone(),
+        repository: args.repository.clone(),
+        keywords: args.keywords.clone(),
+        categories: args.categories.clone(),
+        about_books: args.about_books.clone(),
     };
     let staged = MemoryStorage::new();
     let (manifest, rights) = match (&args.from, kind) {
@@ -2145,14 +2208,28 @@ fn source_key(entry: &logoxide::catalog::CatalogEntry) -> String {
     }
 }
 
+/// What `lx search` keeps besides what its words match
+struct Filters<'a> {
+    book: Option<&'a str>,
+    category: Option<&'a str>,
+}
+
 fn search(
     cli: &Cli,
     query: &str,
     catalogs: &[String],
     registry: Option<&str>,
+    filters: Filters,
     limit: usize,
     json: bool,
 ) -> logoxide::Result<()> {
+    let book = (filters.book)
+        .map(|name| {
+            logoxide::manifest::book_code(name).ok_or_else(|| {
+                logoxide::LogoxideError::Catalog(format!("--book {name}: no book of the Bible"))
+            })
+        })
+        .transpose()?;
     // The project's registries come first, then its catalogs
     let mut registries = vec![];
     let (catalogs, base) = match catalogs.is_empty() {
@@ -2200,7 +2277,11 @@ fn search(
     if !catalogs.is_empty() {
         all = (load_catalogs(&catalogs, &base)?.into_iter()).fold(all, |all, c| all.merge(c));
     }
-    let found = all.search(query);
+    let mut found = all.search(query);
+    found.retain(|e| {
+        book.as_deref().is_none_or(|b| e.is_about(b))
+            && (filters.category).is_none_or(|c| e.categories.iter().any(|x| x == c))
+    });
     if json {
         let entries: Vec<serde_json::Value> = (found.iter().take(limit))
             .map(|e| {
@@ -2226,6 +2307,9 @@ fn search(
                     "name": e.name,
                     "language": e.language_name.as_deref().unwrap_or(&e.language),
                     "license": e.license,
+                    "keywords": e.keywords,
+                    "categories": e.categories,
+                    "aboutBooks": e.about_books,
                     "install": install,
                 })
             })
@@ -2247,12 +2331,16 @@ fn search(
             (_, None) => String::new(),
         };
         println!(
-            "{} ({}): {}, {language}, {}\n    {source}",
+            "{} ({}): {}, {language}, {}",
             entry.abbreviation,
             entry.id,
             entry.name,
             entry.license.as_deref().unwrap_or("no license given"),
         );
+        if !entry.about_books.is_empty() {
+            println!("    on {}", book_names(&entry.about_books));
+        }
+        println!("    {source}");
     }
     let more = found.len().saturating_sub(limit);
     println!(

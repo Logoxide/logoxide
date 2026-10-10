@@ -79,6 +79,17 @@ pub struct PackageInfo {
     pub license_file: Option<String>,
     pub publisher: Option<String>,
     pub homepage: Option<String>,
+    /// Its repository's page
+    pub repository: Option<String>,
+    pub documentation: Option<String>,
+    /// Its README's path in the package
+    pub readme: Option<String>,
+    /// Words a search should find it by
+    pub keywords: Vec<String>,
+    /// What it's about, as slugs (`systematic-theology`)
+    pub categories: Vec<String>,
+    /// The books of the Bible it's mainly about, as USFM codes (`ROM`), as its author says
+    pub about_books: Vec<String>,
     /// Where the text was imported from, if anywhere
     pub upstream: Option<String>,
     /// `own` (the text's verse markers say), or a named system like `English`
@@ -104,6 +115,12 @@ impl From<&manifest::Package> for PackageInfo {
             license_file: info.license_file.clone(),
             publisher: info.publisher.clone(),
             homepage: info.homepage.clone(),
+            repository: info.repository.clone(),
+            documentation: info.documentation.clone(),
+            readme: info.readme.clone(),
+            keywords: info.keywords.clone(),
+            categories: info.categories.clone(),
+            about_books: info.about_books.clone(),
             upstream: info.upstream.clone(),
             versification: info.versification.clone(),
             maps_to: info.maps_to.clone(),

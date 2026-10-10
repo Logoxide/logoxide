@@ -90,6 +90,7 @@ const metadata = logoxide.fileMetadata(name, bytes); // to fill a form: { title,
 const files = logoxide.newPackage(name, bytes, {
   id: null, name: null, abbreviation: null, authors: [], description: null, version: "1.0.0",
   kind: null, language: null, license: "CC0-1.0", publisher: null, homepage: null,
+  repository: null, keywords: [], categories: [], aboutBooks: ["ROM"], // a book's name or code
 }); // logoxide.toml, and epub/<name>
 for (const file of files) await write(`${folder}/${file.path}`, file.bytes);
 
