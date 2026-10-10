@@ -43,12 +43,14 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `name` | string | yes | Its full name |
 | `abbreviation` | string | yes | What references name it by (`John 3:16 BSB`) |
 | `version` | string | yes | A [semantic version](https://semver.org); see [Versions](#versions) |
-| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`) |
+| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`, `sr-Latn`; `und` when unknown), well-formed by RFC 5646's grammar (`en_US` is refused). Its subtags aren't looked up, so an ISO 639-3 code (`eng`) is kept |
+| `language-name` | string | no | The language's name (`English`); an import keeps the publisher's own text here when it isn't a tag, and says `und` |
+| `script` | string | no | Its script, an ISO 15924 code (`Latn`, `Hebr`, `Grek`: four letters, the first a capital). Without it, the language tag's script subtag (`sr-Latn`), if any |
 | `kind` | string | no | One of the [kinds](#kinds); `bible` when absent |
 | `authors` | array of strings | no | Who wrote it (a book's authors, a translation's translators), in order |
 | `description` | string | no | A sentence or two (a book's subtitle) |
 | `aliases` | array of strings | no | Other names references may use (`AV`, `King James`) |
-| `direction` | string | no | `ltr` (the default) or `rtl` |
+| `direction` | string | no | `ltr` or `rtl`. Without it, the script's: `rtl` for the scripts written right to left (`Arab`, `Hebr`, `Syrc`, `Thaa`, `Nkoo`, `Adlm`, `Samr`, `Mand`, and the other historic ones Unicode gives that class), else `ltr` |
 | `license` | string | no | An SPDX expression (`CC0-1.0`, `CC-BY-SA-4.0`, `LicenseRef-PublicDomain`). Shown to users, never enforced |
 | `license-file` | string | no | The license's path in the package. It is part of the package |
 | `publisher` | string | no | Who publishes the text |

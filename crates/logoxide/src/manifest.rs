@@ -85,10 +85,19 @@ pub struct Package {
     pub version: semver::Version,
     #[serde(default)]
     pub kind: PackageKind,
-    /// BCP 47: `en`, `grc`
+    /// BCP 47: `en`, `grc`, `sr-Latn` ([`crate::language`])
     pub language: String,
-    #[serde(default, skip_serializing_if = "Direction::is_ltr")]
-    pub direction: Direction,
+    /// The language's name (`English`), when the tag doesn't say enough: an import keeps the
+    /// publisher's own here when it isn't a tag (`und`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_name: Option<String>,
+    /// Its script, ISO 15924 (`Latn`, `Hebr`): when not said, the language tag's (see
+    /// [`Package::text_script`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+    /// Which way its text runs: when not said, the script's (see [`Package::text_direction`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<Direction>,
     /// An SPDX expression (`CC0-1.0`, `LicenseRef-PublicDomain`); shown, never enforced
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
@@ -157,6 +166,21 @@ pub struct Upstream {
     pub version: Option<String>,
 }
 
+impl Package {
+    /// Its script: `script`, else the language tag's script subtag (`sr-Latn`); none if neither
+    /// says
+    pub fn text_script(&self) -> Option<String> {
+        (self.script.clone()).or_else(|| crate::language::script_of_tag(&self.language))
+    }
+
+    /// Which way its text runs: `direction`, else its script's ([`crate::language::RTL_SCRIPTS`]
+    /// run right to left), else left to right
+    pub fn text_direction(&self) -> Direction {
+        (self.direction)
+            .unwrap_or_else(|| crate::language::script_direction(self.text_script().as_deref()))
+    }
+}
+
 fn own() -> String {
     String::from("own")
 }
@@ -186,12 +210,6 @@ pub enum Direction {
     #[default]
     Ltr,
     Rtl,
-}
-
-impl Direction {
-    fn is_ltr(&self) -> bool {
-        *self == Direction::Ltr
-    }
 }
 
 /// Where a format's files are, and the feature that turns it on (always on without one)
@@ -585,6 +603,10 @@ impl Manifest {
                 ));
             }
             check_metadata(package)?;
+            crate::language::check_language(&package.language)?;
+            if let Some(script) = &package.script {
+                crate::language::check_script(script)?;
+            }
             // A collection is only its dependencies
             match (
                 package.kind == PackageKind::Collection,
@@ -954,6 +976,31 @@ readme = "README.md""#,
         assert!(error(six).contains("at most 5"));
         assert!(error(r#"keywords = [" grace"]"#).contains("without spaces"));
         assert!(error(r#"keywords = ["grace", "Grace"]"#).contains("listed twice"));
+    }
+
+    #[test]
+    fn languages_scripts_and_directions() {
+        let with = |language: &str, lines: &str| {
+            Manifest::parse(&format!(
+                "[package]\nid = \"x\"\nname = \"X\"\nabbreviation = \"X\"\nversion = \"1.0.0\"\n\
+                 language = \"{language}\"\n{lines}\n[formats]\nusx = {{ path = \"usx/\" }}\n"
+            ))
+            .map(|m| m.package.unwrap())
+        };
+        // The script from the tag, the direction from the script
+        let serbian = with("sr-Latn", "").unwrap();
+        assert_eq!(serbian.text_script().as_deref(), Some("Latn"));
+        assert_eq!(serbian.text_direction(), Direction::Ltr);
+        let hebrew = with("he", "script = \"Hebr\"").unwrap();
+        assert_eq!(hebrew.text_direction(), Direction::Rtl);
+        // Said, the direction wins
+        let said = with("he", "script = \"Hebr\"\ndirection = \"ltr\"").unwrap();
+        assert_eq!(said.text_direction(), Direction::Ltr);
+        // Neither says: left to right
+        assert_eq!(with("he", "").unwrap().text_direction(), Direction::Ltr);
+        let error = |language: &str, lines: &str| with(language, lines).unwrap_err().to_string();
+        assert!(error("en_US", "").contains("isn't a BCP 47 tag"));
+        assert!(error("en", "script = \"latin\"").contains("ISO 15924"));
     }
 
     #[test]

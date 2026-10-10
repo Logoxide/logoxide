@@ -451,6 +451,8 @@ pub(crate) fn search(
                     "abbreviation": e.abbreviation,
                     "name": e.name,
                     "language": e.language_name.as_deref().unwrap_or(&e.language),
+                    "languageTag": e.language,
+                    "script": e.script,
                     "license": e.license,
                     "keywords": e.keywords,
                     "categories": e.categories,

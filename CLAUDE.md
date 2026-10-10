@@ -37,6 +37,14 @@ before changing the design.
     that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
     package in a folder of its repository (tags `<folder>/v<version>`, `lx add --folder`)
+  - `language.rs`: `language` is checked as well-formed BCP 47 (`language-tags`, its grammar
+    only, so eBible.org's `eng` stays), `script` as ISO 15924's form; `Package::text_script` is
+    `script`, else the tag's subtag, and `text_direction` is `direction`, else the script's
+    (`RTL_SCRIPTS`), else left to right (`direction` is an `Option` in the manifest). Imports:
+    `normalize_language` (SWORD's `en_US` is `en-US`; what isn't a tag is `und`, the publisher's
+    text kept in `language-name`), eBible.org's `script` column by name (`script_code`), and
+    CCEL's script judged from its letters (`dominant_script`), which sets the direction. An
+    import writes `direction` only where the script doesn't imply it
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
     `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
@@ -135,7 +143,7 @@ before changing the design.
     codes; other paths answer with fetch.bible's site, which is refused) into `usx/` +
     `COPYRIGHT.txt`; `ccel` takes a Bible's ThML (`ccel_url`; restricted works answer with a
     page, refused) into `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>`
-    (`thml_head`; upstream version `<version>`, else `DC.Date`; right to left judged from its letters);
+    (`thml_head`; upstream version `<version>`, else `DC.Date`; its script, and so its direction, judged from its letters (`language::dominant_script`));
     `sword` unzips a module (`sword_zip_urls`: `packages/<Module>.zip`, then lowercase) into
     sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
     with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
@@ -314,7 +322,8 @@ before changing the design.
   native only. Opening goes through the `Logoxide` object because BoltFFI's WebAssembly
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry logoxide's books and counts
-  across. `LogoxideCatalog` (`catalog.rs`) searches catalogs, and `Logoxide.importEbible`,
+  across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
+  `PackageInfo`, carries `script` and the language's name), and `Logoxide.importEbible`,
   `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
   try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,
   for any source) and `importDownloaded`; `defaultCatalogUrls`, `isInsecureUrl`. Errors keep

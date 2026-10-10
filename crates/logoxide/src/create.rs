@@ -17,7 +17,7 @@ use topos_bible_markup::decode_entities;
 
 use crate::{
     error::{LogoxideError, Result},
-    manifest::{Direction, FormatEntry, MANIFEST, Manifest, Package as Info, PackageKind},
+    manifest::{FormatEntry, MANIFEST, Manifest, Package as Info, PackageKind},
     storage::Storage,
 };
 
@@ -286,7 +286,9 @@ pub fn new_from_file(
         version: (given.version.clone()).unwrap_or_else(|| semver::Version::new(0, 1, 0)),
         kind: given.kind.unwrap_or(kind),
         language,
-        direction: Direction::Ltr,
+        language_name: None,
+        script: None,
+        direction: None,
         license: given.license.clone(),
         license_file: None,
         publisher: given.publisher.clone().or(metadata.publisher.clone()),
@@ -340,7 +342,9 @@ pub fn new_collection(given: &NewPackage, dest: &dyn Storage) -> Result<Manifest
         version: (given.version.clone()).unwrap_or_else(|| semver::Version::new(0, 1, 0)),
         kind: PackageKind::Collection,
         language,
-        direction: Direction::Ltr,
+        language_name: None,
+        script: None,
+        direction: None,
         license: given.license.clone(),
         license_file: None,
         publisher: given.publisher.clone(),

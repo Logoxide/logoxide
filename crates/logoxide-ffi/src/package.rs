@@ -72,7 +72,11 @@ pub struct PackageInfo {
     pub kind: PackageKind,
     /// BCP 47: `en`, `grc`
     pub language: String,
-    /// Whether the text is written right to left
+    /// The language's name, when the package gives it (`English`)
+    pub language_name: Option<String>,
+    /// Its script, ISO 15924 (`Latn`, `Hebr`): as said, else the language tag's
+    pub script: Option<String>,
+    /// Whether the text is written right to left (as said, else as its script runs)
     pub right_to_left: bool,
     /// An SPDX expression (`CC0-1.0`)
     pub license: Option<String>,
@@ -111,7 +115,9 @@ impl From<&manifest::Package> for PackageInfo {
             version: info.version.to_string(),
             kind: info.kind.into(),
             language: info.language.clone(),
-            right_to_left: info.direction == Direction::Rtl,
+            language_name: info.language_name.clone(),
+            script: info.text_script(),
+            right_to_left: info.text_direction() == Direction::Rtl,
             license: info.license.clone(),
             license_file: info.license_file.clone(),
             publisher: info.publisher.clone(),

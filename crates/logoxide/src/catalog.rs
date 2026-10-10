@@ -215,8 +215,11 @@ pub struct CatalogEntry {
     pub aliases: Vec<String>,
     /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it
     pub language: String,
-    /// The language's name, when the catalog gives it (`English`)
+    /// The language's name, when the catalog gives it (`English`), or the publisher's own text
+    /// for a language that isn't a tag (`und`)
     pub language_name: Option<String>,
+    /// Its script (ISO 15924: `Latn`, `Hebr`), when the catalog says or its language tag does
+    pub script: Option<String>,
     pub description: Option<String>,
     pub license: Option<String>,
     /// A copyright statement, when the catalog gives one
@@ -277,13 +280,16 @@ struct TomlEntry {
     #[serde(default)]
     language_name: Option<String>,
     #[serde(default)]
+    script: Option<String>,
+    #[serde(default)]
     description: Option<String>,
     #[serde(default)]
     license: Option<String>,
     #[serde(default)]
     kind: PackageKind,
+    /// Without one, its script's
     #[serde(default)]
-    direction: Direction,
+    direction: Option<Direction>,
     #[serde(default)]
     version: Option<String>,
     #[serde(default)]
@@ -455,6 +461,7 @@ impl Catalog {
             let name_of = |key: &str| text_of(names.and_then(|n| n.get(key)));
             let code = id.split('_').next().unwrap_or(id).to_string();
             let language = languages.and_then(|l| l.get(&code));
+            let (tag, raw) = crate::language::normalize_language(&code);
             let copyright = bible.get("copyright");
             let license = (copyright.and_then(|c| c.get("licenses")))
                 .and_then(Value::as_array)
@@ -477,8 +484,9 @@ impl Catalog {
                     .into_iter()
                     .collect(),
                 abbreviation,
-                language_name: text_of(language.and_then(|l| l.get("english"))),
-                language: code,
+                language_name: text_of(language.and_then(|l| l.get("english"))).or(raw),
+                script: crate::language::script_of_tag(&tag),
+                language: tag,
                 description: None,
                 license,
                 copyright: text_of(copyright.and_then(|c| c.get("attribution"))),
@@ -552,6 +560,7 @@ impl Catalog {
                 aliases: vec![],
                 language: String::from("und"),
                 language_name: None,
+                script: None,
                 description: None,
                 license: None,
                 copyright: None,
@@ -653,6 +662,7 @@ impl Catalog {
                     check(&e.id, url)?;
                 }
             }
+            let script = (e.script.clone()).or_else(|| crate::language::script_of_tag(&e.language));
             entries.push(CatalogEntry {
                 id: e.id,
                 name: e.name,
@@ -660,12 +670,14 @@ impl Catalog {
                 aliases: e.aliases,
                 language: e.language,
                 language_name: e.language_name,
+                direction: (e.direction)
+                    .unwrap_or_else(|| crate::language::script_direction(script.as_deref())),
+                script,
                 description: e.description,
                 license: e.license,
                 copyright: None,
                 version: e.version,
                 kind: e.kind,
-                direction: e.direction,
                 source,
                 path: e.path,
                 releases,
@@ -737,6 +749,8 @@ impl Catalog {
         .map(column);
         let [redistributable, downloadable, direction, updated] =
             [redistributable?, downloadable?, direction?, updated?];
+        // Its script by name (`Latin`), in newer lists
+        let script = column("script").ok();
         let get = |row: &[String], i: usize| row.get(i).map(|s| s.trim().to_string());
         let yes = |row: &[String], i: usize| get(row, i).is_some_and(|v| v == "True");
         let mut entries = vec![];
@@ -747,6 +761,7 @@ impl Catalog {
             let (Some(code), Some(ebible_id)) = (get(&row, language), get(&row, id)) else {
                 continue;
             };
+            let (tag, raw) = crate::language::normalize_language(&code);
             let copyright = get(&row, copyright).filter(|c| !c.is_empty());
             let public = copyright
                 .as_deref()
@@ -762,8 +777,11 @@ impl Catalog {
                 abbreviation: abbreviation(&ebible_id, &code),
                 name,
                 aliases: vec![],
-                language_name: get(&row, language_name).filter(|n| !n.is_empty()),
-                language: code,
+                language_name: get(&row, language_name).filter(|n| !n.is_empty()).or(raw),
+                script: (script.and_then(|i| get(&row, i)))
+                    .and_then(|s| crate::language::script_code(&s))
+                    .or_else(|| crate::language::script_of_tag(&tag)),
+                language: tag,
                 description: get(&row, description).filter(|d| !d.is_empty()),
                 license: Some(String::from(if public {
                     "LicenseRef-PublicDomain"
@@ -840,18 +858,19 @@ impl Catalog {
             .filter_map(|(path, manifest)| {
                 let info = manifest.package?;
                 Some(CatalogEntry {
+                    script: info.text_script(),
+                    direction: info.text_direction(),
                     id: info.id,
                     name: info.name,
                     abbreviation: info.abbreviation,
                     aliases: info.aliases,
                     language: info.language,
-                    language_name: None,
+                    language_name: info.language_name,
                     description: info.description,
                     license: info.license,
                     copyright: None,
                     version: Some(info.version.to_string()),
                     kind: info.kind,
-                    direction: info.direction,
                     source: CatalogSource::Git {
                         url: format!("{base}/{path}"),
                     },
@@ -966,6 +985,12 @@ impl Catalog {
             table.insert("aliases", toml_edit::value(aliases));
         }
         table.insert("language", toml_edit::value(&info.language));
+        if let Some(name) = &info.language_name {
+            table.insert("language-name", toml_edit::value(name));
+        }
+        if let Some(script) = &info.text_script() {
+            table.insert("script", toml_edit::value(script));
+        }
         if let Some(description) = &info.description {
             table.insert("description", toml_edit::value(description));
         }
@@ -980,7 +1005,7 @@ impl Catalog {
                 .unwrap_or_default();
             table.insert("kind", toml_edit::value(kind));
         }
-        if info.direction == Direction::Rtl {
+        if info.text_direction() == Direction::Rtl {
             table.insert("direction", toml_edit::value("rtl"));
         }
         for (key, list) in [
@@ -1111,13 +1136,16 @@ pub(crate) fn sword_entry(
         other => format!("sword-{other}-{}", package_id(&module)),
     };
     let copyright = text("ShortCopyright").or_else(|| text("Copyright"));
+    // SWORD's `Lang` (`en_US`) as a tag; what isn't one is `und`, the conf's text kept
+    let (language, raw) = crate::language::normalize_language(conf.lang().unwrap_or("und"));
     CatalogEntry {
         id,
         name: text("Description").unwrap_or_else(|| module.clone()),
         abbreviation: text("Abbreviation").unwrap_or_else(|| module.clone()),
         aliases: vec![],
-        language: conf.lang().unwrap_or("und").to_string(),
-        language_name: None,
+        script: crate::language::script_of_tag(&language),
+        language,
+        language_name: raw,
         // Its first paragraph (the whole is in the package's license file)
         description: (conf.about_text()).and_then(|a| {
             (a.split('\n'))
@@ -1324,6 +1352,11 @@ mod tests {
         let wlc = &catalog.entries[1];
         assert_eq!(wlc.abbreviation, "WLC");
         assert_eq!(wlc.direction, Direction::Rtl);
+        // The list's script, by name
+        assert_eq!(
+            (asv.script.as_deref(), wlc.script.as_deref()),
+            (Some("Latn"), Some("Hebr"))
+        );
         assert_eq!(wlc.license.as_deref(), Some("LicenseRef-eBible"));
         assert_eq!(
             wlc.description.as_deref(),

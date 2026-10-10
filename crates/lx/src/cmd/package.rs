@@ -34,11 +34,17 @@ pub(crate) fn show(
     if !info.authors.is_empty() {
         outln!("by {}", info.authors.join(", "));
     }
+    let language = match &info.language_name {
+        Some(name) => format!("{} ({name})", info.language),
+        None => info.language.clone(),
+    };
+    let script = (info.text_script())
+        .map(|s| format!(", script: {s}"))
+        .unwrap_or_default();
     outln!(
-        "kind: {:?}, language: {}, direction: {:?}",
+        "kind: {:?}, language: {language}{script}, direction: {:?}",
         info.kind,
-        info.language,
-        info.direction
+        info.text_direction()
     );
     outln!(
         "license: {}",

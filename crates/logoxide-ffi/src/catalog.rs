@@ -105,6 +105,8 @@ pub struct CatalogEntry {
     /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it
     pub language: String,
     pub language_name: Option<String>,
+    /// Its script, ISO 15924 (`Latn`, `Hebr`), when the catalog or the language tag says
+    pub script: Option<String>,
     pub description: Option<String>,
     pub license: Option<String>,
     pub copyright: Option<String>,
@@ -134,6 +136,7 @@ impl From<&CoreEntry> for CatalogEntry {
             aliases: e.aliases.clone(),
             language: e.language.clone(),
             language_name: e.language_name.clone(),
+            script: e.script.clone(),
             description: e.description.clone(),
             license: e.license.clone(),
             copyright: e.copyright.clone(),
@@ -191,6 +194,7 @@ impl From<CatalogEntry> for CoreEntry {
             aliases: e.aliases,
             language: e.language,
             language_name: e.language_name,
+            script: e.script,
             description: e.description,
             license: e.license,
             copyright: e.copyright,

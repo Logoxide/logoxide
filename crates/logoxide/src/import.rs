@@ -251,13 +251,19 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
             .push(std::mem::replace(&mut entry.name, title));
     }
     if let Some(language) = head.language {
-        entry.language = language;
+        let (tag, raw) = crate::language::normalize_language(&language);
+        entry.language = tag;
+        entry.language_name = raw.or(entry.language_name);
     }
     if head.description.is_some() {
         entry.description = head.description;
     }
+    // CCEL doesn't say the script, and its Hebrew transliteration is tagged as Hebrew too, so
+    // the language can't tell: the letters do
     let body = (text.find("</ThML.head>")).map_or(&*text, |at| &text[at..]);
-    entry.direction = text_direction(body);
+    let script = crate::language::dominant_script(body);
+    entry.script = script.map(String::from);
+    entry.direction = crate::language::script_direction(script);
     let public =
         (head.rights.as_deref()).is_some_and(|r| r.to_ascii_lowercase().contains("public domain"));
     entry.license = Some(String::from(match public {
@@ -284,29 +290,6 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
         versification: None,
     };
     finish(&entry, made, staged, dest)
-}
-
-/**
-Which way a text's script runs, from its letters (outside tags): right to left when most are
-Hebrew, Arabic, Syriac, or Thaana. CCEL doesn't say, and its Hebrew transliteration is tagged as
-Hebrew too, so the language can't tell
-*/
-fn text_direction(text: &str) -> crate::manifest::Direction {
-    let (mut rtl, mut ltr) = (0, 0);
-    let mut in_tag = false;
-    for c in text.chars().take(200_000) {
-        match c {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if in_tag || !c.is_alphabetic() => {}
-            '\u{0590}'..='\u{08ff}' | '\u{fb1d}'..='\u{fdff}' | '\u{fe70}'..='\u{feff}' => rtl += 1,
-            _ => ltr += 1,
-        }
-    }
-    match rtl > ltr {
-        true => crate::manifest::Direction::Rtl,
-        false => crate::manifest::Direction::Ltr,
-    }
 }
 
 /// Where a SWORD repository serves a module's zip: `packages/<module>.zip` at its root, else
@@ -417,13 +400,13 @@ pub fn sword(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()>
         }
     }
     let staged = MemoryStorage::new();
-    let language = conf.lang().unwrap_or("und");
+    let language = entry.language.clone();
     for (book, list) in &books {
         let Some(osis) = sword_modules::VerseKey::new(*book, 1, 1).osis_book() else {
             continue;
         };
         let text = match markup {
-            Markup::Osis => osis_book_file(module, language, osis, list),
+            Markup::Osis => osis_book_file(module, &language, osis, list),
             _ => thml_book_file(osis, list),
         };
         staged.write(&format!("{format}/{osis}.xml"), text.as_bytes())?;
@@ -852,6 +835,9 @@ fn finish(
     staged: MemoryStorage,
     dest: &dyn Storage,
 ) -> Result<()> {
+    // The direction is written only where the script doesn't say it
+    let script = (entry.script.clone()).or_else(|| crate::language::script_of_tag(&entry.language));
+    let implied = crate::language::script_direction(script.as_deref());
     let info = Info {
         id: entry.id.clone(),
         name: entry.name.clone(),
@@ -862,7 +848,9 @@ fn finish(
         version: IMPORT_VERSION,
         kind: entry.kind,
         language: entry.language.clone(),
-        direction: entry.direction,
+        language_name: entry.language_name.clone(),
+        script: entry.script.clone(),
+        direction: (entry.direction != implied).then_some(entry.direction),
         license: entry.license.clone(),
         license_file: made.license_file,
         publisher: Some(made.publisher.to_string()),
@@ -1058,7 +1046,10 @@ mod tests {
             info.description.as_deref(),
             Some("The Hebrew Old Testament (see ccel.org).")
         );
-        assert_eq!(info.direction, crate::manifest::Direction::Rtl);
+        // Its letters are Hebrew: the script says it runs right to left, and only it is written
+        assert_eq!(info.script.as_deref(), Some("Hebr"));
+        assert_eq!(info.direction, None);
+        assert_eq!(info.text_direction(), crate::manifest::Direction::Rtl);
         assert_eq!(package.books().len(), 1);
 
         // Without an edition version, its date; a copyright isn't public domain
@@ -1252,6 +1243,39 @@ mod tests {
                 &MemoryStorage::new()
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn swords_languages_become_tags() {
+        let entry = |lang: &str| {
+            let conf = SWORD_CONF.replace("Lang=en", &format!("Lang={lang}"));
+            let conf = sword_modules::ModuleConf::parse(&conf).unwrap();
+            let entry =
+                crate::catalog::sword_entry(&conf, crate::manifest::PackageKind::Bible, "x", "");
+            (entry.language, entry.language_name, entry.script)
+        };
+        assert_eq!(entry("en_US"), ("en-US".into(), None, None));
+        assert_eq!(
+            entry("sr_Latn"),
+            ("sr-Latn".into(), None, Some("Latn".into()))
+        );
+        assert_eq!(
+            entry("Old English"),
+            ("und".into(), Some("Old English".into()), None)
+        );
+        // Imported, the tag is the package's language and the conf's text its name
+        let conf = SWORD_CONF.replace("Lang=en", "Lang=Old English");
+        let zip = sword_zip(&conf, &[("John", 1, 1, "In the beginning.")]);
+        let dest = MemoryStorage::new();
+        sword(&sword_test_entry(), &zip, &dest).unwrap();
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        assert_eq!(
+            (
+                package.info().language.as_str(),
+                package.info().language_name.as_deref()
+            ),
+            ("und", Some("Old English"))
         );
     }
 

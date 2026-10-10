@@ -70,6 +70,7 @@ pub mod create;
 pub mod error;
 pub mod git;
 pub mod import;
+pub mod language;
 pub mod library;
 pub mod lock;
 pub mod manifest;

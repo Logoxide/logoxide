@@ -67,10 +67,11 @@ size = 1834201
 | `language` | string | yes | BCP 47 |
 | `aliases` | array of strings | no | |
 | `language-name` | string | no | The language's name (`English`) |
+| `script` | string | no | ISO 15924 (`Latn`, `Hebr`). Absent, the language tag's script subtag, if any |
 | `description` | string | no | |
 | `license` | string | no | SPDX expression, shown, never enforced |
 | `kind` | string | no | As in the manifest; `bible` when absent |
-| `direction` | string | no | `ltr` (default) or `rtl` |
+| `direction` | string | no | `ltr` or `rtl`. Absent, the script's (as in the manifest), else `ltr` |
 | `version` | string | no | The newest version, for display |
 | `keywords`, `categories`, `about-books` | arrays of strings | no | As in the manifest; searches match them (a word naming a book of the Bible matches what's about it) |
 | `git` | string | one of `git` or `release` | The package's git repository (`github:owner/repo` is accepted and expanded) |
