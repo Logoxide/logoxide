@@ -247,8 +247,8 @@ cached in `<cache>/catalogs/` (logoxide-app's `catalog_cache.rs`) for the config
 fails; `lx catalog refresh [names]`, `lx search --refresh` and `--offline`; `lx import --update`
 and adding through a registry always download (branch `phase-catalog-cache`, merged). Every
 check green (400 workspace tests, the FFI's 22, the plugin's 90); lx, logoxide-lsp,
-logoxide-mcp, and topos's CLI reinstalled. Still the owner's: topos's layer table in
-`doc/logoxide.md` (a `logoxide-app` row), tags, publishing.
+logoxide-mcp, and topos's CLI reinstalled. topos's layer table in `doc/logoxide.md` has
+logoxide-app and logoxide-mcp rows (topos b504513). Still the owner's: tags, publishing.
 
 ## Status (2026-10-10, after the second session; logoxide main 8f5cf61, plugin main 4348011)
 
