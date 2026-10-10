@@ -267,3 +267,21 @@ fn formats_are_only_where_a_command_has_them() {
             .is_some_and(|c| !c.is_empty())
     );
 }
+
+#[test]
+fn catalog_text_is_printed_without_escapes() {
+    let world = World::new("escapes");
+    world.ok(&["init"]);
+    let catalog = world.path("catalog.toml");
+    std::fs::write(
+        &catalog,
+        "[[package]]\nid = \"kjv\"\nname = \"King James\\u001b]0;owned\\u0007 \\u001b[2JVersion\\u202e\"\nabbreviation = \"KJV\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\\r\\u001b[1A\"\ngit = \"https://example.com/kjv\"\n",
+    )
+    .unwrap();
+    let out = world.ok(&["search", "kjv", "--catalog", catalog.to_str().unwrap()]);
+    assert!(out.contains("KJV (kjv): King James Version, "), "{out}");
+    assert!(
+        !out.contains(['\u{1b}', '\u{7}', '\r', '\u{202e}']),
+        "{out:?}"
+    );
+}

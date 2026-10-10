@@ -24,7 +24,9 @@ fn project() -> Option<Project> {
     Project::open(dir).ok()
 }
 
+/// A completion, with help from a catalog or manifest made safe to show
 fn candidate(value: String, help: String) -> CompletionCandidate {
+    let help = logoxide::text::printable(&help).into_owned();
     CompletionCandidate::new(value).help(Some(help.into()))
 }
 

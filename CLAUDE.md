@@ -184,6 +184,9 @@ before changing the design.
     many books: the package's name). Summaries list them (`titles`); a changed title is a major
     change (`Diff::retitled`); `lx check` and `lx release` refuse an untitled file. Hosts name
     what they show by it (`BookFile.title`, `LogoxidePackage.titles()`)
+  - `text.rs`: `printable` drops control characters (but `\n`, `\t`), whole ANSI/OSC escape
+    sequences (7-bit and C1), and bidi controls (U+202A–202E, U+2066–2069) from text bound for a
+    terminal
   - `publish.rs`: release archives for registries: `pack` (declared files, sorted, no times or
     owners, so the same files make the same bytes), `sha256`, `add_release` (a catalog.toml's
     `[[package.release]]`: version, url relative to the catalog, optional `mirrors`, sha256, checksum, size; a
@@ -236,7 +239,9 @@ before changing the design.
   import --update, show --references; others refuse it). `lx publish` warns of a license that
   isn't free or the public domain. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
   `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
-  folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly
+  folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
+  Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
+  through `text::printable`), so catalogs', manifests', and git's text can't drive the terminal
 - `crates/logoxide-ffi`: BoltFFI 0.31 bindings (npm and PyPI `logoxide`), re-exporting topos-ffi
   (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
   package. Its library is `logoxide` (BoltFFI names artifacts after the package), so it depends on

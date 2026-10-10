@@ -63,7 +63,7 @@ fn with_retries<T>(
     read: impl Fn(ureq::http::Response<ureq::Body>) -> Result<T, ureq::Error>,
 ) -> logoxide::Result<T> {
     if !QUIET.load(Ordering::Relaxed) {
-        eprintln!("Downloading {url}");
+        errln!("Downloading {url}");
     }
     let mut attempt = 1;
     loop {

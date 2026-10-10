@@ -36,7 +36,7 @@ pub(crate) fn media_add(
     let mut manifest = Project::open(package)?;
     manifest.add_media(&entry)?;
     manifest.save_manifest()?;
-    println!(
+    outln!(
         "listed {} ({:.1} MB, sha256 {}) in {}",
         entry.path,
         entry.size as f64 / 1e6,
@@ -52,7 +52,7 @@ pub(crate) fn media_check(package: &std::path::Path, offline: bool) -> logoxide:
         .map(|m| m.files.clone())
         .unwrap_or_default();
     if files.is_empty() {
-        println!("no media listed");
+        outln!("no media listed");
         return Ok(());
     }
     let timings = logoxide::media::check_package_timings(&opened)?;
@@ -63,7 +63,7 @@ pub(crate) fn media_check(package: &std::path::Path, offline: bool) -> logoxide:
         .is_some_and(|m| m.timings.is_some())
         && timings.is_empty()
     {
-        println!("timings: ok");
+        outln!("timings: ok");
     }
     timings_report(&timings)?;
     if offline {
@@ -80,10 +80,10 @@ pub(crate) fn media_check(package: &std::path::Path, offline: bool) -> logoxide:
             };
             // Hashed as it downloads: media can be larger than memory should hold
             match net::verify_media(url, file) {
-                Ok(()) => println!("ok: {shown}"),
+                Ok(()) => outln!("ok: {shown}"),
                 Err(error) => {
                     failed += 1;
-                    println!("FAILED: {shown}: {error}");
+                    outln!("FAILED: {shown}: {error}");
                 }
             }
         }

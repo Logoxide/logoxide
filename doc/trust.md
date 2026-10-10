@@ -68,6 +68,16 @@ What a package can still do is name other public repositories and catalogs, whic
 trusted on first use like your own dependencies. `lx` never runs anything a package contains:
 packages are text, read by parsers.
 
+## What lx prints
+
+Names, descriptions, licenses, titles, and other text from catalogs and manifests, and what `git`
+says when it fails, are printed with control characters (but newlines and tabs), terminal escape
+sequences (colors, cursor movement, window titles, links), and bidirectional controls (U+202A to
+U+202E, U+2066 to U+2069) taken out, so a catalog can't rewrite the terminal or make text read
+in another order than it's shown. JSON output (`--format json`) is left as it is: JSON escapes
+control characters itself. Other implementations that show such text in a terminal should do the
+same (`logoxide::text::printable`).
+
 ## Caches and summaries
 
 The parsed-book cache is per device, keyed by package version and checksum, and never shared:

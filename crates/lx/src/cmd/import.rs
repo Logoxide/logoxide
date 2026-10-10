@@ -100,7 +100,7 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
         };
         return Err(error);
     }
-    println!(
+    outln!(
         "imported {} ({}) into {}",
         entry.id,
         entry.name,
@@ -123,7 +123,7 @@ fn import_files(
         )));
         for url in &download.urls {
             if logoxide::git::is_insecure(url) {
-                eprintln!("warning: {url} is plain HTTP: what it sends can't be checked");
+                errln!("warning: {url} is plain HTTP: what it sends can't be checked");
             }
             bytes = get(url);
             if bytes.is_ok() {
@@ -180,7 +180,7 @@ pub(crate) fn import_update(
         {
             match load_catalog(&format!("{root}/mods.d.tar.gz"), project.dir()) {
                 Ok(catalog) => catalogs.push(catalog),
-                Err(e) => eprintln!("warning: {dep}: {e}"),
+                Err(e) => errln!("warning: {dep}: {e}"),
             }
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
@@ -221,7 +221,7 @@ pub(crate) fn import_update(
             }
             Ok(()) => {}
             Err(error) => {
-                eprintln!("lx: {dep}: {error}");
+                errln!("lx: {dep}: {error}");
                 report.status = "failed";
                 report.error = Some(error.to_string());
                 failed.push(dep);
@@ -237,7 +237,7 @@ pub(crate) fn import_update(
         )));
     }
     if found == 0 && !json {
-        println!("this project has no imports");
+        outln!("this project has no imports");
     }
     // Those replaced are locked again, whatever else failed
     let locked = match changed.is_empty() {
@@ -309,7 +309,7 @@ fn update_import(
     );
     let say = |text: String| {
         if !json {
-            println!("{text}");
+            outln!("{text}");
         }
     };
     if logoxide::import::import_is_current(entry, version) {

@@ -21,7 +21,7 @@ pub(crate) fn load_catalogs(
     for location in locations {
         match load_catalog(location, base) {
             Ok(catalog) => catalogs.push(catalog),
-            Err(e) if locations.len() > 1 => eprintln!("warning: {e}"),
+            Err(e) if locations.len() > 1 => errln!("warning: {e}"),
             Err(e) => return Err(e),
         }
     }
@@ -39,7 +39,7 @@ pub(crate) fn load_catalog(
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
     let bytes = if location.starts_with("https://") || location.starts_with("http://") {
         if logoxide::git::is_insecure(location) {
-            eprintln!("warning: {location} is plain HTTP: its packages' hashes can't be trusted");
+            errln!("warning: {location} is plain HTTP: its packages' hashes can't be trusted");
         }
         get(location)?
     } else {
@@ -119,7 +119,7 @@ pub(crate) fn load_registry(
     let (catalog, warnings) = logoxide::registry_build::folder_catalog(name, &canonical(&folder)?)?;
     if warn {
         for warning in warnings {
-            eprintln!("warning: {warning}");
+            errln!("warning: {warning}");
         }
     }
     Ok(catalog)
@@ -163,7 +163,7 @@ pub(crate) fn catalog_build(
         message: e.to_string(),
     })?;
     let plural = if built.count == 1 { "" } else { "s" };
-    println!(
+    outln!(
         "Wrote {}: {} package{plural} ({} read, {} unchanged)",
         output.display(),
         built.count,
@@ -171,7 +171,7 @@ pub(crate) fn catalog_build(
         built.kept
     );
     for skip in built.skipped {
-        println!("    skipped {skip}");
+        outln!("    skipped {skip}");
     }
     Ok(())
 }
@@ -188,7 +188,7 @@ pub(crate) fn catalog_list(cli: &Cli) -> logoxide::Result<()> {
             false => ", from config.toml",
         };
         if !json {
-            println!("{name}: {location} (registry{from})");
+            outln!("{name}: {location} (registry{from})");
         }
         registries.push(serde_json::json!({
             "name": name,
@@ -213,7 +213,7 @@ pub(crate) fn catalog_list(cli: &Cli) -> logoxide::Result<()> {
             ("", "project")
         };
         if !json {
-            println!("{location}{note}");
+            outln!("{location}{note}");
         }
         catalogs.push(serde_json::json!({ "location": location, "from": from }));
     }
@@ -229,16 +229,16 @@ pub(crate) fn catalog_add(cli: &Cli, location: &str, name: Option<&str>) -> logo
         logoxide::catalog::check_registry_name(name)?;
         let catalog = load_registry(name, location, project.dir(), true)?;
         if !project.add_registry(name, location)? {
-            println!("{name} is already {location}");
+            outln!("{name} is already {location}");
             return Ok(());
         }
         project.save_manifest()?;
         let count = catalog.entries.len();
         let plural = if count == 1 { "" } else { "s" };
-        println!("Added the registry {name} ({location}): {count} package{plural}");
+        outln!("Added the registry {name} ({location}): {count} package{plural}");
         for entry in &catalog.entries {
             let path = entry.path.as_deref().unwrap_or(&entry.id);
-            println!(
+            outln!(
                 "    {name}:{path}  {} {}",
                 entry.id,
                 entry.version.as_deref().unwrap_or("")
@@ -248,13 +248,13 @@ pub(crate) fn catalog_add(cli: &Cli, location: &str, name: Option<&str>) -> logo
     }
     let catalog = load_catalog(location, project.dir())?;
     if !project.add_catalog(location)? {
-        println!("{location} is already searched");
+        outln!("{location} is already searched");
         return Ok(());
     }
     project.save_manifest()?;
     let count = catalog.entries.len();
     let plural = if count == 1 { "" } else { "s" };
-    println!("Added {location}: {count} package{plural}");
+    outln!("Added {location}: {count} package{plural}");
     Ok(())
 }
 
@@ -262,7 +262,7 @@ pub(crate) fn catalog_remove(cli: &Cli, location: &str) -> logoxide::Result<()> 
     let mut project = cli.project(&cli.library())?;
     if project.remove_registry(location)? {
         project.save_manifest()?;
-        println!("Removed the registry {location}");
+        outln!("Removed the registry {location}");
         return Ok(());
     }
     if !project.remove_catalog(location)? {
@@ -271,7 +271,7 @@ pub(crate) fn catalog_remove(cli: &Cli, location: &str) -> logoxide::Result<()> 
         )));
     }
     project.save_manifest()?;
-    println!("Removed {location}");
+    outln!("Removed {location}");
     Ok(())
 }
 
@@ -326,7 +326,7 @@ pub(crate) fn search(
                 }
                 match load_registry(name, location, project.dir(), true) {
                     Ok(catalog) => registries.push(catalog),
-                    Err(e) => eprintln!("warning: {name}: {e}"),
+                    Err(e) => errln!("warning: {name}: {e}"),
                 }
             }
             let catalogs = match registry {
@@ -365,7 +365,7 @@ pub(crate) fn search(
     // A package another catalog also lists by its id: only the first catalog's is shown
     for (id, names) in &shadowed {
         if found.iter().take(limit).any(|e| &e.id == id) {
-            eprintln!(
+            errln!(
                 "warning: `{id}` is in {}; {}'s is shown",
                 names.join(", "),
                 names[0]
@@ -420,7 +420,7 @@ pub(crate) fn search(
             }
             (_, None) => String::new(),
         };
-        println!(
+        outln!(
             "{} ({}): {}, {language}, {}",
             entry.abbreviation,
             entry.id,
@@ -428,12 +428,12 @@ pub(crate) fn search(
             entry.license.as_deref().unwrap_or("no license given"),
         );
         if !entry.about_books.is_empty() {
-            println!("    on {}", book_names(&entry.about_books));
+            outln!("    on {}", book_names(&entry.about_books));
         }
-        println!("    {source}");
+        outln!("    {source}");
     }
     let more = found.len().saturating_sub(limit);
-    println!(
+    outln!(
         "{} found in {} catalog(s){}",
         found.len(),
         searched,
@@ -465,6 +465,6 @@ pub(crate) fn catalog_entry(cli: &Cli, url: &str) -> logoxide::Result<()> {
     let info = manifest
         .package
         .ok_or_else(|| logoxide::LogoxideError::Manifest(format!("{url}: no [package]")))?;
-    print!("{}", logoxide::catalog::Catalog::toml_entry(&info, url));
+    out!("{}", logoxide::catalog::Catalog::toml_entry(&info, url));
     Ok(())
 }
