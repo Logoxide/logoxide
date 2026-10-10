@@ -1,0 +1,33 @@
+[package]
+name = "logoxide-lsp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "A language server for Bible references and text: completion, hover, symbols, diagnostics, and passages from logoxide packages"
+publish = false
+
+[[bin]]
+name = "logoxide-lsp"
+path = "src/main.rs"
+
+[dependencies]
+logoxide = { path = "../logoxide" }
+ignore = "0.4.23"
+lsp-server = "0.10.0"
+lsp-types = "0.97.0"
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "1.1"
+topos-bible = { workspace = true }
+topos-bible-markup = { workspace = true }
+topos-bible-index = { workspace = true }
+topos-bible-formats = { workspace = true }
+
+[dev-dependencies]
+# Builds a small EPUB for the tests
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[features]
+# Searching PDFs too, with the `books` setting (builds MuPDF)
+pdf = ["topos-bible-index/pdf", "topos-bible-formats/pdf"]

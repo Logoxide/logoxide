@@ -1,0 +1,31 @@
+[package]
+name = "logoxide-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bindings for TypeScript/WASM, Python, Swift, and Kotlin (via BoltFFI): logoxide's packages with topos's API"
+publish = false
+
+[lib]
+# Matches the published package name (logoxide), which BoltFFI uses for artifacts
+name = "logoxide"
+crate-type = ["staticlib", "cdylib"]
+
+[dependencies]
+# Named logoxide_core here: this crate's own library is logoxide (the package name BoltFFI uses)
+logoxide_core = { package = "logoxide", path = "../logoxide" }
+boltffi = "0.31.0"
+semver = "1"
+# topos's whole API, re-exported (its library is named topos_bible, like its packages)
+topos-ffi = { path = "../../../topos/crates/topos-ffi" }
+
+[dev-dependencies]
+zip = { version = "2", default-features = false, features = ["deflate"] }
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
+sword-modules.workspace = true
+
+[features]
+# Indexing PDFs (`Topos.indexPdf`; builds MuPDF, so native only: Python, not WebAssembly)
+pdf = ["topos-ffi/pdf"]

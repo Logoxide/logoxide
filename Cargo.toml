@@ -1,12 +1,12 @@
 [workspace]
-members = ["crates/biblix", "crates/bx", "crates/biblix-lsp", "crates/biblix-ffi"]
+members = ["crates/logoxide", "crates/lx", "crates/logoxide-lsp", "crates/logoxide-ffi"]
 resolver = "3"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "CC0-1.0"
-repository = "https://github.com/MasterTemple/biblix"
+repository = "https://github.com/MasterTemple/logoxide"
 
 [workspace.dependencies]
 # Verse references and Bible markup: local checkouts until topos 0.6 is released
