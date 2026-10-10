@@ -15,8 +15,8 @@ resolver = "3"
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-# sword-modules, ignore, and globset need 1.88 (CI checks it: the msrv job)
-rust-version = "1.88"
+# std::fs::File::lock (PLAN-NEXT.md H.4, the owner's D11) needs 1.89 (CI checks it: the msrv job)
+rust-version = "1.89"
 license = "CC0-1.0"
 repository = "https://github.com/Logoxide/logoxide"
 homepage = "https://github.com/Logoxide/logoxide"

@@ -170,7 +170,7 @@ cargo install logoxide-lsp    # the language server
 npm install logoxide          # or: pip install logoxide (the bindings, with topos's API)
 ```
 
-Rust 1.88 or later.
+Rust 1.89 or later.
 
 ## Development
 

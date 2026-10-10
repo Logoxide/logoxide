@@ -521,4 +521,4 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
 - Commit messages end with a `Co-Authored-By` line
 - Formats for other implementations are specified in `doc/` (`manifest.md`, `catalog.md`,
   `lock.md`, `summaries.md`, `trust.md`): change them with the code. `scripts/` has CI's helpers
-  (`check-versions.sh`, `topos-ref.sh`, `patch-unpublished.sh`); the minimum Rust is 1.88
+  (`check-versions.sh`, `topos-ref.sh`, `patch-unpublished.sh`); the minimum Rust is 1.89
