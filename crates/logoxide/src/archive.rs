@@ -154,8 +154,9 @@ impl Refs {
 /// The fewest hex digits of a commit a revision may give over HTTP (as `git` shows them)
 pub const MIN_REV_PREFIX: usize = 7;
 
-/// The most an archive may unpack to in all (4 GiB), so a small download can't fill memory
-pub const MAX_UNPACKED_BYTES: u64 = 4 << 30;
+/// The most an archive may unpack to in all (1 GiB), so a small download can't fill memory or a
+/// disk
+pub const MAX_UNPACKED_BYTES: u64 = 1 << 30;
 
 /// The most one file in an archive may be (1 GiB)
 pub const MAX_ENTRY_BYTES: u64 = 1 << 30;
@@ -216,7 +217,11 @@ pub fn archive_urls(url: &str, commit: &str) -> Vec<String> {
 /**
 Unpacks a `.tar.gz` of a repository into `dest`. Hosts put everything in one folder named for
 the repository and commit (`kjv-3f9c2a1b/`), which is left out; a package has its `logoxide.toml`
-at the top. Only files are kept (not links)
+at the top. Only files are kept (not links).
+
+The archive is read twice: once for its names and sizes, to find that folder and check the limits
+([`MAX_ENTRIES`], [`MAX_ENTRY_BYTES`], [`MAX_UNPACKED_BYTES`]) before anything is written, then
+again to write each file to `dest` as it's read, so only one file is held at a time
 */
 pub fn unpack(bytes: &[u8], dest: &dyn Storage) -> Result<()> {
     let bad = |e: std::io::Error| LogoxideError::Fetch {
@@ -227,46 +232,66 @@ pub fn unpack(bytes: &[u8], dest: &dyn Storage) -> Result<()> {
         url: String::from("archive"),
         message,
     };
-    let mut files: Vec<(String, Vec<u8>)> = vec![];
+    // The files' names, and the room they say they need
+    let mut paths: Vec<String> = vec![];
+    let (mut entries, mut declared) = (0, 0u64);
     let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
-    let (mut entries, mut total) = (0, 0);
     for entry in archive.entries().map_err(bad)? {
         let entry = entry.map_err(bad)?;
         entries += 1;
         if entries > MAX_ENTRIES {
             return Err(too_large(format!("more than {MAX_ENTRIES} entries")));
         }
-        if !entry.header().entry_type().is_file() {
-            continue;
-        }
-        let path = entry.path().map_err(bad)?;
-        let Some(path) = path
-            .to_str()
-            .map(|p| p.trim_start_matches("./").to_string())
-        else {
+        let Some(path) = file_path(&entry).map_err(bad)? else {
             continue;
         };
         let size = entry.header().size().map_err(bad)?;
-        let data = read_limited(entry, size, &mut total, &path).map_err(too_large)?;
-        files.push((path, data));
+        declared = declared.saturating_add(size);
+        if size > MAX_ENTRY_BYTES || declared > MAX_UNPACKED_BYTES {
+            return Err(too_large(format!(
+                "{path}: too large to unpack ({size} bytes)"
+            )));
+        }
+        paths.push(path);
     }
     // The one folder everything is in, unless the files are at the top
-    let top = files
+    let top = paths
         .first()
-        .and_then(|(p, _)| p.split_once('/'))
+        .and_then(|p| p.split_once('/'))
         .map(|(top, _)| format!("{top}/"));
-    let strip = top.filter(|top| files.iter().all(|(p, _)| p.starts_with(top.as_str())));
-    for (path, data) in files {
-        let path = match &strip {
-            Some(top) => &path[top.len()..],
+    let strip = top.filter(|top| paths.iter().all(|p| p.starts_with(top.as_str())));
+    let mut total = 0;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(bytes));
+    for entry in archive.entries().map_err(bad)? {
+        let entry = entry.map_err(bad)?;
+        let Some(path) = file_path(&entry).map_err(bad)? else {
+            continue;
+        };
+        let inside = match &strip {
+            Some(top) => path.get(top.len()..).unwrap_or_default(),
             None => &path[..],
         };
-        if path.split('/').any(|part| part == ".git") {
+        if inside.is_empty() || inside.split('/').any(|part| part == ".git") {
             continue;
         }
-        dest.write(path, &data)?;
+        let inside = inside.to_string();
+        let size = entry.header().size().map_err(bad)?;
+        // Capped again as it's read, should an entry hold more than it said
+        let data = read_limited(entry, size, &mut total, &path).map_err(too_large)?;
+        dest.write(&inside, &data)?;
     }
     Ok(())
+}
+
+/// An entry's path, if it's a file and its path is text (`./` dropped)
+fn file_path<R: Read>(entry: &tar::Entry<R>) -> std::io::Result<Option<String>> {
+    if !entry.header().entry_type().is_file() {
+        return Ok(None);
+    }
+    let path = entry.path()?;
+    Ok(path
+        .to_str()
+        .map(|p| p.trim_start_matches("./").to_string()))
 }
 
 #[cfg(test)]
@@ -401,5 +426,44 @@ mod tests {
         assert!(read_limited(&[0u8; 20][..], 5, &mut total, "a").is_err());
         assert!(read_limited(&[0u8; 5][..], 20, &mut total, "a").is_err());
         assert!(read_limited(&b""[..], MAX_ENTRY_BYTES + 1, &mut 0, "a").is_err());
+    }
+
+    #[test]
+    fn nothing_is_written_from_an_archive_too_large() {
+        // A small file, then one that says it's 2 GiB (its bytes cut short): refused before
+        // the first is written
+        let header = |path: &str, size: u64| {
+            let mut header = tar::Header::new_gnu();
+            header.set_path(path).unwrap();
+            header.set_size(size);
+            header.set_mode(0o644);
+            header.set_cksum();
+            header.as_bytes().to_vec()
+        };
+        let mut tar = header("kjv-abc/logoxide.toml", 9);
+        let mut data = b"[package]".to_vec();
+        data.resize(512, 0);
+        tar.extend(data);
+        tar.extend(header("kjv-abc/big.usx", 2 << 30));
+        tar.extend([0; 512]);
+        let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        std::io::Write::write_all(&mut gz, &tar).unwrap();
+        let bytes = gz.finish().unwrap();
+        let dest = MemoryStorage::new();
+        let error = unpack(&bytes, &dest).unwrap_err();
+        assert!(error.to_string().contains("too large"), "{error}");
+        assert!(dest.walk("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_top_folder_is_judged_by_every_file() {
+        // The first file is in a folder, but not every one is: nothing is left out
+        let bytes = tar_gz(&[
+            ("usfm/JHN.usfm", "\\id JHN"),
+            ("logoxide.toml", "[package]"),
+        ]);
+        let dest = MemoryStorage::new();
+        unpack(&bytes, &dest).unwrap();
+        assert_eq!(dest.walk("").unwrap(), ["logoxide.toml", "usfm/JHN.usfm"]);
     }
 }

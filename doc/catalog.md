@@ -144,6 +144,10 @@ is checked is the `sha256` of the bytes and the `checksum` of the files. Another
 may pack differently; its archive just hashes differently, and a version, once published with a
 hash, keeps it.
 
+logoxide refuses an archive of more than 200,000 entries, a file of more than 1 GiB, or more than
+1 GiB of files in all, judging by the tar headers before it writes anything and again by what it
+reads; other readers should have limits of their own.
+
 ## Checksums
 
 A package's checksum names its exact files, for lock files, caches, and checking downloads. It is

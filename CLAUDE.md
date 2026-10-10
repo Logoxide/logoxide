@@ -73,8 +73,10 @@ before changing the design.
   - `archive.rs`: git over plain HTTP for hosts without `git`: `Refs::parse` reads the smart-HTTP
     ref listing (`refs_url`), `archive_urls` gives each host's `.tar.gz` form, `unpack` drops the
     archive's top folder. An archive hashes the same as a checkout (checked on the KJV, the BSB,
-    and GitHub's own archives). Unpacking (and `import::unzip`) stops at `MAX_UNPACKED_BYTES`,
-    `MAX_ENTRY_BYTES`, and `MAX_ENTRIES`; `Refs::find_commit` takes a revision of at least
+    and GitHub's own archives). Unpacking (and `import::unzip`) stops at `MAX_UNPACKED_BYTES`
+    (1 GiB), `MAX_ENTRY_BYTES`, and `MAX_ENTRIES`; `unpack` reads the archive twice, first its
+    names and declared sizes (the top folder, the limits, before anything is written), then
+    writing each file to storage as it's read; `Refs::find_commit` takes a revision of at least
     `MIN_REV_PREFIX` hex digits naming one commit
   - `catalog.rs`: catalogs to search (`Catalog::parse` by extension: a `catalog.toml` of git
     packages, eBible.org's `translations.csv` (its downloadable, redistributable rows), or
