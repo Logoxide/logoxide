@@ -1,6 +1,28 @@
-//! Hovering a reference (or a missing one, or a verse in a whole book)
+//! Hovering a reference (or a missing one, a Strong's number, or a verse in a whole book)
+
+use logoxide_text::Note;
 
 use super::*;
+
+/// The most notes hover shows from one commentary (a chapter's verse-by-verse notes would fill
+/// the screen); the rest are counted
+const MAX_HOVER_NOTES: usize = 8;
+
+/// A note's verses as a reference: `John 3:16`, `John 3:16-18`, `John 3:36-4:2`, `John 3:20a`
+fn note_reference(book: &str, note: &Note) -> String {
+    let part = match note.part {
+        0 => String::new(),
+        n => char::from(b'a' + (n - 1).min(25)).to_string(),
+    };
+    let first = format!("{book} {}:{}{part}", note.chapter, note.verse);
+    if note.last_chapter != note.chapter {
+        format!("{first}-{}:{}", note.last_chapter, note.last)
+    } else if note.last != note.verse {
+        format!("{first}-{}", note.last)
+    } else {
+        first
+    }
+}
 
 impl Server {
     /// The Bibles whose text hover shows for a reference: the one it names (or the default), then
@@ -36,7 +58,8 @@ impl Server {
             index,
         )) = self.reference_at(uri, position.position)
         else {
-            return self.verse_hover(uri, position.position);
+            return (self.strongs_hover(uri, position.position))
+                .or_else(|| self.verse_hover(uri, position.position));
         };
         let bytes = found.location.bytes;
         let written = self
@@ -91,6 +114,13 @@ impl Server {
                         false => text,
                     });
                 }
+                // Then the commentaries' notes on it
+                let notes = self.commentary_sections(&found.psg);
+                if !notes.is_empty() && !lines.is_empty() {
+                    sections.push(lines.join("\n"));
+                    lines.clear();
+                }
+                sections.extend(notes);
                 continue;
             }
             let Some((label, detail)) = self.hover_line(field, &found, written) else {
@@ -109,6 +139,83 @@ impl Server {
         for section in sections {
             value.push_str("\n\n");
             value.push_str(&section);
+        }
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            }),
+            range: Some(lsp_range(&index, bytes.start, bytes.end)),
+        })
+    }
+
+    /**
+    Each commentary's notes on a passage (the `commentaries` setting), a section a note,
+    labeled with the commentary's name and the verses the note is on: `*MHCC* (John 3:16-18)`;
+    after [`MAX_HOVER_NOTES`] of one commentary's, a line counting the rest
+    */
+    fn commentary_sections(&self, passage: &Passage) -> Vec<String> {
+        let book = (self.matcher.data().books().get_name(passage.book))
+            .cloned()
+            .unwrap_or_default();
+        let mut sections = vec![];
+        for commentary in &self.commentaries {
+            let notes: Vec<(Note, bible::Text)> = (commentary.notes(passage).into_iter())
+                .filter_map(|note| {
+                    let text =
+                        bible::nodes_text(&note.nodes, &commentary.markup, Some(MAX_HOVER_TEXT))?;
+                    Some((note, text))
+                })
+                .collect();
+            for (note, text) in notes.iter().take(MAX_HOVER_NOTES) {
+                sections.push(format!(
+                    "*{}* ({})\n{}",
+                    commentary.name,
+                    note_reference(&book, note),
+                    text.fence(true)
+                ));
+            }
+            if let Some(more) = notes.len().checked_sub(MAX_HOVER_NOTES).filter(|&n| n > 0) {
+                let plural = if more == 1 { "" } else { "s" };
+                sections.push(format!("*{}*: {more} more note{plural}", commentary.name));
+            }
+        }
+        sections
+    }
+
+    /**
+    Hovering a Strong's number (`G25`, `H430`, `G0025`) with the `strongs` setting: its entry in
+    each of the project's Strong's dictionaries that has it, labeled with the dictionary's name
+    when there are several, under the number and its headword: `**G25** ἀγαπάω`
+    */
+    fn strongs_hover(&self, uri: &Uri, position: Position) -> Option<Hover> {
+        if self.dictionaries.is_empty() {
+            return None;
+        }
+        let text = self.documents.get(uri)?;
+        let index = LineIndex::new(text);
+        let cursor = index.offset_of_utf16(position.line as usize, position.character as usize)?;
+        let (key, bytes) = dictionary::strongs_at(text, cursor)?;
+        let entries: Vec<(&Dictionary, logoxide_text::Entry, bible::Text)> = (self.dictionaries)
+            .iter()
+            .filter(|d| d.covers(&key))
+            .filter_map(|d| {
+                let (entry, text) = d.entry(&key, Some(MAX_HOVER_TEXT))?;
+                Some((d, entry, text))
+            })
+            .collect();
+        let (_, first, _) = entries.first()?;
+        let mut value = match &first.headword {
+            Some(headword) => format!("**{key}** {headword}"),
+            None => format!("**{key}**"),
+        };
+        let labeled = self.dictionaries.len() > 1;
+        for (dictionary, _, text) in &entries {
+            value.push_str("\n\n");
+            if labeled {
+                value.push_str(&format!("*{}*\n", dictionary.name));
+            }
+            value.push_str(&text.fence(true));
         }
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {

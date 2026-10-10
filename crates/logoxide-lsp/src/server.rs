@@ -45,6 +45,7 @@ mod tests;
 
 use crate::{
     bible::{self, Bible, Bibles, MAX_HOVER_TEXT, Part, Token},
+    dictionary::{self, Dictionary},
     settings::{
         self, Configured, HoverField, InlayHints, Insertion, ReferenceDiagnostics, Replace,
     },
@@ -191,6 +192,11 @@ pub struct Server {
     bibles: Bibles,
     /// The Bibles whose text hover shows, after the one a reference names
     hover_bibles: Vec<String>,
+    /// The commentaries whose notes hover shows after a passage's text (the `commentaries`
+    /// setting)
+    commentaries: Vec<Bible>,
+    /// The Strong's dictionaries whose entries hover shows on a Strong's number (`strongs`)
+    dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
     library: Option<PathBuf>,
     /// Ways to insert a passage's text (code actions)
@@ -213,6 +219,8 @@ impl Server {
             books: None,
             bibles: Bibles::default(),
             hover_bibles: vec![],
+            commentaries: vec![],
+            dictionaries: vec![],
             library: None,
             insertions: vec![],
         }
@@ -244,6 +252,8 @@ impl Server {
             extensions,
             bibles,
             hover_bibles,
+            commentaries,
+            dictionaries,
             insertions,
             epub,
             pdf,
@@ -252,6 +262,8 @@ impl Server {
         self.books = workspace::BookSearch::new(epub, pdf, &fingerprint).map(Arc::new);
         self.bibles = bibles;
         self.hover_bibles = hover_bibles;
+        self.commentaries = commentaries;
+        self.dictionaries = dictionaries;
         self.insertions = insertions;
         self.matcher = Arc::new(matcher);
         self.format = format;

@@ -28,7 +28,10 @@ use logoxide::{
     manifest::{MANIFEST, PackageKind},
 };
 
-use crate::bible::{Bible, Bibles};
+use crate::{
+    bible::{Bible, Bibles},
+    dictionary::Dictionary,
+};
 
 /// What inlay hints show after each reference
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
@@ -316,6 +319,44 @@ impl BibleSetting {
     }
 }
 
+/**
+The `commentaries` setting: none by default, `true` for every commentary the project uses, or
+package ids (`["mhcc"]`, or `"mhcc, jfb"`)
+*/
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum CommentariesSetting {
+    All(bool),
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Default for CommentariesSetting {
+    fn default() -> Self {
+        CommentariesSetting::All(false)
+    }
+}
+
+impl CommentariesSetting {
+    /// The ids named, or [`None`] for all of them; an empty list for none
+    fn ids(&self) -> Option<Vec<String>> {
+        let split = |values: &[String]| {
+            (values.iter())
+                .flat_map(|v| v.split(','))
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
+                .map(String::from)
+                .collect()
+        };
+        match self {
+            CommentariesSetting::All(true) => None,
+            CommentariesSetting::All(false) => Some(vec![]),
+            CommentariesSetting::One(id) => Some(split(std::slice::from_ref(id))),
+            CommentariesSetting::Many(ids) => Some(split(ids)),
+        }
+    }
+}
+
 /// One value or a list (`merge-data = "a.json"` or `["a.json", "b.json"]`)
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(untagged)]
@@ -396,6 +437,13 @@ pub struct Settings {
     /// between the two, labeled with that numbering
     pub hover_bibles: OneOrMany,
     pub markup: MarkupSettings,
+    /// Commentaries whose notes on the passage hover shows after its text, each note labeled
+    /// with the commentary's name and the verses it's on: `true` for every commentary the
+    /// project uses, or their ids (`["mhcc"]`); none by default
+    pub commentaries: CommentariesSetting,
+    /// Hovering a Strong's number (`G25`, `H430`, `G0025`) shows its entry in the project's
+    /// Strong's dictionaries (`keys = "strongs-greek"` or `"strongs-hebrew"`); off by default
+    pub strongs: bool,
     /// Ways to insert a passage's text, offered as code actions (with a `bible`)
     pub insertions: Vec<Insertion>,
     /// Read this config file instead of `~/.config/topos/config.toml`
@@ -415,6 +463,10 @@ pub struct Configured {
     pub bibles: Bibles,
     /// The `hover-bibles` setting, as the Bibles' names
     pub hover_bibles: Vec<String>,
+    /// The `commentaries` setting's commentaries, in the project's order
+    pub commentaries: Vec<Bible>,
+    /// The `strongs` setting's dictionaries (none when it's off)
+    pub dictionaries: Vec<Dictionary>,
     pub insertions: Vec<Insertion>,
     /// The `epub` and `pdf` settings
     pub epub: bool,
@@ -572,6 +624,8 @@ impl Settings {
             (None, None) => None,
         };
         let bibles = self.bibles(&data, roots, machine)?;
+        let commentaries = self.commentaries(&data, roots, machine)?;
+        let dictionaries = self.dictionaries(roots, machine)?;
         let matcher = BibleFilter::new(data).create_matcher();
         // As the CLI writes it: the data files' text and the book context
         let contents = |paths: Vec<String>| -> Vec<Option<String>> {
@@ -638,6 +692,8 @@ impl Settings {
                 })
                 .collect::<Result<_, _>>()?,
             bibles,
+            commentaries,
+            dictionaries,
             insertions: self.insertions.clone(),
             epub: self.epub,
             pdf: self.pdf,
@@ -761,6 +817,83 @@ impl Settings {
         let config = logoxide::config::Config::load().unwrap_or_default();
         let library = config.library(library_root, None);
         Ok(Some((project, library)))
+    }
+
+    /**
+    The `commentaries` setting's commentaries: every one the project uses (`true`; those turned
+    off are left out), or those it names, in the project's order; each opened once, its books
+    parsed when first needed and kept as a Bible's are
+    */
+    fn commentaries(
+        &self,
+        data: &BibleData,
+        roots: &[PathBuf],
+        machine: Option<&Path>,
+    ) -> Result<Vec<Bible>, String> {
+        let ids = self.commentaries.ids();
+        if ids.as_ref().is_some_and(Vec::is_empty) {
+            return Ok(vec![]);
+        }
+        let (project, library) = self.project(roots, machine)?.ok_or(
+            "commentaries: no logoxide.toml names packages (run `lx add` in the workspace or the library)",
+        )?;
+        let found = (project.commentaries(&library)).map_err(|e| format!("commentaries: {e}"))?;
+        let named = |locked: &logoxide::LockedPackage, id: &str| {
+            locked.dependency_name() == id || locked.id == id
+        };
+        if let Some(ids) = &ids
+            && let Some(missing) = (ids.iter()).find(|id| !found.iter().any(|(l, _)| named(l, id)))
+        {
+            return Err(format!(
+                "commentaries: `{missing}` isn't a commentary {} uses",
+                project.dir().join(MANIFEST).display()
+            ));
+        }
+        let cache = book_cache_dir(machine);
+        let mut list = vec![];
+        for (locked, package) in found {
+            if ids
+                .as_ref()
+                .is_some_and(|ids| !ids.iter().any(|id| named(locked, id)))
+            {
+                continue;
+            }
+            let (name, aliases) = project.names(locked, package.info());
+            let dir = library.package_dir(locked, project.dir());
+            let mut commentary = Bible::from_package(
+                package,
+                &dir,
+                Some(&name),
+                data.clone(),
+                self.markup.clone(),
+                cache.as_deref(),
+            )
+            .map_err(|e| format!("commentaries: {}: {e}", locked.dependency_name()))?;
+            commentary.aliases = aliases;
+            list.push(commentary);
+        }
+        Ok(list)
+    }
+
+    /// The project's Strong's dictionaries, with `strongs` on (none without a project)
+    fn dictionaries(
+        &self,
+        roots: &[PathBuf],
+        machine: Option<&Path>,
+    ) -> Result<Vec<Dictionary>, String> {
+        if !self.strongs {
+            return Ok(vec![]);
+        }
+        let Some((project, library)) = self.project(roots, machine)? else {
+            return Ok(vec![]);
+        };
+        let found = (project.dictionaries(&library)).map_err(|e| format!("strongs: {e}"))?;
+        Ok((found.into_iter())
+            .filter_map(|(locked, package)| {
+                let (name, _) = project.names(locked, package.info());
+                Dictionary::new(name, package, self.markup.clone())
+            })
+            .collect())
     }
 
     /// A package from the project's lock file, as a Bible named by its abbreviation

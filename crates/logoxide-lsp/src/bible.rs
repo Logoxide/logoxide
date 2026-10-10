@@ -27,10 +27,13 @@ use logoxide::{
     manifest::MANIFEST,
     reader::{DefaultReader, StorageBooks, StorageFiles},
 };
-use logoxide_markup::Kind;
+use logoxide_markup::{
+    Flattener, Kind, Node,
+    verses::{passage_ranges, slice},
+};
 pub use logoxide_text::passage::{Part, Rendered};
 use logoxide_text::{
-    Book, Source,
+    Book, Note, Source,
     cache::BookCache,
     passage,
     source::UsxSource,
@@ -217,45 +220,75 @@ impl Bible {
             return Err(format!("bible: {}: not a folder", folder.display()));
         }
         let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(folder));
+        if folder.join(MANIFEST).is_file() {
+            let package = Package::open(storage, Features::default())
+                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+            return Bible::from_package(package, folder, name, data, markup, cache);
+        }
         let folder_name = folder
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("Bible");
-        let store = |name: &str| -> Arc<dyn Storage> {
-            match cache {
-                Some(cache) => Arc::new(FsStorage::new(cache.join(name))),
-                None => Arc::new(MemoryStorage::new()),
-            }
+        let source = UsxSource::open(Arc::new(StorageFiles(storage.clone())), "")
+            .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+        let key = folder_key(storage.as_ref(), &source)
+            .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+        let books = BookCache::new(Arc::new(StorageBooks(store(cache, "folders"))), key);
+        let books = Books::Folder {
+            source: Box::new(source),
+            books,
         };
-        let (books, default_name, aliases, versification) = if folder.join(MANIFEST).is_file() {
-            let package = Package::open(storage, Features::default())
-                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-            let info = package.info();
-            let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
-            let versification = info.versification.clone();
-            let cached = Cache::new(store("books"))
-                .open(package, &DefaultReader)
-                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-            (
-                Books::Package(Box::new(cached)),
-                abbreviation,
-                aliases,
-                versification,
-            )
-        } else {
-            let source = UsxSource::open(Arc::new(StorageFiles(storage.clone())), "")
-                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-            let key = folder_key(storage.as_ref(), &source)
-                .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-            let books = BookCache::new(Arc::new(StorageBooks(store("folders"))), key);
-            let books = Books::Folder {
-                source: Box::new(source),
-                books,
-            };
-            (books, folder_name.to_string(), vec![], String::from("own"))
-        };
+        Bible::new(
+            books,
+            name.map_or_else(|| folder_name.to_string(), String::from),
+            vec![],
+            String::from("own"),
+            folder,
+            data,
+            markup,
+        )
+    }
+
+    /**
+    A package already opened (from `folder`), named `name` or by its abbreviation: a Bible, or a
+    commentary, whose notes are its verses ([`Bible::notes`])
+    */
+    pub fn from_package(
+        package: Package,
+        folder: &Path,
+        name: Option<&str>,
+        data: BibleData,
+        markup: MarkupSettings,
+        cache: Option<&Path>,
+    ) -> Result<Bible, String> {
+        let info = package.info();
+        let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
+        let versification = info.versification.clone();
+        let cached = Cache::new(store(cache, "books"))
+            .open(package, &DefaultReader)
+            .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
+        Bible::new(
+            Books::Package(Box::new(cached)),
+            name.map_or(abbreviation, String::from),
+            aliases,
+            versification,
+            folder,
+            data,
+            markup,
+        )
+    }
+
+    fn new(
+        books: Books,
+        name: String,
+        aliases: Vec<String>,
+        versification: String,
+        folder: &Path,
+        data: BibleData,
+        markup: MarkupSettings,
+    ) -> Result<Bible, String> {
         let bible = Bible {
-            name: name.map_or(default_name, String::from),
+            name,
             aliases,
             versification,
             folder: folder
@@ -329,6 +362,34 @@ impl Bible {
             tokens: tokens(&text.marks),
             text: text.text,
         })
+    }
+
+    /**
+    A commentary's notes on a passage (its verses are notes): each verse span covering any of
+    the passage's verses, with its tree, in the book's order; none when it lacks the book. The
+    book is parsed once and kept, as a Bible's are
+    */
+    pub fn notes(&self, passage: &Passage) -> Vec<Note> {
+        if !self.source().files().contains_key(&passage.book) {
+            return vec![];
+        }
+        let Some(book) = self.book(passage.book) else {
+            return vec![];
+        };
+        let mut notes = vec![];
+        for range in passage_ranges(&book.spans, passage) {
+            for span in book.spans.get(range).into_iter().flatten() {
+                notes.push(Note {
+                    chapter: span.chapter,
+                    verse: span.verse,
+                    last_chapter: span.last_chapter,
+                    last: span.last,
+                    part: span.part,
+                    nodes: slice(&book.nodes, &span.start, Some(&span.end)),
+                });
+            }
+        }
+        notes
     }
 
     /// The whole book as text, rendered once (until the settings change)
@@ -478,6 +539,66 @@ impl Bibles {
     pub fn folders(&self) -> Vec<&Path> {
         self.list.iter().map(|b| b.folder.as_path()).collect()
     }
+}
+
+/// Where parsed books are kept: `name` in the `cache` folder, else memory
+fn store(cache: Option<&Path>, name: &str) -> Arc<dyn Storage> {
+    match cache {
+        Some(cache) => Arc::new(FsStorage::new(cache.join(name))),
+        None => Arc::new(MemoryStorage::new()),
+    }
+}
+
+/**
+A tree of its own (a commentary's note, a dictionary's entry) as text, in `markup`'s style
+without verse or chapter labels (whoever shows it labels it), cut after `limit` bytes like a
+passage ([`Bible::passage`]); none when it has no text
+*/
+pub fn nodes_text(nodes: &[Node], markup: &MarkupSettings, limit: Option<usize>) -> Option<Text> {
+    let style = passage::Style {
+        verse_label: None,
+        chapter_label: None,
+        ..markup.style()
+    };
+    let mut flat = Flattener::new(style.options(""));
+    flat.push(nodes);
+    let flat = flat.finish();
+    let entry = flat.entries.first()?.clone();
+    let mut text = flat.text.get(entry.clone())?.to_string();
+    let mut marks: Vec<(Range<usize>, Kind)> = (flat.spans.iter())
+        .filter(|s| !s.range.is_empty())
+        .filter(|s| entry.start <= s.range.start && s.range.end <= entry.end)
+        .map(|s| {
+            (
+                s.range.start - entry.start..s.range.end - entry.start,
+                s.kind,
+            )
+        })
+        .collect();
+    marks.sort_by_key(|(range, _)| (range.start, range.end));
+    if text.is_empty() {
+        return None;
+    }
+    if let Some(limit) = limit.filter(|&limit| text.len() > limit) {
+        let mut cut = limit;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        marks.retain(|(r, _)| r.start < cut);
+        for (r, _) in &mut marks {
+            r.end = r.end.min(cut);
+        }
+        text.push_str(" …");
+    }
+    // Wrapping turns spaces into line breaks, so the marks stay where they are
+    if let Some(width) = style.width.filter(|&w| w > 0) {
+        text = passage::wrap(&text, width);
+    }
+    Some(Text {
+        tokens: tokens(&marks),
+        text,
+    })
 }
 
 /// What a folder of USX files is keyed by in the book cache: the checksum of the files its

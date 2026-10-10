@@ -10,7 +10,10 @@ stays references only:
 - **Hover**: the reference under the cursor, normalized, with what the `hover` setting lists:
   the passage's text (with a `bible`), its full name and abbreviation, OSIS id, book (and its
   number and chapters), testament, genres, verses, and where it is. On a reference that doesn't
-  exist, what does (`John 3 has 36 verses`, `John has 21 chapters`)
+  exist, what does (`John 3 has 36 verses`, `John has 21 chapters`). With `commentaries`, the
+  project's commentaries' notes on the passage follow its text; with `strongs`, hovering a
+  Strong's number (`G25`, `H430`) shows its dictionary entry (see
+  [Commentaries and Strong's numbers](#commentaries-and-strongs-numbers))
 - **Go to definition** and **declaration** (with a `bible`): the passage in its whole book, a read-only document
   like `logoxide://BSB/JHN` (see [Whole books](#whole-books))
 - **Inlay hints**: after each reference, how it's written in your format (where that differs,
@@ -66,6 +69,8 @@ so one file configures both. It uses these keys and ignores the others:
 | `library` | The logoxide library the packages are installed in (`LOGOXIDE_HOME`, else `$XDG_DATA_HOME/logoxide`) |
 | `default-bible` | The Bible for references that name none (a name or alias): `bible`'s by default, else the first of `bibles` by name |
 | `hover-bibles` | Bibles whose text hover also shows, after the one the reference names (`["BSB", "KJV"]`); one numbered differently shows the passage as it numbers it when the project has a versification map package between the two |
+| `commentaries` | Commentaries whose notes on the passage hover shows after its text: `true` for every commentary the project uses (`kind = "commentary"`, not those turned off), or their ids (`["mhcc"]`); none by default |
+| `strongs` | Hovering a Strong's number shows its entry in the project's Strong's dictionaries (`kind = "lexicon"` with `keys = "strongs-greek"` or `"strongs-hebrew"`); `false` by default |
 | `markup` | How Bible text is written (see below) |
 | `insertions` | Code actions that insert a passage's text (see below) |
 
@@ -169,6 +174,35 @@ Editors show only the language; the Neovim plugin colors the block from it. Comp
 documentation is the block without the token list, since completion menus (like blink.cmp) show
 the info string; the list is in the resolved item's `data.tokens` instead. With `markup.width`, a line break replaces a space, so every byte offset (verses,
 tokens) is the same as without it.
+
+## Commentaries and Strong's numbers
+
+Commentaries and dictionaries come from the project (`lx add` them as any package; see
+`doc/entries.md` for the dictionary format). With `commentaries = true` (or a list of ids),
+hovering a reference shows, after the Bible text, each note the commentaries have on any of its
+verses, labeled with the commentary's name and the verses the note covers:
+
+````markdown
+*MHCC* (John 3:16-18)
+```logoxide
+God so loved the world, ...
+```
+````
+
+A note is cut like passage text (after 2000 bytes), and after eight notes from one commentary
+the rest are counted (`*MHCC*: 28 more notes`). The passage is looked up as written, in the
+commentary's own numbering.
+
+With `strongs = true`, hovering a Strong's number (an uppercase `G` or `H`, one to five digits,
+perhaps a letter: `G25`, `G0025`, `H430a`; standing alone, so `h1` or `AG25` isn't one) shows its
+entry in each of the project's Strong's dictionaries that has it (Greek for `G`, Hebrew for `H`),
+under the number in normal form and its headword (`**G25** ἀγαπάω`), each labeled with its
+dictionary's name when the project has several.
+
+Each commentary and dictionary is opened once when the settings are read and kept: a
+commentary's books are parsed when first needed (and kept in logoxide's cache, as a Bible's
+are), a dictionary's files are indexed when it opens and an entry's text is read when it's
+looked up. The `markup` settings write notes and entries, without verse or chapter labels.
 
 ## Neovim
 
