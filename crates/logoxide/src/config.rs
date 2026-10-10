@@ -103,16 +103,13 @@ impl Config {
 
     /// A config file, with its paths made whole
     pub fn read(path: &Path) -> Result<Config> {
-        let text = std::fs::read_to_string(path).map_err(|e| LogoxideError::Io {
-            path: path.display().to_string(),
-            message: e.to_string(),
-        })?;
+        let text = std::fs::read_to_string(path)
+            .map_err(|e| LogoxideError::io(&path.display().to_string(), e))?;
         let base = path.parent().unwrap_or(Path::new("."));
         Config::parse(&text, base).map_err(|e| match e {
-            LogoxideError::Manifest(message) => LogoxideError::Io {
-                path: path.display().to_string(),
-                message,
-            },
+            LogoxideError::Manifest(message) => {
+                LogoxideError::io_message(&path.display().to_string(), message)
+            }
             other => other,
         })
     }

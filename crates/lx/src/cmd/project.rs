@@ -759,18 +759,70 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
     Ok(())
 }
 
-pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Result<()> {
+/// How old a staging folder (a version an install was writing) must be before `lx clean`
+/// takes it for a dead install's
+const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
+pub(crate) fn clean(
+    cli: &Cli,
+    remove: bool,
+    keep: &[PathBuf],
+    prune_roots: bool,
+) -> logoxide::Result<()> {
     let library = cli.library();
+    // No install may write while versions are judged and removed
+    let _lock = library.lock()?;
+    // A version an install never finished (it died more than a day ago: a live one holds the
+    // lock, and a day is longer than any install)
+    for staging in library.stale_staging(STALE_STAGING) {
+        match remove {
+            true => {
+                std::fs::remove_dir_all(&staging)
+                    .map_err(|e| logoxide::LogoxideError::io(&staging.display().to_string(), e))?;
+                outln!(
+                    "removed {}: left by an install that didn't finish",
+                    staging.display()
+                );
+            }
+            false => outln!(
+                "stale: {} (left by an install that didn't finish; lx clean --remove deletes it)",
+                staging.display()
+            ),
+        }
+    }
     let mut projects = vec![Project::open(library.root())?, cli.project(&library)?];
     for dir in keep {
         projects.push(Project::open(dir)?);
     }
-    let used: Vec<(String, String)> = (projects.iter())
+    let mut used: Vec<(String, String)> = (projects.iter())
         .filter_map(|p| p.lock())
         .flat_map(|lock| lock.packages.iter())
         .filter(|p| p.path.is_none())
         .map(|p| (p.id.clone(), p.key()))
         .collect();
+    // Every project that installed from this library (its roots) keeps what it locked, so a
+    // vault elsewhere, or on another machine sharing the library, isn't cleaned out from here.
+    // One whose folder is gone from this machine is said, and forgotten only when asked
+    let mut roots = library.roots()?;
+    for root in roots.iter().filter(|r| r.is_gone()) {
+        match (prune_roots, &root.file) {
+            (true, Some(file)) => {
+                std::fs::remove_file(file)
+                    .map_err(|e| logoxide::LogoxideError::io(&file.display().to_string(), e))?;
+                outln!("forgot {}: its project is gone", root.path);
+            }
+            _ => outln!(
+                "{}: its project is gone, but its {} version{} stay (lx clean --prune-roots forgets it)",
+                root.path,
+                root.packages.len(),
+                if root.packages.len() == 1 { "" } else { "s" }
+            ),
+        }
+    }
+    if prune_roots {
+        roots.retain(|r| !r.is_gone());
+    }
+    used.extend(roots.iter().flat_map(|r| r.package_keys()));
     let unused: Vec<(String, String)> = (library.installed().into_iter())
         .filter(|v| !used.contains(v))
         .collect();
@@ -801,10 +853,8 @@ pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Resu
                 .get(..16)
                 .unwrap_or_default();
             let version = key.split('+').next().unwrap_or(key);
-            std::fs::remove_dir_all(&dir).map_err(|e| logoxide::LogoxideError::Io {
-                path: dir.display().to_string(),
-                message: e.to_string(),
-            })?;
+            std::fs::remove_dir_all(&dir)
+                .map_err(|e| logoxide::LogoxideError::io(&dir.display().to_string(), e))?;
             let cache = library.cache_dir().join("books").join(id);
             let _ = std::fs::remove_dir_all(cache.join(format!("{version}-{short}")));
             // The id's folder too, once it has no versions (remove_dir only removes empty ones)

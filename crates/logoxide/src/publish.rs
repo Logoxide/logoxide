@@ -63,6 +63,7 @@ pub fn pack(storage: &dyn Storage, info: &Package) -> Result<Vec<u8>> {
     let fail = |e: std::io::Error| LogoxideError::Io {
         path: top.clone(),
         message: format!("packing: {e}"),
+        source: Some(Box::new(e)),
     };
     let gzip = flate2::GzBuilder::new()
         .mtime(0)

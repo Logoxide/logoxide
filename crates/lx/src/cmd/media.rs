@@ -12,10 +12,8 @@ pub(crate) fn media_add(
     book: Option<&str>,
     package: &std::path::Path,
 ) -> logoxide::Result<()> {
-    let bytes = std::fs::read(file).map_err(|e| logoxide::LogoxideError::Io {
-        path: file.display().to_string(),
-        message: e.to_string(),
-    })?;
+    let bytes = std::fs::read(file)
+        .map_err(|e| logoxide::LogoxideError::io(&file.display().to_string(), e))?;
     let name = file
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -115,9 +113,9 @@ pub(crate) fn media_check(
     }
     match failed {
         0 => Ok(()),
-        n => Err(logoxide::LogoxideError::Fetch {
-            url: package.display().to_string(),
-            message: format!("{n} of {checked} media downloads don't match"),
-        }),
+        n => Err(logoxide::LogoxideError::network(
+            &package.display().to_string(),
+            format!("{n} of {checked} media downloads don't match"),
+        )),
     }
 }

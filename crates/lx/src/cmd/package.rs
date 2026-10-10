@@ -538,10 +538,8 @@ pub(crate) fn new(args: &NewArgs) -> logoxide::Result<()> {
     let staged = MemoryStorage::new();
     let (manifest, rights) = match (&args.from, kind) {
         (Some(file), _) => {
-            let bytes = std::fs::read(file).map_err(|e| logoxide::LogoxideError::Io {
-                path: file.display().to_string(),
-                message: e.to_string(),
-            })?;
+            let bytes = std::fs::read(file)
+                .map_err(|e| logoxide::LogoxideError::io(&file.display().to_string(), e))?;
             let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
             let name = name.unwrap_or_default();
             let rights = match create::file_format(&name, &bytes) {
@@ -733,22 +731,16 @@ pub(crate) fn release(
         && let Some(minimum) = plan.minimum.clone()
     {
         let manifest_path = path.join(MANIFEST);
-        let text =
-            std::fs::read_to_string(&manifest_path).map_err(|e| logoxide::LogoxideError::Io {
-                path: manifest_path.display().to_string(),
-                message: e.to_string(),
-            })?;
+        let text = std::fs::read_to_string(&manifest_path)
+            .map_err(|e| logoxide::LogoxideError::io(&manifest_path.display().to_string(), e))?;
         let mut doc: toml_edit::DocumentMut = text
             .parse()
             .map_err(|e: toml_edit::TomlError| logoxide::LogoxideError::Manifest(e.to_string()))?;
         doc["package"]["version"] = toml_edit::value(minimum.to_string());
         if !dry_run {
-            std::fs::write(&manifest_path, doc.to_string()).map_err(|e| {
-                logoxide::LogoxideError::Io {
-                    path: manifest_path.display().to_string(),
-                    message: e.to_string(),
-                }
-            })?;
+            logoxide::storage::write_atomic(&manifest_path, doc.to_string().as_bytes()).map_err(
+                |e| logoxide::LogoxideError::io(&manifest_path.display().to_string(), e),
+            )?;
         }
         outln!("version set to {minimum}");
         plan.summary.version = minimum;

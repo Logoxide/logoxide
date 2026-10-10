@@ -157,7 +157,11 @@ fn main() -> ExitCode {
             };
         }
         Command::Info { id } => info(&cli, id),
-        Command::Clean { remove, keep } => clean(&cli, *remove, keep),
+        Command::Clean {
+            remove,
+            keep,
+            prune_roots,
+        } => clean(&cli, *remove, keep, *prune_roots),
         Command::Search {
             query,
             catalog,

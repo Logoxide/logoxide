@@ -95,7 +95,7 @@ fn a_package_from_its_files() {
     let missing = vec![file("logoxide.toml", MANIFEST)];
     assert!(matches!(
         Logoxide::new().open_package(missing, defaults(), vec![]),
-        Err(LogoxideError::NotFound { .. } | LogoxideError::Files { .. })
+        Err(LogoxideError::NotFound { .. } | LogoxideError::Io { .. })
     ));
 }
 
@@ -325,7 +325,7 @@ path = "bibles/mine"
     assert_eq!(no_lock.unlocked().len(), 3);
     assert!(matches!(
         Logoxide::new().parse_project(Some("[dependencies".into()), None),
-        Err(LogoxideError::Manifest { .. })
+        Err(LogoxideError::Invalid { .. })
     ));
 }
 
@@ -748,7 +748,7 @@ fn catalogs_and_ebible_imports() {
     );
     let built = (logoxide.import_downloaded(entry.clone(), vec![file("zip", "")]))
         .expect_err("an empty zip isn't one");
-    assert!(matches!(built, LogoxideError::Import { .. }), "{built:?}");
+    assert!(matches!(built, LogoxideError::Invalid { .. }), "{built:?}");
     let by_name = vec![PackageFile {
         path: "zip".into(),
         bytes: zip,
@@ -1037,7 +1037,7 @@ fn media_by_url_and_hash() {
     assert_eq!(logoxide.parse_timings(vtt.into()).unwrap(), timings);
     assert!(matches!(
         logoxide.parse_timings("JHN 3:16".into()),
-        Err(LogoxideError::Media { .. })
+        Err(LogoxideError::Invalid { .. })
     ));
     assert_eq!(media.len(), 1);
     assert!(
@@ -1097,7 +1097,7 @@ fn making_packages() {
     let error = logoxide
         .new_package("JHN.usx".into(), USX.as_bytes().to_vec(), no_language)
         .unwrap_err();
-    assert!(matches!(error, LogoxideError::Import { .. }), "{error:?}");
+    assert!(matches!(error, LogoxideError::Invalid { .. }), "{error:?}");
 
     // A collection is its manifest alone
     let collection = logoxide
@@ -1197,7 +1197,7 @@ fn versification_maps_map_references() {
     assert_eq!(vulgate.text, "Psalm 50:3");
     assert!(matches!(
         maps.map("Psalm 51:1".into(), "English".into(), "LXX".into(), None),
-        Err(LogoxideError::Versification { .. })
+        Err(LogoxideError::Invalid { .. })
     ));
 }
 

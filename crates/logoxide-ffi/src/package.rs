@@ -515,7 +515,7 @@ impl LogoxidePackage {
         #[cfg(target_arch = "wasm32")]
         {
             let _ = (dir, features, cache_dir);
-            Err(LogoxideError::Files {
+            Err(LogoxideError::Io {
                 message: String::from("no file access in WebAssembly: use openPackage"),
             })
         }

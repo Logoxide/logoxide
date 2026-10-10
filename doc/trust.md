@@ -102,9 +102,39 @@ same (`logoxide::text::printable`).
 
 The parsed-book cache is per device, keyed by package version, checksum, and format, and never
 shared: it can always be built again from the text. Each cached book names the version that
-wrote it, and one written by another version is parsed again rather than decoded. Published summaries (`logoxide.summary.toml`,
+wrote it, and one written by another version is parsed again rather than decoded. To find that
+checksum without hashing every file on every open, the cache remembers it with each file's size
+and modification time (`stamps/`), and uses it only while every file keeps both and none was
+changed within two seconds of the stamps being taken (git's rule for racy files). A file
+rewritten with the same size and time is not seen there; `lx verify`, `lx install --repair`,
+`lx release`, and `lx info`'s checksum always hash. Published summaries (`logoxide.summary.toml`,
 `logoxide.verses.bin`) are part of the package and covered by its checksum; `lx verify` rebuilds
 them from the text to check that they match.
+
+## Writes
+
+`logoxide.toml`, `logoxide.lock`, a registry's `catalog.toml` and archives, and every file in
+the library and the cache are written whole or not at all: to a temporary file beside the
+target, synced to disk, renamed over it, then the folder synced, so a reader never sees half a
+file and a crash leaves the old one. A new version is built in a staging folder beside its place
+and renamed in, so a half-installed version is never taken for an installed one; a repair writes
+each file atomically and removes what a version no longer has last. `lx` reads `logoxide.toml`
+again before writing it and refuses (`Conflict`) if it changed since the project was opened, so
+an edit made meanwhile isn't written over.
+
+## Locks
+
+Two `lx` processes writing at once (an install and a clean, two vaults installing into one
+library) could each undo the other's work, so `lx` takes an exclusive lock on the library while
+it installs, repairs, or cleans, and on a project while it writes its manifest or lock. The
+locks are the operating system's advisory file locks, in `$XDG_RUNTIME_DIR/logoxide/` (else
+`locks/` in logoxide's cache folder), each named by a hash of the folder's canonical path; never
+in the library itself, which a sync service may copy, and a process that dies releases its lock.
+Readers take none: a version is renamed into place whole, and the manifest and lock are written
+whole. Taking a lock waits five seconds, then fails (`Busy`) naming the process that holds it.
+Nothing is locked in WebAssembly, where the host owns the files. A version an install was writing
+when it died (`packages/<id>/.<key>.staging-…`) is removed by `lx clean --remove` only under the
+library's lock and only once it is a day old.
 
 ## Media
 

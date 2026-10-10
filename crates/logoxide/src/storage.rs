@@ -15,11 +15,33 @@ use std::{
     },
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::{LogoxideError, Result};
+
+/// A file's size and modification time, by which a checksum is remembered ([`crate::stamps`])
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stamp {
+    pub size: u64,
+    /// Seconds and nanoseconds since the Unix epoch
+    pub modified: (u64, u32),
+}
 
 pub trait Storage: Send + Sync {
     /// A file's bytes
     fn read(&self, path: &str) -> Result<Vec<u8>>;
+
+    /// A file's size and modification time, where the storage keeps them (a folder on disk);
+    /// `None` where it doesn't (memory, a host's files), so nothing is remembered by them
+    fn stamp(&self, _path: &str) -> Option<Stamp> {
+        None
+    }
+
+    /// Where this storage is, for what's kept per place (a folder's canonical path); `None` for
+    /// one that is nowhere (memory)
+    fn location(&self) -> Option<String> {
+        None
+    }
 
     /// The names of the files and folders in a folder (`""` is the root), sorted; folders end
     /// with `/`
@@ -42,7 +64,7 @@ pub trait Storage: Send + Sync {
     /// A file as text (a byte order mark is dropped)
     fn read_string(&self, path: &str) -> Result<String> {
         let bytes = self.read(path)?;
-        let text = String::from_utf8(bytes).map_err(|e| LogoxideError::io(path, e))?;
+        let text = String::from_utf8(bytes).map_err(|e| LogoxideError::io_message(path, e))?;
         Ok(match text.strip_prefix('\u{feff}') {
             Some(rest) => rest.to_string(),
             None => text,
@@ -124,10 +146,10 @@ impl FsStorage {
             at.push(part);
             match std::fs::symlink_metadata(&at) {
                 Ok(meta) if meta.file_type().is_symlink() => {
-                    return Err(LogoxideError::Io {
-                        path: path.to_string(),
-                        message: String::from("a link, which isn't followed here"),
-                    });
+                    return Err(LogoxideError::io_message(
+                        path,
+                        "a link, which isn't followed here",
+                    ));
                 }
                 Ok(_) => {}
                 Err(_) => break,
@@ -161,6 +183,48 @@ fn staging_path(full: &Path) -> PathBuf {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     full.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()))
+}
+
+/**
+Writes a file so that a reader sees the old file or the whole new one, never half, and a crash
+or a power cut loses neither: the bytes go to a file beside it with a name of its own
+([`staging_path`]), are synced to disk, renamed over the old file, and the folder is synced so the
+rename itself lasts. Folders on the way are made. For the manifest, the lock, catalogs, and
+whatever else is written over in place; [`FsStorage::write`] goes through it
+*/
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    std::fs::create_dir_all(&parent)?;
+    let partial = staging_path(path);
+    let written = (|| {
+        let mut file = std::fs::File::create(&partial)?;
+        std::io::Write::write_all(&mut file, bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&partial, path)?;
+        sync_dir(&parent)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    written
+}
+
+/// Syncs a folder's entries to disk, so a rename in it lasts (where folders can be opened: on
+/// Windows they can't, and the rename is durable as the file system makes it)
+fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(dir)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
 }
 
 impl Storage for FsStorage {
@@ -199,19 +263,9 @@ impl Storage for FsStorage {
     fn write(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let full = self.path(path)?;
         self.unlinked(path)?;
-        if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| LogoxideError::io(path, e))?;
-        }
-        // Written beside it, then moved into place, so a reader never sees half a file
+        // Written beside it, synced, then moved into place, so a reader never sees half a file
         // (a name of its own, so no other file, like `JHN.partial`, is written over)
-        let partial = staging_path(&full);
-        let written =
-            std::fs::write(&partial, bytes).and_then(|()| std::fs::rename(&partial, &full));
-        if let Err(e) = written {
-            let _ = std::fs::remove_file(&partial);
-            return Err(LogoxideError::io(path, e));
-        }
-        Ok(())
+        write_atomic(&full, bytes).map_err(|e| LogoxideError::io(path, e))
     }
 
     /// Removes a file, then the folders it leaves empty (never the root)
@@ -236,6 +290,30 @@ impl Storage for FsStorage {
 
     fn exists(&self, path: &str) -> bool {
         self.path(path).is_ok_and(|p| p.exists()) && self.unlinked(path).is_ok()
+    }
+
+    fn stamp(&self, path: &str) -> Option<Stamp> {
+        let full = self.path(path).ok()?;
+        self.unlinked(path).ok()?;
+        let meta = std::fs::metadata(full).ok()?;
+        let modified = meta
+            .modified()
+            .ok()?
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?;
+        Some(Stamp {
+            size: meta.len(),
+            modified: (modified.as_secs(), modified.subsec_nanos()),
+        })
+    }
+
+    fn location(&self) -> Option<String> {
+        let root = self
+            .root
+            .canonicalize()
+            .or_else(|_| std::path::absolute(&self.root))
+            .ok()?;
+        Some(root.display().to_string())
     }
 }
 
@@ -267,7 +345,10 @@ impl MemoryStorage {
 impl Storage for MemoryStorage {
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let path = checked(path)?;
-        let files = self.files.read().map_err(|e| LogoxideError::io(path, e))?;
+        let files = self
+            .files
+            .read()
+            .map_err(|e| LogoxideError::io_message(path, e))?;
         files
             .get(path)
             .cloned()
@@ -281,7 +362,10 @@ impl Storage for MemoryStorage {
         } else {
             format!("{dir}/")
         };
-        let files = self.files.read().map_err(|e| LogoxideError::io(dir, e))?;
+        let files = self
+            .files
+            .read()
+            .map_err(|e| LogoxideError::io_message(dir, e))?;
         let mut names: Vec<String> = files
             .keys()
             .filter_map(|path| {
@@ -301,14 +385,20 @@ impl Storage for MemoryStorage {
 
     fn write(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let path = checked(path)?;
-        let mut files = self.files.write().map_err(|e| LogoxideError::io(path, e))?;
+        let mut files = self
+            .files
+            .write()
+            .map_err(|e| LogoxideError::io_message(path, e))?;
         files.insert(path.to_string(), bytes.to_vec());
         Ok(())
     }
 
     fn remove(&self, path: &str) -> Result<()> {
         let path = checked(path)?;
-        let mut files = self.files.write().map_err(|e| LogoxideError::io(path, e))?;
+        let mut files = self
+            .files
+            .write()
+            .map_err(|e| LogoxideError::io_message(path, e))?;
         files.remove(path);
         Ok(())
     }
@@ -353,6 +443,13 @@ mod tests {
         assert_eq!(storage.list("").unwrap(), ["a/"]);
         assert_eq!(storage.walk("").unwrap(), ["a/b.txt"]);
         assert!(storage.exists("a/b.txt") && !storage.exists("a/c.txt"));
+        assert_eq!(storage.stamp("a/b.txt").map(|s| s.size), Some(5));
+        assert!(storage.stamp("a/c.txt").is_none());
+        assert!(
+            storage
+                .location()
+                .is_some_and(|l| l.ends_with(dir.file_name().unwrap().to_str().unwrap()))
+        );
         assert!(matches!(
             storage.read("/etc/passwd"),
             Err(LogoxideError::BadPath(_))
@@ -371,6 +468,24 @@ mod tests {
             storage.walk("a").unwrap(),
             ["a/JHN.partial", "a/JHN.usx", "a/b.txt"]
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn atomic_writes_replace_and_leave_nothing_beside() {
+        let dir = std::env::temp_dir().join(format!("logoxide-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("deep/logoxide.toml");
+        write_atomic(&path, b"one").unwrap();
+        write_atomic(&path, b"two").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "two");
+        let names: Vec<String> = (std::fs::read_dir(dir.join("deep")).unwrap())
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["logoxide.toml"]);
+        // A path that can't be written leaves no staging file either
+        std::fs::write(dir.join("file"), "x").unwrap();
+        assert!(write_atomic(&dir.join("file/under"), b"x").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -102,8 +102,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     terms objects; SWORD's; `catalog.toml`'s `rights`, which `entry_table` writes)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
-    `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
-    unique temporary file; `FsStorage::no_symlinks()` never goes through a link under its root
+    `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through
+    `write_atomic` (a unique temporary file beside the target, synced, renamed over it, the folder
+    synced: whole or not at all; also for the manifest, the lock, `catalog.toml`, and what
+    `lx publish` writes); `stamp(path)` (size and mtime) and `location()` (the canonical root)
+    are `FsStorage`'s, `None` elsewhere; `FsStorage::no_symlinks()` never goes through a link under its root
     (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
     used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
     `lx import --update` (`apply_import`)
@@ -119,7 +122,14 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     the key, since the folder's name carries it, so nothing moved on disk);
     `reader::StorageBooks` is the plain adapter for other callers. `Cache::references`
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
-    aliases, and counts
+    aliases, and counts. `Library::book_cache` adds `with_stamps(<cache>/stamps)`, so `Cache::open`
+    takes a package's checksum from `stamps.rs` instead of hashing every file each time
+  - `stamps.rs`: checksums remembered by each declared file's `Storage::stamp` (size and
+    modification time; `None` for memory and a host's files, so they're always hashed) in
+    `<cache>/stamps/<id>/<version>-<hash of Storage::location>.postcard`, used only when the
+    paths and every stamp match and each file is at least `RACY` (2 s) older than the stamp file
+    (git's rule for racy files); `lx verify`, `--repair`, `lx release`, and `lx info`'s checksum
+    always hash
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one
@@ -207,7 +217,22 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
-    beside its folder, then renamed into place)
+    beside its folder in `.<key>.staging-<pid>-<n>-<random>`, then renamed into place; a repair
+    writes each file atomically and removes what the version no longer has last). `Library::lock`
+    is the library's lock (`lx clean` holds it; `stale_staging(age)` lists staging folders an
+    install left, which `lx clean --remove` deletes only under the lock and only after a day)
+  - `roots.rs`: `<library>/roots/<hash of host and canonical path>.toml` (`Root`: `path`, `host`,
+    `updated`, `packages` as `<id> <key>`), written on every install (`Library::record_root`), so
+    `lx clean` keeps the union of every root's packages (`Library::roots`; a vault elsewhere, or on
+    another machine sharing the library, keeps its own); `Root::is_gone` (this host, its manifest
+    gone) is reported, `lx clean --prune-roots` removes it; one that can't be read stops a clean.
+    `doc/lock.md` has the format
+  - `locking.rs`: exclusive advisory locks (`std::fs::File::try_lock`, polled up to
+    `LOCK_TIMEOUT`, 5 s, else `Busy` naming the holder, which the lock file records) on the
+    library (install, repair, clean) and a project (manifest and lock writes); lock files in
+    `$XDG_RUNTIME_DIR/logoxide/<hash of the canonical path>.lock`, else `<default cache>/locks/`,
+    never in the library (Dropbox syncs it); `lock_all` takes several in one order, one folder
+    once; readers take none; a no-op in WebAssembly
   - `resolve.rs`: manifest + previous lock → new lock, installing as it goes (`Frozen`: `locked`
     keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`), through `Packages`
     (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
@@ -225,7 +250,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     registry; a local one can (`folder_tag_version` reads a `folder`'s tags)
   - `project.rs`: a folder with `logoxide.toml` (edited with toml_edit, keeping comments; or
     `from_text` and `manifest_text` for hosts that do the reading and writing) and its
-    lock; `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
+    lock; `save_manifest` keeps the text it read and refuses with `Conflict` when the file
+    changed since (open again, redo the change); `install` holds the library's and the project's
+    locks (`locking.rs`, below) from resolving through writing the lock, `save_manifest` the
+    project's (`take_lock`); `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
     `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
     and `lx add` warn of; `packages_of(library, kind)` opens the packages of a kind among
@@ -463,7 +491,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
@@ -572,7 +601,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
 
 ## Conventions
 
-- Like topos: no `unwrap` in library code, errors in `LogoxideError`, comments and docs in plain
+- Like topos: no `unwrap` in library code, errors in `LogoxideError` (`#[non_exhaustive]`; callers
+  branch on `kind()`: `ErrorKind`'s `NotFound`, `Io`, `Invalid`, `Network`, `Git`, `Archive`,
+  `Integrity`, `Resolve`, `Busy`, `Conflict`; `Io` and `Network` keep a `source()`; the FFI's
+  `LogoxideError` is the kinds), comments and docs in plain
   prose, `cargo fmt` and `cargo clippy --all-targets -D warnings` clean
 - Check behavior on the real packages (`lx check ~/Development/logoxide-packages/kjv`), not only
   unit tests

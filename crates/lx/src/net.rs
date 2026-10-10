@@ -91,9 +91,10 @@ fn with_retries<T>(
                 attempt += 1;
             }
             Err(e) => {
-                return Err(LogoxideError::Fetch {
+                return Err(LogoxideError::Network {
                     url: url.to_string(),
-                    message: describe(e),
+                    message: describe(&e),
+                    source: Some(Box::new(e)),
                 });
             }
         }
@@ -110,7 +111,7 @@ fn call(url: &str) -> Result<ureq::http::Response<ureq::Body>, ureq::Error> {
 }
 
 /// What went wrong, in words
-fn describe(error: ureq::Error) -> String {
+fn describe(error: &ureq::Error) -> String {
     match error {
         ureq::Error::RequireHttpsOnly(to) => {
             format!("refused: it redirects to {to}, which isn't HTTPS")
@@ -267,7 +268,7 @@ mod tests {
             .build()
             .call()
             .unwrap_err();
-        let message = describe(error);
+        let message = describe(&error);
         assert!(message.contains("isn't HTTPS"), "{message}");
     }
 }

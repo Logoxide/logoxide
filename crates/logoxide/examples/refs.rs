@@ -3,10 +3,8 @@
 
 fn main() -> logoxide::Result<()> {
     for path in std::env::args().skip(1) {
-        let bytes = std::fs::read(&path).map_err(|e| logoxide::LogoxideError::Io {
-            path: path.clone(),
-            message: e.to_string(),
-        })?;
+        let bytes =
+            std::fs::read(&path).map_err(|e| logoxide::LogoxideError::io(&path.clone(), e))?;
         let refs = logoxide::archive::Refs::parse(&bytes)?;
         println!("HEAD {:?}", refs.head);
         for (tag, commit) in &refs.tags {

@@ -87,8 +87,14 @@ impl World {
             .env("HOME", self.path("home"))
             .env("XDG_CONFIG_HOME", self.path("home/.config"))
             .env("XDG_DATA_HOME", self.path("home/.local/share"))
-            .env("XDG_CACHE_HOME", self.path("home/.cache"));
+            .env("XDG_CACHE_HOME", self.path("home/.cache"))
+            .env("XDG_RUNTIME_DIR", self.path("runtime"));
         command.output().unwrap()
+    }
+
+    /// The lock file lx takes for a folder of this world (its runtime folder's)
+    fn lock_path(&self, folder: &Path) -> PathBuf {
+        logoxide::locking::lock_path_in(&self.path("runtime/logoxide"), folder)
     }
 
     /// `lx`, which must succeed; what it printed
@@ -808,4 +814,109 @@ fn publishing_what_isnt_redistributable_is_confirmed() {
         catalog.contains("rights = { redistributable = false }"),
         "{catalog}"
     );
+}
+
+#[test]
+fn a_held_library_or_project_is_busy() {
+    let world = World::new("busy");
+    released(&world.path("kjv"), "kjv", "1.0.0");
+    world.ok(&["init"]);
+    world.ok(&["add", "--path", "../kjv"]);
+    // Another process (this one, for the test) holds the library while lx installs
+    let library = world.path("library");
+    std::fs::create_dir_all(&library).unwrap();
+    let held =
+        logoxide::locking::lock_file(&world.lock_path(&library), "the library", LOCK_WAIT).unwrap();
+    let out = world.lx(&["install"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("the library at") && stderr.contains("in use by another process ("),
+        "{stderr}"
+    );
+    drop(held);
+    world.ok(&["install"]);
+    // The project's lock stops a manifest write too
+    let held = logoxide::locking::lock_file(
+        &world.lock_path(&world.path("vault")),
+        "the project",
+        LOCK_WAIT,
+    )
+    .unwrap();
+    let out = world.lx(&["disable", "kjv"]);
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("the project at") && stderr.contains("in use"),
+        "{stderr}"
+    );
+    drop(held);
+    world.ok(&["disable", "kjv"]);
+    // A staging folder an install left is removed by clean once it's old, under the lock
+    let stale = world.path("library/packages/kjv/.1.0.0.staging-1-0-deadbeef");
+    std::fs::create_dir_all(&stale).unwrap();
+    let out = world.ok(&["clean", "--remove"]);
+    assert!(!out.contains("staging"), "{out}");
+    assert!(stale.is_dir());
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 24 * 60 * 60);
+    std::fs::File::open(&stale)
+        .unwrap()
+        .set_modified(old)
+        .unwrap();
+    let out = world.ok(&["clean"]);
+    assert!(out.contains("stale:") && stale.is_dir(), "{out}");
+    let out = world.ok(&["clean", "--remove"]);
+    assert!(
+        out.contains("left by an install that didn't finish"),
+        "{out}"
+    );
+    assert!(!stale.exists());
+}
+
+/// How long the test's own locks wait (nothing holds them)
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_millis(100);
+
+#[test]
+fn clean_keeps_what_other_projects_locked_until_their_roots_are_pruned() {
+    let world = World::new("roots");
+    released(&world.path("tb"), "tb", "1.0.0");
+    world.ok(&["init"]);
+    // Another vault installs from the same library
+    let other = world.path("other");
+    world.ok(&["init", "../other"]);
+    let other_s = other.display().to_string();
+    let tb = world.path("tb").display().to_string();
+    world.ok(&["--project", &other_s, "add", "--git", &tb]);
+    assert_eq!(
+        std::fs::read_dir(world.path("library/roots"))
+            .unwrap()
+            .count(),
+        1
+    );
+    // This vault uses nothing, but the other's root keeps its version
+    let out = world.ok(&["clean"]);
+    assert!(out.contains("every installed version is used"), "{out}");
+    // Its folder gone: said and still kept, then forgotten when asked
+    std::fs::remove_dir_all(&other).unwrap();
+    let out = world.ok(&["clean"]);
+    assert!(
+        out.contains("its project is gone, but its 1 version stay")
+            && out.contains("every installed version is used"),
+        "{out}"
+    );
+    let out = world.ok(&["clean", "--prune-roots"]);
+    assert!(
+        out.contains("forgot") && out.contains("unused: tb 1.0.0+g"),
+        "{out}"
+    );
+    assert!(
+        world
+            .ok(&["clean", "--remove"])
+            .contains("removed tb 1.0.0+g")
+    );
+    // A root that can't be read stops a clean, rather than cleaning blind
+    std::fs::write(world.path("library/roots/bad.toml"), "path = 1\n").unwrap();
+    let out = world.lx(&["clean"]);
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("bad.toml"));
 }

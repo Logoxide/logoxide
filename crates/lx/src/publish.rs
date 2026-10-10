@@ -17,6 +17,7 @@ use logoxide::{
     catalog::CatalogRelease,
     git::{Fetcher, GitRef},
     publish,
+    storage::write_atomic,
 };
 
 /// Where a registry's releases go
@@ -60,10 +61,12 @@ const CATALOG: &str = "catalog.toml";
 const INDEX: &str = "index";
 
 fn io(path: &Path, e: std::io::Error) -> LogoxideError {
-    LogoxideError::Io {
-        path: path.display().to_string(),
-        message: e.to_string(),
-    }
+    LogoxideError::io(&path.display().to_string(), e)
+}
+
+/// Writes a file whole or not at all (a catalog that's half written is a broken registry)
+fn write(path: &Path, bytes: impl AsRef<[u8]>) -> logoxide::Result<()> {
+    write_atomic(path, bytes.as_ref()).map_err(|e| io(path, e))
 }
 
 /// Runs `gh`; what it printed
@@ -71,15 +74,17 @@ fn gh(args: &[&str]) -> logoxide::Result<String> {
     let output = std::process::Command::new("gh")
         .args(args)
         .output()
-        .map_err(|e| LogoxideError::Fetch {
-            url: String::from("gh"),
-            message: format!("couldn't run gh (https://cli.github.com, then gh auth login): {e}"),
+        .map_err(|e| {
+            LogoxideError::network(
+                "gh",
+                format!("couldn't run gh (https://cli.github.com, then gh auth login): {e}"),
+            )
         })?;
     if !output.status.success() {
-        return Err(LogoxideError::Fetch {
-            url: format!("gh {}", args.join(" ")),
-            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        });
+        return Err(LogoxideError::network(
+            &format!("gh {}", args.join(" ")),
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
@@ -118,10 +123,10 @@ pub fn init(host: &Host, name: Option<&str>, private: bool) -> logoxide::Result<
             if path.exists() {
                 outln!("{} is a registry already", dir.display());
             } else {
-                std::fs::write(&path, &catalog).map_err(|e| io(&path, e))?;
+                write(&path, &catalog)?;
                 let readme = dir.join("README.md");
                 if !readme.exists() {
-                    std::fs::write(&readme, README).map_err(|e| io(&readme, e))?;
+                    write(&readme, README)?;
                 }
                 outln!("Made the registry {name} in {}", dir.display());
             }
@@ -153,7 +158,7 @@ pub fn init(host: &Host, name: Option<&str>, private: bool) -> logoxide::Result<
             } else {
                 let dir = scratch("registry")?;
                 let path = dir.join(CATALOG);
-                std::fs::write(&path, &catalog).map_err(|e| io(&path, e))?;
+                write(&path, &catalog)?;
                 gh(&[
                     "release",
                     "create",
@@ -309,8 +314,8 @@ pub fn publish(
             };
             let archive = registry.join(&relative);
             std::fs::create_dir_all(registry.join(&info.id)).map_err(|e| io(registry, e))?;
-            std::fs::write(&archive, &packed.bytes).map_err(|e| io(&archive, e))?;
-            std::fs::write(&catalog, updated).map_err(|e| io(&catalog, e))?;
+            write(&archive, &packed.bytes)?;
+            write(&catalog, updated)?;
             outln!("Published {label} ({size:.1} MB) to {}", registry.display());
         }
         Host::GitHub(repo) => {
@@ -348,7 +353,7 @@ pub fn publish(
                 return Ok(());
             };
             let archive = work.join(&file);
-            std::fs::write(&archive, &packed.bytes).map_err(|e| io(&archive, e))?;
+            write(&archive, &packed.bytes)?;
             let archive = archive.display().to_string();
             // A release left by a publish that stopped halfway gets its file again
             if gh(&["release", "view", &tag, "-R", repo]).is_ok() {
@@ -368,7 +373,7 @@ pub fn publish(
                     "--latest=false",
                 ])?;
             }
-            std::fs::write(&catalog, updated).map_err(|e| io(&catalog, e))?;
+            write(&catalog, updated)?;
             gh(&[
                 "release",
                 "upload",
@@ -437,7 +442,7 @@ pub fn yank(host: &Host, id: &str, version: &str, undo: bool) -> logoxide::Resul
             let catalog = registry.join(CATALOG);
             let text = std::fs::read_to_string(&catalog).map_err(|e| io(&catalog, e))?;
             let updated = publish::yank(&text, id, version, !undo)?;
-            std::fs::write(&catalog, updated).map_err(|e| io(&catalog, e))?;
+            write(&catalog, updated)?;
             outln!("{what} {id} {version} in {}", registry.display());
         }
         Host::GitHub(repo) => {
@@ -456,8 +461,7 @@ pub fn yank(host: &Host, id: &str, version: &str, undo: bool) -> logoxide::Resul
             ])?;
             let catalog = work.join(CATALOG);
             let text = std::fs::read_to_string(&catalog).map_err(|e| io(&catalog, e))?;
-            std::fs::write(&catalog, publish::yank(&text, id, version, !undo)?)
-                .map_err(|e| io(&catalog, e))?;
+            write(&catalog, publish::yank(&text, id, version, !undo)?)?;
             gh(&[
                 "release",
                 "upload",

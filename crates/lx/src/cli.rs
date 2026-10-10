@@ -221,6 +221,10 @@ pub(crate) enum Command {
         /// Other projects whose lock files' versions stay (vaults elsewhere)
         #[arg(long)]
         keep: Vec<PathBuf>,
+        /// Forget projects recorded as using this library whose folder is gone from this machine
+        /// (their versions are kept until then)
+        #[arg(long)]
+        prune_roots: bool,
     },
     /// Finds packages in catalogs by name, abbreviation, or language (the project's catalogs,
     /// then eBible.org's and fetch.bible's lists: lx catalog list)

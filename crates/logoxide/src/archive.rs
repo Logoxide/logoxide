@@ -42,10 +42,7 @@ impl Refs {
     /// Reads git's pkt-line advertisement: a 4-digit hex length, then `<commit> <ref>`, the first
     /// with capabilities after a NUL
     pub fn parse(bytes: &[u8]) -> Result<Refs> {
-        let bad = |message: &str| LogoxideError::Fetch {
-            url: String::from("info/refs"),
-            message: message.to_string(),
-        };
+        let bad = |message: &str| LogoxideError::git("info/refs", message);
         let mut refs = Refs::default();
         let mut rest = bytes;
         let mut lines = 0;
@@ -105,10 +102,7 @@ impl Refs {
     a ref's), or at least [`MIN_REV_PREFIX`] digits of one of the refs' commits, and only one
     */
     pub fn find_commit(&self, reference: &GitRef) -> Result<String> {
-        let missing = |what: String| LogoxideError::Fetch {
-            url: String::from("info/refs"),
-            message: what,
-        };
+        let missing = |what: String| LogoxideError::git("info/refs", what);
         let find = |list: &[(String, String)], name: &str| {
             list.iter().find(|(n, _)| n == name).map(|(_, c)| c.clone())
         };
@@ -224,14 +218,8 @@ The archive is read twice: once for its names and sizes, to find that folder and
 again to write each file to `dest` as it's read, so only one file is held at a time
 */
 pub fn unpack(bytes: &[u8], dest: &dyn Storage) -> Result<()> {
-    let bad = |e: std::io::Error| LogoxideError::Fetch {
-        url: String::from("archive"),
-        message: format!("not a .tar.gz: {e}"),
-    };
-    let too_large = |message: String| LogoxideError::Fetch {
-        url: String::from("archive"),
-        message,
-    };
+    let bad = |e: std::io::Error| LogoxideError::archive("archive", format!("not a .tar.gz: {e}"));
+    let too_large = |message: String| LogoxideError::archive("archive", message);
     // The files' names, and the room they say they need
     let mut paths: Vec<String> = vec![];
     let (mut entries, mut declared) = (0, 0u64);

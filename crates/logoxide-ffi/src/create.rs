@@ -73,7 +73,7 @@ impl TryFrom<NewPackage> for core::NewPackage {
         let version = (n.version.as_deref())
             .map(semver::Version::parse)
             .transpose()
-            .map_err(|e| LogoxideError::Manifest {
+            .map_err(|e| LogoxideError::Invalid {
                 message: format!("version: {e}"),
             })?;
         Ok(core::NewPackage {
