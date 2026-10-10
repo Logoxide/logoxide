@@ -354,7 +354,8 @@ pub struct Settings {
     /// reference followed by a name or alias (`John 3:16 KJV`) shows that Bible's text. Without
     /// `bible` or `bibles`, the project's Bibles are used
     pub bibles: BiblesSetting,
-    /// The logoxide library (else `LOGOXIDE_HOME`, else `$XDG_DATA_HOME/logoxide`)
+    /// The logoxide library (else `LOGOXIDE_HOME`, else logoxide's config.toml's `library`, else
+    /// `$XDG_DATA_HOME/logoxide`)
     pub library: Option<String>,
     /// The folder with the `logoxide.toml` and `logoxide.lock` naming the Bibles (else a workspace
     /// folder that has one, else the library's own)
@@ -714,10 +715,9 @@ impl Settings {
             return Ok(None);
         };
         let project = Project::open(&dir).map_err(|e| format!("project {}: {e}", dir.display()))?;
-        let library = Library::new(
-            library_root.unwrap_or_else(Library::default_root),
-            Library::default_cache(),
-        );
+        // The cache logoxide's config names, like the library
+        let config = logoxide::config::Config::load().unwrap_or_default();
+        let library = config.library(library_root, None);
         Ok(Some((project, library)))
     }
 

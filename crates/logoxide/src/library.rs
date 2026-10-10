@@ -2,12 +2,12 @@
 The library: installed package versions, side by side, as plain files.
 
 ```text
-<library>/                        LOGOXIDE_HOME, else $XDG_DATA_HOME/logoxide (any folder: inside
+<library>/                        LOGOXIDE_HOME, else config.toml's `library`, else $XDG_DATA_HOME/logoxide (any folder: inside
   logoxide.toml                     .obsidian/ to sync with a vault); this machine's own
   logoxide.lock                     requirements and their lock, for apps without a vault
   packages/<id>/<version>/        each version, without .git, so it syncs well
   packages/<id>/<version>+g<commit>/   from a branch or a revision rather than its release
-<cache>/                          per device, never synced: LOGOXIDE_CACHE, else $XDG_CACHE_HOME/logoxide
+<cache>/                          per device, never synced: LOGOXIDE_CACHE, else config.toml's `cache`, else $XDG_CACHE_HOME/logoxide
   books/                          parsed books and verse counts (see cache.rs)
   git/                            scratch space while fetching
 ```
@@ -34,7 +34,7 @@ pub struct Library {
     cache: PathBuf,
 }
 
-fn env_dir(var: &str) -> Option<PathBuf> {
+pub(crate) fn env_dir(var: &str) -> Option<PathBuf> {
     std::env::var_os(var)
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)

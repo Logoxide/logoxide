@@ -8,6 +8,11 @@ before changing the design.
 ## Layout
 
 - `crates/logoxide`: the library
+  - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
+    `library`, `cache`, `catalogs`, `[registries]`, machine-wide (flags and env win over
+    library/cache; a project's catalogs come first and its registry names win). lx reads it once
+    at start (a bad file is an error), logoxide-lsp for its library. The owner chose no `[topos]`
+    table: topos's settings stay in topos's config, and no `lx refs`/`lx topos` command
   - `manifest.rs`: `logoxide.toml`. One manifest name for packages and vaults (a vault's has no
     `[package]`), like `Cargo.toml`. "Index" means only a registry. Formats, Cargo-style features,
     and `git`/`path` dependencies; no default registry. Cargo-like metadata: `keywords`,

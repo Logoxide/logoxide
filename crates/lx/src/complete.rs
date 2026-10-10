@@ -8,15 +8,18 @@ own, as when `--project` isn't given. Registries on the web aren't downloaded fo
 use std::{ffi::OsStr, path::PathBuf};
 
 use clap_complete::engine::CompletionCandidate;
-use logoxide::{Library, Project, manifest::MANIFEST};
+use logoxide::{Project, manifest::MANIFEST};
+
+/// logoxide's config, or its defaults when it can't be read (completing never fails)
+fn config() -> logoxide::config::Config {
+    logoxide::config::Config::load().unwrap_or_default()
+}
 
 /// The project `lx` would use here without `--project`
 fn project() -> Option<Project> {
     let dir = match std::path::Path::new(MANIFEST).is_file() {
         true => PathBuf::from("."),
-        false => Library::new(Library::default_root(), Library::default_cache())
-            .root()
-            .to_path_buf(),
+        false => (config().library(None, None).root()).to_path_buf(),
     };
     Project::open(dir).ok()
 }
@@ -33,7 +36,7 @@ packages (`dorean-local:books/romans`, and by id when no other package there has
 pub fn package(current: &OsStr) -> Vec<CompletionCandidate> {
     let current = current.to_string_lossy();
     let mut found = vec![];
-    let registries = project().map(|p| (p.manifest().registries(), p.dir().to_path_buf()));
+    let registries = project().map(|p| (config().registries(p.manifest()), p.dir().to_path_buf()));
     if let Some((registries, dir)) = &registries {
         match logoxide::catalog::split_registry_name(&current, registries)
             .map(|(r, _)| r)
@@ -108,17 +111,22 @@ pub fn registry(current: &OsStr) -> Vec<CompletionCandidate> {
     let Some(project) = project() else {
         return vec![];
     };
-    (project.manifest().registries().into_iter())
+    (config().registries(project.manifest()).into_iter())
         .filter(|(name, _)| name.starts_with(current.as_ref()))
         .map(|(name, location)| candidate(name, location))
         .collect()
 }
 
-/// What `lx catalog remove` takes: the project's registries and the catalogs it searches
+/// What `lx catalog remove` takes: the project's own registries and catalogs (not the config's)
 pub fn searched(current: &OsStr) -> Vec<CompletionCandidate> {
-    let mut found = registry(current);
     let current = current.to_string_lossy();
+    let mut found = vec![];
     if let Some(project) = project() {
+        found.extend(
+            (project.manifest().registries().into_iter())
+                .filter(|(name, _)| name.starts_with(current.as_ref()))
+                .map(|(name, location)| candidate(name, location)),
+        );
         found.extend(
             (project.manifest().catalogs().into_iter())
                 .filter(|c| c.starts_with(current.as_ref()))

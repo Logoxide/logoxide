@@ -20,6 +20,24 @@ COMP_WORDBREAKS=${COMP_WORDBREAKS//:/}
 (zsh: `source <(COMPLETE=zsh lx)`; fish: `COMPLETE=fish lx | source`.) Registries on the web
 aren't downloaded to complete.
 
+## This machine's config
+
+`~/.config/logoxide/config.toml` (`$XDG_CONFIG_HOME/logoxide`, or the file `LOGOXIDE_CONFIG`
+names) holds this machine's defaults for `lx` and logoxide-lsp. Every key is optional, and a
+mistyped one is an error. topos's own settings (book data, genres) stay in topos's `config.toml`.
+
+```toml
+library = "~/Bibles"                 # LOGOXIDE_HOME and --library win over it
+cache = "~/.cache/logoxide"          # LOGOXIDE_CACHE and --cache-dir win over it
+catalogs = ["https://example.org/catalog.toml"]   # every project searches it, after its own
+
+[registries]                         # every project can name these (its own name wins)
+dorean-local = "~/Documents/logoxide-dorean-repos"
+```
+
+`lx catalog list` says which come from it. `lx catalog add` and `remove` change the project's
+`[settings]`, never this file.
+
 ## Reading: a vault with a few Bibles
 
 A vault is any folder of notes. Its `logoxide.toml` says which Bibles it uses, like `Cargo.toml`, and

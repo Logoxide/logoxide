@@ -384,8 +384,19 @@ impl Manifest {
     /// The catalogs to search: `[settings] catalogs`, then eBible.org's and fetch.bible's lists
     /// (unless `default-catalogs = false`)
     pub fn catalogs(&self) -> Vec<String> {
+        self.catalogs_with(&[])
+    }
+
+    /// [`Manifest::catalogs`] with `more` (the machine's, from logoxide's config) after the
+    /// manifest's own and before the default ones
+    pub fn catalogs_with(&self, more: &[String]) -> Vec<String> {
         let settings = self.settings.clone().unwrap_or_default();
         let mut catalogs = settings.catalogs;
+        for catalog in more {
+            if !catalogs.contains(catalog) {
+                catalogs.push(catalog.clone());
+            }
+        }
         if settings.default_catalogs {
             for default in crate::catalog::DEFAULT_CATALOGS {
                 if !catalogs.iter().any(|c| c == default) {

@@ -13,6 +13,7 @@ The plan, with what comes next (the library, `lx`, git sources, summaries, and v
 pub mod archive;
 pub mod cache;
 pub mod catalog;
+pub mod config;
 pub mod create;
 pub mod error;
 pub mod git;

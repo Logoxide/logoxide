@@ -102,7 +102,15 @@ fn run(connection: &Connection) -> Result<(), AnyError> {
         None => init.root_uri.iter().cloned().collect::<Vec<_>>(),
     };
     server.set_roots(roots.iter().filter_map(workspace::uri_to_path).collect());
-    server.set_library(logoxide::Library::default_root());
+    // The library logoxide's config names (else the environment's, else the XDG folder)
+    let config = match logoxide::config::Config::load() {
+        Ok(config) => config,
+        Err(err) => {
+            warn(connection, err.to_string())?;
+            Default::default()
+        }
+    };
+    server.set_library(config.library(None, None).root().to_path_buf());
     let options = init.initialization_options.unwrap_or_default();
     if let Err(err) = server.configure(options) {
         warn(connection, err)?;

@@ -31,22 +31,27 @@ struct Cli {
     /// The folder with the logoxide.toml to use: the current one if it has one, else the library's
     #[arg(long, global = true)]
     project: Option<PathBuf>,
-    /// The library (LOGOXIDE_HOME, else $XDG_DATA_HOME/logoxide)
+    /// The library (LOGOXIDE_HOME, else ~/.config/logoxide/config.toml's `library`, else
+    /// $XDG_DATA_HOME/logoxide)
     #[arg(long, global = true)]
     library: Option<PathBuf>,
-    /// The cache (LOGOXIDE_CACHE, else $XDG_CACHE_HOME/logoxide)
+    /// The cache (LOGOXIDE_CACHE, else the config's `cache`, else $XDG_CACHE_HOME/logoxide)
     #[arg(long, global = true)]
     cache_dir: Option<PathBuf>,
 }
 
+/// logoxide's config (`~/.config/logoxide/config.toml`), read once when lx starts
+static CONFIG: std::sync::OnceLock<logoxide::config::Config> = std::sync::OnceLock::new();
+
+fn config() -> &'static logoxide::config::Config {
+    CONFIG.get_or_init(Default::default)
+}
+
 impl Cli {
+    /// `--library` and `--cache-dir`, else the environment's, else the config's, else the XDG
+    /// folders
     fn library(&self) -> Library {
-        Library::new(
-            self.library.clone().unwrap_or_else(Library::default_root),
-            self.cache_dir
-                .clone()
-                .unwrap_or_else(Library::default_cache),
-        )
+        config().library(self.library.clone(), self.cache_dir.clone())
     }
 
     fn project(&self, library: &Library) -> logoxide::Result<Project> {
@@ -564,6 +569,15 @@ fn main() -> ExitCode {
     // `COMPLETE=bash lx` writes the shell's completion script; the shell then runs lx to complete
     clap_complete::CompleteEnv::with_factory(Cli::command).complete();
     let cli = Cli::parse();
+    match logoxide::config::Config::load() {
+        Ok(loaded) => {
+            let _ = CONFIG.set(loaded);
+        }
+        Err(e) => {
+            eprintln!("lx: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
     let result = match &cli.command {
         Command::Show {
             package,
@@ -1260,7 +1274,7 @@ fn archive_entry(
     text: &str,
     catalog: Option<&str>,
 ) -> logoxide::Result<Option<(String, logoxide::catalog::CatalogEntry)>> {
-    let registries = project.manifest().registries();
+    let registries = config().registries(project.manifest());
     let (registry, location, name) = match catalog {
         Some(catalog) => ("--registry", catalog.to_string(), text),
         None => match logoxide::catalog::split_registry_name(text, &registries) {
@@ -1841,7 +1855,7 @@ A package's git URL from what's typed: a name through one of the project's regis
 (`dorean-local:books/romans`), `github:owner/repo`, or a URL
 */
 fn registry_url(project: &logoxide::Project, text: &str) -> logoxide::Result<String> {
-    let registries = project.manifest().registries();
+    let registries = config().registries(project.manifest());
     let Some((registry, name)) = logoxide::catalog::split_registry_name(text, &registries) else {
         return Ok(logoxide::git::expand_url(text));
     };
@@ -2131,14 +2145,29 @@ fn catalog_build(
 
 fn catalog_list(cli: &Cli) -> logoxide::Result<()> {
     let project = cli.project(&cli.library())?;
-    for (name, location) in project.manifest().registries() {
-        println!("{name}: {location} (registry)");
+    // Where each comes from: the project, logoxide's config, or the defaults
+    let own = project.manifest().registries();
+    for (name, location) in config().registries(project.manifest()) {
+        let from = match own.contains_key(&name) {
+            true => "",
+            false => ", from config.toml",
+        };
+        println!("{name}: {location} (registry{from})");
     }
     let defaults = logoxide::catalog::DEFAULT_CATALOGS;
-    for location in project.manifest().catalogs() {
-        let note = match defaults.contains(&location.as_str()) {
-            true => " (default)",
-            false => "",
+    let mine = project
+        .manifest()
+        .settings
+        .clone()
+        .unwrap_or_default()
+        .catalogs;
+    for location in config().catalogs(project.manifest()) {
+        let note = if defaults.contains(&location.as_str()) {
+            " (default)"
+        } else if !mine.contains(&location) {
+            " (from config.toml)"
+        } else {
+            ""
         };
         println!("{location}{note}");
     }
@@ -2292,7 +2321,7 @@ fn search(
     let (catalogs, base) = match catalogs.is_empty() {
         true => {
             let project = cli.project(&cli.library())?;
-            let named = project.manifest().registries();
+            let named = config().registries(project.manifest());
             if let Some(name) = registry
                 && !named.contains_key(name)
             {
@@ -2311,7 +2340,7 @@ fn search(
             }
             let catalogs = match registry {
                 Some(_) => vec![],
-                None => project.manifest().catalogs(),
+                None => config().catalogs(project.manifest()),
             };
             (catalogs, project.dir().to_path_buf())
         }
@@ -2428,7 +2457,7 @@ fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
     // The project's catalogs, in order: the first that lists it is the one used
-    let mut catalogs = load_catalogs(&project.manifest().catalogs(), project.dir())?;
+    let mut catalogs = load_catalogs(&config().catalogs(project.manifest()), project.dir())?;
     // A SWORD repository CrossWire lists (`sword:crosswire-beta/…`) is read even if the project
     // doesn't search it
     if !catalogs.iter().any(|c| c.find_import(source).is_some())
@@ -2530,7 +2559,7 @@ fn import_update(cli: &Cli, name: Option<&str>, dry_run: bool) -> logoxide::Resu
     use logoxide::import::{apply_import, compare_import};
     let library = cli.library();
     let mut project = cli.project(&library)?;
-    let mut catalogs = load_catalogs(&project.manifest().catalogs(), project.dir())?;
+    let mut catalogs = load_catalogs(&config().catalogs(project.manifest()), project.dir())?;
     let paths: Vec<(String, String)> = (project.manifest().dependencies.iter())
         .filter_map(|(dep, d)| match d {
             Dependency::Detailed(d) => Some((dep.clone(), d.path.clone()?)),
