@@ -15,13 +15,13 @@ pub(crate) fn map(
     to: &str,
     with: &[PathBuf],
 ) -> logoxide::Result<()> {
-    use logoxide::versification::{VersificationMap, parse_reference};
+    use logoxide_text::versification::parse_reference;
     let library = cli.library();
     let project = cli.project(&library)?;
     let mut maps = project.versifications(&library)?;
     for dir in with {
         let package = Package::open(Arc::new(FsStorage::new(dir)), Features::default())?;
-        maps.add(VersificationMap::from_package(&package)?);
+        maps.add(logoxide::reader::versification_map(&package)?);
     }
     let passage = parse_reference(reference)?;
     let (from, to) = (

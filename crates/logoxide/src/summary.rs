@@ -43,12 +43,20 @@ const RECORD: usize = 12;
 /// Bytes of SHA-256 kept per verse
 pub const HASH_BYTES: usize = 7;
 
+/// The first [`HASH_BYTES`] bytes of a text's SHA-256: a verse's hash, once its words are the
+/// text a rule gives
+pub fn verse_hash(text: &str) -> [u8; HASH_BYTES] {
+    let full = Sha256::digest(text.as_bytes());
+    let mut hash = [0; HASH_BYTES];
+    hash.copy_from_slice(&full[..HASH_BYTES]);
+    hash
+}
+
 /**
-How a verse's words become the text that's hashed. A rule never changes once published: what
-changes how the text is rendered or normalized (a topos upgrade that renders markup differently
-included, which `tests/verse_hash.rs` pins) is a new rule, so two versions' hashes are compared only
-when made by one rule. `logoxide.summary.toml` (`verse-hash`) and `logoxide.verses.bin`'s header
-both name it
+How a verse's words become the text that's hashed: logoxide-text's rule of this number
+(`logoxide_text::hash::HashRule`), which never changes once published, so two versions' hashes
+are compared only when made by one rule. `logoxide.summary.toml` (`verse-hash`) and
+`logoxide.verses.bin`'s header both name it
 */
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum HashRule {
@@ -184,29 +192,6 @@ impl VerseHash {
     }
 }
 
-/// The characters [`HashRule::One`] drops: zero-width space, byte-order mark, soft hyphen, and
-/// word joiner
-#[cfg(feature = "read")]
-const INVISIBLE: [char; 4] = ['\u{200B}', '\u{FEFF}', '\u{00AD}', '\u{2060}'];
-
-/// A verse's text as hashed by `rule`: its words, normalized, with whitespace collapsed
-#[cfg(feature = "read")]
-pub fn verse_text(nodes: &[logoxide_markup::Node], rule: HashRule) -> String {
-    use logoxide_markup::{Filter, TextOptions, plain_text};
-    use unicode_normalization::UnicodeNormalization;
-    let options = TextOptions {
-        filter: Filter::text(),
-        ..TextOptions::default()
-    };
-    let text = plain_text(nodes, &options);
-    match rule {
-        HashRule::One => {
-            let normalized: String = (text.nfc()).filter(|c| !INVISIBLE.contains(c)).collect();
-            normalized.split_whitespace().collect::<Vec<_>>().join(" ")
-        }
-    }
-}
-
 /**
 Each verse of a book and the hash of its words (notes and headings left out), as
 `logoxide.verses.bin` has them: what a link records, so it can find its verse again in a later
@@ -214,101 +199,8 @@ version (renumbered: the same words at another number). A book without a number 
 table has none (every book topos knows has one). Made with [`HashRule::CURRENT`]
 */
 #[cfg(feature = "read")]
-pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
-    book_hashes_by(book, HashRule::CURRENT)
-}
-
-/// [`book_hashes`] by any rule this logoxide knows
-#[cfg(feature = "read")]
-pub fn book_hashes_by(book: &crate::source::Book, rule: HashRule) -> Vec<VerseHash> {
-    use logoxide_markup::verses::slice;
-    let Some(number) = Book::from_book_id(book.id) else {
-        return vec![];
-    };
-    let mut out = Vec::with_capacity(book.spans.len());
-    for span in &book.spans {
-        let hash = verse_hash(&verse_text(
-            &slice(&book.nodes, &span.start, Some(&span.end)),
-            rule,
-        ));
-        let across = span.last_chapter > span.chapter;
-        out.push(VerseHash {
-            book: number,
-            chapter: span.chapter,
-            verse: span.verse,
-            last: if across { span.verse } else { span.last },
-            part: span.part,
-            hash,
-        });
-        // A verse across chapters (a note on John 3:36 to 4:2) is two records with its words:
-        // its first verse, and the verses it covers in its last chapter
-        if across && span.last >= 1 {
-            out.push(VerseHash {
-                book: number,
-                chapter: span.last_chapter,
-                verse: 1,
-                last: span.last,
-                part: 0,
-                hash,
-            });
-        }
-    }
-    out
-}
-
-/// The first [`HASH_BYTES`] bytes of a text's SHA-256
-pub fn verse_hash(text: &str) -> [u8; HASH_BYTES] {
-    let full = Sha256::digest(text.as_bytes());
-    let mut hash = [0; HASH_BYTES];
-    hash.copy_from_slice(&full[..HASH_BYTES]);
-    hash
-}
-
-/// `WordsOfJesus` → `words-of-jesus`
-#[cfg(feature = "read")]
-fn kebab(kind: logoxide_markup::Kind) -> String {
-    let mut out = String::new();
-    for (i, c) in format!("{kind:?}").chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            out.push('-');
-        }
-        out.extend(c.to_lowercase());
-    }
-    out
-}
-
-/// Markers and containers, which say nothing about what a text holds
-#[cfg(feature = "read")]
-const STRUCTURE: [logoxide_markup::Kind; 8] = {
-    use logoxide_markup::Kind;
-    [
-        Kind::Verse,
-        Kind::Chapter,
-        Kind::Metadata,
-        Kind::Other,
-        Kind::Paragraph,
-        Kind::LineBreak,
-        Kind::Milestone,
-        Kind::Division,
-    ]
-};
-
-/// Counts a book's elements into `contents` as the summary lists them (`note`, `title`, ...,
-/// and `strongs` for words tagged with Strong's numbers), markers and containers left out
-#[cfg(feature = "read")]
-pub fn count_elements(nodes: &[logoxide_markup::Node], contents: &mut BTreeMap<String, u64>) {
-    use logoxide_markup::{Kind, Node};
-    for node in nodes {
-        if let Node::Element(e) = node {
-            if !STRUCTURE.contains(&e.kind) {
-                *contents.entry(kebab(e.kind)).or_default() += 1;
-            }
-            if e.kind == Kind::Word && !e.strongs().is_empty() {
-                *contents.entry(String::from("strongs")).or_default() += 1;
-            }
-            count_elements(&e.children, contents);
-        }
-    }
+pub fn book_hashes(book: &logoxide_text::Book) -> Result<Vec<VerseHash>> {
+    crate::reader::verse_hashes(book, HashRule::CURRENT)
 }
 
 /// The files a summary leaves out of its checksum (itself)
@@ -976,23 +868,6 @@ mod tests {
         // A part lost is removed
         let d = diff(&old, &[part(3, 20, 1, "a"), verse(3, 21, "c")]);
         assert_eq!((d.removed.len(), d.change()), (1, Change::Major));
-    }
-
-    #[test]
-    #[cfg(feature = "read")]
-    fn rule_one_normalizes() {
-        let text = |s: &str| {
-            let nodes = [logoxide_markup::Node::Text(s.to_string())];
-            verse_text(&nodes, HashRule::One)
-        };
-        // NFD and NFC, invisible characters, and kinds of space all hash alike
-        assert_eq!(text("e\u{301}"), "\u{e9}");
-        assert_eq!(
-            text(" in\u{200B} the\u{a0}be\u{AD}gin\u{2060}ning\u{FEFF} \n"),
-            "in the beginning"
-        );
-        // Joiners stay
-        assert_eq!(text("a\u{200D}b\u{200C}c"), "a\u{200D}b\u{200C}c");
     }
 
     #[test]

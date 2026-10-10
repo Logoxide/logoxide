@@ -1,0 +1,14 @@
+[package]
+id = "english-original"
+name = "English to Original versification (sample)"
+abbreviation = "ENG-ORG"
+description = "A few of Paratext's English-to-Original mappings: psalm titles, Joel, and Malachi"
+version = "0.1.0"
+kind = "versification-map"
+language = "en"
+license = "CC0-1.0"
+versification = "English"
+maps-to = "Original"
+
+[formats]
+vrs = { path = "eng-org.vrs" }

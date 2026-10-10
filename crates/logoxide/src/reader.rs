@@ -3,8 +3,8 @@ What the package manager asks of a package's text, and nothing more: the facts a
 records ([`TextFacts`]), each book's verse counts, and whether its media timings fit. It never
 reads the text itself: a [`TextReader`] does, given by whoever runs it (lx, the bindings, the
 language server), so the package manager builds without a parser (`--no-default-features`)
-and is tested with facts made up. The `read` feature's [`DefaultReader`] is the reader built
-in here for now (it reads through [`crate::source`]); it will move beside the binaries.
+and is tested with facts made up. The `read` feature's [`DefaultReader`] reads through
+logoxide-text, the crate that knows what's in a Bible or a book and nothing of packages.
 
 The summary file is the contract between the two sides: a reader makes the facts, and the
 package manager diffs and versions them ([`crate::summary`]).
@@ -86,8 +86,8 @@ impl TextReader for NoReader {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum SkipReason {
-    /// Front or back matter, a glossary, an index, and the like ([`PERIPHERALS`]): not a book of
-    /// the Bible, so not read as one
+    /// Front or back matter, a glossary, an index, and the like: not a book of the Bible, so
+    /// not read as one
     Peripheral,
     /// A book topos doesn't know (yet): warned of, since its verses are left out
     Unknown,
@@ -138,71 +138,228 @@ impl std::fmt::Display for Skipped {
     }
 }
 
-/// Paratext's codes for books that aren't books of the Bible: front and back matter,
-/// introductions, concordance, glossary, indexes, other matter, and the extra books `XXA` to
-/// `XXG`
-pub const PERIPHERALS: [&str; 15] = [
-    "FRT", "INT", "BAK", "CNC", "GLO", "TDX", "NDX", "OTH", "XXA", "XXB", "XXC", "XXD", "XXE",
-    "XXF", "XXG",
-];
-
-/// Whether a USFM code names a peripheral ([`PERIPHERALS`])
-pub fn is_peripheral(code: &str) -> bool {
-    PERIPHERALS.iter().any(|p| p.eq_ignore_ascii_case(code))
-}
-
-/// The reader built in with the `read` feature: it reads through [`crate::source`], hashes
-/// verses as [`crate::summary`] says, titles files as [`crate::titles`] does, and finds an
-/// EPUB's references with topos
 #[cfg(feature = "read")]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct DefaultReader;
-
+pub(crate) use with_text::verse_hashes;
 #[cfg(feature = "read")]
-impl TextReader for DefaultReader {
-    fn counts(&self, package: &Package) -> Result<Vec<(BookId, Vec<u8>)>> {
-        let source = package.source();
-        (source.books().into_iter())
-            .map(|id| Ok((id, source.chapter_verses(id)?)))
-            .collect()
+pub use with_text::{DefaultReader, StorageFiles, versification_map};
+
+/// The reader built on logoxide-text, and the bridge from a package's [`Storage`] to its
+/// [`Files`](logoxide_text::Files)
+#[cfg(feature = "read")]
+mod with_text {
+    use std::sync::Arc;
+
+    use logoxide_text::{Files, TextError, hash, source::TextFormat};
+    use topos_bible::data::books::BookId;
+
+    use super::{SkipReason, Skipped, TextFacts, TextReader};
+    use crate::{
+        books::Book,
+        error::{LogoxideError, Result},
+        manifest::{Format, PackageKind},
+        package::Package,
+        storage::Storage,
+        summary::{HashRule, VerseHash},
+    };
+
+    /// A package's storage as the files logoxide-text reads
+    pub struct StorageFiles(pub Arc<dyn Storage>);
+
+    impl Files for StorageFiles {
+        fn read(&self, path: &str) -> logoxide_text::Result<Vec<u8>> {
+            self.0.read(path).map_err(files_error)
+        }
+
+        fn list(&self, dir: &str) -> logoxide_text::Result<Vec<String>> {
+            self.0.list(dir).map_err(files_error)
+        }
+
+        fn walk(&self, dir: &str) -> logoxide_text::Result<Vec<String>> {
+            self.0.walk(dir).map_err(files_error)
+        }
+
+        fn exists(&self, path: &str) -> bool {
+            self.0.exists(path)
+        }
+
+        fn read_string(&self, path: &str) -> logoxide_text::Result<String> {
+            self.0.read_string(path).map_err(files_error)
+        }
     }
 
-    fn facts(&self, package: &Package, rule: HashRule) -> Result<TextFacts> {
-        let source = package.source();
-        let mut facts = TextFacts::default();
-        for id in source.books() {
-            let book = source.book(id)?;
-            let code = crate::bible_data()
-                .books()
-                .get_usfm(id)
-                .cloned()
-                .unwrap_or_else(|| id.0.to_string());
-            facts.books.insert(code, book.chapter_verses());
-            crate::summary::count_elements(&book.nodes, &mut facts.contents);
-            facts
-                .verses
-                .extend(crate::summary::book_hashes_by(&book, rule));
+    fn files_error(e: LogoxideError) -> TextError {
+        match e {
+            LogoxideError::NotFound(what) => TextError::NotFound(what),
+            other => TextError::Files(other.to_string()),
         }
-        for titled in crate::titles::titles(package)? {
-            match titled.title {
-                Some(title) => {
-                    facts.titles.insert(titled.path, title);
-                }
-                None => facts.untitled.push(titled.path),
+    }
+
+    impl From<TextError> for LogoxideError {
+        fn from(e: TextError) -> Self {
+            match e {
+                TextError::Book { book, message } => LogoxideError::Book { book, message },
+                TextError::NotFound(what) => LogoxideError::NotFound(what),
+                TextError::Files(what) => LogoxideError::Io {
+                    path: String::new(),
+                    message: what,
+                },
+                TextError::Versification(what) => LogoxideError::Versification(what),
+                TextError::Timings(what) => LogoxideError::Media(what),
+                TextError::Archive(what) => LogoxideError::Import(what),
             }
         }
-        let found = crate::references::find(package)?;
-        facts.references = found.len() as u64;
-        facts.cited = crate::references::cited(&found);
-        if package.info().kind == crate::manifest::PackageKind::VersificationMap {
-            facts.mappings =
-                crate::versification::VersificationMap::from_package(package)?.len() as u64;
-        }
-        facts.skipped = source.skipped().to_vec();
-        Ok(facts)
     }
 
-    fn timing_problems(&self, package: &Package, text: Option<&Package>) -> Result<Vec<String>> {
-        crate::media::check_package_timings_with(package, text)
+    impl From<logoxide_text::Skipped> for Skipped {
+        fn from(s: logoxide_text::Skipped) -> Self {
+            Skipped {
+                path: s.path,
+                book: s.book,
+                reason: match s.reason {
+                    logoxide_text::SkipReason::Peripheral => SkipReason::Peripheral,
+                    logoxide_text::SkipReason::Unknown => SkipReason::Unknown,
+                    logoxide_text::SkipReason::NoBook => SkipReason::NoBook,
+                    logoxide_text::SkipReason::LetteredChapter => SkipReason::LetteredChapter,
+                },
+            }
+        }
+    }
+
+    impl Format {
+        /// The format as logoxide-text reads it, if it reads it
+        pub fn text_format(self) -> Option<TextFormat> {
+            Some(match self {
+                Format::Usx => TextFormat::Usx,
+                Format::Usfm => TextFormat::Usfm,
+                Format::Osis => TextFormat::Osis,
+                Format::Thml => TextFormat::Thml,
+                _ => return None,
+            })
+        }
+    }
+
+    /// The rule as logoxide-text knows it (every rule the summary format names, it knows)
+    fn text_rule(rule: HashRule) -> Result<hash::HashRule> {
+        hash::HashRule::from_number(rule.number()).ok_or_else(|| {
+            LogoxideError::Newer(format!(
+                "verse-hash rule {}: logoxide-text doesn't know it",
+                rule.number()
+            ))
+        })
+    }
+
+    /// Each verse of a book and the hash of its words by `rule`, as `logoxide.verses.bin` has
+    /// them; a book without a number in logoxide's table has none (every book topos knows has
+    /// one)
+    pub(crate) fn verse_hashes(
+        book: &logoxide_text::Book,
+        rule: HashRule,
+    ) -> Result<Vec<VerseHash>> {
+        let rule = text_rule(rule)?;
+        Ok((hash::book_hashes(book, rule).into_iter())
+            .filter_map(|r| {
+                Some(VerseHash {
+                    book: Book::from_book_id(r.book)?,
+                    chapter: r.chapter,
+                    verse: r.verse,
+                    last: r.last,
+                    part: r.part,
+                    hash: r.hash,
+                })
+            })
+            .collect())
+    }
+
+    /// The map in a package (`kind = "versification-map"`): every `.vrs` file of its enabled
+    /// formats, in path order
+    pub fn versification_map(
+        package: &Package,
+    ) -> Result<logoxide_text::versification::VersificationMap> {
+        let info = package.info();
+        let (Some(to), PackageKind::VersificationMap) = (&info.maps_to, info.kind) else {
+            return Err(LogoxideError::Versification(format!(
+                "{} isn't a versification map (kind = \"versification-map\", with maps-to)",
+                info.id
+            )));
+        };
+        let storage = package.storage();
+        let dirs: Vec<&str> = (package.manifest().formats(package.enabled()).into_iter())
+            .filter(|(name, _)| Format::from_name(name) == Some(Format::Vrs))
+            .map(|(_, entry)| entry.path.trim_end_matches('/'))
+            .collect();
+        let mut files = vec![];
+        for path in crate::package::declared_files(storage.as_ref())? {
+            let inside = (dirs.iter()).any(|d| path == *d || path.starts_with(&format!("{d}/")));
+            if inside && path.to_ascii_lowercase().ends_with(".vrs") {
+                let text = storage.read_string(&path)?;
+                files.push((path, text));
+            }
+        }
+        if files.is_empty() {
+            return Err(LogoxideError::Versification(format!(
+                "{}: no .vrs file in its formats",
+                info.id
+            )));
+        }
+        let files = files.iter().map(|(p, t)| (p.as_str(), t.as_str()));
+        Ok(logoxide_text::versification::VersificationMap::parse(
+            &info.versification,
+            to,
+            files,
+        )?)
+    }
+
+    /// The reader built in with the `read` feature: logoxide-text's sources, hashes, titles,
+    /// and citations
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct DefaultReader;
+
+    impl TextReader for DefaultReader {
+        fn counts(&self, package: &Package) -> Result<Vec<(BookId, Vec<u8>)>> {
+            let source = package.source();
+            (source.books().into_iter())
+                .map(|id| Ok((id, source.chapter_verses(id)?)))
+                .collect()
+        }
+
+        fn facts(&self, package: &Package, rule: HashRule) -> Result<TextFacts> {
+            let source = package.source();
+            let mut facts = TextFacts::default();
+            for id in source.books() {
+                let book = source.book(id)?;
+                let code = crate::bible_data()
+                    .books()
+                    .get_usfm(id)
+                    .cloned()
+                    .unwrap_or_else(|| id.0.to_string());
+                facts.books.insert(code, book.chapter_verses());
+                hash::count_elements(&book.nodes, &mut facts.contents);
+                facts.verses.extend(verse_hashes(&book, rule)?);
+            }
+            for titled in crate::titles::titles(package)? {
+                match titled.title {
+                    Some(title) => {
+                        facts.titles.insert(titled.path, title);
+                    }
+                    None => facts.untitled.push(titled.path),
+                }
+            }
+            let found = crate::references::find(package)?;
+            facts.references = found.len() as u64;
+            facts.cited = crate::references::cited(&found);
+            if package.info().kind == PackageKind::VersificationMap {
+                facts.mappings = versification_map(package)?.len() as u64;
+            }
+            facts.skipped = (source.skipped().iter()).cloned().map(Into::into).collect();
+            Ok(facts)
+        }
+
+        fn timing_problems(
+            &self,
+            package: &Package,
+            text: Option<&Package>,
+        ) -> Result<Vec<String>> {
+            crate::media::check_package_timings_with(package, text)
+        }
     }
 }

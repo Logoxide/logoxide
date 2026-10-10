@@ -14,8 +14,8 @@ use topos_bible::data::books::BookId;
 
 use super::{Book, SkipReason, Skipped};
 use crate::{
-    error::{LogoxideError, Result},
-    storage::{Storage, join},
+    error::{Result, TextError},
+    files::{Files as Storage, join},
 };
 
 /**
@@ -255,7 +255,7 @@ impl Parsed {
         let nodes = (last.as_ref())
             .and_then(|(_, books)| books.get(&id))
             .cloned()
-            .ok_or_else(|| LogoxideError::NotFound(format!("book {} in {path}", id.0)))?;
+            .ok_or_else(|| TextError::NotFound(format!("book {} in {path}", id.0)))?;
         let spans = verses(&nodes);
         Ok(Book { id, nodes, spans })
     }

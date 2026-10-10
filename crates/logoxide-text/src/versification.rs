@@ -60,11 +60,7 @@ use topos_bible::{
     },
 };
 
-use crate::{
-    error::{LogoxideError, Result},
-    manifest::{Format, PackageKind},
-    package::Package,
-};
+use crate::error::{Result, TextError};
 
 /// One verse: its book, chapter, and number (0 for a psalm's title)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -169,7 +165,7 @@ impl Mapping {
                 .collect(),
             (a, b) if a == b => from.verses().zip(to.verses()).collect(),
             (a, b) => {
-                return Err(LogoxideError::Versification(format!(
+                return Err(TextError::Versification(format!(
                     "{}: {a} verses map to {b}: give ranges of one length, or one verse",
                     self.at
                 )));
@@ -266,7 +262,7 @@ impl VersificationMap {
         };
         let mistakes = map.mistakes();
         if !mistakes.is_empty() {
-            return Err(LogoxideError::Versification(mistakes.join("; ")));
+            return Err(TextError::Versification(mistakes.join("; ")));
         }
         for mapping in &map.mappings {
             for (from, to) in mapping.pairs()? {
@@ -281,39 +277,6 @@ impl VersificationMap {
             }
         }
         Ok(map)
-    }
-
-    /// The map in a package (`kind = "versification-map"`): every `.vrs` file of its enabled
-    /// formats, in path order
-    pub fn from_package(package: &Package) -> Result<VersificationMap> {
-        let info = package.info();
-        let (Some(to), PackageKind::VersificationMap) = (&info.maps_to, info.kind) else {
-            return Err(LogoxideError::Versification(format!(
-                "{} isn't a versification map (kind = \"versification-map\", with maps-to)",
-                info.id
-            )));
-        };
-        let storage = package.storage();
-        let dirs: Vec<&str> = (package.manifest().formats(package.enabled()).into_iter())
-            .filter(|(name, _)| Format::from_name(name) == Some(Format::Vrs))
-            .map(|(_, entry)| entry.path.trim_end_matches('/'))
-            .collect();
-        let mut files = vec![];
-        for path in crate::package::declared_files(storage.as_ref())? {
-            let inside = (dirs.iter()).any(|d| path == *d || path.starts_with(&format!("{d}/")));
-            if inside && path.to_ascii_lowercase().ends_with(".vrs") {
-                let text = storage.read_string(&path)?;
-                files.push((path, text));
-            }
-        }
-        if files.is_empty() {
-            return Err(LogoxideError::Versification(format!(
-                "{}: no .vrs file in its formats",
-                info.id
-            )));
-        }
-        let files = files.iter().map(|(p, t)| (p.as_str(), t.as_str()));
-        VersificationMap::parse(&info.versification, to, files)
     }
 
     pub fn mappings(&self) -> &[Mapping] {
@@ -546,7 +509,7 @@ fn write(verses: &[Verse]) -> String {
 /// `PSA 51:1-19` (a verse, or a range within a chapter), either end perhaps a part of a verse
 /// (`ESG 1:1a`, `1KI 22:43b-44`)
 fn parse_range(text: &str, at: &str) -> Result<VerseRange> {
-    let bad = |why: &str| LogoxideError::Versification(format!("{at}: `{text}`: {why}"));
+    let bad = |why: &str| TextError::Versification(format!("{at}: `{text}`: {why}"));
     let (code, numbers) = (text.trim().split_once(' '))
         .ok_or_else(|| bad("write a book's USFM code, then chapter:verse"))?;
     let book = (crate::bible_data().books())
@@ -634,7 +597,7 @@ fn parse_line(line: &str, at: &str) -> Result<Line> {
                 }
                 Ok(Line::Counts(book, counts))
             }
-            _ => Err(LogoxideError::Versification(format!(
+            _ => Err(TextError::Versification(format!(
                 "{at}: `{line}` is no mapping (`BOOK C:V = BOOK C:V`)"
             ))),
         };
@@ -731,7 +694,7 @@ impl Versifications {
             }
         }
         let known = self.names().join(", ");
-        Err(LogoxideError::Versification(format!(
+        Err(TextError::Versification(format!(
             "no map leads from {from} to {to} (the maps know: {})",
             if known.is_empty() { "none" } else { &known }
         )))
@@ -831,7 +794,7 @@ pub fn parse_reference(reference: &str) -> Result<Passage> {
         return Ok(passage);
     }
     let mut passage = (data.books().parse(reference))
-        .ok_or_else(|| LogoxideError::Versification(format!("`{reference}` is no reference")))?;
+        .ok_or_else(|| TextError::Versification(format!("`{reference}` is no reference")))?;
     // In a book of one chapter, a number alone is a verse (`3 John 15`)
     let single = (data.chapter_verses().get_chapter_verses(&passage.book))
         .is_some_and(|c| c.has_one_chapter());

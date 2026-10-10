@@ -13,7 +13,6 @@ use logoxide::{
     package::declared_files,
     resolve::Update,
     summary::{Change, diff_summaries, summarize},
-    versification::VersificationMap,
 };
 
 fn fixture() -> PathBuf {
@@ -29,7 +28,7 @@ fn a_map_package_is_checked_and_summarized() {
     let package = open(Arc::new(FsStorage::new(fixture())));
     assert_eq!(package.info().kind, PackageKind::VersificationMap);
     assert!(package.books().is_empty());
-    let map = VersificationMap::from_package(&package).unwrap();
+    let map = logoxide::reader::versification_map(&package).unwrap();
     assert_eq!(
         (map.from.as_str(), map.to.as_str()),
         ("English", "Original")
@@ -60,7 +59,7 @@ fn a_map_package_is_checked_and_summarized() {
     let overlapping = format!("{changed}\nMAL 4:2 = MAL 3:22\n");
     copy.write("eng-org.vrs", overlapping.as_bytes()).unwrap();
     let broken = open(copy);
-    let error = VersificationMap::from_package(&broken)
+    let error = logoxide::reader::versification_map(&broken)
         .unwrap_err()
         .to_string();
     assert!(error.contains("MAL 4:2 is on the left"), "{error}");

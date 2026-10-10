@@ -9,13 +9,13 @@ use sha2::{Digest, Sha256};
 #[cfg(feature = "read")]
 use topos_bible::data::books::BookId;
 
-#[cfg(feature = "read")]
-use crate::source::{NoText, OsisSource, Source, ThmlSource, UsfmSource, UsxSource};
 use crate::{
     error::{LogoxideError, Result},
     manifest::{self, Enabled, Format, MANIFEST, Manifest},
     storage::Storage,
 };
+#[cfg(feature = "read")]
+use logoxide_text::{Source, source::NoText};
 
 pub struct Package {
     manifest: Manifest,
@@ -77,25 +77,21 @@ impl Package {
                 let names: Vec<&str> = enabled_formats.iter().map(|(n, _)| *n).collect();
                 return Err(LogoxideError::NoReadableFormat(names.join(", ")));
             }
-            #[cfg(feature = "read")]
-            let format = (enabled_formats.iter()).find_map(|(name, _)| Format::from_name(name));
             return Ok(Package {
                 manifest,
                 storage,
                 enabled,
                 text: None,
                 #[cfg(feature = "read")]
-                source: Box::new(NoText::new(format)),
+                source: Box::new(NoText::default()),
             });
         };
         let dir = path.trim_end_matches('/').to_string();
         #[cfg(feature = "read")]
-        let source: Box<dyn Source> = match format {
-            Format::Usx => Box::new(UsxSource::open(storage.clone(), &dir)?),
-            Format::Usfm => Box::new(UsfmSource::open(storage.clone(), &dir)?),
-            Format::Osis => Box::new(OsisSource::open(storage.clone(), &dir)?),
-            Format::Thml => Box::new(ThmlSource::open(storage.clone(), &dir)?),
-            _ => unreachable!("only readable formats are chosen"),
+        let source: Box<dyn Source> = {
+            let text_format = (format.text_format()).expect("only readable formats are chosen");
+            let files = std::sync::Arc::new(crate::reader::StorageFiles(storage.clone()));
+            logoxide_text::source::open(files, text_format, &dir)?
         };
         Ok(Package {
             manifest,

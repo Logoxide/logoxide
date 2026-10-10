@@ -13,30 +13,14 @@ A collection ([`new_collection`]) has no file: its packages are its dependencies
 */
 
 #[cfg(feature = "read")]
-use logoxide_markup::decode_entities;
-#[cfg(feature = "read")]
-use quick_xml::{Reader, events::Event};
-
-#[cfg(feature = "read")]
 use crate::manifest::FormatEntry;
 use crate::{
     error::{LogoxideError, Result},
     manifest::{MANIFEST, Manifest, Package as Info, PackageKind},
     storage::Storage,
 };
-
-/// What a file's own metadata says (empty where it says nothing)
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct FileMetadata {
-    pub title: Option<String>,
-    pub subtitle: Option<String>,
-    pub authors: Vec<String>,
-    pub language: Option<String>,
-    pub publisher: Option<String>,
-    /// Its rights statement, if it has one (shown to the person making the package, who gives
-    /// the license: logoxide doesn't guess one)
-    pub rights: Option<String>,
-}
+#[cfg(feature = "read")]
+pub use logoxide_text::metadata::{FileMetadata, epub_metadata, opf_metadata};
 
 /// What to put in a new package's `[package]`; each one given wins over the file's metadata
 #[derive(Clone, Debug, Default)]
@@ -96,144 +80,6 @@ pub fn file_format(name: &str, bytes: &[u8]) -> Option<(&'static str, PackageKin
         }
         _ => return None,
     })
-}
-
-/// An EPUB's metadata, from the package document its `META-INF/container.xml` names
-#[cfg(feature = "read")]
-pub fn epub_metadata(bytes: &[u8]) -> Result<FileMetadata> {
-    let files = crate::import::unzip(bytes)?;
-    let file = |path: &str| {
-        (files.iter())
-            .find(|(p, _)| p == path)
-            .map(|(_, b)| String::from_utf8_lossy(b).into_owned())
-            .ok_or_else(|| LogoxideError::Import(format!("EPUB: no {path}")))
-    };
-    let container = file("META-INF/container.xml")?;
-    let opf_path = (elements(&container).into_iter())
-        .find(|e| e.name == "rootfile")
-        .and_then(|e| e.attr("full-path").map(String::from))
-        .ok_or_else(|| LogoxideError::Import(String::from("EPUB: no rootfile in its container")))?;
-    Ok(opf_metadata(&file(&opf_path)?))
-}
-
-/// The metadata in an EPUB's package document (`.opf`), EPUB 2 or 3
-#[cfg(feature = "read")]
-pub fn opf_metadata(opf: &str) -> FileMetadata {
-    let found = elements(opf);
-    // EPUB 3 says what a title or a creator is with `<meta refines="#id" property="…">`
-    let refined = |id: Option<&str>, property: &str| {
-        let id = id?;
-        (found.iter())
-            .find(|m| {
-                m.name == "meta"
-                    && m.attr("refines") == Some(&format!("#{id}"))
-                    && m.attr("property") == Some(property)
-            })
-            .map(|m| m.text.trim().to_string())
-    };
-    let text = |name: &str| {
-        (found.iter())
-            .filter(|e| e.name == name)
-            .map(|e| e.text.trim().to_string())
-            .find(|t| !t.is_empty())
-    };
-    let titles: Vec<&Element> = (found.iter())
-        .filter(|e| e.name == "title" && !e.text.trim().is_empty())
-        .collect();
-    let title_type = |e: &Element| refined(e.attr("id"), "title-type");
-    // The main title, else the first; the subtitle, else another one
-    let main = (titles.iter())
-        .position(|e| title_type(e).as_deref() == Some("main"))
-        .unwrap_or(0);
-    let title = titles.get(main);
-    let subtitle = (titles.iter())
-        .find(|e| title_type(e).as_deref() == Some("subtitle"))
-        .or_else(|| (titles.iter().enumerate()).find_map(|(i, e)| (i != main).then_some(e)));
-    let authors = (found.iter())
-        .filter(|e| e.name == "creator" && !e.text.trim().is_empty())
-        .filter(|e| {
-            // Authors only: a role that says otherwise (editor, illustrator) leaves one out
-            let role = (e.attr("role").map(String::from)).or_else(|| refined(e.attr("id"), "role"));
-            role.is_none_or(|r| r == "aut")
-        })
-        .map(|e| e.text.trim().to_string())
-        .collect();
-    FileMetadata {
-        title: title.map(|e| e.text.trim().to_string()),
-        subtitle: subtitle.map(|e| e.text.trim().to_string()),
-        authors,
-        language: text("language"),
-        publisher: text("publisher"),
-        rights: text("rights"),
-    }
-}
-
-/// An element of a small XML document: its local name (no prefix), attributes (local names too),
-/// and its text
-#[cfg(feature = "read")]
-pub(crate) struct Element {
-    pub(crate) name: String,
-    attributes: Vec<(String, String)>,
-    pub(crate) text: String,
-}
-
-#[cfg(feature = "read")]
-impl Element {
-    pub(crate) fn attr(&self, name: &str) -> Option<&str> {
-        (self.attributes.iter())
-            .find(|(n, _)| n == name)
-            .map(|(_, v)| v.as_str())
-    }
-}
-
-/// Every element in `xml`, in document order, each with the text directly inside it
-#[cfg(feature = "read")]
-pub(crate) fn elements(xml: &str) -> Vec<Element> {
-    let local = |name: &str| name.rsplit(':').next().unwrap_or_default().to_string();
-    let mut reader = Reader::from_str(xml);
-    let mut found: Vec<Element> = vec![];
-    let mut open: Vec<usize> = vec![];
-    let text_in = |found: &mut Vec<Element>, open: &[usize], text: &str| {
-        if let Some(&at) = open.last() {
-            found[at].text.push_str(text);
-        }
-    };
-    loop {
-        let event = match reader.read_event() {
-            Ok(Event::Eof) | Err(_) => break,
-            Ok(event) => event,
-        };
-        match event {
-            Event::Start(ref e) | Event::Empty(ref e) => {
-                let attributes = (e.attributes().flatten())
-                    .map(|a| (local(a.key.0), decode_entities(&a.value)))
-                    .collect();
-                found.push(Element {
-                    name: local(e.name().0),
-                    attributes,
-                    text: String::new(),
-                });
-                if matches!(event, Event::Start(_)) {
-                    open.push(found.len() - 1);
-                }
-            }
-            Event::End(_) => {
-                open.pop();
-            }
-            Event::Text(t) => text_in(&mut found, &open, &t),
-            Event::GeneralRef(r) => {
-                let reference: &str = &r;
-                text_in(
-                    &mut found,
-                    &open,
-                    &decode_entities(&format!("&{reference};")),
-                );
-            }
-            Event::CData(c) => text_in(&mut found, &open, &c.into_inner()),
-            _ => {}
-        }
-    }
-    found
 }
 
 /// A package id from a name: lowercase ASCII letters and digits, words joined by `-`
@@ -416,44 +262,6 @@ fn write(manifest: &Manifest, header: &str, dest: &dyn Storage) -> Result<()> {
 #[cfg(all(test, feature = "read"))]
 mod tests {
     use super::*;
-
-    const OPF3: &str = r##"<?xml version="1.0"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
-<metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
-<dc:title id="t1">The Doctrine of Simony</dc:title>
-<dc:title id="t2">A Theological Retrieval &amp; Appraisal</dc:title>
-<meta refines="#t1" property="title-type">main</meta>
-<meta refines="#t2" property="title-type">subtitle</meta>
-<dc:creator id="a1">Conley Owens</dc:creator>
-<dc:creator id="e1">An Editor</dc:creator>
-<meta refines="#e1" property="role" scheme="marc:relators">edt</meta>
-<dc:language>en-US</dc:language>
-</metadata></package>"##;
-
-    const OPF2: &str = r#"<package xmlns:opf="http://www.idpf.org/2007/opf"><metadata>
-<dc:title>Abolish the Jesus Trade</dc:title>
-<dc:creator opf:role="aut">Andrew Case</dc:creator>
-<dc:creator opf:role="aut">Conley Owens</dc:creator>
-<dc:creator opf:role="ill">Someone Else</dc:creator>
-<dc:language>en</dc:language>
-<dc:rights>Public domain</dc:rights>
-</metadata></package>"#;
-
-    #[test]
-    fn reads_epub_metadata() {
-        let three = opf_metadata(OPF3);
-        assert_eq!(three.title.as_deref(), Some("The Doctrine of Simony"));
-        assert_eq!(
-            three.subtitle.as_deref(),
-            Some("A Theological Retrieval & Appraisal")
-        );
-        assert_eq!(three.authors, ["Conley Owens"]);
-        assert_eq!(three.language.as_deref(), Some("en-US"));
-        let two = opf_metadata(OPF2);
-        assert_eq!(two.authors, ["Andrew Case", "Conley Owens"]);
-        assert_eq!(two.subtitle, None);
-        assert_eq!(two.rights.as_deref(), Some("Public domain"));
-    }
 
     #[test]
     fn names_from_titles() {

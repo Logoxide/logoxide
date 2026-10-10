@@ -88,15 +88,12 @@ pub mod references;
 pub mod registry_build;
 pub mod release;
 pub mod resolve;
-#[cfg(feature = "read")]
-pub mod source;
 pub mod storage;
 pub mod summary;
 pub mod text;
 #[cfg(feature = "read")]
 pub mod titles;
 pub mod topos_config;
-pub mod versification;
 pub mod works;
 
 use std::sync::LazyLock;
@@ -105,8 +102,6 @@ pub use cache::{Cache, CachedPackage};
 pub use error::{LogoxideError, Result};
 pub use library::Library;
 pub use lock::{LockedPackage, Lockfile};
-#[cfg(feature = "read")]
-pub use logoxide_markup as markup;
 pub use manifest::Manifest;
 pub use package::{Features, Package};
 pub use project::Project;

@@ -1,5 +1,3 @@
-#![cfg(feature = "read")]
-
 /*!
 Golden tests of verse-hash rule 1: the text each verse is hashed as, and its hash, for small USFM,
 USX, and OSIS books (nested `\w`, `\add`, a note inside a word, Hebrew whose marks are out of
@@ -15,29 +13,46 @@ again from their text when compared.
 
 use std::sync::Arc;
 
-use logoxide::markup::verses::slice;
-use logoxide::{
-    Features, MemoryStorage, Package,
-    summary::{HashRule, book_hashes, verse_text},
+use logoxide_text::markup::verses::slice;
+use logoxide_text::{
+    MemoryFiles, Source,
+    hash::{HashRule, VerseRecord, book_hashes, verse_text},
+    source::{TextFormat, open},
 };
 
-/// A package of one format's files
-fn package(format: &str, files: &[(&str, &str)]) -> Package {
-    let manifest = format!(
-        "[package]\nid = \"t\"\nname = \"T\"\nabbreviation = \"T\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\n{format} = {{ path = \"{format}/\" }}\n"
-    );
-    let mut all = vec![(String::from("logoxide.toml"), manifest)];
-    all.extend((files.iter()).map(|(p, t)| (format!("{format}/{p}"), t.to_string())));
-    Package::open(Arc::new(MemoryStorage::with(all)), Features::default()).unwrap()
+/// One format's files, read by its source
+fn package(format: &str, files: &[(&str, &str)]) -> Box<dyn Source> {
+    let all: Vec<(String, String)> = (files.iter())
+        .map(|(p, t)| (format!("{format}/{p}"), t.to_string()))
+        .collect();
+    let files = Arc::new(MemoryFiles::with(all));
+    open(files, TextFormat::from_name(format).unwrap(), format).unwrap()
 }
 
-/// Each verse of the package's only book: its reference, its text as rule 1 hashes it, and its
+/// `JHN 3:16` (`JHN 3:4-5` for a bridge, `JHN 3:20a` for a part)
+fn reference(r: &VerseRecord) -> String {
+    let code = logoxide_text::bible_data()
+        .books()
+        .get_usfm(r.book)
+        .cloned()
+        .unwrap();
+    let part = match r.part {
+        1..=26 => char::from(b'a' + r.part - 1).to_string(),
+        _ => String::new(),
+    };
+    match r.last > r.verse {
+        true => format!("{code} {}:{}{part}-{}", r.chapter, r.verse, r.last),
+        false => format!("{code} {}:{}{part}", r.chapter, r.verse),
+    }
+}
+
+/// Each verse of the source's only book: its reference, its text as rule 1 hashes it, and its
 /// hash as hex
-fn hashed(package: &Package) -> Vec<(String, String, String)> {
+fn hashed(package: &dyn Source) -> Vec<(String, String, String)> {
     let books = package.books();
     assert_eq!(books.len(), 1);
-    let book = package.source().book(books[0]).unwrap();
-    let hashes = book_hashes(&book);
+    let book = package.book(books[0]).unwrap();
+    let hashes = book_hashes(&book, HashRule::One);
     assert_eq!(hashes.len(), book.spans.len());
     (book.spans.iter().zip(hashes))
         .map(|(span, hash)| {
@@ -46,7 +61,7 @@ fn hashed(package: &Package) -> Vec<(String, String, String)> {
                 HashRule::One,
             );
             let hex = hash.hash.iter().map(|b| format!("{b:02x}")).collect();
-            (hash.reference(), text, hex)
+            (reference(&hash), text, hex)
         })
         .collect()
 }
@@ -96,10 +111,10 @@ fn expected() -> Vec<(String, String, String)> {
 
 #[test]
 fn usfm_verses() {
-    let typed = hashed(&package("usfm", &[("JHN.usfm", &usfm(HEBREW_TYPED))]));
+    let typed = hashed(&*package("usfm", &[("JHN.usfm", &usfm(HEBREW_TYPED))]));
     assert_eq!(typed, expected());
     // Typed out of order or in NFC, the Hebrew hashes alike
-    let nfc = hashed(&package("usfm", &[("JHN.usfm", &usfm(HEBREW_NFC))]));
+    let nfc = hashed(&*package("usfm", &[("JHN.usfm", &usfm(HEBREW_NFC))]));
     assert_eq!(nfc, typed);
 }
 
@@ -117,7 +132,7 @@ fn usx_verses() {
 <chapter eid="JHN 3"/>
 </usx>"#
     );
-    assert_eq!(hashed(&package("usx", &[("JHN.usx", &usx)])), expected());
+    assert_eq!(hashed(&*package("usx", &[("JHN.usx", &usx)])), expected());
 }
 
 #[test]
@@ -135,7 +150,10 @@ fn osis_verses() {
 <chapter eID="John.3"/>
 </div></osisText></osis>"#
     );
-    assert_eq!(hashed(&package("osis", &[("John.xml", &osis)])), expected());
+    assert_eq!(
+        hashed(&*package("osis", &[("John.xml", &osis)])),
+        expected()
+    );
 }
 
 /// The BSB's text with every file in NFD hashes as it does in NFC: rule 1 normalizes. Reads
@@ -143,7 +161,6 @@ fn osis_verses() {
 #[test]
 #[ignore]
 fn the_bsb_in_nfd_hashes_the_same() {
-    use logoxide::{FsStorage, Storage};
     use unicode_normalization::UnicodeNormalization;
 
     let root = std::env::var("LOGOXIDE_PACKAGES").unwrap_or_else(|_| {
@@ -152,31 +169,29 @@ fn the_bsb_in_nfd_hashes_the_same() {
             std::env::var("HOME").unwrap()
         )
     });
-    let bsb = FsStorage::new(format!("{root}/bsb"));
-    let open =
-        |storage: MemoryStorage| Package::open(Arc::new(storage), Features::default()).unwrap();
-    let (nfc, nfd) = (MemoryStorage::new(), MemoryStorage::new());
+    let dir = std::path::PathBuf::from(format!("{root}/bsb/usx"));
+    let (mut nfc, mut nfd) = (vec![], vec![]);
     let mut changed = 0;
-    for path in bsb.walk("").unwrap() {
-        if path.starts_with(".git/") {
-            continue;
-        }
-        let bytes = bsb.read(&path).unwrap();
-        nfc.write(&path, &bytes).unwrap();
-        let decomposed = match (path.ends_with(".usx"), String::from_utf8(bytes.clone())) {
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = format!("usx/{}", path.file_name().unwrap().to_string_lossy());
+        let bytes = std::fs::read(&path).unwrap();
+        let decomposed = match (name.ends_with(".usx"), String::from_utf8(bytes.clone())) {
             (true, Ok(text)) => text.nfd().collect::<String>().into_bytes(),
-            _ => bytes,
+            _ => bytes.clone(),
         };
-        changed += usize::from(decomposed != nfc.read(&path).unwrap());
-        nfd.write(&path, &decomposed).unwrap();
+        changed += usize::from(decomposed != bytes);
+        nfc.push((name.clone(), bytes));
+        nfd.push((name, decomposed));
     }
     assert!(changed > 0, "no file of the BSB changed in NFD");
-    let hashes = |package: &Package| {
-        (package.books().into_iter())
-            .flat_map(|id| book_hashes(&package.source().book(id).unwrap()))
+    let hashes = |files: Vec<(String, Vec<u8>)>| {
+        let source = open(Arc::new(MemoryFiles::with(files)), TextFormat::Usx, "usx").unwrap();
+        (source.books().into_iter())
+            .flat_map(|id| book_hashes(&source.book(id).unwrap(), HashRule::One))
             .collect::<Vec<_>>()
     };
-    let (nfc, nfd) = (hashes(&open(nfc)), hashes(&open(nfd)));
+    let (nfc, nfd) = (hashes(nfc), hashes(nfd));
     assert_eq!(nfc.len(), 31_086);
     assert_eq!(nfc, nfd);
 }

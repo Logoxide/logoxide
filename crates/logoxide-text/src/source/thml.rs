@@ -8,9 +8,9 @@ use super::{
     whole::{Parsed, marker_book, scan_tags, tag_attr, whole_files},
 };
 use crate::{
-    error::{LogoxideError, Result},
-    manifest::Format,
-    storage::Storage,
+    error::{Result, TextError},
+    files::Files as Storage,
+    source::TextFormat,
 };
 
 /**
@@ -62,8 +62,8 @@ impl ThmlSource {
 }
 
 impl Source for ThmlSource {
-    fn format(&self) -> Option<Format> {
-        Some(Format::Thml)
+    fn format(&self) -> Option<TextFormat> {
+        Some(TextFormat::Thml)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {
@@ -78,7 +78,7 @@ impl Source for ThmlSource {
         let path = self
             .files
             .get(&id)
-            .ok_or_else(|| LogoxideError::NotFound(format!("book {}", id.0)))?;
+            .ok_or_else(|| TextError::NotFound(format!("book {}", id.0)))?;
         (self.parsed).book(
             self.storage.as_ref(),
             path,
@@ -258,21 +258,21 @@ The vision of Obadiah. <scripRef passage="Ruth 1:1">Ruth 1:1</scripRef></p>
         let package = package("thml", &[("bible.xml", CCEL)]);
         let (ruth, oba) = (book("RUT"), book("OBA"));
         assert_eq!(package.books(), [ruth, oba]);
-        assert_eq!(package.source().chapter_verses(ruth).unwrap(), [2, 2]);
+        assert_eq!(package.chapter_verses(ruth).unwrap(), [2, 2]);
         // The printed verse numbers are left out, and the headings (as headings are)
         assert_eq!(
-            verse_texts(&package, ruth),
+            verse_texts(&*package, ruth),
             [
                 (1, 1, "Now it came to pass in the days.".into()),
                 (1, 2, "And the name was Elimelech.".into()),
                 (2, 1, "And Naomi had a kinsman.".into())
             ]
         );
-        let bridge = &package.source().book(ruth).unwrap().spans[2];
+        let bridge = &package.book(ruth).unwrap().spans[2];
         assert_eq!((bridge.verse, bridge.last), (1, 2));
         // A cross-reference names another book, and a `<scripture>` holding text is a quote:
         // neither is a verse of Obadiah's
-        let texts = verse_texts(&package, oba);
+        let texts = verse_texts(&*package, oba);
         assert_eq!(texts.len(), 1);
         assert!(texts[0].2.starts_with("The vision of Obadiah. Ruth 1:1"));
     }

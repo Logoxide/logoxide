@@ -114,9 +114,9 @@ pub(crate) fn show(
         "formats: {} (enabled: {}; reading {})",
         all.join(", "),
         enabled.join(", "),
-        match package.source().format() {
-            Some(format) if format.readable() => format!("{format:?}"),
-            _ => String::from("no verse text"),
+        match package.text_format() {
+            Some((format, _)) => format!("{format:?}"),
+            None => String::from("no verse text"),
         }
     );
     let features: Vec<&str> = package
@@ -271,7 +271,7 @@ struct CheckReport {
     titles: Vec<serde_json::Value>,
     untitled: Vec<String>,
     /// Files, or books in them, passed over: peripherals, and books logoxide doesn't know
-    skipped: Vec<logoxide::source::Skipped>,
+    skipped: Vec<logoxide::reader::Skipped>,
     /// Problems with the timings, and books whose cached counts differ
     problems: Vec<String>,
     /// What's allowed but should change: a language tag that isn't canonical
@@ -281,7 +281,7 @@ struct CheckReport {
 
 /// What a package's format passed over: peripherals as notes, books logoxide doesn't know (and
 /// files naming none) as warnings
-pub(crate) fn print_skipped(skipped: &[logoxide::source::Skipped]) {
+pub(crate) fn print_skipped(skipped: &[logoxide::reader::Skipped]) {
     for skip in skipped {
         match skip.is_warning() {
             true => errln!("warning: {skip}"),
@@ -292,7 +292,7 @@ pub(crate) fn print_skipped(skipped: &[logoxide::source::Skipped]) {
 
 /// What's said of a versification map that it can still be used with: verses past its counts,
 /// and lines naming books logoxide doesn't know (passed over)
-fn map_warnings(map: &logoxide::versification::VersificationMap) -> Vec<String> {
+fn map_warnings(map: &logoxide_text::versification::VersificationMap) -> Vec<String> {
     let mut warnings = map.problems();
     warnings
         .extend((map.passed_over().iter()).map(|(at, code)| {
@@ -313,7 +313,10 @@ pub(crate) fn check(
         package.info().version.to_string(),
     );
     let mut problems = vec![];
-    let skipped = package.source().skipped().to_vec();
+    let skipped: Vec<logoxide::reader::Skipped> = (package.source().skipped().iter())
+        .cloned()
+        .map(Into::into)
+        .collect();
     // A language tag that isn't canonical (`eng`): what it should be
     let warnings = package.manifest().warnings();
     if !json {
@@ -336,7 +339,7 @@ pub(crate) fn check(
     let titles = logoxide::titles::titles(&package)?;
     // A map is read whole: its lines parse, name known books, and don't overlap
     let map = (package_kind == logoxide::manifest::PackageKind::VersificationMap)
-        .then(|| logoxide::versification::VersificationMap::from_package(&package))
+        .then(|| logoxide::reader::versification_map(&package))
         .transpose()?;
     let start = Instant::now();
     let (mut verses, mut books) = (0, 0);
@@ -525,7 +528,7 @@ pub(crate) fn new(args: &NewArgs) -> logoxide::Result<()> {
             let name = file.file_name().map(|n| n.to_string_lossy().into_owned());
             let name = name.unwrap_or_default();
             let rights = match create::file_format(&name, &bytes) {
-                Some(("epub", _)) => create::epub_metadata(&bytes)?.rights,
+                Some(("epub", _)) => logoxide_text::metadata::epub_metadata(&bytes)?.rights,
                 _ => None,
             };
             (

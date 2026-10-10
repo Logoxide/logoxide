@@ -18,6 +18,7 @@ path = "src/main.rs"
 
 [dependencies]
 logoxide.workspace = true
+logoxide-text.workspace = true
 topos-bible.workspace = true
 clap = { version = "4", features = ["derive"] }
 semver = "1"

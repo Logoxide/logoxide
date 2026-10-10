@@ -8,9 +8,9 @@ use topos_bible::data::books::BookId;
 
 use super::{Book, Skipped, Source, book_files};
 use crate::{
-    error::{LogoxideError, Result},
-    manifest::Format,
-    storage::Storage,
+    error::{Result, TextError},
+    files::Files as Storage,
+    source::TextFormat,
 };
 
 /**
@@ -44,9 +44,9 @@ impl UsfmSource {
         let path = self
             .files
             .get(&id)
-            .ok_or_else(|| LogoxideError::NotFound(format!("book {}", id.0)))?;
+            .ok_or_else(|| TextError::NotFound(format!("book {}", id.0)))?;
         usfm_to_usx(&self.storage.read_string(path)?).map_err(|e| match e {
-            LogoxideError::Book { message, .. } => LogoxideError::Book {
+            TextError::Book { message, .. } => TextError::Book {
                 book: path.clone(),
                 message,
             },
@@ -59,15 +59,15 @@ impl UsfmSource {
 pub fn usfm_to_usx(usfm: &str) -> Result<String> {
     usfm3::parse(usfm, usfm3::ParseOptions::default())
         .to_usx()
-        .map_err(|e| LogoxideError::Book {
+        .map_err(|e| TextError::Book {
             book: String::from("USFM"),
             message: format!("{e:?}"),
         })
 }
 
 impl Source for UsfmSource {
-    fn format(&self) -> Option<Format> {
-        Some(Format::Usfm)
+    fn format(&self) -> Option<TextFormat> {
+        Some(TextFormat::Usfm)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {

@@ -84,7 +84,11 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     // logoxide doesn't know)
     let made: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir).no_symlinks());
     if let Ok(package) = Package::open(made, Features::default()) {
-        print_skipped(package.source().skipped());
+        let skipped: Vec<logoxide::reader::Skipped> = (package.source().skipped().iter())
+            .cloned()
+            .map(Into::into)
+            .collect();
+        print_skipped(&skipped);
     }
     let dependency = DetailedDependency {
         path: Some(relative),

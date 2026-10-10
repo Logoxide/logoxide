@@ -20,16 +20,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use logoxide::{
-    Features, FsStorage, Package, Storage,
-    manifest::MANIFEST,
-    source::{Book, Source, UsxSource},
-};
+use logoxide::{Features, FsStorage, Package, Storage, manifest::MANIFEST, reader::StorageFiles};
 use logoxide_markup::{
     Filter, Flat, Flattener, Kind, NodePath, TextOptions,
     flatten::flatten,
     verses::{VerseSpan, passage_ranges, slice},
 };
+use logoxide_text::{Book, Source, source::UsxSource};
 use topos_bible::{
     data::{
         bible_data::BibleData,
@@ -306,7 +303,7 @@ impl Bible {
                 let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
                 (package.into_source(), abbreviation, aliases)
             } else {
-                let source = UsxSource::open(storage, "")
+                let source = UsxSource::open(Arc::new(StorageFiles(storage)), "")
                     .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
                 (Box::new(source), folder_name.to_string(), vec![])
             };

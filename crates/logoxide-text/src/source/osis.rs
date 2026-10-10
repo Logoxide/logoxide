@@ -8,9 +8,9 @@ use super::{
     whole::{Parsed, marker_book, scan_tags, tag_attr, whole_files},
 };
 use crate::{
-    error::{LogoxideError, Result},
-    manifest::Format,
-    storage::Storage,
+    error::{Result, TextError},
+    files::Files as Storage,
+    source::TextFormat,
 };
 
 /**
@@ -46,8 +46,8 @@ impl OsisSource {
 }
 
 impl Source for OsisSource {
-    fn format(&self) -> Option<Format> {
-        Some(Format::Osis)
+    fn format(&self) -> Option<TextFormat> {
+        Some(TextFormat::Osis)
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {
@@ -62,7 +62,7 @@ impl Source for OsisSource {
         let path = self
             .files
             .get(&id)
-            .ok_or_else(|| LogoxideError::NotFound(format!("book {}", id.0)))?;
+            .ok_or_else(|| TextError::NotFound(format!("book {}", id.0)))?;
         (self.parsed).book(
             self.storage.as_ref(),
             path,
@@ -78,33 +78,24 @@ impl Source for OsisSource {
 pub(crate) mod tests {
     use super::*;
     use crate::{
-        package::{Features, Package},
-        storage::MemoryStorage,
-        summary::{HashRule, verse_text},
+        files::MemoryFiles,
+        hash::{HashRule, verse_text},
+        source::{TextFormat, open},
     };
     use logoxide_markup::verses::slice;
 
-    /// A package of one format's files
-    pub(crate) fn package(format: &str, files: &[(&str, &str)]) -> Package {
-        let manifest = format!(
-            "[package]\nid = \"t\"\nname = \"T\"\nabbreviation = \"T\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\n{format} = {{ path = \"{format}/\" }}\n"
-        );
-        let mut all = vec![(String::from("logoxide.toml"), manifest)];
-        all.extend((files.iter()).map(|(p, t)| (format!("{format}/{p}"), t.to_string())));
-        let storage = Arc::new(MemoryStorage::with(all));
-        Package::open(
-            storage,
-            Features {
-                features: &[],
-                default: true,
-            },
-        )
-        .unwrap()
+    /// One format's files, read by its source
+    pub(crate) fn package(format: &str, files: &[(&str, &str)]) -> Box<dyn Source> {
+        let all: Vec<(String, String)> = (files.iter())
+            .map(|(p, t)| (format!("{format}/{p}"), t.to_string()))
+            .collect();
+        let files = Arc::new(MemoryFiles::with(all));
+        open(files, TextFormat::from_name(format).unwrap(), format).unwrap()
     }
 
     /// Each verse's chapter, number, and words
-    pub(crate) fn verse_texts(package: &Package, id: BookId) -> Vec<(u8, u8, String)> {
-        let book = package.source().book(id).unwrap();
+    pub(crate) fn verse_texts(package: &dyn Source, id: BookId) -> Vec<(u8, u8, String)> {
+        let book = package.book(id).unwrap();
         (book.spans.iter())
             .map(|s| {
                 let text = verse_text(
@@ -144,9 +135,9 @@ pub(crate) mod tests {
         let package = package("osis", &[("kjv.osis.xml", TWO_BOOKS)]);
         let (genesis, exo) = (book("GEN"), book("EXO"));
         assert_eq!(package.books(), [genesis, exo]);
-        assert_eq!(package.source().chapter_verses(genesis).unwrap(), [2, 1]);
+        assert_eq!(package.chapter_verses(genesis).unwrap(), [2, 1]);
         assert_eq!(
-            verse_texts(&package, genesis),
+            verse_texts(&*package, genesis),
             [
                 (1, 1, "In the beginning.".into()),
                 (1, 2, "And the earth.".into()),
@@ -155,13 +146,13 @@ pub(crate) mod tests {
         );
         // Verses as elements holding their text, and nothing of Genesis
         assert_eq!(
-            verse_texts(&package, exo),
+            verse_texts(&*package, exo),
             [
                 (1, 1, "Now these are the names.".into()),
                 (1, 2, "Reuben.".into())
             ]
         );
-        let exodus = package.source().book(exo).unwrap();
+        let exodus = package.book(exo).unwrap();
         assert!(!verse_text(&exodus.nodes, HashRule::CURRENT).contains("beginning"));
     }
 
@@ -178,10 +169,10 @@ pub(crate) mod tests {
         let package = package("osis", &[("bible.xml", flat), ("OBA.xml", obadiah)]);
         let (ruth, jonah, oba) = (book("RUT"), book("JON"), book("OBA"));
         assert_eq!(package.books(), [ruth, oba, jonah]);
-        assert_eq!(verse_texts(&package, ruth), [(1, 1, "Ruth one.".into())]);
-        assert_eq!(verse_texts(&package, jonah), [(1, 1, "Jonah one.".into())]);
+        assert_eq!(verse_texts(&*package, ruth), [(1, 1, "Ruth one.".into())]);
+        assert_eq!(verse_texts(&*package, jonah), [(1, 1, "Jonah one.".into())]);
         assert_eq!(
-            verse_texts(&package, oba),
+            verse_texts(&*package, oba),
             [
                 (1, 1, "The vision of Obadiah.".into()),
                 (1, 2, "Behold.".into())

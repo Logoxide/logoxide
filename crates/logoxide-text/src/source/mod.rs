@@ -10,7 +10,7 @@ mod usfm;
 mod usx;
 mod whole;
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use logoxide_markup::{
     Node,
@@ -24,11 +24,55 @@ pub use thml::ThmlSource;
 pub use usfm::{UsfmSource, usfm_to_usx};
 pub use usx::UsxSource;
 
-// What a source passes over is said to the package manager, so it lives with the reader's
-// boundary
-pub use crate::reader::{PERIPHERALS, SkipReason, Skipped, is_peripheral};
+pub use crate::skipped::{PERIPHERALS, SkipReason, Skipped, is_peripheral};
 
-use crate::{error::Result, manifest::Format};
+use crate::{
+    error::{Result, TextError},
+    files::Files,
+};
+
+/// The formats read as verses, best first (USX is the richest and the most exact)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TextFormat {
+    Usx,
+    Usfm,
+    Osis,
+    Thml,
+}
+
+impl TextFormat {
+    /// Its name as manifests give it (`usx`)
+    pub fn name(self) -> &'static str {
+        match self {
+            TextFormat::Usx => "usx",
+            TextFormat::Usfm => "usfm",
+            TextFormat::Osis => "osis",
+            TextFormat::Thml => "thml",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<TextFormat> {
+        Some(match name.to_ascii_lowercase().as_str() {
+            "usx" => TextFormat::Usx,
+            "usfm" => TextFormat::Usfm,
+            "osis" => TextFormat::Osis,
+            "thml" => TextFormat::Thml,
+            _ => return None,
+        })
+    }
+}
+
+/// The source reading `format`'s files in the folder `dir` of `files`
+pub fn open(files: Arc<dyn Files>, format: TextFormat, dir: &str) -> Result<Box<dyn Source>> {
+    let dir = dir.trim_end_matches('/');
+    Ok(match format {
+        TextFormat::Usx => Box::new(UsxSource::open(files, dir)?),
+        TextFormat::Usfm => Box::new(UsfmSource::open(files, dir)?),
+        TextFormat::Osis => Box::new(OsisSource::open(files, dir)?),
+        TextFormat::Thml => Box::new(ThmlSource::open(files, dir)?),
+    })
+}
 
 /// A book's text: its tree, and where each verse is in it
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -47,7 +91,7 @@ impl Book {
 
 pub trait Source: Send + Sync {
     /// The format read, if any (a book or a collection has no verse text: [`NoText`])
-    fn format(&self) -> Option<Format>;
+    fn format(&self) -> Option<TextFormat>;
 
     /// The books it has, in order, and the file each is in (several books can share one)
     fn files(&self) -> &BTreeMap<BookId, String>;
@@ -71,35 +115,25 @@ pub trait Source: Send + Sync {
 }
 
 /// A book found in a second file: an error naming both
-pub(crate) fn duplicate(id: BookId, first: &str, second: &str) -> crate::error::LogoxideError {
-    crate::error::LogoxideError::Book {
+pub(crate) fn duplicate(id: BookId, first: &str, second: &str) -> TextError {
+    TextError::Book {
         book: id.0.to_string(),
         message: format!("in two files, {first} and {second}: keep one"),
     }
 }
 
 /**
-A package with no verse text to read: a book (an EPUB, whose references topos finds), or a
-collection (only dependencies). It has no books, so its summary has sizes and a checksum but no
-verses
+No verse text to read: a book (an EPUB, whose references topos finds), or a collection (only
+dependencies). It has no books
 */
+#[derive(Default)]
 pub struct NoText {
-    pub format: Option<Format>,
     files: BTreeMap<BookId, String>,
 }
 
-impl NoText {
-    pub fn new(format: Option<Format>) -> NoText {
-        NoText {
-            format,
-            files: BTreeMap::new(),
-        }
-    }
-}
-
 impl Source for NoText {
-    fn format(&self) -> Option<Format> {
-        self.format
+    fn format(&self) -> Option<TextFormat> {
+        None
     }
 
     fn files(&self) -> &BTreeMap<BookId, String> {
@@ -107,7 +141,7 @@ impl Source for NoText {
     }
 
     fn book(&self, id: BookId) -> Result<Book> {
-        Err(crate::error::LogoxideError::NotFound(format!(
+        Err(TextError::NotFound(format!(
             "book {}: this package has no verse text",
             id.0
         )))
@@ -140,7 +174,7 @@ pub(crate) fn code_from_name(stem: &str) -> Option<BookId> {
 /// file. Peripherals and books topos doesn't know are passed over; a book in two files is an
 /// error naming both
 pub(crate) fn book_files(
-    storage: &dyn crate::storage::Storage,
+    storage: &dyn Files,
     dir: &str,
     extensions: &[&str],
     code_in: impl Fn(&str) -> Option<String>,
@@ -157,7 +191,7 @@ pub(crate) fn book_files(
         else {
             continue;
         };
-        let path = crate::storage::join(dir, &name);
+        let path = crate::files::join(dir, &name);
         // Else the code the file gives (`\id FRT`), which may be one topos doesn't know
         let found = code_from_name(stem).ok_or_else(|| {
             let head = storage.read(&path).ok()?;
@@ -194,8 +228,7 @@ pub(crate) fn book_files(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::MemoryStorage;
-    use std::sync::Arc;
+    use crate::files::MemoryFiles as MemoryStorage;
 
     fn usfm(code: &str) -> String {
         format!("\\id {code}\n\\c 1\n\\p\n\\v 1 In the beginning.\n")
@@ -307,7 +340,7 @@ mod tests {
         assert_eq!(source.skipped()[0].reason, SkipReason::LetteredChapter);
         let package = osis::tests::package("thml", &[("esth.xml", thml)]);
         assert_eq!(
-            osis::tests::verse_texts(&package, esther),
+            osis::tests::verse_texts(&*package, esther),
             [(1, 1, String::from("In the days"))]
         );
     }

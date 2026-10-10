@@ -4,6 +4,7 @@ members = [
     "crates/logoxide-markup",
     "crates/lx",
     "crates/logoxide-lsp",
+    "crates/logoxide-text",
 ]
 # The bindings build against a topos checkout (BoltFFI only exports path dependencies' items), so
 # they are a workspace of their own and the rest builds from crates.io alone
@@ -26,6 +27,7 @@ topos-bible = "0.6.0"
 # Bible markup (OSIS, ThML, GBF, TEI, USX) into one tree: logoxide's own clean-room crate, moved
 # from topos; its HTML is a feature nothing here needs yet
 logoxide-markup = { path = "crates/logoxide-markup", version = "0.1.0", default-features = false, features = ["serde"] }
+logoxide-text = { path = "crates/logoxide-text", version = "0.1.0" }
 topos-bible-index = { version = "0.6.0", default-features = false, features = ["files"] }
 # Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
 topos-bible-formats = { version = "0.6.0", default-features = false, features = ["epub"] }

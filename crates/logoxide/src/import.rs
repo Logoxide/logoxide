@@ -33,36 +33,9 @@ pub fn ebible_zip_url(id: &str) -> String {
     format!("https://ebible.org/Scriptures/{id}_usfm.zip")
 }
 
-/// Each file in a `.zip`, by path (folders left out)
+/// Each file in a `.zip`, by path (folders left out), within logoxide-text's limits
 pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
-    let bad = |e: &dyn std::fmt::Display| LogoxideError::Import(format!("not a .zip: {e}"));
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| bad(&e))?;
-    // The same limits as a repository's archive ([`crate::archive::read_limited`])
-    if archive.len() > crate::archive::MAX_ENTRIES {
-        return Err(LogoxideError::Import(format!(
-            "more than {} files in the .zip",
-            crate::archive::MAX_ENTRIES
-        )));
-    }
-    let mut files = vec![];
-    let mut total = 0;
-    for i in 0..archive.len() {
-        let file = archive.by_index(i).map_err(|e| bad(&e))?;
-        if !file.is_file() {
-            continue;
-        }
-        let Some(path) = file
-            .enclosed_name()
-            .and_then(|p| p.to_str().map(String::from))
-        else {
-            continue;
-        };
-        let size = file.size();
-        let data = crate::archive::read_limited(file, size, &mut total, &path)
-            .map_err(LogoxideError::Import)?;
-        files.push((path.replace('\\', "/"), data));
-    }
-    Ok(files)
+    Ok(logoxide_text::archive::unzip(bytes)?)
 }
 
 /**
@@ -190,7 +163,7 @@ pub struct ThmlHead {
 pub fn thml_head(xml: &str) -> ThmlHead {
     let end = xml.find("</ThML.head>").unwrap_or(xml.len().min(64 * 1024));
     let head = xml.get(..end).unwrap_or_default();
-    let found = crate::create::elements(head);
+    let found = logoxide_text::metadata::elements(head);
     let text = |name: &str, plain: bool| {
         (found.iter())
             .filter(|e| e.name == name && (!plain || e.attr("sub").is_none()))
@@ -222,7 +195,7 @@ fn inner_text(xml: &str, name: &str) -> Option<String> {
             _ => {}
         }
     }
-    let text = logoxide_markup::decode_entities(&text);
+    let text = logoxide_text::markup::decode_entities(&text);
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     (!text.is_empty()).then_some(text)
 }
@@ -270,7 +243,7 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
     // CCEL doesn't say the script, and its Hebrew transliteration is tagged as Hebrew too, so
     // the language can't tell: the letters do
     let body = (text.find("</ThML.head>")).map_or(&*text, |at| &text[at..]);
-    let script = crate::language::dominant_script(body);
+    let script = logoxide_text::script::dominant_script(body);
     entry.script = script.map(String::from);
     entry.direction = crate::language::script_direction(script);
     let public = (head.rights.as_deref()).is_some_and(crate::license::says_public_domain);
@@ -1316,12 +1289,12 @@ mod tests {
             (3, 36, 4, 2)
         );
         let span = &book.spans[2];
-        let words = logoxide_markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
+        let words = logoxide_text::markup::verses::slice(&book.nodes, &span.start, Some(&span.end));
         assert_eq!(
             (
                 span.verse,
                 span.last,
-                crate::summary::verse_text(&words, crate::summary::HashRule::CURRENT)
+                logoxide_text::hash::verse_text(&words, logoxide_text::hash::HashRule::CURRENT)
             ),
             (
                 16,

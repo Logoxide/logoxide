@@ -29,6 +29,8 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 use topos_bible::data::{books::BookId, chapter_verses::ChapterVerses, translations::Translations};
 
+#[cfg(feature = "read")]
+use crate::references::FoundReference;
 use crate::{
     error::{LogoxideError, Result},
     package::Package,
@@ -36,7 +38,7 @@ use crate::{
     storage::Storage,
 };
 #[cfg(feature = "read")]
-use crate::{references::FoundReference, source::Book};
+use logoxide_text::Book;
 
 /// Bumped when what the cache holds changes shape, so older caches are built again
 pub const CACHE_FORMAT: u32 = 4;
