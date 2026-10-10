@@ -152,6 +152,8 @@ pub struct MediaFile {
     pub sha256: String,
     /// The book it reads (a USFM code), if one
     pub book: Option<String>,
+    /// Its timings' path in the package, if not where the timings folder puts them
+    pub timings: Option<String>,
 }
 
 impl From<&logoxide_core::media::MediaFile> for MediaFile {
@@ -163,6 +165,7 @@ impl From<&logoxide_core::media::MediaFile> for MediaFile {
             size: f.size,
             sha256: f.sha256.clone(),
             book: f.book.clone(),
+            timings: f.timings.clone(),
         }
     }
 }
@@ -207,6 +210,7 @@ impl From<MediaFile> for logoxide_core::media::MediaFile {
             size: f.size,
             sha256: f.sha256,
             book: f.book,
+            timings: f.timings,
         }
     }
 }

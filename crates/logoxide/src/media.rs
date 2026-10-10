@@ -8,15 +8,16 @@ anyone may serve one.
 
 ```toml
 [media]
-timings = "timings/"             # each verse's start and end in each file: timings/JHN.vtt
+timings = "timings/"             # each verse's start and end in each file: timings/audio/JHN.vtt
 
 [[media.files]]
-path = "JHN.mp3"                 # what timings name it by
+path = "audio/JHN.mp3"           # what timings name it by
 url = "https://example.org/audio/JHN.mp3"
 mirrors = ["https://archive.org/download/bsb-audio/JHN.mp3"]  # tried in order when it fails
 size = 31457280
 sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 book = "JHN"                     # the book it reads, if one
+# timings = "subtitles/john.vtt" # its timings, if not in the timings folder
 ```
 
 The transcript is the package's text (`[formats]`, read like any other), which topos searches; a
@@ -24,10 +25,11 @@ recording names the edition it reads as a dependency. Releases are judged by the
 hash for the same words is a patch.
 
 **Timings** say where each verse is in a recording, so an audio Bible can play from a verse and
-show the verse being read. Each file has a WebVTT file in the timings folder, named after it
-(`JHN.mp3` → `timings/JHN.vtt`), whose cues are named by the verse they read (a USFM reference;
+show the verse being read. Each file has a WebVTT file in the timings folder, at its own path with `.vtt` for its extension
+(`audio/JHN.mp3` → `timings/audio/JHN.vtt`, so `video/JHN.mp4`'s are apart), or wherever its own
+`timings` says, whose cues are named by the verse they read (a USFM reference;
 `JHN 3:16-17` for a bridge). The cue's text may be the verse's, or empty; cues not named by a
-verse (an introduction, music) are left out. Any player that reads subtitles shows it:
+verse (an introduction, music) are left out. Verse 0 (a psalm's title) is a verse where the text has one. Any player that reads subtitles shows it:
 
 ```text
 WEBVTT
@@ -38,8 +40,11 @@ For God so loved the world…
 ```
 */
 
+use std::{cell::RefCell, collections::BTreeMap};
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use topos_bible::data::books::BookId;
 
 use crate::{
     error::{LogoxideError, Result},
@@ -49,7 +54,8 @@ use crate::{
 /// A package's `[media]`
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Media {
-    /// Where each file's verse timings are (a folder in the package)
+    /// Where each file's verse timings are (a folder in the package): the file's path there, with
+    /// `.vtt` for its extension
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timings: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -73,6 +79,9 @@ pub struct MediaFile {
     /// The book it reads (a USFM code), if one
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub book: Option<String>,
+    /// Its timings' path in the package, if not where the timings folder puts them
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timings: Option<String>,
 }
 
 impl MediaFile {
@@ -85,6 +94,7 @@ impl MediaFile {
             size: bytes.len() as u64,
             sha256: sha256_hex(bytes),
             book: None,
+            timings: None,
         }
     }
 
@@ -156,16 +166,20 @@ pub struct VerseTiming {
     pub end_ms: u32,
 }
 
-/// Where a file's timings are in its package (`timings/JHN.vtt` for `JHN.mp3`), if the package
-/// has a timings folder
+/// Where a file's timings are in its package: its own `timings`, else its path in the timings
+/// folder with `.vtt` for its extension (`timings/audio/JHN.vtt` for `audio/JHN.mp3`); `None`
+/// when it has neither
 pub fn timings_path(media: &Media, file: &MediaFile) -> Option<String> {
+    if let Some(path) = &file.timings {
+        return Some(path.clone());
+    }
     let folder = media.timings.as_deref()?.trim_end_matches('/');
-    let name = file.path.rsplit('/').next().unwrap_or(&file.path);
-    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
-    Some(match folder.is_empty() {
-        true => format!("{stem}.vtt"),
-        false => format!("{folder}/{stem}.vtt"),
-    })
+    let path = file.path.trim_start_matches("./");
+    let stem = match path.rsplit_once('.') {
+        Some((stem, extension)) if !extension.contains('/') => stem,
+        _ => path,
+    };
+    Some(crate::storage::join(folder, &format!("{stem}.vtt")))
 }
 
 /// `00:04:31.200` or `04:31.200` (WebVTT's timestamps), in milliseconds
@@ -254,13 +268,14 @@ pub fn parse_timings(text: &str) -> Result<Vec<VerseTiming>> {
 
 /**
 What's wrong with a file's timings, against the verses its package's text has (`verses(book,
-chapter)`: how many, or `None` for a chapter it lacks): verses it doesn't have, another book than
-the file's, and verses that overlap or go backwards
+chapter)`: the chapter's verse numbers, a bridge's each, with 0 where the text numbers a title so;
+or `None` for a chapter it lacks): verses it doesn't have, another book than the file's, and
+verses that overlap or go backwards
 */
 pub fn check_timings(
     file: &MediaFile,
     timings: &[VerseTiming],
-    verses: impl Fn(&str, u16) -> Option<u16>,
+    verses: impl Fn(&str, u16) -> Option<Vec<u16>>,
 ) -> Vec<String> {
     let mut problems = vec![];
     let mut previous: Option<&VerseTiming> = None;
@@ -277,10 +292,20 @@ pub fn check_timings(
         }
         match verses(&t.book, t.chapter) {
             None => problems.push(format!("{name}: the text has no such chapter")),
-            Some(count) if t.verse == 0 || t.last > count => {
-                problems.push(format!("{name}: the chapter has {count} verses"))
+            Some(numbers) => {
+                let lacking: Vec<String> = (t.verse..=t.last)
+                    .filter(|v| !numbers.contains(v))
+                    .map(|v| v.to_string())
+                    .collect();
+                let lacking = match lacking.split_last() {
+                    Some((last, [])) => last.clone(),
+                    Some((last, others)) => format!("{} or {last}", others.join(", ")),
+                    None => String::new(),
+                };
+                if !lacking.is_empty() {
+                    problems.push(format!("{name}: the text has no verse {lacking}"));
+                }
             }
-            Some(_) => {}
         }
         if let Some(p) = previous
             && p.book == t.book
@@ -314,27 +339,45 @@ pub fn timings(package: &Package, file: &MediaFile) -> Result<Option<Vec<VerseTi
         .map_err(|e| LogoxideError::Media(format!("{path}: {e}")))
 }
 
+/// Each chapter's verse numbers in a book (a bridge's each, 0 for a title numbered so), by
+/// chapter
+fn book_verses(package: &Package, id: BookId) -> BTreeMap<u16, Vec<u16>> {
+    let mut chapters: BTreeMap<u16, Vec<u16>> = BTreeMap::new();
+    for span in package
+        .source()
+        .book(id)
+        .map(|b| b.spans)
+        .unwrap_or_default()
+    {
+        if span.chapter >= 1 {
+            let numbers = chapters.entry(u16::from(span.chapter)).or_default();
+            numbers.extend(u16::from(span.verse)..=u16::from(span.last.max(span.verse)));
+        }
+    }
+    for numbers in chapters.values_mut() {
+        numbers.sort_unstable();
+        numbers.dedup();
+    }
+    chapters
+}
+
 /**
 Every listed file's timings checked against the package's text ([`check_timings`]), with a
-problem for a timings folder missing a file's timings, and for a timings file no listed file
-has. Empty when all is well
+problem for a file whose timings aren't where they should be (in the timings folder, or at its
+own `timings`), and for a timings file anywhere under the folder that no listed file has. Empty
+when all is well
 */
 pub fn check_package_timings(package: &Package) -> Result<Vec<String>> {
     let Some(media) = package.manifest().media.as_ref() else {
         return Ok(vec![]);
     };
-    let Some(folder) = media.timings.as_deref() else {
-        return Ok(vec![]);
-    };
-    // Each book's verse counts, read when a timings file first names it
-    let counts = std::cell::RefCell::new(std::collections::BTreeMap::new());
-    let verses = |book: &str, chapter: u16| -> Option<u16> {
+    // Each book's verse numbers, read when a timings file first names it
+    let books = RefCell::new(BTreeMap::new());
+    let verses = |book: &str, chapter: u16| -> Option<Vec<u16>> {
         let id = crate::bible_data().books().search_usfm(book)?;
-        let mut counts = counts.borrow_mut();
-        let chapters = (counts.entry(id))
-            .or_insert_with(|| package.source().chapter_verses(id).unwrap_or_default());
-        let count = chapters.get(usize::from(chapter).checked_sub(1)?)?;
-        Some(u16::from(*count))
+        let mut books = books.borrow_mut();
+        let chapters = (books.entry(id)).or_insert_with(|| book_verses(package, id));
+        chapters.get(&chapter).cloned()
     };
     let mut problems = vec![];
     let mut expected = vec![];
@@ -353,11 +396,12 @@ pub fn check_package_timings(package: &Package) -> Result<Vec<String>> {
         }
         expected.push(path);
     }
-    let folder = folder.trim_end_matches('/');
-    for name in package.storage().list(folder).unwrap_or_default() {
-        let path = crate::storage::join(folder, &name);
-        if path.ends_with(".vtt") && !expected.contains(&path) {
-            problems.push(format!("{path}: no listed file has these timings"));
+    if let Some(folder) = media.timings.as_deref() {
+        let folder = folder.trim_end_matches('/');
+        for path in package.storage().walk(folder).unwrap_or_default() {
+            if path.ends_with(".vtt") && !expected.contains(&path) {
+                problems.push(format!("{path}: no listed file has these timings"));
+            }
         }
     }
     Ok(problems)
@@ -480,8 +524,12 @@ book = "JHN"
             book: Some("JHN".into()),
             ..MediaFile::of("JHN.mp3", "u", b"")
         };
-        // John 3 has 36 verses here, and no chapter 30
-        let verses = |book: &str, chapter: u16| (book == "JHN" && chapter < 22).then_some(36);
+        // John 3 has 36 verses here, and no chapter 30; Psalm 3 numbers its title 0
+        let verses = |book: &str, chapter: u16| match book {
+            "JHN" if chapter < 22 => Some((1..=36).collect()),
+            "PSA" if chapter == 3 => Some((0..=8).collect()),
+            _ => None,
+        };
         let mut timings = parse_timings(TIMINGS).unwrap();
         assert!(check_timings(&file, &timings, verses).is_empty());
         let mut wrong = timings[0].clone();
@@ -490,14 +538,66 @@ book = "JHN"
         let mut other = timings[0].clone();
         (other.book, other.chapter, other.start_ms) = ("ACT".into(), 30, 4_000_000);
         timings.push(other);
+        let mut bridge = timings[0].clone();
+        (bridge.verse, bridge.last, bridge.start_ms) = (36, 38, 5_000_000);
+        timings.push(bridge);
+        let mut title = timings[0].clone();
+        (title.chapter, title.verse, title.last, title.start_ms) = (4, 0, 0, 6_000_000);
+        timings.push(title);
         assert_eq!(
             check_timings(&file, &timings, verses),
             [
-                "JHN 3:40: the chapter has 36 verses",
+                "JHN 3:40: the text has no verse 40",
                 "JHN 3:40: starts before the verse before it ends",
                 "ACT 30:16: the file reads JHN",
                 "ACT 30:16: the text has no such chapter",
+                "JHN 3:36-38: the text has no verse 37 or 38",
+                "JHN 4:0: the text has no verse 0",
             ]
+        );
+        // Where the text numbers a psalm's title 0, it's a verse like any other
+        let psalm = MediaFile::of("PSA.mp3", "u", b"");
+        let titled = parse_timings(
+            "WEBVTT\n\nPSA 3:0\n00:00.000 --> 00:04.000\n\nPSA 3:1\n00:04.000 --> 00:08.000\n",
+        )
+        .unwrap();
+        assert!(check_timings(&psalm, &titled, verses).is_empty());
+    }
+
+    #[test]
+    fn timings_keep_the_files_folder() {
+        let media = Media {
+            timings: Some("timings/".into()),
+            files: vec![],
+        };
+        let path = |file: &str| timings_path(&media, &MediaFile::of(file, "u", b""));
+        assert_eq!(path("JHN.mp3").as_deref(), Some("timings/JHN.vtt"));
+        assert_eq!(
+            path("audio/JHN.mp3").as_deref(),
+            Some("timings/audio/JHN.vtt")
+        );
+        assert_eq!(
+            path("video/JHN.mp4").as_deref(),
+            Some("timings/video/JHN.vtt")
+        );
+        assert_eq!(path("v1.0/JHN").as_deref(), Some("timings/v1.0/JHN.vtt"));
+        let own = MediaFile {
+            timings: Some("subtitles/john.vtt".into()),
+            ..MediaFile::of("audio/JHN.mp3", "u", b"")
+        };
+        assert_eq!(
+            timings_path(&media, &own).as_deref(),
+            Some("subtitles/john.vtt")
+        );
+        // Without a timings folder, only a file's own timings
+        let none = Media::default();
+        assert_eq!(
+            timings_path(&none, &MediaFile::of("JHN.mp3", "u", b"")),
+            None
+        );
+        assert_eq!(
+            timings_path(&none, &own).as_deref(),
+            Some("subtitles/john.vtt")
         );
     }
 
@@ -508,12 +608,15 @@ book = "JHN"
             storage::{MemoryStorage, Storage},
         };
         let usx = r#"<usx version="3.0"><book code="JHN" style="id"/><chapter number="3" style="c"/><para style="p"><verse number="16" style="v"/>For God so loved the world. <verse number="17" style="v"/>For God did not send. <verse number="18" style="v"/>Whoever believes.</para></usx>"#;
-        let manifest = "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusx = { path = \"usx/\" }\n\n[media]\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"JHN.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\nbook = \"JHN\"\n\n[[media.files]]\npath = \"ACT.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n";
+        let sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        let manifest = format!(
+            "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusx = {{ path = \"usx/\" }}\n\n[media]\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"audio/JHN.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"{sha256}\"\nbook = \"JHN\"\n\n[[media.files]]\npath = \"video/JHN.mp4\"\nurl = \"u\"\nsize = 0\nsha256 = \"{sha256}\"\nbook = \"JHN\"\n\n[[media.files]]\npath = \"ACT.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"{sha256}\"\ntimings = \"subtitles/acts.vtt\"\n"
+        );
         let open = |extra: &[(&str, &str)]| {
             let storage = MemoryStorage::with([
-                (crate::manifest::MANIFEST, manifest),
+                (crate::manifest::MANIFEST, manifest.as_str()),
                 ("usx/JHN.usx", usx),
-                ("timings/JHN.vtt", TIMINGS),
+                ("timings/audio/JHN.vtt", TIMINGS),
             ]);
             for (path, text) in extra {
                 storage.write(path, text.as_bytes()).unwrap();
@@ -525,15 +628,46 @@ book = "JHN"
         assert_eq!(timings(&package, jhn).unwrap().unwrap().len(), 2);
         assert_eq!(
             check_package_timings(&package).unwrap(),
-            ["ACT.mp3: no timings (timings/ACT.vtt)"]
+            [
+                "video/JHN.mp4: no timings (timings/video/JHN.vtt)",
+                "ACT.mp3: no timings (subtitles/acts.vtt)"
+            ]
         );
+        let video =
+            "WEBVTT\n\nJHN 3:16\n00:00.000 --> 00:04.000\n\nJHN 3:19\n00:04.000 --> 00:08.000\n";
         let package = open(&[
-            ("timings/ACT.vtt", "WEBVTT\n"),
-            ("timings/MRK.vtt", "WEBVTT\n"),
+            ("timings/video/JHN.vtt", video),
+            ("subtitles/acts.vtt", "WEBVTT\n"),
+            ("timings/audio/MRK.vtt", "WEBVTT\n"),
         ]);
         assert_eq!(
             check_package_timings(&package).unwrap(),
-            ["timings/MRK.vtt: no listed file has these timings"]
+            [
+                "timings/video/JHN.vtt: JHN 3:19: the text has no verse 19",
+                "timings/audio/MRK.vtt: no listed file has these timings"
+            ]
+        );
+        let declared = crate::package::declared_files(package.storage().as_ref()).unwrap();
+        assert!(declared.contains(&"subtitles/acts.vtt".to_string()));
+        assert!(declared.contains(&"timings/audio/MRK.vtt".to_string()));
+    }
+
+    #[test]
+    fn verse_0_is_a_verse_where_the_text_has_one() {
+        use crate::{package::Features, storage::MemoryStorage};
+        let usx = r#"<usx version="3.0"><book code="PSA" style="id"/><chapter number="3" style="c"/><para style="d"><verse number="0" style="v"/>A Psalm of David.</para><para style="q1"><verse number="1" style="v"/>Lord, how many are my foes!</para></usx>"#;
+        let manifest = "[package]\nid = \"a\"\nname = \"A\"\nabbreviation = \"A\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusx = { path = \"usx/\" }\n\n[media]\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"PSA.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n";
+        let vtt =
+            "WEBVTT\n\nPSA 3:0\n00:00.000 --> 00:04.000\n\nPSA 3:1\n00:04.000 --> 00:08.000\n";
+        let storage = MemoryStorage::with([
+            (crate::manifest::MANIFEST, manifest),
+            ("usx/PSA.usx", usx),
+            ("timings/PSA.vtt", vtt),
+        ]);
+        let package = Package::open(std::sync::Arc::new(storage), Features::default()).unwrap();
+        assert_eq!(
+            check_package_timings(&package).unwrap(),
+            Vec::<String>::new()
         );
     }
 }

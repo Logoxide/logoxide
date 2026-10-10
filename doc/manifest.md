@@ -214,12 +214,13 @@ Audio and video, listed by URL and hash, never stored in the package.
 timings = "timings/"
 
 [[media.files]]
-path = "JHN.mp3"
+path = "audio/JHN.mp3"
 url = "https://example.org/audio/JHN.mp3"
 mirrors = ["https://archive.org/download/bsb-audio/JHN.mp3"]
 size = 31457280
 sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 book = "JHN"
+# timings = "subtitles/john.vtt"
 ```
 
 | Key | Type | Meaning |
@@ -232,21 +233,24 @@ book = "JHN"
 | `files.size` | integer | Its length in bytes |
 | `files.sha256` | string | Its SHA-256 as lowercase hex (no prefix) |
 | `files.book` | string | The book it reads (a USFM code), if one |
+| `files.timings` | string | Its timings' path in the package, in place of the timings folder's |
 
 A download is good when its length is `size` and its SHA-256 is `sha256` (compared
 case-insensitively); since the hash says which bytes are meant, any copy is as good as the first.
 Hosts keep files by hash, at `media/<first two hex digits>/<hex>` in their cache, so versions that
 list the same file share it.
 
-**Timings** are WebVTT, one file per media file: `<timings>/<stem>.vtt`, where `<stem>` is the
-media file's name without its folders and last extension (`JHN.mp3` → `timings/JHN.vtt`). Each
-cue's identifier is the verse it reads, a USFM reference: `JHN 3:16`, or `JHN 3:17-18` for a
+**Timings** are WebVTT, one file per media file: its own `timings` when it has one, else
+`<timings>/<stem>.vtt`, where `<stem>` is the media file's `path` (folders kept) without its last
+extension (`audio/JHN.mp3` → `timings/audio/JHN.vtt`, so `video/JHN.mp4`'s are
+`timings/video/JHN.vtt`). A file with neither has no timings. Each cue's identifier is the verse it reads, a USFM reference: `JHN 3:16`, or `JHN 3:17-18` for a
 bridge. Its time range (`hh:mm:ss.mmm` or `mm:ss.mmm`, milliseconds exactly three digits) is the
 verse's; its text may be the verse's or empty. Cues not named by a verse (an introduction, music)
 are skipped. The file starts with `WEBVTT`. Checks (`lx check`, `lx media check`, `lx release`):
-each verse exists in the package's text, is in the file's `book` if it has one, verses come in
-the text's order without overlapping, every listed file has timings, and every timings file
-belongs to a listed file.
+each verse exists in the package's text (verse 0, a psalm's title, only where the text numbers
+one 0; a bridge's every verse), is in the file's `book` if it has one, verses come in the text's
+order without overlapping, every listed file that should have timings has them, and every
+`*.vtt` anywhere under the timings folder belongs to a listed file.
 
 ## `[titles]`
 
@@ -274,7 +278,7 @@ beside a book, `.DS_Store`) are never part of it. A path is declared when it is:
 - under a format's `path` with one of that format's extensions (case-insensitive), or the
   format's `path` itself when that is a file; for formats with no extension list (`sword`, and
   names logoxide doesn't know), every file under its `path`
-- a `*.vtt` under `[media] timings`
+- a `*.vtt` under `[media] timings`, or a media file's own `timings`
 - matched by an `include` pattern
 
 `.git/` is never part of a package. Paths use `/`, relative to the package's root.

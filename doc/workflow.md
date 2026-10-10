@@ -360,7 +360,8 @@ title is a major change, since links name the file by it.
 ### Audio
 
 Recordings are listed, never stored: each file's URL, size, and SHA-256, and a WebVTT file of
-where each verse is (`timings/JHN.vtt`, cues named `JHN 3:16`):
+where each verse is (`timings/JHN.vtt` for `JHN.mp3`, `timings/audio/JHN.vtt` for
+`audio/JHN.mp3`; cues named `JHN 3:16`):
 
 ```sh
 lx media add JHN.mp3 --url https://example.org/audio/JHN.mp3 --url https://archive.org/download/bsb-audio/JHN.mp3 --book JHN

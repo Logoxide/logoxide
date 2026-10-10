@@ -127,10 +127,13 @@ before changing the design.
     stored in the package (its `sha256` must be 64 hex digits); `verify` checks a download
     (`LogoxideError::Mismatch` when it isn't the one listed); `Project::add_media` lists one,
     `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
-    by the text. Timings (audio Bibles: where each verse is) are WebVTT, `timings/<stem>.vtt` per
-    file, each cue named by its verse (`JHN 3:16`, `JHN 3:17-18`; other cues are skipped):
-    `parse_timings`, `timings`, and `check_package_timings` (verses the text lacks, another book,
-    out of order, overlapping, missing or unlisted files), which `lx check`, `lx media check`, and
+    by the text. Timings (audio Bibles: where each verse is) are WebVTT, a file's own `timings`, else
+    its path in the timings folder with `.vtt` (`audio/JHN.mp3` → `timings/audio/JHN.vtt`, so
+    audio and video of a book don't collide: `timings_path`), each cue named by its verse
+    (`JHN 3:16`, `JHN 3:17-18`; other cues are skipped): `parse_timings`, `timings`, and
+    `check_package_timings` (verses the text lacks, checked against each chapter's verse numbers,
+    so verse 0 is one where the text has it; another book, out of order, overlapping, missing
+    files, or unlisted ones anywhere under the folder), which `lx check`, `lx media check`, and
     `lx release` run. topos's subtitle parser isn't used: it only takes numbered cues
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.

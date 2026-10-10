@@ -134,7 +134,7 @@ impl Package {
 /// - `logoxide.toml`, its license file and README, and the summary's files
 /// - each format's files, by the format's extensions (`usx/*.usx`; a format logoxide doesn't read,
 ///   like SWORD, is every file under its path)
-/// - the media's timings (`*.vtt` in `[media] timings`)
+/// - the media's timings (`*.vtt` under `[media] timings`, and each file's own `timings`)
 /// - what `include` matches (`README.md`, `images/**`)
 pub fn declared_files(storage: &dyn Storage) -> Result<Vec<String>> {
     let manifest = Manifest::parse(&storage.read_string(MANIFEST)?)?;
@@ -182,6 +182,9 @@ pub fn declares(manifest: &Manifest, path: &str) -> bool {
         || (manifest.media.as_ref())
             .and_then(|m| m.timings.as_deref())
             .is_some_and(|dir| under(dir) && has(&["vtt"]))
+        || (manifest.media.iter())
+            .flat_map(|m| &m.files)
+            .any(|f| f.timings.as_deref() == Some(path))
         || info.is_some_and(|i| i.include.iter().any(|pattern| glob(pattern, path)))
 }
 
