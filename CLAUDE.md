@@ -55,8 +55,9 @@ before changing the design.
     a package that isn't a Bible (a book, a collection) may have none and opens with
     `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but
     `.git`
-  - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard;
-    references also per logoxide version) per `<id>/<version>-<checksum>`; each book file starts
+  - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard; the
+    counts and references also per logoxide version) per `<id>/<version>-<checksum>-<format>`
+    (a package read as USX and then USFM shares nothing); each book file starts
     with a line naming `CACHE_FORMAT` and the logoxide version (`book_header`), else it's parsed
     again, since postcard can't tell a stale layout; `Cache::references`
     without the counts (`lx show`); `CachedPackage::add_to` gives topos's `Translations` the name,
