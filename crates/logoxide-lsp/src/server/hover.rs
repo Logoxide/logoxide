@@ -57,17 +57,38 @@ impl Server {
                 let bibles = self.hover_texts(translation.as_ref());
                 // Each Bible's name labels its text when there are several
                 let labeled = self.bibles.len() > 1;
+                let named = self.bibles.named(translation.as_ref());
                 for bible in bibles {
-                    let Some(text) = bible.passage(&found.psg, None, Some(MAX_HOVER_TEXT)) else {
-                        continue;
+                    // Another Bible numbered differently reads the passage as it numbers it,
+                    // when the project's maps say how, and its label says where
+                    let mapped = named
+                        .filter(|from| from.name != bible.name)
+                        .and_then(|from| self.bibles.mapped(&found.psg, from, bible));
+                    let (passages, label) = match &mapped {
+                        Some(mapped) => {
+                            let mut label = format!("*{}* ({})", bible.name, mapped.text());
+                            if !mapped.missing.is_empty() {
+                                label.push_str(&format!(" (not in it: {})", mapped.missing_text()));
+                            }
+                            (mapped.passages(), label)
+                        }
+                        None => (vec![found.psg.clone()], format!("*{}*", bible.name)),
                     };
+                    let texts: Vec<String> = (passages.iter())
+                        .filter_map(|p| bible.passage(p, None, Some(MAX_HOVER_TEXT)))
+                        .map(|text| text.fence(true))
+                        .collect();
+                    if texts.is_empty() {
+                        continue;
+                    }
                     if !lines.is_empty() {
                         sections.push(lines.join("\n"));
                         lines.clear();
                     }
-                    sections.push(match labeled {
-                        true => format!("*{}*\n{}", bible.name, text.fence(true)),
-                        false => text.fence(true),
+                    let text = texts.join("\n\n");
+                    sections.push(match labeled || mapped.is_some() {
+                        true => format!("{label}\n{text}"),
+                        false => text,
                     });
                 }
                 continue;

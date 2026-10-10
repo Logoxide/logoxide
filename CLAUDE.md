@@ -400,7 +400,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   logoxide's cache folder, the one `lx` fills, so a book parsed by either is found by the other,
   and its verse counts with it; a USX folder through logoxide-text's `BookCache` keyed by its
   files' checksum under `<cache>/folders/`; the cache is the config's, taken only when the
-  server has a machine library, so tests keep books in memory), and renders hover text and whole books through
+  server has a machine library, so tests keep books in memory), carries its package's `versification` (`own` for a plain folder) so `Bibles::mapped` reads a reference in another Bible's numbering through the project's map packages (`Project::versifications`; hover labels a `hover-bibles` Bible numbered differently with the mapped passage and what isn't in it), and renders hover text and whole books through
   logoxide-text's `passage` (`MarkupSettings::style()` makes its `Style`; `bible::tokens` maps
   the markup's kinds to the editor's semantic tokens; `Part` and `Rendered` are logoxide-text's);
   `settings.rs` finds the project (the `project` setting, a

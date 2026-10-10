@@ -16,7 +16,7 @@ markup's kinds to the editor's tokens, and names the documents.
 */
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     ops::Range,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -29,7 +29,13 @@ use logoxide::{
 };
 use logoxide_markup::Kind;
 pub use logoxide_text::passage::{Part, Rendered};
-use logoxide_text::{Book, Source, cache::BookCache, passage, source::UsxSource};
+use logoxide_text::{
+    Book, Source,
+    cache::BookCache,
+    passage,
+    source::UsxSource,
+    versification::{Mapped, Versifications},
+};
 use topos_bible::{
     data::{
         bible_data::BibleData,
@@ -163,6 +169,9 @@ pub struct Bible {
     pub name: String,
     /// Other ways to write its name after a reference (`AV` for `KJV`)
     pub aliases: Vec<String>,
+    /// How its verses are numbered: the package's `versification` (`English`, `KJV`), or `own`
+    /// for a plain folder, which maps to nothing
+    pub versification: String,
     /// The folder (canonical), whose files workspace searches leave out
     pub folder: PathBuf,
     books: Books,
@@ -218,15 +227,21 @@ impl Bible {
                 None => Arc::new(MemoryStorage::new()),
             }
         };
-        let (books, default_name, aliases) = if folder.join(MANIFEST).is_file() {
+        let (books, default_name, aliases, versification) = if folder.join(MANIFEST).is_file() {
             let package = Package::open(storage, Features::default())
                 .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
             let info = package.info();
             let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
+            let versification = info.versification.clone();
             let cached = Cache::new(store("books"))
                 .open(package, &DefaultReader)
                 .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
-            (Books::Package(Box::new(cached)), abbreviation, aliases)
+            (
+                Books::Package(Box::new(cached)),
+                abbreviation,
+                aliases,
+                versification,
+            )
         } else {
             let source = UsxSource::open(Arc::new(StorageFiles(storage.clone())), "")
                 .map_err(|e| format!("bible: {}: {e}", folder.display()))?;
@@ -237,11 +252,12 @@ impl Bible {
                 source: Box::new(source),
                 books,
             };
-            (books, folder_name.to_string(), vec![])
+            (books, folder_name.to_string(), vec![], String::from("own"))
         };
         let bible = Bible {
             name: name.map_or(default_name, String::from),
             aliases,
+            versification,
             folder: folder
                 .canonicalize()
                 .unwrap_or_else(|_| folder.to_path_buf()),
@@ -357,6 +373,9 @@ names and aliases make (with each one's verse counts)
 pub struct Bibles {
     list: Vec<Bible>,
     pub translations: Translations,
+    /// The project's versification maps, which carry a reference from one Bible's numbering
+    /// to another's ([`Bibles::mapped`]); none without a project or its map packages
+    maps: Versifications,
 }
 
 impl Bibles {
@@ -372,7 +391,50 @@ impl Bibles {
                 translations.set_chapter_verses(&bible.name, book, counts);
             }
         }
-        Bibles { list, translations }
+        Bibles {
+            list,
+            translations,
+            maps: Versifications::default(),
+        }
+    }
+
+    /// These Bibles with the project's versification maps
+    pub fn with_maps(mut self, maps: Versifications) -> Bibles {
+        self.maps = maps;
+        self
+    }
+
+    /**
+    A passage numbered as in `from` (the Bible a reference names), as `to` numbers it, when the
+    two are numbered differently and the project's maps lead from one to the other (`Psalm
+    51:1` in an English Bible is `51:3` in a Hebrew one); none when they're numbered the same,
+    either's numbering is its `own`, or no map connects them, in which case the passage is
+    read as it is
+    */
+    pub fn mapped(&self, passage: &Passage, from: &Bible, to: &Bible) -> Option<Mapped> {
+        let same = |a: &str, b: &str| a.eq_ignore_ascii_case(b);
+        let own = |v: &str| v.is_empty() || same(v, "own");
+        if same(&from.versification, &to.versification)
+            || own(&from.versification)
+            || own(&to.versification)
+        {
+            return None;
+        }
+        let route = (self.maps)
+            .route(&from.versification, &to.versification)
+            .ok()?;
+        if route.is_empty() {
+            return None;
+        }
+        let counts: BTreeMap<BookId, ChapterVerses> = from.chapter_verses().into_iter().collect();
+        (self.maps)
+            .map(
+                passage,
+                &from.versification,
+                &to.versification,
+                counts.get(&passage.book),
+            )
+            .ok()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -464,4 +526,56 @@ fn decode(text: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&decoded).into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use logoxide_text::versification::VersificationMap;
+
+    const USX: &str = r#"<usx version="3.0"><book code="JHN" style="id">x</book>
+<chapter number="3" style="c" sid="JHN 3"/><para style="p"><verse number="16" style="v" sid="JHN 3:16"/>sixteen<verse eid="JHN 3:16"/>
+<verse number="17" style="v" sid="JHN 3:17"/>seventeen<verse eid="JHN 3:17"/></para><chapter eid="JHN 3"/></usx>"#;
+
+    #[test]
+    fn a_reference_is_mapped_between_numberings() {
+        let dir = std::env::temp_dir().join(format!("logoxide-lsp-mapped-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let data = BibleData::with_deuterocanon();
+        let mut bibles = vec![];
+        for name in ["A", "B"] {
+            let folder = dir.join(name);
+            std::fs::create_dir_all(&folder).unwrap();
+            std::fs::write(folder.join("JHN.usx"), USX).unwrap();
+            let mut bible = Bible::load(
+                &folder,
+                Some(name),
+                data.clone(),
+                MarkupSettings::default(),
+                None,
+            )
+            .unwrap();
+            bible.versification = String::from(match name {
+                "A" => "First",
+                _ => "Second",
+            });
+            bibles.push(bible);
+        }
+        // Second's 3:17 is First's 3:16
+        let map =
+            VersificationMap::parse("First", "Second", [("test.vrs", "JHN 3:16 = JHN 3:17\n")])
+                .unwrap();
+        let bibles = Bibles::new(bibles).with_maps(Versifications::new(vec![map]));
+        let (a, b) = (bibles.get("A").unwrap(), bibles.get("B").unwrap());
+        let passage = data.parse("John 3:16").unwrap();
+        let mapped = bibles.mapped(&passage, a, b).unwrap();
+        assert_eq!(mapped.text(), "John 3:17");
+        // And back; the same numbering maps to nothing
+        let back = bibles
+            .mapped(&data.parse("John 3:17").unwrap(), b, a)
+            .unwrap();
+        assert_eq!(back.text(), "John 3:16");
+        assert!(bibles.mapped(&passage, a, a).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

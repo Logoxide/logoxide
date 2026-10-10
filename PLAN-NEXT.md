@@ -183,6 +183,11 @@ Any order, as they're reachable; each in `logoxide-import`.
 3. **The LSP and the plugin map references** (`lx map`'s `Versifications` through the FFI's
    `LogoxideVersifications`): a reference in another Bible's numbering shown in hover and in
    the plugin's reader when the project has a map package.
+   **The LSP's half is done** (2026-10-11): `Bibles::mapped` (the project's `versifications`,
+   each Bible's package `versification`; a plain folder's is `own` and maps to nothing); hover
+   shows a `hover-bibles` Bible numbered differently at the mapped passage, labeled with that
+   numbering and what isn't in it. The plugin's half waits for the owner's uncommitted reader
+   work (phase G.3).
 4. **The plugin** uses `importPrefixes` for its browser's source filter and the new error kinds
    (phase H.2); its headless tests cover an import end to end once.
 

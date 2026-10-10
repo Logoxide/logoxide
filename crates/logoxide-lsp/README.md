@@ -65,7 +65,7 @@ so one file configures both. It uses these keys and ignores the others:
 | `project` | The folder whose `logoxide.toml` and `logoxide.lock` name the Bibles: by default a workspace folder that has one (a vault), else the library's own (`lx add` without a project) |
 | `library` | The logoxide library the packages are installed in (`LOGOXIDE_HOME`, else `$XDG_DATA_HOME/logoxide`) |
 | `default-bible` | The Bible for references that name none (a name or alias): `bible`'s by default, else the first of `bibles` by name |
-| `hover-bibles` | Bibles whose text hover also shows, after the one the reference names (`["BSB", "KJV"]`) |
+| `hover-bibles` | Bibles whose text hover also shows, after the one the reference names (`["BSB", "KJV"]`); one numbered differently shows the passage as it numbers it when the project has a versification map package between the two |
 | `markup` | How Bible text is written (see below) |
 | `insertions` | Code actions that insert a passage's text (see below) |
 

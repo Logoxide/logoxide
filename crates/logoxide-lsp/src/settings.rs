@@ -391,7 +391,9 @@ pub struct Settings {
     /// The Bible for references that name none: `bible`'s, else the first of `bibles`
     pub default_bible: Option<String>,
     /// The Bibles whose text hover shows, after the one the reference names (`["BSB", "KJV"]`);
-    /// only that one (or the default) without it
+    /// only that one (or the default) without it. One numbered differently (its package's
+    /// `versification`) shows the passage as it numbers it, when the project has a map package
+    /// between the two, labeled with that numbering
     pub hover_bibles: OneOrMany,
     pub markup: MarkupSettings,
     /// Ways to insert a passage's text, offered as code actions (with a `bible`)
@@ -717,7 +719,12 @@ impl Settings {
             let bible = list.remove(at);
             list.insert(0, bible);
         }
-        Ok(Bibles::new(list))
+        // The project's versification maps carry a reference between Bibles numbered
+        // differently (hover shows the other Bible's numbering); none without a project
+        let maps = (self.project(roots, machine).ok().flatten())
+            .and_then(|(project, library)| project.versifications(&library).ok())
+            .unwrap_or_default();
+        Ok(Bibles::new(list).with_maps(maps))
     }
 }
 
