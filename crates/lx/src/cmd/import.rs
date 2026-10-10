@@ -16,8 +16,8 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     let mut project = cli.project(&library)?;
     let (app, mut warn) = (app(), warn());
     // The project's catalogs, in order: the first that lists it is the one used
-    let entry =
-        logoxide_app::import::find_entry(app.http(), config(), &project, source, &mut warn)?;
+    let fetch = app.catalog_fetch(logoxide_app::catalog_cache::Freshness::Fresh);
+    let entry = logoxide_app::import::find_entry(fetch, config(), &project, source, &mut warn)?;
     let imported =
         logoxide_app::import::run(&mut project, &library, &entry, app.http(), app.fetcher())?;
     print_skipped(&imported.skipped);

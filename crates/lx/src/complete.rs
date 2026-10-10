@@ -49,13 +49,19 @@ pub fn package(current: &OsStr) -> Vec<CompletionCandidate> {
             }) {
             Some(registry) => {
                 let location = &registries[registry];
-                if location.contains("://") {
-                    return vec![];
-                }
-                // Only a folder or a file: completing downloads nothing
+                // A folder, a file, or a catalog downloaded before: completing downloads nothing
                 let http = logoxide_app::http::NoHttp;
+                let cache = logoxide_app::catalog_cache::CatalogCache::in_cache(
+                    config().library(None, None).cache_dir(),
+                    config().catalog_max_age(),
+                );
+                let fetch = logoxide_app::catalogs::CatalogFetch::new(
+                    &http,
+                    cache.as_ref(),
+                    logoxide_app::catalog_cache::Freshness::Offline,
+                );
                 let Ok(catalog) =
-                    logoxide_app::catalogs::load_registry(&http, registry, location, dir)
+                    logoxide_app::catalogs::load_registry(fetch, registry, location, dir)
                 else {
                     return vec![];
                 };
