@@ -333,14 +333,23 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   version `<version>`, else `DC.Date`; its script, and so its direction, judged from its
   letters), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
   `crosswire`, `crosswire-beta`, `ebible`, …; others by host, `repository_name`;
-  `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS or ThML that aren't
-  locked, GBF isn't read; `zip_urls`: `packages/<Module>.zip`, then lowercase; the zip into
-  sword-modules' `MemoryFiles`, each book written in the module's markup (`osis/John.xml` with
-  verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter milestones,
-  making linked verses bridges from sword-modules' `iter_spans` (`n="16-17"`, or one id into
-  the next chapter, `osisID="John.3.36-John.4.2"`, which logoxide-markup reads as one span to
-  `last_chapter`), and leaving out introductions stored at an earlier verse's entry
-  (`EntryLocation`); the repository root is read back from the entry's first download URL; the
+  `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS, ThML, or GBF and its
+  dictionaries (RawLD, RawLD4, zLD, in any markup; listed as `kind = "lexicon"`) that aren't
+  locked; `zip_urls`: `packages/<Module>.zip`, then lowercase; the zip into sword-modules'
+  `MemoryFiles`, each book written in the module's markup (`osis/John.xml` with verse
+  milestones, CCEL-style ThML, or `gbf/John.gbf` (N4: `<SBJohn>`, `<SCn>`, `<SVn>`, a bridge
+  `<SV16><SV17>`; a run into the next chapter has its text at its first verse and the next
+  chapter's verses as an empty bridge ended by `<CM>`)), dropping the entries' own book and
+  chapter milestones or sync marks, making linked verses bridges from sword-modules'
+  `iter_spans` (`n="16-17"`, or one id into the next chapter, `osisID="John.3.36-John.4.2"`,
+  which logoxide-markup reads as one span to `last_chapter`), and leaving out introductions
+  stored at an earlier verse's entry (`EntryLocation`); a dictionary (`Module::Dictionary`) is
+  `entries/<module>.xml` in `doc/entries.md`'s form (`entries_file`: the root's `markup` is the
+  conf's `SourceType`; `keys` from `Feature=GreekDef`/`HebrewDef`, else headword
+  (`dictionary_keys`); stored keys in normal form, `00025` → `G25` (`import_key`); a TEI entry's
+  first `<orth>` as its headword; `@LINK` aliases as `link` entries), `Made.keys` writes the
+  manifest's `keys`, and `finish` refuses one with no entries as it refuses a Bible with no
+  books; the repository root is read back from the entry's first download URL; the
   conf's `Versification` is kept (`sword::versification`: SWORD's names as SWORD spells them,
   `KJV` when absent; other imports say `own`); the conf gives version, license
   (`sword::license`) and rights (`sword::rights`: permission given to CrossWire or only in

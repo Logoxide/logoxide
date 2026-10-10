@@ -255,6 +255,10 @@ fn print_references(
     Ok(())
 }
 
+fn is_zero(n: &usize) -> bool {
+    *n == 0
+}
+
 /// What `lx check --format json` prints
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -264,6 +268,9 @@ struct CheckReport {
     kind: logoxide::manifest::PackageKind,
     books: usize,
     verses: usize,
+    /// A dictionary's or cross-references' entries (0 for other packages)
+    #[serde(skip_serializing_if = "is_zero")]
+    entries: usize,
     /// A versification map's: what it maps from and to, its lines, and the verses it maps
     #[serde(skip_serializing_if = "Option::is_none")]
     map: Option<serde_json::Value>,
@@ -343,6 +350,14 @@ pub(crate) fn check(
         .transpose()?;
     let start = Instant::now();
     let (mut verses, mut books) = (0, 0);
+    // A dictionary's or cross-references' entries, each read (so its files parse)
+    let mut entries = 0;
+    if (package.text_format()).is_some_and(|(f, _)| !f.is_verse_text()) {
+        for key in package.source().keys() {
+            package.source().entry(&key)?;
+            entries += 1;
+        }
+    }
     match cache {
         Some(dir) => {
             let cache = Cache::new(Arc::new(FsStorage::new(dir)));
@@ -393,6 +408,7 @@ pub(crate) fn check(
             kind: package_kind,
             books,
             verses,
+            entries,
             map: map.as_ref().map(|map| {
                 serde_json::json!({
                     "from": map.from,
@@ -438,6 +454,7 @@ pub(crate) fn check(
             "a recording of {}: no text of its own",
             reads.unwrap_or_default()
         ),
+        _ if entries > 0 => outln!("{entries} entries, read in {:.0?}", start.elapsed()),
         _ if books == 0 => {
             outln!("no verse text (a {package_kind:?}): its files are kept as they are")
         }

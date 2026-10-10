@@ -1,8 +1,9 @@
 /*!
 SWORD repositories: a repository's list of modules ([`catalog`], its `mods.d.tar.gz`) and a
-module's zip ([`import`], from [`zip_urls`]), read with sword-modules from memory: its entries
-in their own markup (OSIS or ThML), a file per book, with its conf's copyright and license in
-`COPYRIGHT.txt`. A module's `Version` follows its updates.
+module's zip ([`import`], from [`zip_urls`]), read with sword-modules from memory: a Bible's or
+commentary's entries in their own markup (OSIS, ThML, or GBF), a file per book, or a
+dictionary's as `entries/<module>.xml` (`doc/entries.md`), with its conf's copyright and license
+in `COPYRIGHT.txt`. A module's `Version` follows its updates.
 
 Repositories are named as an import names them (`sword:crosswire/KJV`): CrossWire's list
 ([`REPOSITORIES`]), else by host ([`repository_name`])
@@ -13,10 +14,10 @@ use logoxide::{
     catalog::{Catalog, CatalogEntry, Download},
     language,
     license::{Derivatives, Rights},
-    manifest::{Direction, PackageKind},
+    manifest::{Direction, Keys, PackageKind},
     storage::{MemoryStorage, Storage},
 };
-use sword_modules::{Markup, ModuleConf, ModuleKind};
+use sword_modules::{DictionaryModule, Markup, ModuleConf, ModuleKind, VerseModule};
 
 use crate::{Made, external, finish, import_id, package_id, unzip};
 
@@ -92,8 +93,9 @@ pub fn zip_urls(repository: &str, module: &str) -> Vec<String> {
 
 /**
 A SWORD repository's catalog: its `mods.d.tar.gz` (at `location`, its root's `mods.d.tar.gz`),
-every module's conf. Listed are the Bibles and commentaries that aren't locked (enciphered
-without a key) and whose markup is OSIS or ThML (what logoxide reads), each with its conf's
+every module's conf. Listed are the Bibles and commentaries whose markup is OSIS, ThML, or GBF
+(what logoxide reads as verses) and the dictionaries (`kind = "lexicon"`) in any markup
+logoxide-markup reads, that aren't locked (enciphered without a key), each with its conf's
 description, language, version, and license, a `sword:<repository>/<module>` import of its zip
 */
 pub fn catalog(location: &str, bytes: &[u8]) -> Result<Catalog> {
@@ -122,9 +124,15 @@ pub fn catalog(location: &str, bytes: &[u8]) -> Result<Catalog> {
             let kind = match conf.module_kind() {
                 Ok(ModuleKind::Bible) => PackageKind::Bible,
                 Ok(ModuleKind::Commentary) => PackageKind::Commentary,
+                Ok(ModuleKind::Dictionary) => PackageKind::Lexicon,
                 _ => continue,
             };
-            let readable = matches!(conf.source_type(), Markup::Osis | Markup::Thml);
+            // Verses need markup with sync marks or milestones; an entry is any markup
+            let readable = kind == PackageKind::Lexicon
+                || matches!(
+                    conf.source_type(),
+                    Markup::Osis | Markup::Thml | Markup::Gbf
+                );
             if conf.is_locked() || !readable || conf.get("ModDrv") == Some("RawFiles") {
                 continue;
             }
@@ -296,25 +304,31 @@ fn repository_of(entry: &CatalogEntry, module: &str) -> Option<String> {
 }
 
 /**
-A SWORD module from its zip (as [`zip_urls`] serve it), as a package in `dest`: each book a
-file in the module's own markup (`osis/Gen.xml` for an OSIS module, `thml/Gen.xml` for ThML),
-`logoxide.toml`, and `COPYRIGHT.txt` (the conf's copyright, license, and about text). The zip's
-conf describes the package (its description, language, version, license, and direction); the
-entry gives its id.
+A SWORD module from its zip (as [`zip_urls`] serve it), as a package in `dest`: a Bible's or
+commentary's books a file each in the module's own markup (`osis/Gen.xml` for an OSIS module,
+`thml/Gen.xml` for ThML, `gbf/Gen.gbf` for GBF), or a dictionary's entries as
+`entries/<module>.xml`, with `logoxide.toml` and `COPYRIGHT.txt` (the conf's copyright,
+license, and about text). The zip's conf describes the package (its description, language,
+version, license, and direction); the entry gives its id.
 
 Each verse becomes a marker and its entry (`<verse osisID="John.3.16" sID="John.3.16"/>…<verse
-eID="John.3.16"/>`, or ThML's `<scripture parsed="|John|3|16|0|0"/>`), in chapters, with a
-book's and a chapter's introductions before their first verse. Verses SWORD links to one entry
-(the verses of a range, [`VerseModule::iter_spans`]) are one verse, bridged (`n="16-17"`), or
-for a run into the next chapter one id (`osisID="John.3.36-John.4.2"`, ThML's
-`parsed="|John|3|36|4|2"`); verses that merely read the same stay apart. An introduction stored
-where an earlier verse's entry is (`EntryLocation`) is left out. A locked module, or markup other
-than OSIS and ThML, is an error
+eID="John.3.16"/>`, ThML's `<scripture parsed="|John|3|16|0|0"/>`, or GBF's `<SV16>`), in
+chapters, with a book's and a chapter's introductions before their first verse. Verses SWORD
+links to one entry (the verses of a range, [`VerseModule::iter_spans`]) are one verse, bridged
+(`n="16-17"`, GBF's `<SV16><SV17>`), or for a run into the next chapter one id
+(`osisID="John.3.36-John.4.2"`, ThML's `parsed="|John|3|36|4|2"`; GBF has no such form, so the
+text goes at the first verse and the next chapter's verses are an empty bridge); verses that
+merely read the same stay apart. An introduction stored where an earlier verse's entry is
+(`EntryLocation`) is left out. A dictionary's entries keep their markup in the file the root
+declares, keyed as its conf's `Feature` says (`GreekDef` is `strongs-greek`, `HebrewDef`
+`strongs-hebrew`, else `headword`), Strong's keys in normal form (`00025` is `G25`) and `@LINK`
+aliases as `link` entries. A locked module, markup logoxide doesn't read, or a general book is
+an error
 
 [`VerseModule::iter_spans`]: sword_modules::VerseModule::iter_spans
 */
 pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()> {
-    use sword_modules::{MemoryFiles, SwordLibrary};
+    use sword_modules::{MemoryFiles, Module, SwordLibrary};
     let id = import_id(entry, "sword", "a SWORD repository")?;
     let module = id.rsplit('/').next().unwrap_or(id).to_string();
     let repository = repository_of(entry, &module).ok_or_else(|| {
@@ -332,18 +346,12 @@ pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
     let conf = (library.conf(&module).cloned())
         .ok_or_else(|| LogoxideError::Import(format!("the zip has no module {module}")))?;
     let opened = library.open_module(&module).map_err(failed)?;
-    let verses = opened.into_verse().map_err(failed)?;
-    let (format, markup) = match verses.markup() {
-        Markup::Osis => ("osis", Markup::Osis),
-        Markup::Thml => ("thml", Markup::Thml),
-        other => {
-            return Err(LogoxideError::Import(format!(
-                "{module}: its markup is {other:?}; logoxide reads OSIS and ThML"
-            )));
-        }
+    let kind = match &opened {
+        Module::Dictionary(_) => PackageKind::Lexicon,
+        _ => entry.kind,
     };
     // The package as the zip's conf describes it (newer than the catalog's, perhaps)
-    let described = self::entry(&conf, entry.kind, "", &repository);
+    let described = self::entry(&conf, kind, "", &repository);
     let entry = CatalogEntry {
         id: entry.id.clone(),
         source: entry.source.clone(),
@@ -353,6 +361,56 @@ pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
         categories: vec![],
         about_books: vec![],
         ..described
+    };
+    let staged = MemoryStorage::new();
+    let (format, keys, versification) = match opened {
+        Module::Verse(verses) => {
+            let format = verse_files(&module, &entry, &verses, &staged)?;
+            (format, None, Some(versification(conf.get("Versification"))))
+        }
+        Module::Dictionary(dictionary) => {
+            let keys = dictionary_keys(&conf);
+            let text = entries_file(&dictionary, keys)?;
+            staged.write(&format!("entries/{module}.xml"), text.as_bytes())?;
+            ("dictionary", Some(keys), None)
+        }
+        Module::GenBook(_) => {
+            return Err(LogoxideError::Import(format!(
+                "{module}: a general book, which logoxide doesn't import yet"
+            )));
+        }
+    };
+    staged.write("COPYRIGHT.txt", notice(&conf, &repository).as_bytes())?;
+    let made = Made {
+        format,
+        license_file: Some(String::from("COPYRIGHT.txt")),
+        publisher: "SWORD",
+        homepage: (conf.get("TextSource").filter(|t| t.contains("://")))
+            .map_or_else(|| repository.clone(), String::from),
+        versification,
+        keys,
+    };
+    finish(&entry, made, staged, dest)
+}
+
+/// A Bible's or commentary's books, a file each in the module's markup, into `staged`; the
+/// format's name
+fn verse_files(
+    module: &str,
+    entry: &CatalogEntry,
+    verses: &VerseModule,
+    staged: &MemoryStorage,
+) -> Result<&'static str> {
+    let failed = |e: sword_modules::Error| LogoxideError::Import(format!("{module}: {e}"));
+    let (format, markup) = match verses.markup() {
+        Markup::Osis => ("osis", Markup::Osis),
+        Markup::Thml => ("thml", Markup::Thml),
+        Markup::Gbf => ("gbf", Markup::Gbf),
+        other => {
+            return Err(LogoxideError::Import(format!(
+                "{module}: its markup is {other:?}; logoxide reads OSIS, ThML, and GBF Bibles"
+            )));
+        }
     };
     let mut books: Vec<(sword_modules::BookId, Vec<SwordVerse>)> = vec![];
     // Where every verse's entry so far is stored: an introduction stored there points at that
@@ -381,6 +439,7 @@ pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
             last: last.verse,
             text: match markup {
                 Markup::Osis => without_structure(&span.entry.raw),
+                Markup::Gbf => without_sync_marks(&span.entry.raw),
                 _ => span.entry.raw,
             },
         };
@@ -389,28 +448,144 @@ pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
             _ => books.push((first.book, vec![verse])),
         }
     }
-    let staged = MemoryStorage::new();
     let language = entry.language.clone();
     for (book, list) in &books {
         let Some(osis) = sword_modules::VerseKey::new(*book, 1, 1).osis_book() else {
             continue;
         };
-        let text = match markup {
-            Markup::Osis => osis_book_file(&module, &language, osis, list),
-            _ => thml_book_file(osis, list),
+        let (text, extension) = match markup {
+            Markup::Osis => (osis_book_file(module, &language, osis, list), "xml"),
+            Markup::Gbf => (gbf_book_file(osis, list), "gbf"),
+            _ => (thml_book_file(osis, list), "xml"),
         };
-        staged.write(&format!("{format}/{osis}.xml"), text.as_bytes())?;
+        staged.write(&format!("{format}/{osis}.{extension}"), text.as_bytes())?;
     }
-    staged.write("COPYRIGHT.txt", notice(&conf, &repository).as_bytes())?;
-    let made = Made {
-        format,
-        license_file: Some(String::from("COPYRIGHT.txt")),
-        publisher: "SWORD",
-        homepage: (conf.get("TextSource").filter(|t| t.contains("://")))
-            .map_or_else(|| repository.clone(), String::from),
-        versification: Some(versification(conf.get("Versification"))),
+    Ok(format)
+}
+
+/// What a dictionary module's entries are keyed by: its conf's `Feature` (`GreekDef`,
+/// `HebrewDef`: Strong's numbers), else headwords
+pub fn dictionary_keys(conf: &ModuleConf) -> Keys {
+    let features = conf.features();
+    let has = |name: &str| features.iter().any(|f| f.eq_ignore_ascii_case(name));
+    if has("GreekDef") {
+        Keys::StrongsGreek
+    } else if has("HebrewDef") {
+        Keys::StrongsHebrew
+    } else {
+        Keys::Headword
+    }
+}
+
+/// A stored key in normal form: a Strong's dictionary's bare number (`00025`) takes its letter
+/// (`G25`), one with a letter is normalized, and any other key is kept as it is
+pub fn import_key(stored: &str, keys: Keys) -> String {
+    use logoxide_text::keys::normalize_key;
+    let stored = stored.trim();
+    let letter = match keys {
+        Keys::StrongsGreek => 'G',
+        Keys::StrongsHebrew => 'H',
+        Keys::Headword => return stored.to_string(),
     };
-    finish(&entry, made, staged, dest)
+    match stored.starts_with(|c: char| c.is_ascii_digit()) {
+        true => normalize_key(&format!("{letter}{stored}")),
+        false => normalize_key(stored),
+    }
+}
+
+/// An entry's headword: a TEI entry's first `<orth>`, else for a headword dictionary the key
+fn headword(markup: Markup, raw: &str, stored: &str, keys: Keys) -> Option<String> {
+    use logoxide_text::markup::{self, walk};
+    if markup == Markup::Tei {
+        let nodes = markup::parse(markup::Markup::Tei, raw);
+        let mut found = None;
+        walk(&nodes, &mut |e| {
+            if found.is_none() && e.name == "orth" {
+                found = Some(e.text());
+            }
+        });
+        let found = found.map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "));
+        if let Some(word) = found.filter(|w| !w.is_empty()) {
+            return Some(word);
+        }
+    }
+    (keys == Keys::Headword).then(|| stored.trim().to_string())
+}
+
+/// A dictionary module as an `entries/` file (`doc/entries.md`): the root declaring the
+/// module's markup, then each entry in key order with its text as stored, an `@LINK` alias
+/// as a `link` entry
+pub fn entries_file(dictionary: &DictionaryModule, keys: Keys) -> Result<String> {
+    let module = dictionary.name().to_string();
+    let failed = |e: sword_modules::Error| LogoxideError::Import(format!("{module}: {e}"));
+    let markup = dictionary.markup();
+    let name = match markup {
+        Markup::Osis => "osis",
+        Markup::Thml => "thml",
+        Markup::Gbf => "gbf",
+        Markup::Tei => "tei",
+        Markup::Plaintext => "plain",
+    };
+    let attr = |text: &str| {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('"', "&quot;")
+    };
+    let mut out = format!(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<entries keys=\"{}\" markup=\"{name}\">\n",
+        keys.name()
+    );
+    for i in 0..dictionary.len() {
+        let stored = dictionary.key_at(i).map_err(failed)?;
+        let key = import_key(&stored, keys);
+        if let Some(target) = dictionary.link_at(i).map_err(failed)? {
+            let target = import_key(&target, keys);
+            out.push_str(&format!(
+                "<entry key=\"{}\" link=\"{}\"/>\n",
+                attr(&key),
+                attr(&target)
+            ));
+            continue;
+        }
+        let Some(entry) = dictionary.entry_at(i).map_err(failed)? else {
+            continue;
+        };
+        let headword = (headword(markup, &entry.raw, &stored, keys))
+            .map(|h| format!(" headword=\"{}\"", attr(&h)))
+            .unwrap_or_default();
+        // A body ends at the first `</entry>`, so one in the text is written as an entity
+        let body = entry.raw.replace("</entry>", "&lt;/entry>");
+        out.push_str(&format!(
+            "<entry key=\"{}\"{headword}>{body}</entry>\n",
+            attr(&key)
+        ));
+    }
+    out.push_str("</entries>\n");
+    Ok(out)
+}
+
+/// A GBF entry without the module's own sync marks (`<SB…>`, `<SC…>`, `<SV…>`): the file marks
+/// its book, chapters, and verses itself
+fn without_sync_marks(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(at) = rest.find('<') {
+        out.push_str(&rest[..at]);
+        let Some(end) = rest[at..].find('>').map(|end| at + end + 1) else {
+            out.push_str(&rest[at..]);
+            return out;
+        };
+        let tag = &rest[at..end];
+        let body = &tag[1..tag.len() - 1];
+        let mark = (body.starts_with("SB") || body.starts_with("SC") || body.starts_with("SV"))
+            && !body.contains(|c: char| c.is_whitespace() || c == '<');
+        if !mark {
+            out.push_str(tag);
+        }
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+    out.trim().to_string()
 }
 
 /**
@@ -527,6 +702,41 @@ fn osis_book_file(work: &str, language: &str, book: &str, verses: &[SwordVerse])
     out
 }
 
+/// A book of a GBF module as a GBF file: its sync marks, then each verse's entry; a bridge is
+/// its first and last marks together, and a run into the next chapter puts its text at the
+/// first verse with the next chapter's verses as an empty bridge (ended by a paragraph break,
+/// so the verse after doesn't join it)
+fn gbf_book_file(book: &str, verses: &[SwordVerse]) -> String {
+    let mut out = format!("<SB{book}>\n");
+    let mut chapter = 0;
+    for v in verses {
+        if v.chapter != chapter {
+            chapter = v.chapter;
+            out.push_str(&format!("<SC{chapter}>\n"));
+        }
+        if v.verse == 0 {
+            out.push_str(&format!("{}\n", v.text));
+            continue;
+        }
+        match (v.across_chapters(), v.last > v.verse) {
+            (true, _) => {
+                out.push_str(&format!("<SV{}>{}\n", v.verse, v.text));
+                chapter = v.last_chapter;
+                let last = (v.last > 1).then(|| format!("<SV{}>", v.last));
+                out.push_str(&format!(
+                    "<SC{chapter}>\n<SV1>{}<CM>\n",
+                    last.unwrap_or_default()
+                ));
+            }
+            (false, true) => {
+                out.push_str(&format!("<SV{}><SV{}>{}\n", v.verse, v.last, v.text));
+            }
+            (false, false) => out.push_str(&format!("<SV{}>{}\n", v.verse, v.text)),
+        }
+    }
+    out
+}
+
 /// A book of a ThML module as a ThML file: each verse marked as CCEL marks them
 /// (`<scripture parsed="|John|3|16|0|0"/>`), in a `div2` for each chapter
 fn thml_book_file(book: &str, verses: &[SwordVerse]) -> String {
@@ -636,8 +846,12 @@ mod tests {
                 "mods.d/mhc.conf",
                 conf("MHC", "ModDrv=zCom\nSourceType=ThML"),
             ),
-            // GBF (the default), locked, a dictionary, personal notes: left out
+            // GBF (the default) is read; locked, personal notes, and a general book are left out
             ("mods.d/old.conf", conf("Old", "ModDrv=zText")),
+            (
+                "mods.d/pilgrim.conf",
+                conf("Pilgrim", "ModDrv=RawGenBook\nSourceType=ThML"),
+            ),
             (
                 "mods.d/nasb.conf",
                 conf("NASB", "ModDrv=zText\nSourceType=OSIS\nCipherKey="),
@@ -645,6 +859,13 @@ mod tests {
             (
                 "mods.d/easton.conf",
                 conf("Easton", "ModDrv=RawLD\nSourceType=ThML"),
+            ),
+            (
+                "mods.d/strongs.conf",
+                conf(
+                    "StrongsGreek",
+                    "ModDrv=RawLD\nSourceType=TEI\nFeature=GreekDef",
+                ),
             ),
             (
                 "mods.d/notes.conf",
@@ -668,7 +889,19 @@ mod tests {
         let catalog = crate::catalog::parse(SWORD_CATALOG, &bytes).unwrap();
         assert_eq!(catalog.name, "SWORD: crosswire");
         let ids: Vec<&str> = catalog.entries.iter().map(|e| e.id.as_str()).collect();
-        assert_eq!(ids, ["sword-isv", "sword-kjv", "sword-mhc"]);
+        assert_eq!(
+            ids,
+            [
+                "sword-easton",
+                "sword-isv",
+                "sword-kjv",
+                "sword-mhc",
+                "sword-old",
+                "sword-strongsgreek"
+            ]
+        );
+        assert_eq!(catalog.entries[0].kind, PackageKind::Lexicon);
+        assert_eq!(catalog.entries[5].kind, PackageKind::Lexicon);
         let kjv = catalog.find_import("sword:crosswire/KJV").unwrap();
         assert_eq!(
             (
@@ -694,19 +927,19 @@ mod tests {
         );
         assert!(kjv.source.versions_track_updates());
         assert_eq!(kjv.work.as_deref(), Some("kjv"));
-        assert_eq!(catalog.entries[0].direction, Direction::Rtl);
-        assert_eq!(catalog.entries[2].kind, PackageKind::Commentary);
+        assert_eq!(catalog.entries[1].direction, Direction::Rtl);
+        assert_eq!(catalog.entries[3].kind, PackageKind::Commentary);
 
         // Another repository's modules are named by it
         let other =
             crate::catalog::parse("https://sword.example.org/repo/mods.d.tar.gz", &bytes).unwrap();
-        assert_eq!(other.entries[1].id, "sword-sword-example-org-kjv");
+        assert_eq!(other.entries[2].id, "sword-sword-example-org-kjv");
         assert_eq!(
-            other.entries[1].source.import_name(),
+            other.entries[2].source.import_name(),
             Some("sword:sword-example-org/KJV")
         );
         assert_eq!(
-            other.entries[1].source.upstream_url(),
+            other.entries[2].source.upstream_url(),
             Some("https://sword.example.org/repo/packages/KJV.zip")
         );
         assert_eq!(
@@ -924,14 +1157,19 @@ mod tests {
             )
         );
 
-        // GBF isn't read; a zip without the module is an error
-        let gbf = SWORD_CONF.replace("SourceType=OSIS", "SourceType=GBF");
+        // Plain text can't mark verses; a zip without the module is an error
+        let plain = SWORD_CONF.replace("SourceType=OSIS", "SourceType=Plaintext");
         let error = import(
             &entry,
-            &sword_zip(&gbf, &[("John", 1, 1, "x")]),
+            &sword_zip(&plain, &[("John", 1, 1, "x")]),
             &MemoryStorage::new(),
         );
-        assert!(error.unwrap_err().to_string().contains("OSIS and ThML"));
+        assert!(
+            error
+                .unwrap_err()
+                .to_string()
+                .contains("OSIS, ThML, and GBF")
+        );
         let other = SWORD_CONF.replace("[Test]", "[Other]");
         assert!(
             import(
@@ -1069,6 +1307,161 @@ mod tests {
         );
         let book = package.source().book(john).unwrap();
         assert_eq!((book.spans[1].last_chapter, book.spans[1].last), (4, 2));
+    }
+
+    #[test]
+    fn imports_a_gbf_sword_module() {
+        let entry = sword_test_entry();
+        let conf = SWORD_CONF.replace("SourceType=OSIS", "SourceType=GBF");
+        let zip = sword_zip(
+            &conf,
+            &[
+                ("John", 1, 0, "<SC1><TS>The Word<Ts>"),
+                ("John", 1, 1, "In the beginning<WG746> was the Word."),
+                ("John", 3, 16, "For God so loved the world.<CM>"),
+                ("John", 3, 17, "For God so loved the world.<CM>"),
+                ("John", 3, 36, "He that believeth."),
+                ("John", 4, 1, "He that believeth."),
+                ("John", 4, 2, "He that believeth."),
+                ("John", 4, 3, "He left Judaea."),
+            ],
+        );
+        let dest = MemoryStorage::new();
+        import(&entry, &zip, &dest).unwrap();
+        let file = String::from_utf8(dest.read("gbf/John.gbf").unwrap()).unwrap();
+        assert!(file.starts_with("<SBJohn>\n<SC1>\n<TS>The Word<Ts>\n<SV1>In the beginning<WG746> was the Word.\n<SC3>\n<SV16><SV17>For God"), "{file}");
+        assert!(
+            file.contains("<SV36>He that believeth.\n<SC4>\n<SV1><SV2><CM>\n<SV3>He left"),
+            "{file}"
+        );
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        assert_eq!(
+            package.text_format().unwrap().0,
+            logoxide::manifest::Format::Gbf
+        );
+        let john = logoxide::bible_data().books().search_usfm("JHN").unwrap();
+        assert_eq!(
+            package.source().chapter_verses(john).unwrap(),
+            [1, 0, 36, 3]
+        );
+        let book = package.source().book(john).unwrap();
+        let spans: Vec<(u8, u8, u8)> = (book.spans.iter())
+            .map(|s| (s.chapter, s.verse, s.last))
+            .collect();
+        assert_eq!(
+            spans,
+            [(1, 1, 1), (3, 16, 17), (3, 36, 36), (4, 1, 2), (4, 3, 3)]
+        );
+        assert_eq!(
+            package.info().upstream.as_ref().map(|u| u.converted),
+            Some(true)
+        );
+    }
+
+    /// A RawLD module's zip: its conf, and the `.idx` and `.dat` files of these entries (keys
+    /// as stored, in the order given, which must be sorted), as `docs/spec/formats.md` lays
+    /// them out: each record a key line (`KEY\r\n`) and its body, the index giving each
+    /// record's offset and length without the `\n` between records
+    fn rawld_zip(conf: &str, entries: &[(&str, &str)]) -> Vec<u8> {
+        let (mut index, mut data) = (Vec::<u8>::new(), Vec::<u8>::new());
+        for (key, body) in entries {
+            let record = format!("{key}\r\n{body}");
+            index.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            index.extend_from_slice(&(record.len() as u16).to_le_bytes());
+            data.extend_from_slice(record.as_bytes());
+            data.push(b'\n');
+        }
+        let prefix = "modules/lexdict/rawld/test/test";
+        zip_bytes(&[
+            ("mods.d/test.conf", conf.as_bytes()),
+            (&format!("{prefix}.idx"), &index),
+            (&format!("{prefix}.dat"), &data),
+        ])
+    }
+
+    const STRONGS_CONF: &str = "[Test]\nDataPath=./modules/lexdict/rawld/test/test\nModDrv=RawLD\nSourceType=TEI\nEncoding=UTF-8\nLang=grc\nVersion=1.2\nFeature=GreekDef\nDescription=A Test Lexicon\nDistributionLicense=Public Domain\n";
+
+    #[test]
+    fn imports_a_sword_dictionary() {
+        let conf = ModuleConf::parse(STRONGS_CONF).unwrap();
+        assert_eq!(dictionary_keys(&conf), Keys::StrongsGreek);
+        let repository = "https://crosswire.org/ftpmirror/pub/sword/raw/";
+        let entry = entry(&conf, PackageKind::Lexicon, "crosswire", repository);
+        assert_eq!(entry.kind, PackageKind::Lexicon);
+        let zip = rawld_zip(
+            STRONGS_CONF,
+            &[
+                (
+                    "00025",
+                    "<entryFree n=\"25\"><orth>ἀγαπάω</orth> to love &amp; cherish</entryFree>",
+                ),
+                (
+                    "00026",
+                    "<entryFree n=\"26\"><orth>ἀγάπη</orth> love</entryFree>",
+                ),
+                ("00027", "@LINK 00026"),
+                (
+                    "G0028",
+                    "<entryFree><orth>ἀγαπητός</orth> beloved</entryFree>",
+                ),
+            ],
+        );
+        let dest = MemoryStorage::new();
+        crate::build(&entry, &[("zip".into(), zip)], &dest).unwrap();
+        assert_eq!(
+            dest.walk("").unwrap(),
+            ["COPYRIGHT.txt", "entries/Test.xml", "logoxide.toml"]
+        );
+        let file = String::from_utf8(dest.read("entries/Test.xml").unwrap()).unwrap();
+        assert!(
+            file.contains("<entries keys=\"strongs-greek\" markup=\"tei\">"),
+            "{file}"
+        );
+        assert!(
+            file.contains("<entry key=\"G25\" headword=\"ἀγαπάω\"><entryFree n=\"25\">"),
+            "{file}"
+        );
+        assert!(file.contains("<entry key=\"G27\" link=\"G26\"/>"), "{file}");
+        assert!(
+            file.contains("<entry key=\"G28\" headword=\"ἀγαπητός\">"),
+            "{file}"
+        );
+        let manifest = dest.read_string(MANIFEST).unwrap();
+        assert!(manifest.contains("keys = \"strongs-greek\""), "{manifest}");
+        assert!(manifest.contains("kind = \"lexicon\""), "{manifest}");
+        assert!(
+            manifest.contains("[formats.dictionary]\npath = \"entries/\""),
+            "{manifest}"
+        );
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        assert!(package.books().is_empty());
+        assert_eq!(package.source().keys(), ["G25", "G26", "G27", "G28"]);
+        let love = package.source().entry("g0026").unwrap().unwrap();
+        assert_eq!(love.headword.as_deref(), Some("ἀγάπη"));
+        let alias = package.source().entry("G27").unwrap().unwrap();
+        assert_eq!(alias.headword.as_deref(), Some("ἀγάπη"));
+        assert_eq!(import_key("00430", Keys::StrongsHebrew), "H430");
+        assert_eq!(import_key("Aaron", Keys::Headword), "Aaron");
+        assert_eq!(import_key("A", Keys::StrongsGreek), "A");
+        // Without a Feature, headwords: the key names the entry
+        let eastons = STRONGS_CONF
+            .replace("Feature=GreekDef\n", "")
+            .replace("SourceType=TEI", "SourceType=ThML");
+        let zip = rawld_zip(&eastons, &[("AARON", "brother of <i>Moses</i>")]);
+        let dest = MemoryStorage::new();
+        import(&entry, &zip, &dest).unwrap();
+        let file = String::from_utf8(dest.read("entries/Test.xml").unwrap()).unwrap();
+        assert!(file.contains("markup=\"thml\""), "{file}");
+        assert!(
+            file.contains(
+                "<entry key=\"AARON\" headword=\"AARON\">brother of <i>Moses</i></entry>"
+            ),
+            "{file}"
+        );
+        // An empty dictionary is refused
+        let zip = rawld_zip(STRONGS_CONF, &[]);
+        let error = import(&entry, &zip, &MemoryStorage::new()).unwrap_err();
+        assert!(error.to_string().contains("no entries"), "{error}");
     }
 
     #[test]
