@@ -3,7 +3,7 @@
 
 use boltffi::*;
 use logoxide_core::topos_bible::data::chapter_verses::ChapterVerses;
-use logoxide_core::versification::{Mapped, Verse, VersificationMap, Versifications};
+use logoxide_text::versification::{Mapped, Verse, VersificationMap, Versifications};
 
 use crate::{LogoxideError, LogoxidePackage};
 
@@ -79,7 +79,7 @@ impl LogoxideVersifications {
         &self,
         package: &LogoxidePackage,
     ) -> Result<LogoxideVersifications, LogoxideError> {
-        let map = VersificationMap::from_package(package.package())?;
+        let map = logoxide_core::reader::versification_map(package.package())?;
         Ok(self.with(map))
     }
 

@@ -20,6 +20,8 @@ boltffi = "0.31.0"
 semver = "1"
 # Bible text: LogoxideBook's tree, as HTML or plain text
 logoxide-markup = { path = "../logoxide-markup", features = ["html"] }
+# What's in the text: verses, timings, versification maps (the core reads through it too)
+logoxide-text = { path = "../logoxide-text" }
 # topos's whole API, re-exported (its library is named topos_bible, like its packages). BoltFFI only
 # exports the items of path dependencies, so this needs a topos checkout beside logoxide
 # (CI checks out the tag matching topos-bible's version). Without its `markup` feature: books are

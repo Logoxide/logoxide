@@ -105,12 +105,15 @@ Independent of phase D; after A.
    `--allow-unrelated-histories`), including `CLEANROOM.md`, `docs/spec/`, `tests/golden/`, and
    the no-panic test. Crate name `logoxide-markup`, library `logoxide_markup`; depends on
    `topos-bible` (for `Passage` and `BookId` in `refs.rs` and `verses.rs`). Features `serde` and
-   `html` (C3: `html.rs` behind it).
+   `html` (C3: `html.rs` behind it). **Done** (dd3dca4, merged 1055e4a: 19 commits kept).
 2. **topos**: remove the crate from its workspace; `topos-formats` loses its `markup` feature
    (`markup.rs`: `MarkupLocation` and `search_markup` move to `logoxide-text` as `search`);
    `topos-ffi` loses its `markup` feature and `book.rs` (`ToposBook` becomes `LogoxideBook` in
    logoxide-ffi, phase E; `ToposTranslations::from`/`core` stay). topos's CLAUDE.md and
-   `doc/logoxide.md`'s layer table say so. A topos commit, tagged for `TOPOS_REF`.
+   `doc/logoxide.md`'s layer table say so. A topos commit, tagged for `TOPOS_REF`. **Order**:
+   E.2a (`LogoxideBook` in logoxide-ffi) comes first, since the FFI's `book()` hands
+   `ToposBook::from_tree` a tree; until then B.4's `package::to_topos` carries the tree across
+   through postcard. B.2 goes on a topos branch, merged when the owner says.
 3. **sword-modules** (C4; **done**, sword-modules f4ff4e3, spec 3beb87b): `Markup` is
    sword-modules' own enum in `conf.rs` (`Osis`, `Thml`, `Gbf`, `Tei`, `Plaintext`); `Entry` is
    `raw` + `markup`; the `markup` re-export, `Entry::nodes`, `plain_text`, `html`, `strongs`,
@@ -119,7 +122,7 @@ Independent of phase D; after A.
    only topos-bible). logoxide needed no change.
 4. **logoxide**: `topos-bible-markup` → `logoxide-markup` in the workspace and `pub use
    logoxide_markup as markup`; the FFI's workspace likewise (a path inside this repository now,
-   not into topos).
+   not into topos). **Done** (20dabfa; the workspace turns `html` off, nothing here renders).
 
 Check: topos's and sword-modules' own checks; `cargo test` here; `NO_PANIC_ROUNDS` once.
 
@@ -191,7 +194,8 @@ publisher's, else `logoxide::catalog::Catalog::parse`.
 
 ## Phase E: wiring
 
-After C and D.
+After C and D, except E.2a (`LogoxideBook` on logoxide-markup, the bridge dropped), which comes
+before B.2.
 
 1. **lx**: `src/text.rs` implements `TextReader` with `logoxide-text` (summarize, check); `cmd/`
    modules call `logoxide-text` directly for `lx show`'s titles, `lx map`, `lx media check`'s

@@ -6,7 +6,6 @@ use boltffi::*;
 use logoxide_core::{
     Cache, CachedPackage, Features, MemoryStorage, Package, Storage, license,
     manifest::{self, Direction, PackageKind as CoreKind},
-    source::SkipReason,
     topos_bible::data::{books::BookId, translations::Translations},
 };
 use topos_bible::ToposTranslations;
@@ -342,8 +341,8 @@ pub struct VerseTiming {
     pub end_ms: u32,
 }
 
-impl From<logoxide_core::media::VerseTiming> for VerseTiming {
-    fn from(t: logoxide_core::media::VerseTiming) -> Self {
+impl From<logoxide_text::timings::VerseTiming> for VerseTiming {
+    fn from(t: logoxide_text::timings::VerseTiming) -> Self {
         let books = logoxide_core::bible_data().books();
         Self {
             book_id: books.search_usfm(&t.book).map_or(0, |id| id.0),
@@ -644,11 +643,11 @@ impl LogoxidePackage {
     /// The files, or books in them, its format passed over: peripherals, and books logoxide
     /// doesn't know (whose verses are left out)
     pub fn skipped(&self) -> Vec<SkippedFile> {
-        let reason = |r: SkipReason| match r {
-            SkipReason::Peripheral => "peripheral",
-            SkipReason::Unknown => "unknown",
-            SkipReason::NoBook => "no-book",
-            SkipReason::LetteredChapter => "lettered-chapter",
+        let reason = |r: logoxide_text::SkipReason| match r {
+            logoxide_text::SkipReason::Peripheral => "peripheral",
+            logoxide_text::SkipReason::Unknown => "unknown",
+            logoxide_text::SkipReason::NoBook => "no-book",
+            logoxide_text::SkipReason::LetteredChapter => "lettered-chapter",
         };
         (self.cached.package().source().skipped().iter())
             .map(|s| SkippedFile {
@@ -668,7 +667,7 @@ impl LogoxidePackage {
     */
     pub fn verse_hashes(&self, book_id: u8) -> Result<Vec<VerseHashEntry>, LogoxideError> {
         let book = self.cached.book(BookId(book_id))?;
-        Ok((logoxide_core::summary::book_hashes(&book).into_iter())
+        Ok((logoxide_core::summary::book_hashes(&book)?.into_iter())
             .map(|v| VerseHashEntry {
                 chapter: v.chapter,
                 verse: v.verse,

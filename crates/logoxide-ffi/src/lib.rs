@@ -64,6 +64,13 @@ pub enum LogoxideError {
     Resolve { message: String },
 }
 
+/// logoxide-text's errors, as the core maps them
+impl From<logoxide_text::TextError> for LogoxideError {
+    fn from(error: logoxide_text::TextError) -> Self {
+        logoxide_core::LogoxideError::from(error).into()
+    }
+}
+
 impl From<logoxide_core::LogoxideError> for LogoxideError {
     fn from(error: logoxide_core::LogoxideError) -> Self {
         use logoxide_core::LogoxideError as E;
@@ -202,7 +209,7 @@ impl Logoxide {
 
     /// A USFM book as USX, for `LogoxideBook.parse(topos, "usx", ...)` (a reader of book files)
     pub fn usfm_to_usx(&self, usfm: String) -> Result<String, LogoxideError> {
-        Ok(logoxide_core::source::usfm_to_usx(&usfm)?)
+        Ok(logoxide_text::source::usfm_to_usx(&usfm)?)
     }
 
     /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`; one of
@@ -432,7 +439,7 @@ impl Logoxide {
     /// A WebVTT timings file's verses (cues named `JHN 3:16`), for timings that aren't in a
     /// package
     pub fn parse_timings(&self, text: String) -> Result<Vec<VerseTiming>, LogoxideError> {
-        let timings = logoxide_core::media::parse_timings(&text)?;
+        let timings = logoxide_text::timings::parse_timings(&text)?;
         Ok(timings.into_iter().map(VerseTiming::from).collect())
     }
 
