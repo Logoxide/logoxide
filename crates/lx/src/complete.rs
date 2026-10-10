@@ -50,7 +50,9 @@ pub fn package(current: &OsStr) -> Vec<CompletionCandidate> {
                 if location.contains("://") {
                     return vec![];
                 }
-                let Ok(catalog) = super::load_registry(registry, location, dir, false) else {
+                let Ok(catalog) =
+                    crate::cmd::catalog::load_registry(registry, location, dir, false)
+                else {
                     return vec![];
                 };
                 for entry in &catalog.entries {

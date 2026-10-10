@@ -77,6 +77,7 @@ pub mod package;
 pub mod project;
 pub mod publish;
 pub mod references;
+pub mod registry_build;
 pub mod release;
 pub mod resolve;
 pub mod source;
