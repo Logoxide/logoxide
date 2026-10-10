@@ -1,7 +1,10 @@
+#![cfg(feature = "read")]
+
 //! Releasing: summaries, version checks, and reading a release's summary alone
 
 use std::{path::Path, process::Command, sync::Arc};
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Features, FsStorage, Package, Storage,
     git::{Fetcher, GitCli, GitRef},
@@ -65,7 +68,7 @@ fn releases_follow_what_changed() {
     );
     git(&repo, &["init", "-q", "-b", "main"]);
     // The first release: nothing to compare with
-    let first = plan(&repo, &cli).unwrap();
+    let first = plan(&repo, &cli, &DefaultReader).unwrap();
     assert!(first.previous.is_none());
     release(&repo, &first, &cli).unwrap();
     assert!(repo.join(SUMMARY).is_file() && repo.join(VERSES).is_file());
@@ -81,7 +84,7 @@ fn releases_follow_what_changed() {
         text.replace("a note", "another note"),
     )
     .unwrap();
-    let p = plan(&repo, &cli).unwrap();
+    let p = plan(&repo, &cli, &DefaultReader).unwrap();
     assert_eq!(p.change(), Change::Patch);
     assert!(
         check(&p)
@@ -96,7 +99,7 @@ fn releases_follow_what_changed() {
         "1.0.1",
         &[(16, "For God so loved the world"), (17, "For God sent")],
     );
-    let p = plan(&repo, &cli).unwrap();
+    let p = plan(&repo, &cli, &DefaultReader).unwrap();
     assert_eq!(p.change(), Change::Minor);
     assert!(
         check(&p)
@@ -109,23 +112,23 @@ fn releases_follow_what_changed() {
         "1.1.0",
         &[(16, "For God so loved the world"), (17, "For God sent")],
     );
-    release(&repo, &plan(&repo, &cli).unwrap(), &cli).unwrap();
+    release(&repo, &plan(&repo, &cli, &DefaultReader).unwrap(), &cli).unwrap();
 
     // A verse removed: major
     write(&repo, "1.2.0", &[(16, "For God so loved the world")]);
-    let p = plan(&repo, &cli).unwrap();
+    let p = plan(&repo, &cli, &DefaultReader).unwrap();
     assert_eq!(
         (p.change(), p.minimum.clone().unwrap().to_string()),
         (Change::Major, "2.0.0".to_string())
     );
     write(&repo, "2.0.0", &[(16, "For God so loved the world")]);
-    release(&repo, &plan(&repo, &cli).unwrap(), &cli).unwrap();
+    release(&repo, &plan(&repo, &cli, &DefaultReader).unwrap(), &cli).unwrap();
 
     // The published summary matches the text
     let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(&repo));
     let package = Package::open(storage.clone(), Features::default()).unwrap();
     assert_eq!(
-        summarize(&package).unwrap(),
+        summarize(&package, &DefaultReader).unwrap(),
         Summary::read(storage.as_ref()).unwrap()
     );
 
@@ -164,7 +167,7 @@ fn an_older_hash_rule_is_built_again() {
         &[(16, "For God so lo\u{AD}ved"), (17, "For God sent")],
     );
     git(&repo, &["init", "-q", "-b", "main"]);
-    let first = plan(&repo, &cli).unwrap();
+    let first = plan(&repo, &cli, &DefaultReader).unwrap();
     release(&repo, &first, &cli).unwrap();
     // Made as an older lx would have: 8 bytes of another hash a verse, no header
     let summary = std::fs::read_to_string(repo.join(SUMMARY)).unwrap();
@@ -189,7 +192,7 @@ fn an_older_hash_rule_is_built_again() {
         "1.0.1",
         &[(16, "For God so lo\u{AD}ved"), (17, "For God sent")],
     );
-    let p = plan(&repo, &cli).unwrap();
+    let p = plan(&repo, &cli, &DefaultReader).unwrap();
     assert_eq!(p.change(), Change::Patch);
     let _ = std::fs::remove_dir_all(&root);
 }

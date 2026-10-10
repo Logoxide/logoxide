@@ -10,21 +10,23 @@ use crate::{
     error::{LogoxideError, Result},
     git::{Fetcher, GitCli, GitRef},
     package::{Features, Package},
+    reader::{Skipped, TextReader},
     storage::{FsStorage, MemoryStorage, Storage},
     summary::{
         Change, Diff, HashRule, SUMMARY, Summary, VERSES, VerseHash, diff_summaries, next_version,
-        summarize, version_change,
+        summarize, summarize_facts, version_change,
     },
 };
 
 /// A version's summary and verse hashes: published with it, or (for an older release without
-/// them) built from its text
+/// them, or one hashed by another rule) built from its text by `reader`
 pub fn summary_at(
     fetcher: &dyn Fetcher,
     url: &str,
     tag: &str,
+    reader: &dyn TextReader,
 ) -> Result<(Summary, Vec<VerseHash>)> {
-    summary_in(fetcher, url, tag, "")
+    summary_in(fetcher, url, tag, "", reader)
 }
 
 /// [`summary_at`] for a package in a folder of the repository (`prefix`, `romans/`)
@@ -33,6 +35,7 @@ pub fn summary_in(
     url: &str,
     tag: &str,
     prefix: &str,
+    reader: &dyn TextReader,
 ) -> Result<(Summary, Vec<VerseHash>)> {
     let reference = GitRef::Tag(tag.to_string());
     let paths: Vec<String> = [SUMMARY, VERSES, crate::references::REFERENCES]
@@ -51,10 +54,8 @@ pub fn summary_in(
     }
     let all = MemoryStorage::new();
     fetcher.fetch(url, &reference, &all)?;
-    summarize(&Package::open(
-        Arc::new(within(&all, prefix)?),
-        Features::default(),
-    )?)
+    let package = Package::open(Arc::new(within(&all, prefix)?), Features::default())?;
+    summarize(&package, reader)
 }
 
 /// The files under a folder (`prefix`, with its slash), as if it were the root
@@ -81,9 +82,9 @@ pub struct Plan {
     pub previous: Option<(semver::Version, Diff)>,
     /// The smallest version this may be released as
     pub minimum: Option<semver::Version>,
-    /// Files, or books in them, that the format passed over (peripherals, books topos doesn't
+    /// Files, or books in them, that the reader passed over (peripherals, books topos doesn't
     /// know): their verses aren't in the summary
-    pub skipped: Vec<crate::source::Skipped>,
+    pub skipped: Vec<Skipped>,
 }
 
 impl Plan {
@@ -94,28 +95,29 @@ impl Plan {
     }
 }
 
-/// Summarizes the package in `repo` and compares it with the newest earlier release. Media
-/// timings that don't fit the text are an error. Links in the folder are passed over, as
-/// fetching and packing the release pass over them, so the summary is of what is published
-pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
+/// Summarizes the package in `repo` (its text read by `reader`) and compares it with the newest
+/// earlier release. Media timings that don't fit the text, and a file without a title, are
+/// errors. Links in the folder are passed over, as fetching and packing the release pass over
+/// them, so the summary is of what is published
+pub fn plan(repo: &Path, git: &GitCli, reader: &dyn TextReader) -> Result<Plan> {
     let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(repo).no_symlinks());
     let package = Package::open(storage, Features::default())?;
-    let problems = crate::media::check_package_timings(&package)?;
+    let problems = reader.timing_problems(&package, None)?;
     if !problems.is_empty() {
         return Err(LogoxideError::Media(format!(
             "the timings don't fit the text (lx media check --offline): {}",
             problems.join("; ")
         )));
     }
-    let untitled = crate::titles::untitled(&package)?;
-    if !untitled.is_empty() {
+    let facts = reader.facts(&package, HashRule::CURRENT)?;
+    if !facts.untitled.is_empty() {
         return Err(LogoxideError::Manifest(format!(
             "no title for {} (give one in logoxide.toml's [titles])",
-            untitled.join(", ")
+            facts.untitled.join(", ")
         )));
     }
-    let (summary, verses) = summarize(&package)?;
-    let skipped = package.source().skipped().to_vec();
+    let skipped = facts.skipped.clone();
+    let (summary, verses) = summarize_facts(&package, facts)?;
     let tags = git.local_versions(repo)?;
     // The newest release (the version must be newer than it)
     let Some((old_version, tag)) = tags.last().cloned() else {
@@ -130,7 +132,7 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
     // The repository's folder (absolute: git runs in a scratch folder), and the package's in it
     let (root, prefix) = git.package_in(repo)?;
     let url = root.display().to_string();
-    let (old_summary, old_verses) = summary_in(git, &url, &tag, &prefix)?;
+    let (old_summary, old_verses) = summary_in(git, &url, &tag, &prefix, reader)?;
     let d = diff_summaries((&old_summary, &old_verses), (&summary, &verses));
     let minimum = Some(next_version(&old_version, d.change()));
     Ok(Plan {

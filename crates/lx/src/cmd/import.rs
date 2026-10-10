@@ -2,6 +2,7 @@
 
 use std::{path::Path, sync::Arc};
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Features, FsStorage, MemoryStorage, Package, Storage,
     manifest::{Dependency, DetailedDependency, MANIFEST},
@@ -329,7 +330,7 @@ fn update_import(
     }
     let fresh = Arc::new(MemoryStorage::new());
     import_files(entry, fresh.as_ref())?;
-    let Some(update) = compare_import(current.clone(), &fresh)? else {
+    let Some(update) = compare_import(current.clone(), &fresh, &DefaultReader)? else {
         say(format!("{dep} {from}: up to date ({import_name})"));
         return Ok(());
     };

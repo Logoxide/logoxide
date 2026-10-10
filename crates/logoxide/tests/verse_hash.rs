@@ -1,3 +1,5 @@
+#![cfg(feature = "read")]
+
 /*!
 Golden tests of verse-hash rule 1: the text each verse is hashed as, and its hash, for small USFM,
 USX, and OSIS books (nested `\w`, `\add`, a note inside a word, Hebrew whose marks are out of

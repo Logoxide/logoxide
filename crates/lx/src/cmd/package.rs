@@ -2,6 +2,7 @@
 
 use std::{path::PathBuf, sync::Arc, time::Instant};
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Cache, Features, FsStorage, MemoryStorage, Package, Storage, bible_data,
     manifest::{Dependency, MANIFEST},
@@ -342,7 +343,7 @@ pub(crate) fn check(
     match cache {
         Some(dir) => {
             let cache = Cache::new(Arc::new(FsStorage::new(dir)));
-            let cached = cache.open(package)?;
+            let cached = cache.open(package, &DefaultReader)?;
             for id in cached.package().books() {
                 let book = cached.book(id)?;
                 verses += book.spans.len();
@@ -685,7 +686,7 @@ pub(crate) fn release(
 ) -> logoxide::Result<()> {
     let library = cli.library();
     let git = cli.fetcher(&library);
-    let mut plan = logoxide::release::plan(path, &git)?;
+    let mut plan = logoxide::release::plan(path, &git, &DefaultReader)?;
     print_skipped(&plan.skipped);
     if let Some((old, d)) = &plan.previous {
         outln!(
@@ -732,7 +733,7 @@ pub(crate) fn release(
         plan.summary.version = minimum;
         // The manifest changed: summarize again (its checksum covers logoxide.toml)
         if !dry_run {
-            plan = logoxide::release::plan(path, &git)?;
+            plan = logoxide::release::plan(path, &git, &DefaultReader)?;
         }
     }
     logoxide::release::check(&plan)?;
@@ -815,12 +816,15 @@ pub(crate) fn diff(
         true => t.to_string(),
         false => format!("{prefix}{t}"),
     };
-    let old = logoxide::release::summary_in(&git, &url, &tag(from), &prefix)?;
+    let old = logoxide::release::summary_in(&git, &url, &tag(from), &prefix, &DefaultReader)?;
     let new = match to {
-        Some(to) => logoxide::release::summary_in(&git, &url, &tag(to), &prefix)?,
+        Some(to) => logoxide::release::summary_in(&git, &url, &tag(to), &prefix, &DefaultReader)?,
         None => {
             let storage: Arc<dyn Storage> = Arc::new(FsStorage::new(path));
-            logoxide::summary::summarize(&Package::open(storage, Features::default())?)?
+            logoxide::summary::summarize(
+                &Package::open(storage, Features::default())?,
+                &DefaultReader,
+            )?
         }
     };
     let d = logoxide::summary::diff_summaries((&old.0, &old.1), (&new.0, &new.1));
@@ -858,7 +862,7 @@ pub(crate) fn diff(
 
 pub(crate) fn verify(args: &PackageArgs, json: bool) -> logoxide::Result<()> {
     let package = args.open()?;
-    let (built, verses) = logoxide::summary::summarize(&package)?;
+    let (built, verses) = logoxide::summary::summarize(&package, &DefaultReader)?;
     let (published, published_verses) =
         logoxide::summary::Summary::read(package.storage().as_ref()).map_err(|e| match e {
             // Written by a newer lx: this one can't say whether it matches

@@ -744,6 +744,7 @@ what an update can break, whatever the publisher numbers it
 pub fn compare_import(
     current: std::sync::Arc<dyn Storage>,
     fresh: &std::sync::Arc<MemoryStorage>,
+    reader: &dyn crate::reader::TextReader,
 ) -> Result<Option<ImportUpdate>> {
     use crate::summary::{diff_summaries, next_version, summarize};
     let fresh_storage: std::sync::Arc<dyn Storage> = fresh.clone();
@@ -760,8 +761,8 @@ pub fn compare_import(
     }
     let old = Package::open(current, Features::default())?;
     let new = Package::open(fresh_storage, Features::default())?;
-    let (old_summary, old_verses) = summarize(&old)?;
-    let (new_summary, new_verses) = summarize(&new)?;
+    let (old_summary, old_verses) = summarize(&old, reader)?;
+    let (new_summary, new_verses) = summarize(&new, reader)?;
     let diff = diff_summaries((&old_summary, &old_verses), (&new_summary, &new_verses));
     let to = next_version(&had.version, diff.change());
     set_version(fresh.as_ref(), &to)?;
@@ -939,6 +940,7 @@ mod tests {
 
     use super::*;
     use crate::catalog::Catalog;
+    use crate::reader::DefaultReader;
 
     fn zip(files: &[(&str, &str)]) -> Vec<u8> {
         let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
@@ -1510,7 +1512,11 @@ mod tests {
                 "\\id ACT\n\\c 1\n\\p\n\\v 1 The former treatise.\n",
             ),
         ]);
-        assert!(compare_import(current.clone(), &same).unwrap().is_none());
+        assert!(
+            compare_import(current.clone(), &same, &DefaultReader)
+                .unwrap()
+                .is_none()
+        );
 
         // Reworded at the same publisher's version (as fetch.bible's change): the version is
         // raised by the change, a book removed being a major one
@@ -1518,7 +1524,9 @@ mod tests {
             "73-JHNeng-asv.usfm",
             &book("For God so much loved the world."),
         )]);
-        let update = compare_import(current.clone(), &fresh).unwrap().unwrap();
+        let update = compare_import(current.clone(), &fresh, &DefaultReader)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             (update.from.to_string(), update.to.to_string()),
             ("1.0.0".into(), "2.0.0".into())
@@ -1548,7 +1556,11 @@ mod tests {
             "73-JHNeng-asv.usfm",
             &book("For God so much loved the world."),
         )]);
-        assert!(compare_import(current.clone(), &again).unwrap().is_none());
+        assert!(
+            compare_import(current.clone(), &again, &DefaultReader)
+                .unwrap()
+                .is_none()
+        );
         // The raised version doesn't hide the publisher's next release: the publisher's
         // versions are compared, never the package's
         let upstream = package.info().upstream.clone().unwrap();
@@ -1565,7 +1577,9 @@ mod tests {
             &book("For God so much loved the world."),
         )]);
         ebible(next, &same_text, storage.as_ref()).unwrap();
-        let update = compare_import(current.clone(), &storage).unwrap().unwrap();
+        let update = compare_import(current.clone(), &storage, &DefaultReader)
+            .unwrap()
+            .unwrap();
         assert_eq!(
             (
                 update.to.to_string(),

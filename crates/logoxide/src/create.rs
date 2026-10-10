@@ -12,12 +12,16 @@ and anything given ([`NewPackage`]) wins over it:
 A collection ([`new_collection`]) has no file: its packages are its dependencies.
 */
 
+#[cfg(feature = "read")]
 use quick_xml::{Reader, events::Event};
+#[cfg(feature = "read")]
 use topos_bible_markup::decode_entities;
 
+#[cfg(feature = "read")]
+use crate::manifest::FormatEntry;
 use crate::{
     error::{LogoxideError, Result},
-    manifest::{FormatEntry, MANIFEST, Manifest, Package as Info, PackageKind},
+    manifest::{MANIFEST, Manifest, Package as Info, PackageKind},
     storage::Storage,
 };
 
@@ -95,6 +99,7 @@ pub fn file_format(name: &str, bytes: &[u8]) -> Option<(&'static str, PackageKin
 }
 
 /// An EPUB's metadata, from the package document its `META-INF/container.xml` names
+#[cfg(feature = "read")]
 pub fn epub_metadata(bytes: &[u8]) -> Result<FileMetadata> {
     let files = crate::import::unzip(bytes)?;
     let file = |path: &str| {
@@ -112,6 +117,7 @@ pub fn epub_metadata(bytes: &[u8]) -> Result<FileMetadata> {
 }
 
 /// The metadata in an EPUB's package document (`.opf`), EPUB 2 or 3
+#[cfg(feature = "read")]
 pub fn opf_metadata(opf: &str) -> FileMetadata {
     let found = elements(opf);
     // EPUB 3 says what a title or a creator is with `<meta refines="#id" property="…">`
@@ -164,12 +170,14 @@ pub fn opf_metadata(opf: &str) -> FileMetadata {
 
 /// An element of a small XML document: its local name (no prefix), attributes (local names too),
 /// and its text
+#[cfg(feature = "read")]
 pub(crate) struct Element {
     pub(crate) name: String,
     attributes: Vec<(String, String)>,
     pub(crate) text: String,
 }
 
+#[cfg(feature = "read")]
 impl Element {
     pub(crate) fn attr(&self, name: &str) -> Option<&str> {
         (self.attributes.iter())
@@ -179,6 +187,7 @@ impl Element {
 }
 
 /// Every element in `xml`, in document order, each with the text directly inside it
+#[cfg(feature = "read")]
 pub(crate) fn elements(xml: &str) -> Vec<Element> {
     let local = |name: &str| name.rsplit(':').next().unwrap_or_default().to_string();
     let mut reader = Reader::from_str(xml);
@@ -252,6 +261,7 @@ pub fn abbreviation_from(name: &str) -> String {
 
 /// Writes a new package made from one file into `dest`: its `logoxide.toml`, and the file in its
 /// format's folder (`epub/the-dorean-principle.epub`). Gives the manifest
+#[cfg(feature = "read")]
 pub fn new_from_file(
     file_name: &str,
     bytes: &[u8],
@@ -403,7 +413,7 @@ fn write(manifest: &Manifest, header: &str, dest: &dyn Storage) -> Result<()> {
     dest.write(MANIFEST, format!("{header}{doc}").as_bytes())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read"))]
 mod tests {
     use super::*;
 

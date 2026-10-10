@@ -364,7 +364,12 @@ impl Catalog {
     pub fn parse_bytes(name: &str, bytes: &[u8]) -> Result<Catalog> {
         let path = name.split(['?', '#']).next().unwrap_or(name);
         match path.to_ascii_lowercase().ends_with(".tar.gz") {
+            #[cfg(feature = "read")]
             true => Catalog::parse_sword(name, bytes),
+            #[cfg(not(feature = "read"))]
+            true => Err(LogoxideError::Catalog(format!(
+                "{name}: a SWORD repository's catalog needs logoxide's `read` feature"
+            ))),
             false => Catalog::parse(name, &String::from_utf8_lossy(bytes)),
         }
     }
@@ -375,6 +380,7 @@ impl Catalog {
     locked (enciphered without a key) and whose markup is OSIS or ThML (what logoxide reads),
     each with its conf's description, language, version, and license
     */
+    #[cfg(feature = "read")]
     pub fn parse_sword(location: &str, bytes: &[u8]) -> Result<Catalog> {
         use std::io::Read;
         use sword_modules::{Markup, ModuleKind};
@@ -573,7 +579,7 @@ impl Catalog {
                 .map(|(_, rest)| rest)
                 .and_then(|rest| rest.split_once('>'))
                 .and_then(|(_, rest)| rest.split_once("</a>"))
-                .map(|(title, _)| topos_bible_markup::decode_entities(title))
+                .map(|(title, _)| decode_html_entities(title))
                 .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
                 .filter(|t| !t.is_empty())
                 .unwrap_or_else(|| work.to_string());
@@ -892,8 +898,7 @@ impl Catalog {
             .and_then(|name| self.find_import(name.trim()))
             .or_else(|| {
                 let url = upstream.url.as_deref()?.trim();
-                (self.entries.iter())
-                    .find(|e| crate::import::upstream_url(e).as_deref() == Some(url))
+                (self.entries.iter()).find(|e| upstream_url(e).as_deref() == Some(url))
             })
     }
 
@@ -1268,7 +1273,22 @@ pub fn sword_catalog_url(name: &str) -> Option<String> {
         .map(|(_, url)| format!("{url}mods.d.tar.gz"))
 }
 
+/// The download an entry's import is made from ([`crate::import::upstream_url`]); none without
+/// imports (the `read` feature), as none without a publisher
+fn upstream_url(entry: &CatalogEntry) -> Option<String> {
+    #[cfg(feature = "read")]
+    {
+        crate::import::upstream_url(entry)
+    }
+    #[cfg(not(feature = "read"))]
+    {
+        let _ = entry;
+        None
+    }
+}
+
 /// A conf file's text: UTF-8, else Latin-1 (as older confs are)
+#[cfg(feature = "read")]
 fn conf_text(bytes: &[u8]) -> String {
     match std::str::from_utf8(bytes) {
         Ok(text) => text.to_string(),
@@ -1276,7 +1296,44 @@ fn conf_text(bytes: &[u8]) -> String {
     }
 }
 
+/// The entities a title on CCEL's page may hold (the named ones HTML gives a Bible's name, and
+/// numeric ones), decoded
+fn decode_html_entities(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let after = &rest[amp..];
+        let Some(semi) = after.find(';').filter(|&i| i <= 10) else {
+            out.push('&');
+            rest = &after[1..];
+            continue;
+        };
+        let name = &after[1..semi];
+        let decoded = match name {
+            "amp" => Some('&'),
+            "lt" => Some('<'),
+            "gt" => Some('>'),
+            "quot" => Some('"'),
+            "apos" => Some('\''),
+            "nbsp" => Some('\u{a0}'),
+            _ => (name.strip_prefix("#x").or_else(|| name.strip_prefix("#X")))
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .or_else(|| name.strip_prefix('#').and_then(|dec| dec.parse().ok()))
+                .and_then(char::from_u32),
+        };
+        match decoded {
+            Some(c) => out.push(c),
+            None => out.push_str(&after[..=semi]),
+        }
+        rest = &after[semi + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// A SWORD module's catalog entry, from its conf
+#[cfg(feature = "read")]
 pub(crate) fn sword_entry(
     conf: &sword_modules::ModuleConf,
     kind: PackageKind,
@@ -1345,6 +1402,7 @@ Creative Commons license (`Creative Commons: BY-SA 4.0` is `CC-BY-SA-4.0`), the 
 else (`Copyrighted; Free non-commercial distribution`) is `LicenseRef-SWORD`, its statement in the
 package's license file, with what it allows in [`sword_rights`]
 */
+#[cfg(feature = "read")]
 pub(crate) fn sword_license(license: Option<&str>) -> String {
     let Some(license) = license.map(str::trim) else {
         return String::from("LicenseRef-SWORD");
@@ -1378,6 +1436,7 @@ non-commercially in SWORD format`) isn't anyone's to redistribute, nor to conver
 non-commercial distribution` and `Freely distributable` are redistributable, without
 derivatives (and not commercially, for the first). Others say nothing
 */
+#[cfg(feature = "read")]
 pub(crate) fn sword_rights(license: Option<&str>) -> crate::license::Rights {
     use crate::license::{Derivatives, Rights};
     let Some(license) = license.map(|l| l.trim().to_lowercase()) else {
@@ -1980,6 +2039,7 @@ usx = { path = "usx/" }
     }
 
     #[test]
+    #[cfg(feature = "read")]
     fn reads_a_sword_repositorys_modules() {
         let conf = |name: &str, extra: &str| {
             format!(

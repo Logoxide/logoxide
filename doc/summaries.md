@@ -11,6 +11,12 @@ a tag alone. This describes the formats as logoxide 0.1 writes them; the referen
 All three files are part of the package (declared), but are left out of `text-checksum`, which
 they can't contain.
 
+The summary is the contract between whatever reads a package's text and the package manager,
+which never does. The text's reader gives `books`, `contents`, `verses` (and every hash in
+`logoxide.verses.bin`), `titles`, `references` (and `logoxide.references.bin`), and `mappings`;
+the package manager adds `id`, `version`, the checksums, `sizes`, and `media`, and does all the
+comparing and versioning below on these files alone.
+
 ## `logoxide.summary.toml`
 
 ```toml

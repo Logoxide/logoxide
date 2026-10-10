@@ -18,13 +18,12 @@ use std::collections::{BTreeMap, HashMap};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use topos_bible_markup::{Filter, Kind, Node, TextOptions, plain_text, verses::slice};
-use unicode_normalization::UnicodeNormalization;
 
 use crate::{
     books::Book,
     error::{LogoxideError, Result},
     package::Package,
+    reader::{TextFacts, TextReader},
     storage::Storage,
 };
 
@@ -187,10 +186,14 @@ impl VerseHash {
 
 /// The characters [`HashRule::One`] drops: zero-width space, byte-order mark, soft hyphen, and
 /// word joiner
+#[cfg(feature = "read")]
 const INVISIBLE: [char; 4] = ['\u{200B}', '\u{FEFF}', '\u{00AD}', '\u{2060}'];
 
 /// A verse's text as hashed by `rule`: its words, normalized, with whitespace collapsed
-pub fn verse_text(nodes: &[Node], rule: HashRule) -> String {
+#[cfg(feature = "read")]
+pub fn verse_text(nodes: &[topos_bible_markup::Node], rule: HashRule) -> String {
+    use topos_bible_markup::{Filter, TextOptions, plain_text};
+    use unicode_normalization::UnicodeNormalization;
     let options = TextOptions {
         filter: Filter::text(),
         ..TextOptions::default()
@@ -210,7 +213,15 @@ Each verse of a book and the hash of its words (notes and headings left out), as
 version (renumbered: the same words at another number). A book without a number in logoxide's
 table has none (every book topos knows has one). Made with [`HashRule::CURRENT`]
 */
+#[cfg(feature = "read")]
 pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
+    book_hashes_by(book, HashRule::CURRENT)
+}
+
+/// [`book_hashes`] by any rule this logoxide knows
+#[cfg(feature = "read")]
+pub fn book_hashes_by(book: &crate::source::Book, rule: HashRule) -> Vec<VerseHash> {
+    use topos_bible_markup::verses::slice;
     let Some(number) = Book::from_book_id(book.id) else {
         return vec![];
     };
@@ -218,7 +229,7 @@ pub fn book_hashes(book: &crate::source::Book) -> Vec<VerseHash> {
     for span in &book.spans {
         let hash = verse_hash(&verse_text(
             &slice(&book.nodes, &span.start, Some(&span.end)),
-            HashRule::CURRENT,
+            rule,
         ));
         let across = span.last_chapter > span.chapter;
         out.push(VerseHash {
@@ -254,7 +265,8 @@ pub fn verse_hash(text: &str) -> [u8; HASH_BYTES] {
 }
 
 /// `WordsOfJesus` → `words-of-jesus`
-fn kebab(kind: Kind) -> String {
+#[cfg(feature = "read")]
+fn kebab(kind: topos_bible_markup::Kind) -> String {
     let mut out = String::new();
     for (i, c) in format!("{kind:?}").chars().enumerate() {
         if c.is_uppercase() && i > 0 {
@@ -266,18 +278,26 @@ fn kebab(kind: Kind) -> String {
 }
 
 /// Markers and containers, which say nothing about what a text holds
-const STRUCTURE: [Kind; 8] = [
-    Kind::Verse,
-    Kind::Chapter,
-    Kind::Metadata,
-    Kind::Other,
-    Kind::Paragraph,
-    Kind::LineBreak,
-    Kind::Milestone,
-    Kind::Division,
-];
+#[cfg(feature = "read")]
+const STRUCTURE: [topos_bible_markup::Kind; 8] = {
+    use topos_bible_markup::Kind;
+    [
+        Kind::Verse,
+        Kind::Chapter,
+        Kind::Metadata,
+        Kind::Other,
+        Kind::Paragraph,
+        Kind::LineBreak,
+        Kind::Milestone,
+        Kind::Division,
+    ]
+};
 
-fn count(nodes: &[Node], contents: &mut BTreeMap<String, u64>) {
+/// Counts a book's elements into `contents` as the summary lists them (`note`, `title`, ...,
+/// and `strongs` for words tagged with Strong's numbers), markers and containers left out
+#[cfg(feature = "read")]
+pub fn count_elements(nodes: &[topos_bible_markup::Node], contents: &mut BTreeMap<String, u64>) {
+    use topos_bible_markup::{Kind, Node};
     for node in nodes {
         if let Node::Element(e) = node {
             if !STRUCTURE.contains(&e.kind) {
@@ -286,7 +306,7 @@ fn count(nodes: &[Node], contents: &mut BTreeMap<String, u64>) {
             if e.kind == Kind::Word && !e.strongs().is_empty() {
                 *contents.entry(String::from("strongs")).or_default() += 1;
             }
-            count(&e.children, contents);
+            count_elements(&e.children, contents);
         }
     }
 }
@@ -296,23 +316,16 @@ pub fn is_summary_file(path: &str) -> bool {
     path == SUMMARY || path == VERSES || path == crate::references::REFERENCES
 }
 
-/// Reads every book of a package into its summary and verse hashes
-pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
+/// A package's summary and verse hashes: what `reader` finds in its text
+/// ([`TextReader::facts`]), with the checksums, sizes, and media the package manager adds
+pub fn summarize(package: &Package, reader: &dyn TextReader) -> Result<(Summary, Vec<VerseHash>)> {
+    let facts = reader.facts(package, HashRule::CURRENT)?;
+    summarize_facts(package, facts)
+}
+
+/// [`summarize`] with the text's facts already read
+pub fn summarize_facts(package: &Package, facts: TextFacts) -> Result<(Summary, Vec<VerseHash>)> {
     let info = package.info();
-    let mut books = IndexMap::new();
-    let mut contents = BTreeMap::new();
-    let mut hashes = vec![];
-    for id in package.books() {
-        let book = package.source().book(id)?;
-        let code = crate::bible_data()
-            .books()
-            .get_usfm(id)
-            .cloned()
-            .unwrap_or_else(|| id.0.to_string());
-        books.insert(code, book.chapter_verses());
-        count(&book.nodes, &mut contents);
-        hashes.extend(book_hashes(&book));
-    }
     let storage = package.storage();
     // The package's files (not the summary's own, nor a reader's annotations), and each format's
     let declared = crate::package::declared_files(storage.as_ref())?;
@@ -338,13 +351,6 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
             format_files.push(path.clone());
         }
     }
-    let found = crate::references::find(package)?;
-    let mappings = match info.kind {
-        crate::manifest::PackageKind::VersificationMap => {
-            crate::versification::VersificationMap::from_package(package)?.len() as u64
-        }
-        _ => 0,
-    };
     let summary = Summary {
         summary: SUMMARY_VERSION,
         verse_hash: HashRule::CURRENT.number(),
@@ -355,24 +361,22 @@ pub fn summarize(package: &Package) -> Result<(Summary, Vec<VerseHash>)> {
             storage.as_ref(),
             &format_files,
         )?),
-        verses: hashes.len() as u64,
+        verses: facts.verses.len() as u64,
         sizes,
-        books,
-        contents,
+        books: facts.books,
+        contents: facts.contents,
         media: (package.manifest().media.as_ref())
             .filter(|m| !m.files.is_empty())
             .map(|m| MediaSummary {
                 files: m.files.len() as u64,
                 bytes: m.files.iter().map(|f| f.size).sum(),
             }),
-        references: found.len() as u64,
-        mappings,
-        cited: crate::references::cited(&found),
-        titles: (crate::titles::titles(package)?.into_iter())
-            .filter_map(|t| Some((t.path, t.title?)))
-            .collect(),
+        references: facts.references,
+        mappings: facts.mappings,
+        cited: facts.cited,
+        titles: facts.titles,
     };
-    Ok((summary, hashes))
+    Ok((summary, facts.verses))
 }
 
 impl Summary {
@@ -975,9 +979,10 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "read")]
     fn rule_one_normalizes() {
         let text = |s: &str| {
-            let nodes = [Node::Text(s.to_string())];
+            let nodes = [topos_bible_markup::Node::Text(s.to_string())];
             verse_text(&nodes, HashRule::One)
         };
         // NFD and NFC, invisible characters, and kinds of space all hash alike

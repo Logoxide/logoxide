@@ -55,10 +55,12 @@ For God so loved the world…
 ```
 */
 
+#[cfg(feature = "read")]
 use std::{cell::RefCell, collections::BTreeMap};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+#[cfg(feature = "read")]
 use topos_bible::data::books::BookId;
 
 use crate::{
@@ -372,6 +374,7 @@ pub fn timings(package: &Package, file: &MediaFile) -> Result<Option<Vec<VerseTi
 
 /// Each chapter's verse numbers in a book (a bridge's each, 0 for a title numbered so), by
 /// chapter
+#[cfg(feature = "read")]
 fn book_verses(package: &Package, id: BookId) -> BTreeMap<u16, Vec<u16>> {
     let mut chapters: BTreeMap<u16, Vec<u16>> = BTreeMap::new();
     for span in package
@@ -399,6 +402,7 @@ own `timings`), and for a timings file anywhere under the folder that no listed 
 when all is well. For a recording whose `[media] text` names a dependency, see
 [`check_package_timings_with`]: here its verses aren't checked
 */
+#[cfg(feature = "read")]
 pub fn check_package_timings(package: &Package) -> Result<Vec<String>> {
     check_package_timings_with(package, None)
 }
@@ -410,6 +414,7 @@ verses are checked against it. Without one, the package's own text; with none, t
 When `[media] text` names a dependency that isn't given, verses aren't checked (only their order
 and the files)
 */
+#[cfg(feature = "read")]
 pub fn check_package_timings_with(
     package: &Package,
     text: Option<&Package>,
@@ -490,6 +495,7 @@ pub fn check_package_timings_with(
 }
 
 /// What a recording's verses are checked against
+#[cfg(feature = "read")]
 enum Verses<'a> {
     /// A text: its own, or the one `[media] text` names
     Text(&'a Package),
@@ -510,7 +516,7 @@ pub fn store_path(file: &MediaFile) -> String {
     format!("media/{}/{hash}", hash.get(..2).unwrap_or("00"))
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read"))]
 mod tests {
     use super::*;
 

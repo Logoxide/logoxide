@@ -363,7 +363,12 @@ impl Logoxide {
         };
         let current = std::sync::Arc::new(memory(current));
         let fresh = std::sync::Arc::new(memory(fresh));
-        let Some(update) = logoxide_core::import::compare_import(current.clone(), &fresh)? else {
+        let Some(update) = logoxide_core::import::compare_import(
+            current.clone(),
+            &fresh,
+            &logoxide_core::reader::DefaultReader,
+        )?
+        else {
             return Ok(None);
         };
         Ok(Some(ImportUpdate {

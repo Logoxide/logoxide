@@ -1,7 +1,10 @@
+#![cfg(feature = "read")]
+
 //! Packages read from memory: formats chosen by features, the cache, and topos's translations
 
 use std::sync::Arc;
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Cache, Features, MemoryStorage, Package, Storage, bible_data,
     topos_bible::{data::books::BookId, data::translations::Translations},
@@ -106,7 +109,7 @@ fn the_cache_keeps_counts_and_books() {
     let cache_storage = Arc::new(MemoryStorage::new());
     let cache = Cache::new(cache_storage.clone());
     let checksum = package.checksum().unwrap();
-    let cached = cache.open(package).unwrap();
+    let cached = cache.open(package, &DefaultReader).unwrap();
     assert_eq!(cached.manifest().books, [(JOHN, vec![0, 0, 18])]);
     let book = cached.book(JOHN).unwrap();
     assert_eq!(book.spans.len(), 3);
@@ -116,7 +119,9 @@ fn the_cache_keeps_counts_and_books() {
     assert!(files.iter().any(|f| f.ends_with("/books/JHN.postcard")));
     // A second cache over the same files reads them back
     let package = Package::open(storage(), Features::default()).unwrap();
-    let again = Cache::new(cache_storage.clone()).open(package).unwrap();
+    let again = Cache::new(cache_storage.clone())
+        .open(package, &DefaultReader)
+        .unwrap();
     assert_eq!(*again.book(JOHN).unwrap(), *book);
     // Other text is another checksum, so another cache
     let changed = MemoryStorage::with([
@@ -131,7 +136,10 @@ fn the_cache_keeps_counts_and_books() {
 fn topos_checks_references_against_the_package() {
     let package = Package::open(storage(), Features::default()).unwrap();
     let cache = Cache::new(Arc::new(MemoryStorage::new()));
-    let translations = cache.open(package).unwrap().add_to(Translations::default());
+    let translations = cache
+        .open(package, &DefaultReader)
+        .unwrap()
+        .add_to(Translations::default());
     let data = bible_data();
     let parse = |s: &str| {
         data.parse_with_translation(s, &translations)

@@ -36,6 +36,8 @@ jobs:
       - run: cargo fmt --check
       - run: cargo test --workspace
       - run: cargo clippy --workspace --all-targets -- -D warnings
+      # The package manager alone reads no text: it builds without a parser
+      - run: cargo check -p logoxide --no-default-features --all-targets
 
   # The oldest Rust the crates support (`rust-version` in Cargo.toml)
   msrv:

@@ -16,8 +16,6 @@ reference and count) in Bible order. `LXR1` names this layout for good: a change
 use std::io::{Read, Write};
 
 use serde::{Deserialize, Serialize};
-use topos_bible::matcher::{BibleMatcher, matches::ComplexFilter};
-use topos_bible_formats::epub::{CfiOptions, search_epub_reader};
 
 use crate::{
     error::{LogoxideError, Result},
@@ -83,7 +81,10 @@ pub fn epub_files(package: &Package) -> Result<Vec<String>> {
 
 /// Every reference in the EPUBs the package's enabled formats hold, file by file in path order,
 /// each file's in the order they're in it. Empty for a package without EPUBs
+#[cfg(feature = "read")]
 pub fn find(package: &Package) -> Result<Vec<FoundReference>> {
+    use topos_bible::matcher::{BibleMatcher, matches::ComplexFilter};
+    use topos_bible_formats::epub::{CfiOptions, search_epub_reader};
     let storage = package.storage();
     let files = epub_files(package)?;
     if files.is_empty() {

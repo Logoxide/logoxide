@@ -22,7 +22,10 @@ Bible references topos finds ([`references`]); versification maps are Paratext `
 ```no_run
 use std::sync::Arc;
 
-use logoxide::{Cache, Features, FsStorage, Package, topos_bible::data::translations::Translations};
+use logoxide::{
+    Cache, Features, FsStorage, Package, reader::DefaultReader,
+    topos_bible::data::translations::Translations,
+};
 
 fn main() -> logoxide::Result<()> {
     // A package's folder: its logoxide.toml and its text
@@ -32,7 +35,7 @@ fn main() -> logoxide::Result<()> {
 
     // Parsed books and verse counts are kept in a cache folder, by version and checksum
     let cache = Cache::new(Arc::new(FsStorage::new("cache")));
-    let kjv = cache.open(package)?;
+    let kjv = cache.open(package, &DefaultReader)?;
     if let Some(john) = logoxide::bible_data().books().search_usfm("JHN") {
         println!("John has {} chapters", kjv.book(john)?.chapter_verses().len());
     }
@@ -46,13 +49,13 @@ fn main() -> logoxide::Result<()> {
 A vault's Bibles, installed as its lock file says (fetching runs the `git` command):
 
 ```no_run
-use logoxide::{Library, Project, git::GitCli, resolve::Update};
+use logoxide::{Library, Project, git::GitCli, reader::DefaultReader, resolve::Update};
 
 fn main() -> logoxide::Result<()> {
     let mut project = Project::open("notes")?;
     let library = Library::new("library", "cache");
     project.install(&library, &GitCli::default(), Update::Nothing)?;
-    let _translations = project.translations(&library)?;
+    let _translations = project.translations(&library, &DefaultReader)?;
     Ok(())
 }
 ```
@@ -69,6 +72,7 @@ pub mod config;
 pub mod create;
 pub mod error;
 pub mod git;
+#[cfg(feature = "read")]
 pub mod import;
 pub mod language;
 pub mod library;
@@ -79,14 +83,17 @@ pub mod media;
 pub mod package;
 pub mod project;
 pub mod publish;
+pub mod reader;
 pub mod references;
 pub mod registry_build;
 pub mod release;
 pub mod resolve;
+#[cfg(feature = "read")]
 pub mod source;
 pub mod storage;
 pub mod summary;
 pub mod text;
+#[cfg(feature = "read")]
 pub mod titles;
 pub mod topos_config;
 pub mod versification;
@@ -101,8 +108,10 @@ pub use lock::{LockedPackage, Lockfile};
 pub use manifest::Manifest;
 pub use package::{Features, Package};
 pub use project::Project;
+pub use reader::TextReader;
 pub use storage::{FsStorage, MemoryStorage, Storage};
 pub use topos_bible;
+#[cfg(feature = "read")]
 pub use topos_bible_markup as markup;
 
 use topos_bible::data::BibleData;

@@ -1,8 +1,11 @@
+#![cfg(feature = "read")]
+
 //! Versification maps: the sample map package (English to Original, from Paratext's eng.vrs),
 //! checked, summarized, released, and used by a project to map between its Bibles' numberings
 
 use std::{path::PathBuf, sync::Arc};
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Features, FsStorage, Library, MemoryStorage, Package, Project, Storage,
     git::GitCli,
@@ -35,7 +38,7 @@ fn a_map_package_is_checked_and_summarized() {
     assert_eq!(map.mappings().len(), 19);
 
     // Its summary counts what it maps, and has no verses
-    let (summary, verses) = summarize(&package).unwrap();
+    let (summary, verses) = summarize(&package, &DefaultReader).unwrap();
     assert!(verses.is_empty());
     assert_eq!(summary.mappings, map.len() as u64);
     assert!(summary.to_toml().unwrap().contains("mappings = 179"));
@@ -49,7 +52,7 @@ fn a_map_package_is_checked_and_summarized() {
     let text = copy.read_string("eng-org.vrs").unwrap();
     let changed = text.replace("MAL 4:1-6 = MAL 3:19-24", "MAL 4:1-5 = MAL 3:19-23");
     copy.write("eng-org.vrs", changed.as_bytes()).unwrap();
-    let (new_summary, new_verses) = summarize(&open(copy.clone())).unwrap();
+    let (new_summary, new_verses) = summarize(&open(copy.clone()), &DefaultReader).unwrap();
     let diff = diff_summaries((&summary, &verses), (&new_summary, &new_verses));
     assert!(diff.change() >= Change::Minor);
 
@@ -61,7 +64,7 @@ fn a_map_package_is_checked_and_summarized() {
         .unwrap_err()
         .to_string();
     assert!(error.contains("MAL 4:2 is on the left"), "{error}");
-    assert!(summarize(&broken).is_err());
+    assert!(summarize(&broken, &DefaultReader).is_err());
 }
 
 #[test]
@@ -113,19 +116,25 @@ fn a_project_maps_between_its_bibles() {
 
     // A Bible (by name or abbreviation) is its versification; a name alone is a versification
     let to_original = project
-        .map_reference(&library, "Psalm 51:1", "EB", "Original")
+        .map_reference(&library, &DefaultReader, "Psalm 51:1", "EB", "Original")
         .unwrap();
     assert_eq!(to_original.text(), "Psalm 51:3");
     let back = project
-        .map_reference(&library, "Psalm 51:3-4", "Original", "eb")
+        .map_reference(&library, &DefaultReader, "Psalm 51:3-4", "Original", "eb")
         .unwrap();
     assert_eq!(back.text(), "Psalm 51:1-2");
     let malachi = project
-        .map_reference(&library, "Malachi 4:1-6", "English", "Original")
+        .map_reference(
+            &library,
+            &DefaultReader,
+            "Malachi 4:1-6",
+            "English",
+            "Original",
+        )
         .unwrap();
     assert_eq!(malachi.text(), "Malachi 3:19-24");
     // A Bible numbered its own way can't be mapped
-    let own = project.map_reference(&library, "Psalm 51:1", "OB", "Original");
+    let own = project.map_reference(&library, &DefaultReader, "Psalm 51:1", "OB", "Original");
     assert!(
         own.unwrap_err()
             .to_string()

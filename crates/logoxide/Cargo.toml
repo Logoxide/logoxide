@@ -11,18 +11,33 @@ readme = "README.md"
 keywords = ["bible", "package-manager", "usx", "usfm", "sword"]
 categories = ["text-processing", "parser-implementations"]
 
+[features]
+default = ["read"]
+## The reader built in (`reader::DefaultReader`): the formats parsed through topos-bible-markup
+## and usfm3, an EPUB's references through topos-bible-formats, and imports through sword-modules
+## and zip. Without it the crate is the package manager alone, which reads no text: it takes a
+## `reader::TextReader` from whoever runs it
+read = [
+    "dep:topos-bible-markup",
+    "dep:topos-bible-formats",
+    "dep:sword-modules",
+    "dep:usfm3",
+    "dep:zip",
+    "dep:quick-xml",
+]
+
 [dependencies]
 topos-bible.workspace = true
-topos-bible-markup.workspace = true
-topos-bible-formats.workspace = true
-sword-modules.workspace = true
+topos-bible-markup = { workspace = true, optional = true }
+topos-bible-formats = { workspace = true, optional = true }
+sword-modules = { workspace = true, optional = true }
 serde.workspace = true
 toml = { version = "0.9", features = ["preserve_order"] }
 semver = { version = "1", features = ["serde"] }
 sha2 = "0.10"
 postcard = { version = "1", features = ["use-std"] }
 thiserror = "2"
-usfm3 = "0.2"
+usfm3 = { version = "0.2", optional = true }
 toml_edit = "0.23"
 indexmap = { version = "2", features = ["serde"] }
 serde_json.workspace = true
@@ -30,9 +45,9 @@ serde_json.workspace = true
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
 # Reading downloads publishers serve as .zip (eBible.org)
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "2", default-features = false, features = ["deflate"], optional = true }
 # Reading an EPUB's metadata (lx new)
-quick-xml = "0.42"
+quick-xml = { version = "0.42", optional = true }
 # Folding accents and points away for catalog search
 unicode-normalization = "0.1"
 language-tags = "0.3"

@@ -534,7 +534,8 @@ impl LogoxidePackage {
                 default: features.default_features,
             },
         )?;
-        let cached = Cache::new(cache_storage).open(package)?;
+        let cached =
+            Cache::new(cache_storage).open(package, &logoxide_core::reader::DefaultReader)?;
         Ok(Self { cached, cache })
     }
 

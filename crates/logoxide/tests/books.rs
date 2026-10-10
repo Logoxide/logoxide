@@ -1,3 +1,5 @@
+#![cfg(feature = "read")]
+
 //! Books: a package made from an EPUB (`create`), opened without verse text, and the references
 //! topos finds in it, published with its summary
 
@@ -6,6 +8,7 @@ use std::{
     sync::Arc,
 };
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Features, MemoryStorage, Package, Storage,
     create::{NewPackage, new_from_file},
@@ -122,11 +125,11 @@ fn a_book_from_an_epub() {
     );
     assert_eq!(cache.references(&package).unwrap(), found);
     let reopened = Package::open(package.storage().clone(), Features::default()).unwrap();
-    let cached = cache.open(reopened).unwrap();
+    let cached = cache.open(reopened, &DefaultReader).unwrap();
     assert_eq!(*cached.references().unwrap(), found);
 
     // Its summary: how many, and the passages cited, in Bible order
-    let (summary, verses) = summarize(&package).unwrap();
+    let (summary, verses) = summarize(&package, &DefaultReader).unwrap();
     assert!(verses.is_empty());
     assert_eq!(summary.references, 3);
     let cited: Vec<&str> = summary.cited.iter().map(|c| c.passage.as_str()).collect();

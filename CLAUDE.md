@@ -7,7 +7,19 @@ before changing the design.
 
 ## Layout
 
-- `crates/logoxide`: the library
+- `crates/logoxide`: the library. The package manager never reads text (the owner's decision of
+  2026-10-10; `PLAN-CRATES.md` has the phases): everything that parses a format is behind the
+  `read` feature (on by default; `cargo check -p logoxide --no-default-features --all-targets`
+  must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs
+  - `reader.rs`: the boundary. `TextReader` (`counts`: each book's verse counts; `facts`: a
+    `TextFacts`, the text's half of a summary, with the verse hashes by a `HashRule`, titles and
+    the untitled files, cited passages, the mapping count, and `Skipped`; `timing_problems`) is
+    taken by `summary::summarize`, `release::plan`/`summary_in`, `Cache::open`,
+    `Project::translations`/`numbering`/`map_reference`, and `import::compare_import`. `NoReader`
+    reads nothing (tests, hosts that only install); `DefaultReader` (`read`) reads through
+    `source/`, and will move beside the binaries (lx, the FFI, the LSP) with the parsers in
+    phase C. `Skipped`, `SkipReason`, and `PERIPHERALS` live here (`source` re-exports them).
+    `Package::text_format` says which format is read as verses without a parser
   - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
     `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`, machine-wide (flags and env win over
     library/cache; a project's catalogs come first and its registry names win). lx reads it once

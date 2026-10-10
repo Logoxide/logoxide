@@ -2,6 +2,7 @@
 
 use std::{path::PathBuf, sync::Arc};
 
+use logoxide::reader::DefaultReader;
 use logoxide::{Features, FsStorage, Package};
 
 use crate::cli::Cli;
@@ -24,8 +25,8 @@ pub(crate) fn map(
     }
     let passage = parse_reference(reference)?;
     let (from, to) = (
-        project.numbering(&library, from)?,
-        project.numbering(&library, to)?,
+        project.numbering(&library, &DefaultReader, from)?,
+        project.numbering(&library, &DefaultReader, to)?,
     );
     let counts = from.counts.get(&passage.book);
     let mapped = maps.map(&passage, &from.versification, &to.versification, counts)?;

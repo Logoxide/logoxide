@@ -14,6 +14,7 @@ use crate::{
     library::Library,
     lock::{LOCKFILE, Lockfile},
     manifest::{Dependency, DetailedDependency, MANIFEST, Manifest, PackageKind},
+    reader::TextReader,
     resolve::{Frozen, Resolver, Update},
 };
 use std::collections::BTreeMap;
@@ -550,7 +551,7 @@ impl Project {
                 continue;
             }
             // A recording without a text of its own (`[media] text`) has no verses to give
-            if package.info().kind == PackageKind::Bible && package.source().format().is_some() {
+            if package.info().kind == PackageKind::Bible && package.text_format().is_some() {
                 bibles.push((locked, package));
             }
         }
@@ -560,16 +561,17 @@ impl Project {
     /**
     The translations the manifest asks for (its Bibles, and those in its collections; not other
     dependencies), for topos: each one's abbreviation, aliases, and verse counts, from the
-    library's cache
+    library's cache (read by `reader` when the cache lacks them)
     */
-    pub fn translations(&self, library: &Library) -> Result<Translations> {
+    pub fn translations(&self, library: &Library, reader: &dyn TextReader) -> Result<Translations> {
         let mut translations = Translations::default();
         let cache = library.book_cache();
         for (locked, package) in self.bibles(library)? {
             let (abbreviation, aliases) = self.names(locked, package.info());
-            translations = cache
-                .open(package)?
-                .add_as(translations, &abbreviation, &aliases);
+            translations =
+                cache
+                    .open(package, reader)?
+                    .add_as(translations, &abbreviation, &aliases);
         }
         Ok(translations)
     }
@@ -639,7 +641,12 @@ impl Project {
     verse counts; any other name is a versification's (`English`). A Bible numbered its own
     way (`versification = "own"`) is an error: it says nothing a map can use
     */
-    pub fn numbering(&self, library: &Library, name: &str) -> Result<Numbering> {
+    pub fn numbering(
+        &self,
+        library: &Library,
+        reader: &dyn TextReader,
+        name: &str,
+    ) -> Result<Numbering> {
         for (locked, package) in self.bibles(library)? {
             let (abbreviation, aliases) = self.names(locked, package.info());
             let names = [locked.dependency_name(), abbreviation.as_str()];
@@ -655,7 +662,7 @@ impl Project {
                      [package] one (`versification = \"English\"`), or name a versification"
                 )));
             }
-            let cached = library.book_cache().open(package)?;
+            let cached = library.book_cache().open(package, reader)?;
             let counts = (cached.manifest().books.iter())
                 .map(|(book, counts)| (*book, ChapterVerses::new(counts.clone())))
                 .collect();
@@ -675,12 +682,16 @@ impl Project {
     pub fn map_reference(
         &self,
         library: &Library,
+        reader: &dyn TextReader,
         reference: &str,
         from: &str,
         to: &str,
     ) -> Result<Mapped> {
         let passage = crate::versification::parse_reference(reference)?;
-        let (from, to) = (self.numbering(library, from)?, self.numbering(library, to)?);
+        let (from, to) = (
+            self.numbering(library, reader, from)?,
+            self.numbering(library, reader, to)?,
+        );
         let counts = from.counts.get(&passage.book);
         (self.versifications(library)?).map(
             &passage,

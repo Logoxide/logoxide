@@ -1,3 +1,5 @@
+#![cfg(feature = "read")]
+
 //! Resolving and installing from git repositories (made here with the `git` command)
 
 use std::{
@@ -5,6 +7,7 @@ use std::{
     process::Command,
 };
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     Library, LogoxideError, Project,
     git::GitCli,
@@ -239,7 +242,7 @@ fn dependencies_features_and_paths() {
     assert!(!library.installed().iter().any(|(id, _)| id == "mine"));
 
     // The vault's Bibles become topos translations (the lexicon, a dependency, doesn't)
-    let translations = project.translations(&library).unwrap();
+    let translations = project.translations(&library, &DefaultReader).unwrap();
     let names: Vec<String> = translations.names().map(String::from).collect();
     assert_eq!(names, ["BIBLE", "MINE"]);
 
@@ -292,7 +295,7 @@ fn forks_side_by_side() {
     assert_eq!(library.installed().len(), 2);
 
     // References name them apart
-    let translations = project.translations(&library).unwrap();
+    let translations = project.translations(&library, &DefaultReader).unwrap();
     assert_eq!(translations.get("KJV"), Some("KJV"));
     assert_eq!(translations.get("KJVB"), Some("KJVB"));
 
@@ -341,7 +344,7 @@ fn two_names_for_one_commit_stay_two() {
         library.package_dir(kjv_two, project.dir())
     );
 
-    let translations = project.translations(&library).unwrap();
+    let translations = project.translations(&library, &DefaultReader).unwrap();
     assert_eq!(translations.get("KJV"), Some("KJV"));
     assert_eq!(translations.get("KJV2"), Some("KJV2"));
 
@@ -353,7 +356,7 @@ fn two_names_for_one_commit_stay_two() {
         .map(|p| p.dependency_name())
         .collect();
     assert_eq!(in_use, ["kjv-two"]);
-    let translations = project.translations(&library).unwrap();
+    let translations = project.translations(&library, &DefaultReader).unwrap();
     assert_eq!(translations.get("KJV"), None);
     assert_eq!(translations.get("KJV2"), Some("KJV2"));
 
@@ -395,7 +398,7 @@ fn collections_bring_in_their_packages() {
         .unwrap();
     assert_eq!(locked(&project), ["library 1.0.0", "tb 1.0.0"]);
     // Its Bible is the project's, though only the collection is named
-    let translations = project.translations(&library).unwrap();
+    let translations = project.translations(&library, &DefaultReader).unwrap();
     assert_eq!(translations.get("TB"), Some("TB"));
     assert_eq!(translations.get("LIB"), None);
 }
@@ -508,7 +511,7 @@ fn each_asker_keeps_its_own_version() {
         .install(&library, &fetcher, Update::Nothing)
         .unwrap();
     assert!(project.name_clashes(&library).unwrap().is_empty());
-    let translations = project.translations(&library).unwrap();
+    let translations = project.translations(&library, &DefaultReader).unwrap();
     assert_eq!(translations.get("TB2"), Some("TB2"));
     assert_eq!(translations.get("TB"), Some("TB"));
     let lock = project.lock().unwrap();

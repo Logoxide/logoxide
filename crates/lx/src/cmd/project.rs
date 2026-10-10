@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use logoxide::reader::DefaultReader;
 use logoxide::{
     FsStorage, MemoryStorage, Project, Storage,
     manifest::{DetailedDependency, MANIFEST},
@@ -671,7 +672,7 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
         .sum();
     let checksum = package.checksum()?;
     let others = logoxide::package::other_files(&storage)?;
-    let cached = library.book_cache().open(package)?;
+    let cached = library.book_cache().open(package, &DefaultReader)?;
     let books = &cached.manifest().books;
     let verses: usize = (books.iter())
         .flat_map(|(_, counts)| counts.iter().map(|&c| c as usize))

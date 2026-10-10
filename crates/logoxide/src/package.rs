@@ -6,12 +6,14 @@ picks the best format its enabled features turn on (USX, then USFM, OSIS, and Th
 use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
+#[cfg(feature = "read")]
 use topos_bible::data::books::BookId;
 
+#[cfg(feature = "read")]
+use crate::source::{NoText, OsisSource, Source, ThmlSource, UsfmSource, UsxSource};
 use crate::{
     error::{LogoxideError, Result},
     manifest::{self, Enabled, Format, MANIFEST, Manifest},
-    source::{NoText, OsisSource, Source, ThmlSource, UsfmSource, UsxSource},
     storage::Storage,
 };
 
@@ -19,6 +21,10 @@ pub struct Package {
     manifest: Manifest,
     storage: Arc<dyn Storage>,
     enabled: Enabled,
+    /// The format read as verses, and its folder (none for a book, a collection, or a recording
+    /// of another package's text)
+    text: Option<(Format, String)>,
+    #[cfg(feature = "read")]
     source: Box<dyn Source>,
 }
 
@@ -71,28 +77,40 @@ impl Package {
                 let names: Vec<&str> = enabled_formats.iter().map(|(n, _)| *n).collect();
                 return Err(LogoxideError::NoReadableFormat(names.join(", ")));
             }
+            #[cfg(feature = "read")]
             let format = (enabled_formats.iter()).find_map(|(name, _)| Format::from_name(name));
             return Ok(Package {
                 manifest,
                 storage,
                 enabled,
+                text: None,
+                #[cfg(feature = "read")]
                 source: Box::new(NoText::new(format)),
             });
         };
-        let dir = path.trim_end_matches('/');
+        let dir = path.trim_end_matches('/').to_string();
+        #[cfg(feature = "read")]
         let source: Box<dyn Source> = match format {
-            Format::Usx => Box::new(UsxSource::open(storage.clone(), dir)?),
-            Format::Usfm => Box::new(UsfmSource::open(storage.clone(), dir)?),
-            Format::Osis => Box::new(OsisSource::open(storage.clone(), dir)?),
-            Format::Thml => Box::new(ThmlSource::open(storage.clone(), dir)?),
+            Format::Usx => Box::new(UsxSource::open(storage.clone(), &dir)?),
+            Format::Usfm => Box::new(UsfmSource::open(storage.clone(), &dir)?),
+            Format::Osis => Box::new(OsisSource::open(storage.clone(), &dir)?),
+            Format::Thml => Box::new(ThmlSource::open(storage.clone(), &dir)?),
             _ => unreachable!("only readable formats are chosen"),
         };
         Ok(Package {
             manifest,
             storage,
             enabled,
+            text: Some((format, dir)),
+            #[cfg(feature = "read")]
             source,
         })
+    }
+
+    /// The format read as verses, and its folder: none for a package without verse text (a
+    /// book, a collection, a recording of another package's text)
+    pub fn text_format(&self) -> Option<(Format, &str)> {
+        self.text.as_ref().map(|(f, dir)| (*f, dir.as_str()))
     }
 
     pub fn manifest(&self) -> &Manifest {
@@ -109,11 +127,13 @@ impl Package {
     }
 
     /// The format being read
+    #[cfg(feature = "read")]
     pub fn source(&self) -> &dyn Source {
         self.source.as_ref()
     }
 
     /// The format being read, keeping nothing else (for apps that hold a source for a session)
+    #[cfg(feature = "read")]
     pub fn into_source(self) -> Box<dyn Source> {
         self.source
     }
@@ -122,6 +142,7 @@ impl Package {
         &self.storage
     }
 
+    #[cfg(feature = "read")]
     pub fn books(&self) -> Vec<BookId> {
         self.source.books()
     }

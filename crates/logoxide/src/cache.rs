@@ -20,10 +20,11 @@ WebAssembly), so they're kept like parsed books. They're kept per logoxide versi
 newer topos may find references an older one missed.
 */
 
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+#[cfg(feature = "read")]
+use std::collections::HashMap;
+use std::sync::Arc;
+#[cfg(feature = "read")]
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use topos_bible::data::{books::BookId, chapter_verses::ChapterVerses, translations::Translations};
@@ -31,10 +32,11 @@ use topos_bible::data::{books::BookId, chapter_verses::ChapterVerses, translatio
 use crate::{
     error::{LogoxideError, Result},
     package::Package,
-    references::FoundReference,
-    source::Book,
+    reader::TextReader,
     storage::Storage,
 };
+#[cfg(feature = "read")]
+use crate::{references::FoundReference, source::Book};
 
 /// Bumped when what the cache holds changes shape, so older caches are built again
 pub const CACHE_FORMAT: u32 = 4;
@@ -55,6 +57,7 @@ pub struct CachedManifest {
 }
 
 /// A package version's references, and what found them
+#[cfg(feature = "read")]
 #[derive(Serialize, Deserialize)]
 struct CachedReferences {
     cache_format: u32,
@@ -73,6 +76,7 @@ What a parsed book's file starts with: the cache format and the logoxide that wr
 isn't self-describing, so a book written by another logoxide (whose topos-bible-markup may lay
 its trees out otherwise) could decode into the wrong tree; one without this header is parsed again
 */
+#[cfg(feature = "read")]
 fn book_header() -> String {
     format!(
         "logoxide-book {CACHE_FORMAT} {}\n",
@@ -82,7 +86,9 @@ fn book_header() -> String {
 
 /// The format a package is read in, as the cache names it (`usx`, `usfm`; `none` without text)
 fn format_name(package: &Package) -> String {
-    (package.source().format()).map_or(String::from("none"), |f| format!("{f:?}").to_lowercase())
+    (package.text_format()).map_or(String::from("none"), |(f, _)| {
+        format!("{f:?}").to_lowercase()
+    })
 }
 
 /// A package version's folder in the cache, for the format it's read in
@@ -102,6 +108,7 @@ fn version_dir(package: &Package, checksum: &str) -> String {
 
 /// The references in a package's EPUBs: from the cache if they were found in this exact text by
 /// this logoxide, else found now and cached (a package without EPUBs has none, and writes nothing)
+#[cfg(feature = "read")]
 fn references(
     storage: &dyn Storage,
     package: &Package,
@@ -136,9 +143,9 @@ impl Cache {
         Self { storage }
     }
 
-    /// A package's cache: read if it was built from this exact text, else built now (verse
-    /// counts only; books are cached as they're read)
-    pub fn open(&self, package: Package) -> Result<CachedPackage> {
+    /// A package's cache: read if it was built from this exact text, else built now by `reader`
+    /// (verse counts only; books are cached as they're read)
+    pub fn open(&self, package: Package, reader: &dyn TextReader) -> Result<CachedPackage> {
         let info = package.info();
         let checksum = package.checksum()?;
         let dir = version_dir(&package, &checksum);
@@ -155,10 +162,7 @@ impl Cache {
         let manifest = match cached {
             Some(manifest) => manifest,
             None => {
-                let source = package.source();
-                let books = (source.books().into_iter())
-                    .map(|id| Ok((id, source.chapter_verses(id)?)))
-                    .collect::<Result<Vec<_>>>()?;
+                let books = reader.counts(&package)?;
                 let manifest = CachedManifest {
                     cache_format: CACHE_FORMAT,
                     engine: engine.to_string(),
@@ -176,11 +180,15 @@ impl Cache {
             }
         };
         Ok(CachedPackage {
+            #[cfg(feature = "read")]
             storage: self.storage.clone(),
+            #[cfg(feature = "read")]
             references: Mutex::default(),
             package,
+            #[cfg(feature = "read")]
             dir,
             manifest,
+            #[cfg(feature = "read")]
             books: Mutex::default(),
         })
     }
@@ -188,6 +196,7 @@ impl Cache {
     /// The Bible references in a package's EPUBs, found once per version (see
     /// [`crate::references::find`]), without reading its verse counts as [`open`](Self::open)
     /// does
+    #[cfg(feature = "read")]
     pub fn references(&self, package: &Package) -> Result<Vec<FoundReference>> {
         let checksum = package.checksum()?;
         let dir = version_dir(package, &checksum);
@@ -197,11 +206,15 @@ impl Cache {
 
 /// A package with its cache: verse counts at hand, and books parsed once
 pub struct CachedPackage {
+    #[cfg(feature = "read")]
     storage: Arc<dyn Storage>,
     package: Package,
+    #[cfg(feature = "read")]
     dir: String,
     manifest: CachedManifest,
+    #[cfg(feature = "read")]
     books: Mutex<HashMap<BookId, Arc<Book>>>,
+    #[cfg(feature = "read")]
     references: Mutex<Option<Arc<Vec<FoundReference>>>>,
 }
 
@@ -215,6 +228,7 @@ impl CachedPackage {
     }
 
     /// A book: from memory, else the cache, else its source (then cached)
+    #[cfg(feature = "read")]
     pub fn book(&self, id: BookId) -> Result<Arc<Book>> {
         if let Some(book) = self.books.lock().ok().and_then(|b| b.get(&id).cloned()) {
             return Ok(book);
@@ -250,6 +264,7 @@ impl CachedPackage {
 
     /// The Bible references in its EPUBs: from memory, else the cache, else found by reading
     /// them (then cached)
+    #[cfg(feature = "read")]
     pub fn references(&self) -> Result<Arc<Vec<FoundReference>>> {
         if let Some(found) = self.references.lock().ok().and_then(|r| r.clone()) {
             return Ok(found);
@@ -293,9 +308,10 @@ impl CachedPackage {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "read"))]
 mod tests {
     use super::*;
+    use crate::reader::DefaultReader;
     use crate::{Features, MemoryStorage};
 
     const MANIFEST: &str = r#"
@@ -322,7 +338,7 @@ usfm = { path = "usfm/" }
         let john = BookId(43);
         let open = || Package::open(files.clone(), Features::default()).unwrap();
         let cache_storage = Arc::new(MemoryStorage::new());
-        let book = (Cache::new(cache_storage.clone()).open(open()))
+        let book = (Cache::new(cache_storage.clone()).open(open(), &DefaultReader))
             .unwrap()
             .book(john)
             .unwrap();
@@ -339,7 +355,7 @@ usfm = { path = "usfm/" }
             spans: vec![],
         };
         (cache_storage.write(&path, &postcard::to_stdvec(&stale).unwrap())).unwrap();
-        let again = (Cache::new(cache_storage.clone()).open(open()))
+        let again = (Cache::new(cache_storage.clone()).open(open(), &DefaultReader))
             .unwrap()
             .book(john)
             .unwrap();
@@ -389,10 +405,10 @@ usx = []
             },
         )
         .unwrap();
-        let usx = cache.open(usx).unwrap();
+        let usx = cache.open(usx, &DefaultReader).unwrap();
         usx.book(john).unwrap();
         let written = cache_storage.walk("").unwrap();
-        let usfm = cache.open(usfm).unwrap();
+        let usfm = cache.open(usfm, &DefaultReader).unwrap();
         usfm.book(john).unwrap();
         assert_eq!(usx.manifest().source_format, "usx");
         assert_eq!(usfm.manifest().source_format, "usfm");
@@ -410,7 +426,10 @@ usx = []
         assert!(usfm_files.iter().all(|f| f.contains("-usfm/")));
         // Opened again, each reads its own counts back
         let usx_again = Package::open(files.clone(), Features::default()).unwrap();
-        assert_eq!(cache.open(usx_again).unwrap().manifest(), usx.manifest());
+        assert_eq!(
+            cache.open(usx_again, &DefaultReader).unwrap().manifest(),
+            usx.manifest()
+        );
     }
 
     #[test]
@@ -425,7 +444,11 @@ usx = []
         let open = || Package::open(files.clone(), Features::default()).unwrap();
         let cache_storage = Arc::new(MemoryStorage::new());
         let cache = Cache::new(cache_storage.clone());
-        let manifest = cache.open(open()).unwrap().manifest().clone();
+        let manifest = cache
+            .open(open(), &DefaultReader)
+            .unwrap()
+            .manifest()
+            .clone();
         let path = (cache_storage.walk("").unwrap().into_iter())
             .find(|f| f.ends_with("/manifest.postcard"))
             .unwrap();
@@ -435,6 +458,9 @@ usx = []
             ..manifest.clone()
         };
         (cache_storage.write(&path, &postcard::to_stdvec(&stale).unwrap())).unwrap();
-        assert_eq!(cache.open(open()).unwrap().manifest(), &manifest);
+        assert_eq!(
+            cache.open(open(), &DefaultReader).unwrap().manifest(),
+            &manifest
+        );
     }
 }
