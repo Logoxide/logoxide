@@ -130,6 +130,9 @@ pub struct CatalogEntry {
     /// Which edition (`1769-oxford`), and its year, when a logoxide catalog says
     pub edition: Option<String>,
     pub edition_year: Option<i32>,
+    /// For a dictionary, when the catalog says: what its entries are keyed by
+    /// (`strongs-greek`, `strongs-hebrew`, or `headword`)
+    pub keys: Option<String>,
 }
 
 /// A work's entries in a search (`LogoxideCatalog.searchGrouped`), or one entry of none
@@ -185,6 +188,7 @@ impl From<&CoreEntry> for CatalogEntry {
             work: e.work.clone(),
             edition: e.edition.clone(),
             edition_year: e.edition_year,
+            keys: e.keys.map(|k| k.name().to_string()),
         }
     }
 }
@@ -232,6 +236,11 @@ impl From<CatalogEntry> for CoreEntry {
             work: e.work,
             edition: e.edition,
             edition_year: e.edition_year,
+            // A name logoxide doesn't know (from a newer one) is left out
+            keys: e
+                .keys
+                .as_deref()
+                .and_then(logoxide_core::manifest::Keys::from_name),
         }
     }
 }

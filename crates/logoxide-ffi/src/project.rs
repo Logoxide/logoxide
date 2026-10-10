@@ -4,7 +4,7 @@
 use boltffi::*;
 use logoxide_core::{LockedPackage, Project, library::library_dir, manifest::DetailedDependency};
 
-use crate::{LogoxideError, PackageFeatures};
+use crate::{LogoxideError, PackageFeatures, PackageKind};
 
 /// Where a package's files are
 #[data]
@@ -111,6 +111,16 @@ impl From<&LockedPackage> for LockedEntry {
     }
 }
 
+/// A package's `logoxide.toml`, as the host read it from a `LockedEntry`'s location
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PackageManifest {
+    /// The entry's `name`
+    pub name: String,
+    /// The text of its `logoxide.toml`
+    pub manifest: String,
+}
+
 /// A dependency to add, as `logoxide.toml` writes it: `git` (with at most one of `version`, `tag`,
 /// `branch`, or `rev`) or `path`
 #[data]
@@ -192,6 +202,34 @@ impl LogoxideProject {
     ) -> Result<Self, LogoxideError> {
         let project = Project::from_text("", manifest.as_deref(), lock.as_deref())?;
         Ok(Self { project })
+    }
+
+    /// The packages in use of a kind, as the core's `Project::packages_of` finds them, by the
+    /// manifests the host read
+    fn packages_of(
+        &self,
+        kind: PackageKind,
+        manifests: Vec<PackageManifest>,
+    ) -> Result<Vec<LockedEntry>, LogoxideError> {
+        let manifests: std::collections::HashMap<String, String> = (manifests.into_iter())
+            .map(|m| (m.name, m.manifest))
+            .collect();
+        let mut found = vec![];
+        for entry in self.packages().into_iter().filter(|e| e.enabled) {
+            let Some(text) = manifests.get(&entry.name) else {
+                continue;
+            };
+            let manifest = logoxide_core::manifest::Manifest::parse(text).map_err(|e| {
+                LogoxideError::Invalid {
+                    message: format!("{}'s logoxide.toml: {e}", entry.name),
+                }
+            })?;
+            let is = (manifest.package.as_ref()).is_some_and(|p| PackageKind::from(p.kind) == kind);
+            if is {
+                found.push(entry);
+            }
+        }
+        Ok(found)
     }
 }
 
@@ -378,6 +416,36 @@ impl LogoxideProject {
                 packages: c.packages,
             })
             .collect()
+    }
+
+    /**
+    The commentaries in use (`kind = "commentary"`): of `packages()`, those that are on and whose
+    `logoxide.toml` (given by the host, by the entry's name: the lock doesn't say what a package
+    is) makes it one, in that order. An entry whose manifest isn't given is left out; one that
+    can't be read is an error naming it
+    */
+    pub fn commentaries(
+        &self,
+        manifests: Vec<PackageManifest>,
+    ) -> Result<Vec<LockedEntry>, LogoxideError> {
+        self.packages_of(PackageKind::Commentary, manifests)
+    }
+
+    /// The dictionaries in use (`kind = "lexicon"`), as `commentaries` finds them
+    pub fn dictionaries(
+        &self,
+        manifests: Vec<PackageManifest>,
+    ) -> Result<Vec<LockedEntry>, LogoxideError> {
+        self.packages_of(PackageKind::Lexicon, manifests)
+    }
+
+    /// The cross-reference packages in use (`kind = "cross-references"`), as `commentaries`
+    /// finds them
+    pub fn cross_references(
+        &self,
+        manifests: Vec<PackageManifest>,
+    ) -> Result<Vec<LockedEntry>, LogoxideError> {
+        self.packages_of(PackageKind::CrossReferences, manifests)
     }
 
     /// Whether a dependency is on (any name the manifest doesn't have is)

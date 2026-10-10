@@ -232,6 +232,9 @@ pub struct CatalogEntry {
     /// Which edition (`1769-oxford`), and its year, when a logoxide catalog says
     pub edition: Option<String>,
     pub edition_year: Option<i32>,
+    /// What a dictionary's keys are (`[package] keys`: Strong's Greek or Hebrew numbers, or
+    /// headwords), when the catalog says; none for other kinds
+    pub keys: Option<crate::manifest::Keys>,
 }
 
 impl CatalogEntry {
@@ -306,6 +309,8 @@ struct TomlEntry {
     edition: Option<String>,
     #[serde(default)]
     edition_year: Option<i32>,
+    #[serde(default)]
+    keys: Option<crate::manifest::Keys>,
     /// Its path in the folder the catalog was built from (`lx catalog build`), which names it
     /// as its id does
     #[serde(default)]
@@ -444,6 +449,7 @@ impl Catalog {
                 work: e.work,
                 edition: e.edition,
                 edition_year: e.edition_year,
+                keys: e.keys,
             });
         }
         Ok(Catalog {
@@ -535,6 +541,7 @@ impl Catalog {
                     work: info.work,
                     edition: info.edition,
                     edition_year: info.edition_year,
+                    keys: info.keys,
                 })
             })
             .collect();
@@ -684,6 +691,9 @@ impl Catalog {
         }
         if let Some(year) = info.edition_year {
             table.insert("edition-year", toml_edit::value(i64::from(year)));
+        }
+        if let Some(keys) = info.keys {
+            table.insert("keys", toml_edit::value(keys.name()));
         }
         for (key, list) in [
             ("keywords", &info.keywords),
@@ -898,6 +908,7 @@ mod tests {
                 work: None,
                 edition: None,
                 edition_year: None,
+                keys: None,
             }
         };
         let mut entries = vec![
@@ -989,6 +1000,38 @@ git = "https://example.org/bsb"
             ),
             (Some("kjv"), Some("1769-oxford"), Some(1769))
         );
+    }
+
+    #[test]
+    fn a_dictionarys_keys_are_listed() {
+        let info = crate::Manifest::parse(
+            "[package]\nid = \"strongs\"\nname = \"Strong's\"\nabbreviation = \"SG\"\n\
+             version = \"1.0.0\"\nlanguage = \"en\"\nkind = \"lexicon\"\n\
+             keys = \"strongs-greek\"\n[formats]\ndictionary = { path = \"entries/\" }\n",
+        )
+        .unwrap()
+        .package
+        .unwrap();
+        let text = Catalog::toml_entry(&info, "https://example.org/strongs");
+        let entry = &Catalog::parse_toml(&text).unwrap().entries[0];
+        assert_eq!(entry.keys, Some(crate::manifest::Keys::StrongsGreek));
+        // A folder registry's entries carry them too
+        let manifest = crate::Manifest {
+            package: Some(info),
+            ..crate::Manifest::default()
+        };
+        let folder = Catalog::from_packages("local", "/r", vec![("strongs".into(), manifest)]);
+        assert_eq!(
+            folder.entries[0].keys,
+            Some(crate::manifest::Keys::StrongsGreek)
+        );
+        // A Bible's entry has none
+        let bible = Catalog::parse_toml(
+            "[[package]]\nid = \"b\"\nname = \"B\"\nabbreviation = \"B\"\nlanguage = \"en\"\n\
+             git = \"https://example.org/b\"\n",
+        )
+        .unwrap();
+        assert_eq!(bible.entries[0].keys, None);
     }
 
     #[test]

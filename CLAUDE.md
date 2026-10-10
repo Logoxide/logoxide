@@ -41,7 +41,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     chose a fixed list, with keywords for anything narrower), `repository`, `documentation`, `readme` (a declared file), and
     `about-books` (USFM codes of the books it's mainly about: the owner wants these said by the
     author, never derived from the text; `book_code` turns names into codes for `lx new --about`).
-    Catalogs carry keywords, categories, and about-books; `Catalog::search` matches them (a word
+    Catalogs carry keywords, categories, about-books, and a dictionary's `keys`; `Catalog::search` matches them (a word
     naming a book matches what's about it) and `lx search --category` filters. `topos_config.rs` reads topos's `config.toml` book data
     (`data`/`merge-data`/`remove-data`, as the CLI and logoxide-lsp do) and `BookFilters`
     (topos's `BibleFilter`: testaments, genres, books, and exclusions) gives the codes kept;
@@ -552,7 +552,16 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   each naming its parent, with kind, tag name, attributes, text, milestone; PLAN-NEXT.md M.1,
   the owner's N6: typed records, not JSON) and `verseNodes()` (each verse's marker, first, and
   last node by index), so a host renders with its own engine without parsing the formats;
-  `LogoxidePackage.book` gives one through `from_tree` (Rust-only). topos-ffi comes without its `markup` feature, so it exports no `ToposBook`,
+  `LogoxidePackage.book` gives one through `from_tree` (Rust-only). Commentaries,
+  dictionaries, and cross-references (PLAN-NEXT.md I.6): `LogoxidePackage.notes(passage,
+  BookTextOptions)` (`Note`: chapter, verse, last, lastChapter, part, text, html; logoxide-text's
+  `Source::notes` over the cached book), `entry(key, options)` (`Entry`: key, headword, text,
+  html; `null` for a key it lacks), `keys()`, and `crossReferences(verse)` (`CrossReference`:
+  from, to, weight; `verse` OSIS or a reference topos reads); `PackageInfo.keys` and
+  `CatalogEntry.keys` (`strongs-greek`, …). `LogoxideProject.commentaries(manifests)`,
+  `dictionaries`, `crossReferences` take each entry's `logoxide.toml` text from the host
+  (`PackageManifest`: name, manifest; the lock doesn't say a package's kind) and give the
+  `packages()` in use of that kind, as the core's `Project::packages_of`. topos-ffi comes without its `markup` feature, so it exports no `ToposBook`,
   `BookVerse`, or `BookTextOptions` to clash with these. `ToposTranslations::from`/`core`
   (Rust-only, in topos-ffi) carry logoxide's counts across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
   `PackageInfo`, carries `script` and the language's name; its `CatalogSource` is `Git`,
