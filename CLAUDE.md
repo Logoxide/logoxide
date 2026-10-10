@@ -450,8 +450,13 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `LogoxideBook` (`book.rs`, topos-ffi's `ToposBook` until October 2026, on logoxide-markup with
   its `html` feature, which only this crate turns on): `parse(topos, markup, text)` (an unknown
   markup is `InvalidMarkup`), `verses` (`BookVerse`), `chapterVerses`, passages and chapters as
-  HTML or text (`BookTextOptions`); `LogoxidePackage.book` gives one through `from_tree`
-  (Rust-only). topos-ffi comes without its `markup` feature, so it exports no `ToposBook`,
+  HTML or text (`BookTextOptions`), `styledText(passage, BookTextStyle, name)` (logoxide-text's
+  `passage::text_in`, the text the language server shows, with `TextMark`s by `NodeKind` for a
+  host that colors it), and the tree itself: `nodes()` (`BookNode`: the list in document order,
+  each naming its parent, with kind, tag name, attributes, text, milestone; PLAN-NEXT.md M.1,
+  the owner's N6: typed records, not JSON) and `verseNodes()` (each verse's marker, first, and
+  last node by index), so a host renders with its own engine without parsing the formats;
+  `LogoxidePackage.book` gives one through `from_tree` (Rust-only). topos-ffi comes without its `markup` feature, so it exports no `ToposBook`,
   `BookVerse`, or `BookTextOptions` to clash with these. `ToposTranslations::from`/`core`
   (Rust-only, in topos-ffi) carry logoxide's counts across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
   `PackageInfo`, carries `script` and the language's name; its `CatalogSource` is `Git`,

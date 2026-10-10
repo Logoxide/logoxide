@@ -173,6 +173,9 @@ Any order, as they're reachable; each in `logoxide-import`.
    host can render with its own engine without parsing USX/USFM/OSIS/ThML.
 2. **`LogoxideBook.text` on `logoxide_text::passage`** (the E.3 leftover), so the bindings
    and the LSP write the same text; `BookTextOptions` maps onto `Style`.
+   **Done** (2026-10-11, M.1 and M.2): `LogoxideBook.nodes()`/`verseNodes()` as typed records
+   (`BookNode`, `VerseNodes`), and `styledText(passage, BookTextStyle, name)` through
+   `passage::text_in`; `text()` and `html()` stay as they were for the plugin.
 3. **The LSP and the plugin map references** (`lx map`'s `Versifications` through the FFI's
    `LogoxideVersifications`): a reference in another Bible's numbering shown in hover and in
    the plugin's reader when the project has a map package.

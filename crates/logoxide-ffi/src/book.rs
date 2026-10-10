@@ -2,16 +2,216 @@
 //! text. topos-ffi's `LogoxideBook` until October 2026: books are logoxide's, topos only finds
 //! references.
 
+use std::collections::HashMap;
+
 use boltffi::*;
 use logoxide_core::topos_bible::segments::Passage as CorePassage;
 use logoxide_markup::{
-    Filter, HtmlOptions, HtmlRenderer, Kind, Markup, Node, TextOptions, find_all, parse,
-    plain_text,
+    Filter, HtmlOptions, HtmlRenderer, Kind, Markup, Milestone, Node, NodePath, TextOptions,
+    find_all, parse, plain_text,
     verses::{VerseSpan, chapter_verses, passage_ranges, slice, usx_chapter_verses, verses},
 };
+use logoxide_text::passage::{Style, text_in};
 use topos_bible::{Passage, Topos};
 
 use crate::LogoxideError;
+
+/// What a node of a book's tree is: logoxide-markup's kinds, and `Text` for a run of text
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeKind {
+    Text,
+    Word,
+    Note,
+    Reference,
+    Title,
+    WordsOfJesus,
+    Quote,
+    Added,
+    DivineName,
+    Highlight,
+    Foreign,
+    Paragraph,
+    LineGroup,
+    Line,
+    LineBreak,
+    Division,
+    Chapter,
+    Verse,
+    Milestone,
+    Image,
+    Entry,
+    Metadata,
+    Other,
+}
+
+impl From<Kind> for NodeKind {
+    fn from(kind: Kind) -> Self {
+        match kind {
+            Kind::Word => NodeKind::Word,
+            Kind::Note => NodeKind::Note,
+            Kind::Reference => NodeKind::Reference,
+            Kind::Title => NodeKind::Title,
+            Kind::WordsOfJesus => NodeKind::WordsOfJesus,
+            Kind::Quote => NodeKind::Quote,
+            Kind::Added => NodeKind::Added,
+            Kind::DivineName => NodeKind::DivineName,
+            Kind::Highlight => NodeKind::Highlight,
+            Kind::Foreign => NodeKind::Foreign,
+            Kind::Paragraph => NodeKind::Paragraph,
+            Kind::LineGroup => NodeKind::LineGroup,
+            Kind::Line => NodeKind::Line,
+            Kind::LineBreak => NodeKind::LineBreak,
+            Kind::Division => NodeKind::Division,
+            Kind::Chapter => NodeKind::Chapter,
+            Kind::Verse => NodeKind::Verse,
+            Kind::Milestone => NodeKind::Milestone,
+            Kind::Image => NodeKind::Image,
+            Kind::Entry => NodeKind::Entry,
+            Kind::Metadata => NodeKind::Metadata,
+            _ => NodeKind::Other,
+        }
+    }
+}
+
+/// An attribute of an element, as the markup wrote it (`osisID`, `style`, `lemma`)
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NodeAttribute {
+    pub name: String,
+    pub value: String,
+}
+
+/// Which milestone an element is: its start (`sID`) or its end (`eID`, or an end tag whose
+/// start was in an earlier entry)
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MilestoneKind {
+    Start,
+    End,
+}
+
+/**
+One node of a book's tree ([`LogoxideBook::nodes`]), in document order, each naming its parent
+by index (`null` at the top level), so a host can rebuild the tree or walk the list as it is
+
+- A text node has `kind` `Text` and its words in `text`; an element has its kind, its tag
+  `name` as the markup wrote it (USX `para`'s `style` attribute says which paragraph), and its
+  `attributes`
+- `milestone` says an element is a start or end marker rather than a container (a verse in
+  USX, an `sID`/`eID` pair in OSIS); `unclosed` that it was opened but not closed in its entry
+*/
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BookNode {
+    /// Its place in the list, which children and verses name
+    pub index: u32,
+    pub parent: Option<u32>,
+    pub kind: NodeKind,
+    pub name: String,
+    pub text: String,
+    pub attributes: Vec<NodeAttribute>,
+    pub milestone: Option<MilestoneKind>,
+    pub unclosed: bool,
+}
+
+/// Where a verse is in the book's nodes ([`LogoxideBook::verse_nodes`]): its marker, and the
+/// nodes it runs over, from `start` to `end` (both indices into [`LogoxideBook::nodes`]; a
+/// verse runs from the end of the one before it to its own end, so a heading belongs to the
+/// verse after it)
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct VerseNodes {
+    pub chapter: u8,
+    pub verse: u8,
+    pub last: u8,
+    pub last_chapter: u8,
+    pub part: u8,
+    pub marker: u32,
+    pub start: u32,
+    pub end: u32,
+}
+
+/// How [`LogoxideBook::styled_text`] writes a passage: logoxide-text's `passage::Style`, as the
+/// language server writes hover text and whole books
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BookTextStyle {
+    /// Written where each verse starts (`[{verse}]`; `{chapter}`, `{book}`, `{name}` too), or
+    /// none for no verse numbers
+    pub verse_label: Option<String>,
+    /// Written on its own line where each chapter starts (`{name} {chapter}`), or none
+    pub chapter_label: Option<String>,
+    /// Footnotes and cross references, in brackets when shown
+    pub notes: bool,
+    pub headings: bool,
+    /// Words of Jesus, translators' additions, the divine name, and quotations written in a
+    /// template with `{text}` (`“{text}”`), by kind; without one they're plain text
+    pub templates: Vec<KindTemplate>,
+    /// Lines longer than this many characters break at a space; none keeps them whole
+    pub width: Option<u32>,
+    /// Text after this many bytes is cut, ending with an ellipsis; none keeps it whole
+    pub limit: Option<u32>,
+}
+
+/// A template for one kind of element in a [`BookTextStyle`]
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KindTemplate {
+    pub kind: NodeKind,
+    pub template: String,
+}
+
+/// A run of a passage's text and what it is (a verse number, a heading, words of Jesus), by
+/// byte offsets into [`StyledText::text`], for a host that colors it
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TextMark {
+    pub start: u32,
+    pub end: u32,
+    pub kind: NodeKind,
+}
+
+/// A passage as text in a [`BookTextStyle`], its parts a blank line apart, and its marks
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StyledText {
+    pub text: String,
+    pub marks: Vec<TextMark>,
+}
+
+fn template_kind(kind: NodeKind) -> Option<Kind> {
+    Some(match kind {
+        NodeKind::Title => Kind::Title,
+        NodeKind::Note => Kind::Note,
+        NodeKind::WordsOfJesus => Kind::WordsOfJesus,
+        NodeKind::Added => Kind::Added,
+        NodeKind::DivineName => Kind::DivineName,
+        NodeKind::Quote => Kind::Quote,
+        _ => return None,
+    })
+}
+
+impl From<&BookTextStyle> for Style {
+    fn from(style: &BookTextStyle) -> Self {
+        let mut hidden = vec![];
+        if !style.notes {
+            hidden.push(Kind::Note);
+        }
+        if !style.headings {
+            hidden.push(Kind::Title);
+        }
+        Style {
+            verse_label: style.verse_label.clone(),
+            chapter_label: style.chapter_label.clone(),
+            hidden,
+            templates: (style.templates.iter())
+                .filter_map(|t| Some((template_kind(t.kind)?, t.template.clone())))
+                .collect(),
+            width: style.width.map(|w| w as usize),
+        }
+    }
+}
 
 /// One verse of a [`LogoxideBook`]
 #[data]
@@ -177,6 +377,70 @@ impl LogoxideBook {
         chapters
     }
 
+    /**
+    The book's whole tree as a list in document order, each node naming its parent, so a host
+    renders with its own engine without parsing USX, USFM, OSIS, or ThML itself; the verses'
+    places in it are `verseNodes`
+    */
+    pub fn nodes(&self) -> Vec<BookNode> {
+        let mut out = vec![];
+        flatten_nodes(&self.nodes, None, &mut out);
+        out
+    }
+
+    /// Where each verse is in `nodes`: its marker, and the first and last node it runs over
+    pub fn verse_nodes(&self) -> Vec<VerseNodes> {
+        let mut indices = HashMap::new();
+        index_paths(&self.nodes, &mut NodePath::default(), &mut indices);
+        let at = |path: &NodePath| indices.get(path).copied().unwrap_or(0);
+        (self.spans.iter())
+            .map(|s| VerseNodes {
+                chapter: s.chapter,
+                verse: s.verse,
+                last: s.last,
+                last_chapter: s.last_chapter,
+                part: s.part,
+                marker: at(&s.marker),
+                start: at(&s.start),
+                end: at(&s.end),
+            })
+            .collect()
+    }
+
+    /// A passage as text in `style` (`name` is the book's name for the labels, like `John`),
+    /// its parts a blank line apart, with what marks each run of it; nothing for a passage the
+    /// book doesn't have. The same text the language server shows
+    pub fn styled_text(
+        &self,
+        passage: Passage,
+        style: BookTextStyle,
+        name: String,
+    ) -> Option<StyledText> {
+        if self.book_id != Some(passage.book_id) {
+            return None;
+        }
+        let passage = CorePassage::from(&passage);
+        let limit = style.limit.map(|l| l as usize);
+        let text = text_in(
+            &self.nodes,
+            &self.spans,
+            &passage,
+            &Style::from(&style),
+            &name,
+            limit,
+        )?;
+        Some(StyledText {
+            marks: (text.marks.iter())
+                .map(|(r, kind)| TextMark {
+                    start: r.start as u32,
+                    end: r.end as u32,
+                    kind: NodeKind::from(*kind),
+                })
+                .collect(),
+            text: text.text,
+        })
+    }
+
     /// Each part of the passage (`John 3:16; 4` has two) as HTML, leaving out parts the book
     /// doesn't have; nothing for a passage in another book
     pub fn html(&self, passage: Passage, options: BookTextOptions) -> Vec<String> {
@@ -222,6 +486,58 @@ impl LogoxideBook {
             filter: filter(&options),
         })
         .render(&nodes)
+    }
+}
+
+/// Each node and its descendants, in document order, naming their parents
+fn flatten_nodes(nodes: &[Node], parent: Option<u32>, out: &mut Vec<BookNode>) {
+    for node in nodes {
+        let index = out.len() as u32;
+        match node {
+            Node::Text(text) => out.push(BookNode {
+                index,
+                parent,
+                kind: NodeKind::Text,
+                name: String::new(),
+                text: text.clone(),
+                attributes: vec![],
+                milestone: None,
+                unclosed: false,
+            }),
+            Node::Element(element) => {
+                out.push(BookNode {
+                    index,
+                    parent,
+                    kind: NodeKind::from(element.kind),
+                    name: element.name.clone(),
+                    text: String::new(),
+                    attributes: (element.attrs.iter())
+                        .map(|(name, value)| NodeAttribute {
+                            name: name.clone(),
+                            value: value.clone(),
+                        })
+                        .collect(),
+                    milestone: element.milestone.map(|m| match m {
+                        Milestone::Start => MilestoneKind::Start,
+                        Milestone::End => MilestoneKind::End,
+                    }),
+                    unclosed: element.unclosed,
+                });
+                flatten_nodes(&element.children, Some(index), out);
+            }
+        }
+    }
+}
+
+/// Each node's path and its index in the flattened list (the same order as `flatten_nodes`)
+fn index_paths(nodes: &[Node], path: &mut NodePath, indices: &mut HashMap<NodePath, u32>) {
+    for (i, node) in nodes.iter().enumerate() {
+        path.0.push(i);
+        indices.insert(path.clone(), indices.len() as u32);
+        if let Node::Element(element) = node {
+            index_paths(&element.children, path, indices);
+        }
+        path.0.pop();
     }
 }
 
@@ -306,5 +622,87 @@ mod tests {
                 .contains("Nicodemus")
         );
         assert!(LogoxideBook::parse(&topos, "rtf".into(), String::new()).is_err());
+    }
+
+    #[test]
+    fn the_tree_and_styled_text() {
+        let topos = Topos::new();
+        let book = LogoxideBook::parse(&topos, "usx".into(), USX.into()).unwrap();
+        let nodes = book.nodes();
+        // The list is in document order, each node naming its parent: the `usx` element at
+        // the top, the `book` line inside it
+        assert_eq!((nodes[0].name.as_str(), nodes[0].parent), ("usx", None));
+        let meta = nodes.iter().find(|n| n.kind == NodeKind::Metadata).unwrap();
+        assert_eq!((meta.name.as_str(), meta.parent), ("book", Some(0)));
+        let code = meta.attributes.iter().find(|a| a.name == "code").unwrap();
+        assert_eq!(code.value, "JHN");
+        let heading = nodes.iter().find(|n| n.kind == NodeKind::Title).unwrap();
+        let words = nodes
+            .iter()
+            .find(|n| n.parent == Some(heading.index))
+            .unwrap();
+        assert_eq!(
+            (words.kind, words.text.as_str()),
+            (NodeKind::Text, "Jesus and Nicodemus")
+        );
+        let verse = nodes.iter().find(|n| n.kind == NodeKind::Verse).unwrap();
+        assert_eq!(verse.milestone, Some(MilestoneKind::Start));
+        assert!(nodes.iter().all(|n| n.parent.is_none_or(|p| p < n.index)));
+        // Each verse names its marker and the nodes it runs over
+        let verses = book.verse_nodes();
+        assert_eq!(verses.len(), 3);
+        assert_eq!((verses[0].chapter, verses[0].verse), (3, 16));
+        assert_eq!(nodes[verses[0].marker as usize].kind, NodeKind::Verse);
+        assert!(verses[0].start <= verses[0].marker && verses[0].marker <= verses[0].end);
+        assert!(verses[0].end <= verses[1].end);
+        // Styled text, as the language server writes it
+        let parse = |r: &str| topos.parse(r.into(), BookStyle::Name).unwrap();
+        let style = BookTextStyle {
+            verse_label: Some("[{verse}]".into()),
+            chapter_label: None,
+            notes: false,
+            headings: true,
+            templates: vec![],
+            width: None,
+            limit: None,
+        };
+        let text = book
+            .styled_text(parse("John 3:16-17"), style.clone(), "John".into())
+            .unwrap();
+        assert_eq!(
+            text.text,
+            "Jesus and Nicodemus\n[16] For God so loved the world. [17] For God did not send His Son."
+        );
+        let label = text
+            .marks
+            .iter()
+            .find(|m| m.kind == NodeKind::Verse)
+            .unwrap();
+        assert_eq!(&text.text[label.start as usize..label.end as usize], "[16]");
+        assert!(text.marks.iter().any(|m| m.kind == NodeKind::Title));
+        let cut = BookTextStyle {
+            limit: Some(25),
+            ..style
+        };
+        let short = book
+            .styled_text(parse("John 3:16-17"), cut, "John".into())
+            .unwrap();
+        assert!(short.text.ends_with(" …"), "{}", short.text);
+        assert!(
+            book.styled_text(
+                parse("Romans 8"),
+                BookTextStyle {
+                    verse_label: None,
+                    chapter_label: None,
+                    notes: false,
+                    headings: false,
+                    templates: vec![],
+                    width: None,
+                    limit: None,
+                },
+                "Romans".into()
+            )
+            .is_none()
+        );
     }
 }

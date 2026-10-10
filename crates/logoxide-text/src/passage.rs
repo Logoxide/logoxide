@@ -16,7 +16,7 @@ The tree and the verses come from a [`Book`]; this knows no packages, and no edi
 use std::{collections::BTreeMap, collections::HashMap, ops::Range};
 
 use logoxide_markup::{
-    Filter, Flat, Flattener, Kind, NodePath, TextOptions,
+    Filter, Flat, Flattener, Kind, Node, NodePath, TextOptions,
     flatten::flatten,
     verses::{VerseSpan, passage_ranges, slice},
 };
@@ -115,10 +115,23 @@ pub fn text(
     if book.id != passage.book {
         return None;
     }
+    text_in(&book.nodes, &book.spans, passage, style, name, limit)
+}
+
+/// [`text`] for a tree and its verses held apart from a [`Book`] (the bindings' books), with
+/// no check that the passage is in this book
+pub fn text_in(
+    nodes: &[Node],
+    spans: &[VerseSpan],
+    passage: &Passage,
+    style: &Style,
+    name: &str,
+    limit: Option<usize>,
+) -> Option<Text> {
     let mut flat = Flattener::new(style.options(name));
-    for r in passage_ranges(&book.spans, passage) {
-        let (first, last) = (&book.spans[r.start], &book.spans[r.end - 1]);
-        flat.push(&slice(&book.nodes, &first.start, Some(&last.end)));
+    for r in passage_ranges(spans, passage) {
+        let (first, last) = (&spans[r.start], &spans[r.end - 1]);
+        flat.push(&slice(nodes, &first.start, Some(&last.end)));
     }
     let flat = flat.finish();
     let all = marks(&flat);
