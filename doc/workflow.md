@@ -57,9 +57,9 @@ commentaries whose markup is OSIS or ThML):
 
 ```sh
 lx search "american standard"
-# ASV (eng-asv): American Standard Version (1901), English, LicenseRef-PublicDomain
+# ASV (ebible-eng-asv): American Standard Version (1901), English, LicenseRef-PublicDomain
 #     lx import ebible:eng-asv
-# ASV (eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
+# ASV (fetch-eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
 #     lx import fetch:eng_asv
 # ASV (sword-asv): American Standard Version (1901), en, LicenseRef-PublicDomain
 #     lx import sword:crosswire/ASV
@@ -88,10 +88,10 @@ Add what the vault uses. Git packages are installed into the library (`LOGOXIDE_
 ```sh
 lx add github:someone/kjv                                 # the newest release, ^1.0.1
 lx add github:someone/bsb --version 1                     # any 1.x
-lx import ebible:eng-asv                                  # into imports/eng-asv
+lx import ebible:eng-asv                                  # into imports/ebible-eng-asv
 lx list
 # bsb 1.0.1  BSB (Berean Standard Bible), LicenseRef-PublicDomain  https://github.com/someone/bsb v1.0.1
-# eng-asv 1.0.0  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/eng-asv
+# ebible-eng-asv 1.0.0  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/ebible-eng-asv
 # kjv 1.0.1  KJV (King James Version (1769)), LicenseRef-PublicDomain  https://github.com/someone/kjv v1.0.1
 ```
 
@@ -123,7 +123,7 @@ The manifest now reads:
 [dependencies]
 kjv = { git = "https://github.com/someone/kjv", version = "1.0.1" }
 bsb = { git = "https://github.com/someone/bsb", version = "1" }
-eng-asv = { path = "imports/eng-asv" }
+ebible-eng-asv = { path = "imports/ebible-eng-asv" }
 ```
 
 `github:owner/repo` is short for `https://github.com/owner/repo` (`gitlab:` and `codeberg:` work
@@ -179,7 +179,7 @@ same verses, and a changed file is caught by its checksum:
 cd ~/Notes                                # synced: logoxide.toml, logoxide.lock, imports/
 lx install
 # bsb 1.0.1
-# eng-asv 1.0.0
+# ebible-eng-asv 1.0.0
 # kjv 1.0.1
 # 3 packages, locked in ./logoxide.lock
 ```
@@ -204,9 +204,9 @@ changed, saying how (a reader's files beside them stay):
 ```sh
 lx import --update --dry-run              # what would change
 # ccel-darby 1.0.0 → 1.1.0: 1 verse reworded (a Minor change)
-# eng-asv 1.0.0 → 1.0.1: no verse changed (a Patch change; the publisher's 2026-10-08 → 2026-11-01)
+# ebible-eng-asv 1.0.0 → 1.0.1: no verse changed (a Patch change; the publisher's 2026-10-08 → 2026-11-01)
 lx import --update                        # replace the changed ones and lock them again
-lx import --update eng-asv                # just one (its name, or ebible:eng-asv)
+lx import --update ebible-eng-asv         # just one (its name, or ebible:eng-asv)
 ```
 
 eBible.org's and SWORD imports are downloaded only when the catalog lists a newer version of the
@@ -218,7 +218,7 @@ same text a patch), so one version never names two texts.
 ## Publishing: a package of your own
 
 A package is a git repository with a `logoxide.toml` and its text, released by tags (`v1.0.0`).
-Start from a folder of USX or USFM books, or from an import (`imports/eng-asv` is already one):
+Start from a folder of USX or USFM books, or from an import (`imports/ebible-eng-asv` is already one):
 
 ```toml
 [package]

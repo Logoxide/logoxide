@@ -962,7 +962,7 @@ mod tests {
                 info.abbreviation.as_str(),
                 info.version.to_string()
             ),
-            ("eng-asv", "ASV", "1.0.0".to_string())
+            ("ebible-eng-asv", "ASV", "1.0.0".to_string())
         );
         let upstream = info.upstream.as_ref().unwrap();
         assert_eq!(

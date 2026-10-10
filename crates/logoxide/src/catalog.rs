@@ -466,7 +466,8 @@ impl Catalog {
             let english = name_of("english");
             let local = name_of("local");
             entries.push(CatalogEntry {
-                id: package_id(id),
+                // Prefixed, as every import's id is: fetch.bible's ids are other catalogs' too
+                id: format!("fetch-{}", package_id(id)),
                 name: english
                     .clone()
                     .or_else(|| local.clone())
@@ -755,7 +756,9 @@ impl Catalog {
                 .or_else(|| get(&row, short_title))
                 .unwrap_or_else(|| ebible_id.clone());
             entries.push(CatalogEntry {
-                id: package_id(&ebible_id),
+                // Prefixed: eBible.org's ids (`eng-web`) could be other catalogs' too, and the
+                // first of an id wins when catalogs merge
+                id: format!("ebible-{}", package_id(&ebible_id)),
                 abbreviation: abbreviation(&ebible_id, &code),
                 name,
                 aliases: vec![],
@@ -1231,7 +1234,8 @@ fn score(entry: &CatalogEntry, words: &[(String, Option<String>)]) -> Option<u32
     Some(total)
 }
 
-/// A package id from eBible.org's (`eng-asv`, `engkjv2006`): lowercase letters, digits, `-`, `_`
+/// A package id from a publisher's (`eng-asv`, `engkjv2006`, `KJV`): lowercase letters, digits,
+/// `-`, `_`
 pub(crate) fn package_id(id: &str) -> String {
     id.to_lowercase()
         .chars()
@@ -1307,7 +1311,7 @@ mod tests {
                 asv.abbreviation.as_str(),
                 asv.language.as_str()
             ),
-            ("eng-asv", "ASV", "eng")
+            ("ebible-eng-asv", "ASV", "eng")
         );
         assert_eq!(asv.license.as_deref(), Some("LicenseRef-PublicDomain"));
         assert_eq!(
@@ -1423,9 +1427,9 @@ git = "https://example.org/bsb"
                 .map(|e| e.id.clone())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(ids("asv"), ["eng-asv"]);
-        assert_eq!(ids("english"), ["eng-asv", "bsb"]);
-        assert_eq!(ids("hebrew codex"), ["hebwlc"]);
+        assert_eq!(ids("asv"), ["ebible-eng-asv"]);
+        assert_eq!(ids("english"), ["ebible-eng-asv", "bsb"]);
+        assert_eq!(ids("hebrew codex"), ["ebible-hebwlc"]);
         assert_eq!(ids("berean"), ["bsb"]);
         assert!(ids("nothing like this").is_empty());
         assert_eq!(ids("").len(), 3);
@@ -1516,18 +1520,26 @@ usx = { path = "usx/" }
                 bsb.abbreviation.as_str(),
                 bsb.language.as_str()
             ),
-            ("eng_bsb", "BSB", "eng")
+            ("fetch-eng_bsb", "BSB", "eng")
         );
         assert_eq!(bsb.license.as_deref(), Some("LicenseRef-PublicDomain"));
         let CatalogSource::FetchBible { books, .. } = &bsb.source else {
             panic!()
         };
         assert_eq!((books.len(), books[42].as_str()), (66, "jhn"));
-        let x = catalog.entries.iter().find(|e| e.id == "spa_x").unwrap();
+        let x = catalog
+            .entries
+            .iter()
+            .find(|e| e.id == "fetch-spa_x")
+            .unwrap();
         assert_eq!(x.license.as_deref(), Some("CC-BY-SA-3.0"));
         assert_eq!(x.aliases, ["Biblia"]);
         assert_eq!(x.language_name.as_deref(), Some("Spanish"));
-        let y = catalog.entries.iter().find(|e| e.id == "heb_y").unwrap();
+        let y = catalog
+            .entries
+            .iter()
+            .find(|e| e.id == "fetch-heb_y")
+            .unwrap();
         assert_eq!(
             (y.license.as_deref(), y.direction),
             (Some("LicenseRef-fetch.bible"), Direction::Rtl)

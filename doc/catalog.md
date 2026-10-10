@@ -85,7 +85,7 @@ or combining marks (both sides are lowercased, decomposed to NFD, stripped of ev
 Unicode's `General_Category=Mark`, and a final sigma read as `σ`), so `ιησους` finds `Ἰησοῦς`,
 `בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. When catalogs are searched together, the
 first entry with a given id wins, so catalogs with overlapping ids should prefix them
-(logoxide's importers use `ebible-`, `ccel-`, `sword-`); `lx search` and `lx import` warn when an
+(logoxide's importers use `ebible-`, `fetch-`, `ccel-`, `sword-`); `lx search` and `lx import` warn when an
 id is listed by more than one of the project's catalogs, and `lx add` when another of its
 registries lists the id it adds.
 

@@ -109,7 +109,7 @@ before changing the design.
     `parse_sword`: Bibles and commentaries in OSIS or ThML that aren't locked; GBF isn't read).
     `SWORD_REPOSITORIES` names the HTTPS repositories in CrossWire's list (`crosswire`,
     `crosswire-beta`, `ebible`, …; others by host, `sword_repository_name`). Ids are prefixed
-    (`ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
+    (`ebible-eng-kjv2006`, `fetch-eng_kjv`, `ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
     first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
     and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
     sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
