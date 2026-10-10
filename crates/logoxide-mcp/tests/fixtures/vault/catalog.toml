@@ -1,0 +1,21 @@
+format = 1
+name = "Test catalog"
+
+[[package]]
+id = "kjv"
+name = "King James Version"
+abbreviation = "KJV"
+language = "en"
+version = "1.0.0"
+license = "LicenseRef-PublicDomain"
+git = "https://example.org/kjv"
+description = "The \u001b[31mAuthorized\u001b[0m Version \u202e of 1611"
+
+[[package]]
+id = "bsb"
+name = "Berean Standard Bible"
+abbreviation = "BSB"
+language = "en"
+version = "1.0.0"
+license = "LicenseRef-PublicDomain"
+git = "https://example.org/bsb"

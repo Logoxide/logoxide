@@ -7,6 +7,7 @@ members = [
     "crates/logoxide-text",
     "crates/logoxide-import",
     "crates/logoxide-app",
+    "crates/logoxide-mcp",
 ]
 # The bindings build against a topos checkout (BoltFFI only exports path dependencies' items), so
 # they are a workspace of their own and the rest builds from crates.io alone

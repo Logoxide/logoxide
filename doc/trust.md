@@ -98,6 +98,39 @@ in another order than it's shown. JSON output (`--format json`) is left as it is
 control characters itself. Other implementations that show such text in a terminal should do the
 same (`logoxide::text::printable`).
 
+## The MCP server
+
+`logoxide-mcp` gives an assistant a project's catalogs, packages, and text over the Model
+Context Protocol. An assistant follows instructions it reads, so what a catalog or a package
+says must never pass for the server's own words:
+
+- **Untrusted text is marked.** Every field from a catalog, a manifest, a lock file's sources,
+  or a package's text (names, descriptions, licenses, titles, passages, notes, entries, the
+  warnings loading a catalog gives) is inside an `untrusted` object naming its `source` (`the
+  catalog eBible.org`, `the manifest of kjv 1.0.3`, `the text of kjv 1.0.3`). The server's
+  instructions tell the client that these are data to quote or summarize, never instructions.
+  What the server works out itself (ids checked as ids, versions, counts, OSIS references,
+  rights as true and false) is outside it.
+- **It's cleaned and capped.** Untrusted text goes through `logoxide::text::printable`, as lx's
+  output does, and each field is cut at a length (300 characters for a name or a short field,
+  2,000 for a description or a license statement, 16,000 for one note or entry), ending
+  `… [cut]`. Errors, which may quote a manifest, are cleaned and capped too.
+- **Results come in pages** of about 20,000 characters, each with a `nextCursor` for the next;
+  searches give 20 results a page by default and at most 100. A cursor names the question it
+  came from, and one from another question is refused.
+- **Every passage carries its license**: the package's license, rights, publisher, and authors,
+  and whether it's free (a free SPDX license, or rights saying it may be shared, sold, and
+  changed). Text that isn't free is limited to **500 verses a call, and never more than half a
+  book** (counted by the package's own verse numbers); past that its text is withheld with the
+  reason. This is a limit on how much one call returns, not enforcement: licenses are shown,
+  never enforced, and checking that you may use the text is still up to you.
+- **It's read-only** unless started with `--allow-writes`. Only then are `install` (what the
+  project's manifest asks for, as its lock pins it) and `import` (an entry of the project's own
+  catalogs, by its import name: never a URL, a git repository, or a path the assistant gives)
+  listed. They take the same locks as lx. Reading a release of a package's own git repository
+  (`show_summary` with a version, `diff_versions`) fetches from the URL the lock already has.
+- Downloads and their warnings go to the server's stderr, never stdout, which is the protocol's.
+
 ## Caches and summaries
 
 The parsed-book cache is per device, keyed by package version, checksum, and format, and never

@@ -1,0 +1,35 @@
+[package]
+name = "logoxide-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "An MCP server for logoxide: search catalogs, read and compare passages, and look into a project's packages"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bible", "mcp", "package-manager"]
+categories = ["text-processing"]
+
+[[bin]]
+name = "logoxide-mcp"
+path = "src/main.rs"
+
+[dependencies]
+logoxide.workspace = true
+logoxide-text.workspace = true
+logoxide-app.workspace = true
+topos-bible.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+semver = "1"
+clap = { version = "4", features = ["derive"] }
+# The official Rust SDK for the Model Context Protocol: a server over stdio
+rmcp = { version = "3.5.1", default-features = false, features = ["server", "macros", "transport-io"] }
+# Tools' input schemas (rmcp's)
+schemars = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std"] }
+
+[dev-dependencies]
+# The EPUB a book package in the tests holds
+zip = { version = "2", default-features = false, features = ["deflate"] }

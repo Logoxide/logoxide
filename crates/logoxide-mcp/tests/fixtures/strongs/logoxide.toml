@@ -1,0 +1,12 @@
+[package]
+id = "strongs"
+name = "Strong's Greek"
+abbreviation = "STR"
+version = "1.0.0"
+language = "grc"
+license = "CC0-1.0"
+kind = "lexicon"
+keys = "strongs-greek"
+
+[formats]
+dictionary = { path = "entries/" }

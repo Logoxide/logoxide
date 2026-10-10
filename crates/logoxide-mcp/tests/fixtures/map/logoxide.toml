@@ -1,0 +1,13 @@
+[package]
+id = "eng-shi"
+name = "English to Shifted"
+abbreviation = "ENG-SHI"
+version = "1.0.0"
+kind = "versification-map"
+language = "en"
+license = "CC0-1.0"
+versification = "English"
+maps-to = "Shifted"
+
+[formats]
+vrs = { path = "eng-shi.vrs" }

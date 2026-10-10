@@ -1,0 +1,14 @@
+# The project the tests and the scripted session use: two Bibles numbered differently and a map
+# between them, a commentary, a dictionary, and cross-references, all path packages
+
+[settings]
+catalogs = ["catalog.toml"]
+default-catalogs = false
+
+[dependencies]
+one = { path = "../one" }
+arr = { path = "../arr" }
+eng-shi = { path = "../map" }
+mhcc = { path = "../mhcc" }
+strongs = { path = "../strongs" }
+tsk = { path = "../tsk" }
