@@ -50,7 +50,7 @@ checksum = "sha256:41c0…"
 | `tag`, `branch`, `rev` | string | How it was asked for (the commit is what is used) |
 | `commit` | string | The commit installed (git packages): 7 to 64 lowercase hex digits |
 | `folder` | string | The package's folder in its repository, when it isn't at the top |
-| `path` | string | A folder used in place, relative to the manifest (path packages) |
+| `path` | string | A folder used in place, relative to the manifest (path packages). An absolute path is read, but warned of: the lock isn't portable |
 | `registry` | string | The registry's catalog it was chosen from |
 | `archive` | string | That release's archive URL |
 | `mirrors` | array of strings | Other places serving the same archive, tried in order after `archive` |

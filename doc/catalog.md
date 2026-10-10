@@ -94,7 +94,7 @@ repository or archive holds, checked as below.
 | `url` | string | yes | Its `.tar.gz`. A relative URL is relative to the catalog's own location (beside it, like a relative link); a URL with `://` or a path starting with `/` is taken as it is |
 | `mirrors` | array of strings | no | Other places serving the same archive, tried in order after `url` (relative the same way) |
 | `sha256` | string | yes | The SHA-256 of the archive's bytes: `sha256:` and lowercase hex |
-| `checksum` | string | no | The package's [checksum](#checksums) once unpacked |
+| `checksum` | string | yes | The package's [checksum](#checksums) once unpacked. A release without one is refused: an installed copy could never be checked |
 | `size` | integer | no | The archive's length in bytes |
 | `yanked` | boolean | no | Withdrawn: new installs pass over it, but a lock file that has it still installs it |
 
@@ -121,7 +121,7 @@ archive. Installing:
    are passed over.
 3. Unpack it ([below](#archives)), keep only the package's declared files, and check that its
    `logoxide.toml` has the entry's id and the release's version, and that its checksum is the
-   release's `checksum` when one is listed.
+   release's `checksum` (a release that lists none is refused).
 4. Lock the release's `archive` URL, `mirrors`, `sha256`, and `checksum` ([lock.md](lock.md)), so
    later installs need no catalog.
 

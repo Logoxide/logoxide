@@ -220,6 +220,31 @@ fn path_packages_are_used_in_place() {
 }
 
 #[test]
+fn paths_are_kept_relative() {
+    let world = World::new("relative");
+    package(&world.path("local"), "local", "0.1.0");
+    world.ok(&["init"]);
+    // Given absolute, written relative to the manifest
+    let absolute = world.path("local").display().to_string();
+    let added = world.lx(&["add", "--path", &absolute]);
+    assert!(added.status.success());
+    assert!(!String::from_utf8_lossy(&added.stderr).contains("warning"));
+    let manifest = std::fs::read_to_string(world.path("vault/logoxide.toml")).unwrap();
+    assert!(manifest.contains("path = \"../local\""), "{manifest}");
+
+    // One written absolute by hand is warned of: the lock can't be used elsewhere
+    std::fs::write(
+        world.path("vault/logoxide.toml"),
+        format!("[dependencies]\nlocal = {{ path = \"{absolute}\" }}\n"),
+    )
+    .unwrap();
+    let out = world.lx(&["install"]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(warned.contains("is absolute"), "{warned}");
+}
+
+#[test]
 fn check_reads_every_book() {
     let world = World::new("check");
     let dir = world.path("tb");

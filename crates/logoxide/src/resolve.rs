@@ -722,6 +722,7 @@ impl Resolver<'_> {
                 && p.registry.as_deref() == Some(registry)
                 && p.archive.is_some()
                 && p.sha256.is_some()
+                && p.checksum.is_some()
                 && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
         });
         let mut locked = match kept {
@@ -755,6 +756,14 @@ impl Resolver<'_> {
                         want.name
                     ))
                 })?;
+                // Without the files' checksum, an installed copy could never be checked
+                let checksum = release.checksum.clone().ok_or_else(|| {
+                    LogoxideError::Resolve(format!(
+                        "`{}`: {registry} lists {id} {} without a `checksum` (republish it with \
+                         a newer lx)",
+                        want.name, release.version
+                    ))
+                })?;
                 LockedPackage {
                     id: id.to_string(),
                     rename: None,
@@ -772,7 +781,7 @@ impl Resolver<'_> {
                     archive: Some(release.url.clone()),
                     mirrors: release.mirrors.clone(),
                     sha256: Some(release.sha256.clone()),
-                    checksum: release.checksum.clone(),
+                    checksum: Some(checksum),
                     features: vec![],
                     default_features: true,
                     dependencies: vec![],

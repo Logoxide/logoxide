@@ -145,7 +145,7 @@ before changing the design.
     registries: paths and `file://` by default, HTTPS in lx and through the host in the
     bindings). A `registry` dependency (a catalog's URL) gets the newest release its catalog lists
     that the requirement allows, or the locked one (whose archive URL and hash the lock has, so
-    no catalog is read); the archive must hash to `sha256` and its files to `checksum`; lock
+    no catalog is read); the archive must hash to `sha256` and its files to `checksum` (a release without one is refused); lock
     entries have `registry`, `archive`, `mirrors` (the release's, tried in turn by
     `Fetcher::download_any`, which passes over bytes that don't hash as listed), `sha256`, and
     its library folder is `<version>+a<hash>`. A lock entry is kept
@@ -236,7 +236,8 @@ before changing the design.
   versification> --to …` (`--with <map package>` adds one not in the project). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash lx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
-  installs and locks what it adds (a repository without release tags needs `--branch`, `--rev`, or
+  installs and locks what it adds (`--path` is written relative to the manifest; an absolute path
+  in a lock is warned of; a repository without release tags needs `--branch`, `--rev`, or
   `--tag`; tags like `v1.0` that aren't semver are warned of: `resolve::not_semver_tags`), and `lx add` and `lx remove` write the manifest only once that
   succeeds. Catalogs and
   imports come over HTTPS with ureq (`net.rs`: one agent, timeouts, `lx/<version>` user agent,

@@ -41,9 +41,11 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         Some(_) => None,
         None => named.map(|url| registry_url(&project, url)).transpose()?,
     };
+    // A path is kept relative to the manifest, so the project (and its lock) can move
+    let path = (args.path.as_deref()).map(|path| relative_path(project.dir(), path));
     let mut dependency = DetailedDependency {
         git: git.clone(),
-        path: args.path.clone(),
+        path: path.clone(),
         version: args.version.as_deref().map(version_req).transpose()?,
         tag: args.tag.clone(),
         branch: args.branch.clone(),
@@ -54,7 +56,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         ..DetailedDependency::default()
     };
     // The package's id names the dependency: read it from the package
-    let info: Named = match (archive, &git, &args.path) {
+    let info: Named = match (archive, &git, &path) {
         (Some((catalog, entry)), _, _) => {
             if dependency.version.is_none()
                 && let Some(newest) = entry.release(None)
@@ -215,7 +217,56 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         logoxide::lock::LOCKFILE
     );
     warn_of_clashes(&project, &library);
+    warn_of_absolute_paths(&lock);
     Ok(())
+}
+
+/**
+`path` (as given: absolute, or relative to the project's folder, else to the current one)
+relative to the project's folder, when both can be found; else as given
+*/
+fn relative_path(project: &std::path::Path, path: &str) -> String {
+    let given = std::path::Path::new(path);
+    let found = match given.is_absolute() {
+        true => given.to_path_buf(),
+        false => match project.join(given).exists() {
+            true => project.join(given),
+            false => given.to_path_buf(),
+        },
+    };
+    let (Ok(from), Ok(to)) = (project.canonicalize(), found.canonicalize()) else {
+        return path.to_string();
+    };
+    let (from, to): (Vec<_>, Vec<_>) = (from.components().collect(), to.components().collect());
+    let shared = (from.iter().zip(&to)).take_while(|(a, b)| a == b).count();
+    // Nothing in common (another drive): it can only be absolute
+    if shared == 0 {
+        return path.to_string();
+    }
+    let up = std::iter::repeat_n(String::from(".."), from.len() - shared);
+    let down = (to[shared..].iter()).map(|c| c.as_os_str().to_string_lossy().into_owned());
+    let parts: Vec<String> = up.chain(down).collect();
+    match parts.is_empty() {
+        true => String::from("."),
+        false => parts.join("/"),
+    }
+}
+
+/// Warns of path packages named by an absolute path: the lock file names it too, and another
+/// machine won't have it there
+pub(crate) fn warn_of_absolute_paths(lock: &logoxide::Lockfile) {
+    for locked in &lock.packages {
+        if let Some(path) = &locked.path
+            && std::path::Path::new(path).is_absolute()
+        {
+            eprintln!(
+                "warning: {}: path {path} is absolute, so {} won't work on another machine \
+                 (give it relative to {MANIFEST})",
+                locked.label(),
+                logoxide::lock::LOCKFILE
+            );
+        }
+    }
 }
 
 /**
@@ -372,6 +423,7 @@ pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Re
             moved.label, moved.release, moved.before, moved.after
         );
     }
+    warn_of_absolute_paths(lock);
     for package in &lock.packages {
         let note = if before.contains(&package.name()) {
             ""

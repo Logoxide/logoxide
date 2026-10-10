@@ -598,6 +598,45 @@ fn publish_mirrored(package: &Path, registry: &Path, mirrors: Vec<String>) {
 }
 
 #[test]
+fn registry_releases_must_give_their_checksum() {
+    let world = World::new("no-checksum");
+    let repo = world.path("authoring/tb");
+    let registry = world.path("registry");
+    std::fs::create_dir_all(&repo).unwrap();
+    release(&repo, "tb", "1.0.0", "one", "");
+    publish(&repo, &registry);
+    let catalog = registry.join("catalog.toml");
+    let text = std::fs::read_to_string(&catalog).unwrap();
+    let without: String = (text.lines())
+        .filter(|l| !l.starts_with("checksum"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert_ne!(without, text);
+    std::fs::write(&catalog, without).unwrap();
+
+    let library = world.library("lib");
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project
+        .add(
+            "tb",
+            &DetailedDependency {
+                registry: Some(catalog.display().to_string()),
+                default_features: true,
+                ..DetailedDependency::default()
+            },
+        )
+        .unwrap();
+    let error = project
+        .install(&library, &GitCli::default(), Update::Nothing)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("without a `checksum`"),
+        "{error}"
+    );
+    assert!(library.installed().is_empty());
+}
+
+#[test]
 fn registry_releases_are_archives() {
     let world = World::new("registry");
     let repo = world.path("authoring/tb");
