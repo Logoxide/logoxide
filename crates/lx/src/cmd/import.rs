@@ -182,7 +182,7 @@ pub(crate) fn import_update(
         if !catalogs
             .iter()
             .any(|c| c.find_upstream(&upstream).is_some())
-            && let Some((root, _)) = upstream.split_once("/packages/")
+            && let Some((root, _)) = upstream.url.split_once("/packages/")
         {
             match load_catalog(&format!("{root}/mods.d.tar.gz"), project.dir()) {
                 Ok(catalog) => catalogs.push(catalog),
@@ -191,8 +191,9 @@ pub(crate) fn import_update(
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
             if name == Some(dep.as_str()) {
+                let named = upstream.import.as_deref().unwrap_or(&upstream.url);
                 return Err(logoxide::LogoxideError::Import(format!(
-                    "{dep} ({upstream}) is in none of this project's catalogs (lx catalog list)"
+                    "{dep} ({named}) is in none of this project's catalogs (lx catalog list)"
                 )));
             }
             continue;
@@ -208,16 +209,15 @@ pub(crate) fn import_update(
             status: "current",
             from: package.info().version.to_string(),
             to: None,
+            upstream_from: upstream.version.clone(),
+            upstream_to: None,
             diff: None,
-            raised: false,
             removed: vec![],
             error: None,
         };
-        let version = package.info().version.clone();
         match update_import(
             entry,
             current,
-            &version,
             &dir,
             &mut report,
             UpdateOptions { dry_run, yes, json },
@@ -277,11 +277,13 @@ struct ImportReport {
     /// `current` (nothing to do), `changed` (with --dry-run), `updated`, `declined` (its removals
     /// weren't allowed), or `failed`
     status: &'static str,
+    /// The package's versions (logoxide's, raised by what the update changes)
     from: String,
     to: Option<String>,
+    /// The publisher's versions (`[package.upstream] version`), as given
+    upstream_from: Option<String>,
+    upstream_to: Option<String>,
     diff: Option<DiffReport>,
-    /// The publisher's version isn't newer: the version was raised for the change
-    raised: bool,
     /// The files the update removes (those the fresh import doesn't have)
     removed: Vec<String>,
     error: Option<String>,
@@ -301,7 +303,6 @@ struct UpdateOptions {
 fn update_import(
     entry: &logoxide::catalog::CatalogEntry,
     current: Arc<dyn Storage>,
-    version: &semver::Version,
     dir: &Path,
     report: &mut ImportReport,
     options: UpdateOptions,
@@ -318,7 +319,7 @@ fn update_import(
             outln!("{text}");
         }
     };
-    if logoxide::import::import_is_current(entry, version) {
+    if logoxide::import::import_is_current(entry, report.upstream_from.as_deref()) {
         say(format!("{dep} {from}: up to date ({import_name})"));
         return Ok(());
     }
@@ -328,12 +329,13 @@ fn update_import(
         say(format!("{dep} {from}: up to date ({import_name})"));
         return Ok(());
     };
-    let raised = match update.bumped {
-        true => ", the version raised for it: the publisher's isn't newer",
-        false => "",
+    let publisher = match (&update.upstream_from, &update.upstream_to) {
+        (Some(old), Some(new)) if old != new => format!("; the publisher's {old} → {new}"),
+        (None, Some(new)) => format!("; the publisher's {new}"),
+        _ => String::new(),
     };
     say(format!(
-        "{dep} {} → {}: {} (a {:?} change{raised})",
+        "{dep} {} → {}: {} (a {:?} change{publisher})",
         update.from,
         update.to,
         logoxide::release::describe(&update.diff),
@@ -343,7 +345,7 @@ fn update_import(
     report.status = "changed";
     report.to = Some(update.to.to_string());
     report.diff = Some(DiffReport::of(&update.diff));
-    report.raised = update.bumped;
+    report.upstream_to = update.upstream_to.clone();
     report.removed = removed.clone();
     if dry_run {
         if !removed.is_empty() {

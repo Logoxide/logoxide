@@ -337,21 +337,21 @@ impl Logoxide {
     }
 
     /**
-    Whether an import at `installed_version` is as new as its catalog entry lists, so it needn't
-    be downloaded to know: eBible.org's and SWORD's versions follow their updates; fetch.bible's
-    and CCEL's don't, so those are always `false` (download, then `update_import`)
+    Whether an import made from the publisher's `upstream_version` (its `Upstream.version`, never
+    the package's own version) is as new as its catalog entry lists, so it needn't be downloaded
+    to know: eBible.org's and SWORD's versions follow their updates; fetch.bible's and CCEL's
+    don't, so those are always `false` (download, then `update_import`)
     */
-    pub fn import_is_current(&self, entry: CatalogEntry, installed_version: String) -> bool {
-        semver::Version::parse(&installed_version)
-            .is_ok_and(|v| logoxide_core::import::import_is_current(&entry.into(), &v))
+    pub fn import_is_current(&self, entry: CatalogEntry, upstream_version: Option<String>) -> bool {
+        logoxide_core::import::import_is_current(&entry.into(), upstream_version.as_deref())
     }
 
     /**
     How an imported package (`current`: its folder's files) differs from the same import made
     again (`fresh`: what `import_ebible` and the others return for its entry, from
     `LogoxideCatalog.find_upstream`); none when nothing changed. Write `files` and delete
-    `removed`, then install with `UpdateMode.Only` for it. When the publisher's version isn't
-    newer, the version is raised by the change, so one version never names two texts
+    `removed`, then install with `UpdateMode.Only` for it. The version is raised by what changed,
+    whatever the publisher numbers it, so one version never names two texts
     */
     pub fn update_import(
         &self,
@@ -371,7 +371,8 @@ impl Logoxide {
             to: update.to.to_string(),
             change: update.diff.change().into(),
             description: logoxide_core::release::describe(&update.diff),
-            bumped: update.bumped,
+            upstream_from: update.upstream_from,
+            upstream_to: update.upstream_to,
             removed: logoxide_core::import::import_removals(current.as_ref(), fresh.as_ref())?,
             files: create::files_of(&fresh)?,
         }))

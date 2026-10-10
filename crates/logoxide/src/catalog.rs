@@ -221,7 +221,11 @@ pub struct CatalogEntry {
     pub license: Option<String>,
     /// A copyright statement, when the catalog gives one
     pub copyright: Option<String>,
-    /// The newest version, when the catalog says (eBible.org's: its update date, `2026.10.8`)
+    /**
+    The newest version, when the catalog says: a logoxide package's, or for an import the
+    publisher's own, as it gives it (eBible.org's update date `2026-10-08`, a SWORD module's
+    `Version`, fetch.bible's year), which an import keeps as its `[package.upstream] version`
+    */
     pub version: Option<String>,
     pub kind: PackageKind,
     pub direction: Direction,
@@ -477,7 +481,7 @@ impl Catalog {
                 description: None,
                 license,
                 copyright: text_of(copyright.and_then(|c| c.get("attribution"))),
-                version: (bible.get("year").and_then(Value::as_u64)).map(|y| format!("{y}.0.0")),
+                version: (bible.get("year").and_then(Value::as_u64)).map(|y| y.to_string()),
                 kind: PackageKind::Bible,
                 direction: match bible.get("direction").and_then(Value::as_str) {
                     Some("rtl") => Direction::Rtl,
@@ -764,7 +768,7 @@ impl Catalog {
                     "LicenseRef-eBible"
                 })),
                 copyright,
-                version: get(&row, updated).and_then(|d| date_version(&d)),
+                version: get(&row, updated).filter(|d| !d.is_empty()),
                 kind: PackageKind::Bible,
                 direction: match get(&row, direction).as_deref() {
                     Some("rtl") => Direction::Rtl,
@@ -806,11 +810,16 @@ impl Catalog {
         (self.entries.iter()).find(|e| e.source.import_name().as_deref() == Some(name))
     }
 
-    /// The entry an imported package was made from, by the `upstream` its import wrote
-    /// ([`crate::import::upstream`])
-    pub fn find_upstream(&self, upstream: &str) -> Option<&CatalogEntry> {
-        (self.entries.iter())
-            .find(|e| crate::import::upstream(e).as_deref() == Some(upstream.trim()))
+    /// The entry an imported package was made from, by the `[package.upstream]` its import wrote
+    /// ([`crate::import::upstream`]): its import name (`ebible:eng-asv`), else its download's URL
+    pub fn find_upstream(&self, upstream: &crate::manifest::Upstream) -> Option<&CatalogEntry> {
+        (upstream.import.as_deref())
+            .and_then(|name| self.find_import(name.trim()))
+            .or_else(|| {
+                (self.entries.iter()).find(|e| {
+                    crate::import::upstream_url(e).as_deref() == Some(upstream.url.trim())
+                })
+            })
     }
 
     /**
@@ -1114,7 +1123,9 @@ pub(crate) fn sword_entry(
         }),
         license: Some(sword_license(conf.get("DistributionLicense"))),
         copyright,
-        version: conf.version().and_then(dotted_version),
+        version: (conf.version().map(str::trim))
+            .filter(|v| !v.is_empty())
+            .map(String::from),
         kind,
         direction: match conf.direction() {
             sword_modules::conf::Direction::RightToLeft => Direction::Rtl,
@@ -1161,30 +1172,6 @@ pub(crate) fn sword_license(license: Option<&str>) -> String {
         "gplv3" | "gpl v3" => String::from("GPL-3.0-only"),
         _ => String::from("LicenseRef-SWORD"),
     }
-}
-
-/// A semantic version from a dotted one (`1.0` is `1.0.0`, `3.1` is `3.1.0`; more parts than
-/// three, or anything else, is none)
-pub(crate) fn dotted_version(text: &str) -> Option<String> {
-    let parts: Vec<u64> = (text.trim().split('.'))
-        .map(|p| p.parse().ok())
-        .collect::<Option<_>>()?;
-    match parts.as_slice() {
-        [major] => Some(format!("{major}.0.0")),
-        [major, minor] => Some(format!("{major}.{minor}.0")),
-        [major, minor, patch] => Some(format!("{major}.{minor}.{patch}")),
-        _ => None,
-    }
-}
-
-/// A version from a date (`2026-10-08` is `2026.10.8`), so newer downloads have newer versions
-pub(crate) fn date_version(date: &str) -> Option<String> {
-    let mut parts = date.split('-').map(|p| p.parse::<u32>().ok());
-    let (Some(Some(y)), Some(Some(m)), Some(Some(d))) = (parts.next(), parts.next(), parts.next())
-    else {
-        return None;
-    };
-    Some(format!("{y}.{m}.{d}"))
 }
 
 /**
@@ -1329,7 +1316,7 @@ mod tests {
                 id: "eng-asv".into()
             }
         );
-        assert_eq!(asv.version.as_deref(), Some("2026.10.8"));
+        assert_eq!(asv.version.as_deref(), Some("2026-10-08"));
         let wlc = &catalog.entries[1];
         assert_eq!(wlc.abbreviation, "WLC");
         assert_eq!(wlc.direction, Direction::Rtl);
@@ -1703,7 +1690,7 @@ usx = { path = "usx/" }
                 kjv.license.as_deref(),
                 kjv.language.as_str()
             ),
-            (Some("3.1.0"), Some("GPL-2.0-only"), "de")
+            (Some("3.1"), Some("GPL-2.0-only"), "de")
         );
         let CatalogSource::Sword {
             repository, module, ..

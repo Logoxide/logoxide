@@ -91,8 +91,8 @@ pub struct PackageInfo {
     pub categories: Vec<String>,
     /// The books of the Bible it's mainly about, as USFM codes (`ROM`), as its author says
     pub about_books: Vec<String>,
-    /// Where the text was imported from, if anywhere
-    pub upstream: Option<String>,
+    /// Where the text was imported from, if anywhere (`[package.upstream]`)
+    pub upstream: Option<Upstream>,
     /// `own` (the text's verse markers say), or a named system like `English`
     pub versification: String,
     /// For a versification map: the versification it maps `versification` to
@@ -122,9 +122,42 @@ impl From<&manifest::Package> for PackageInfo {
             keywords: info.keywords.clone(),
             categories: info.categories.clone(),
             about_books: info.about_books.clone(),
-            upstream: info.upstream.clone(),
+            upstream: info.upstream.as_ref().map(Upstream::from),
             versification: info.versification.clone(),
             maps_to: info.maps_to.clone(),
+        }
+    }
+}
+
+/**
+Where an imported package's text came from (`[package.upstream]`): the download, the import's
+name (`ebible:eng-asv`), and the publisher's version as it gives it (`2026-10-08`). The package's
+own `version` is logoxide's, raised by each update
+*/
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Upstream {
+    pub url: String,
+    pub import: Option<String>,
+    pub version: Option<String>,
+}
+
+impl From<&manifest::Upstream> for Upstream {
+    fn from(u: &manifest::Upstream) -> Self {
+        Self {
+            url: u.url.clone(),
+            import: u.import.clone(),
+            version: u.version.clone(),
+        }
+    }
+}
+
+impl From<Upstream> for manifest::Upstream {
+    fn from(u: Upstream) -> Self {
+        Self {
+            url: u.url,
+            import: u.import,
+            version: u.version,
         }
     }
 }

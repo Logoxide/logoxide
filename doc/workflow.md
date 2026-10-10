@@ -91,7 +91,7 @@ lx add github:someone/bsb --version 1                     # any 1.x
 lx import ebible:eng-asv                                  # into imports/eng-asv
 lx list
 # bsb 1.0.1  BSB (Berean Standard Bible), LicenseRef-PublicDomain  https://github.com/someone/bsb v1.0.1
-# eng-asv 2026.10.8  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/eng-asv
+# eng-asv 1.0.0  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/eng-asv
 # kjv 1.0.1  KJV (King James Version (1769)), LicenseRef-PublicDomain  https://github.com/someone/kjv v1.0.1
 ```
 
@@ -108,8 +108,11 @@ lx import sword:crosswire/KJV   # the module's OSIS entries, a file a book (osis
 lx import sword:crosswire/MHCC  # a commentary: kind = "commentary", an entry a span of verses
 ```
 
-Each import's version is its publisher's: eBible.org's update date (`2026.10.8`), CCEL's edition
-(`1.0.0`, else the file's date), a SWORD module's `Version` (`3.1.0`). Its license is shown as
+Each import's version is logoxide's own: 1.0.0 when it's imported, then raised by what each update
+changes, like any package's, so a dependency on `^1` is safe across the publisher's years. The
+publisher's version, as it gives it (eBible.org's update date `2026-10-08`, CCEL's edition `1.0`
+or else the file's date, a SWORD module's `Version` `3.1`), is kept in `[package.upstream]` with
+the download's URL and the import's name (`ebible:eng-asv`). Its license is shown as
 the publisher states it (public domain, a Creative Commons license, the GPL), else
 `LicenseRef-<publisher>` with the statement in the package's license file. Locked SWORD modules
 and those in GBF or plain text aren't listed: logoxide reads OSIS and ThML.
@@ -176,7 +179,7 @@ same verses, and a changed file is caught by its checksum:
 cd ~/Notes                                # synced: logoxide.toml, logoxide.lock, imports/
 lx install
 # bsb 1.0.1
-# eng-asv 2026.10.8
+# eng-asv 1.0.0
 # kjv 1.0.1
 # 3 packages, locked in ./logoxide.lock
 ```
@@ -200,16 +203,17 @@ changed, saying how (a reader's files beside them stay):
 
 ```sh
 lx import --update --dry-run              # what would change
-# ccel-darby 1.0.0 → 1.1.0: 1 verse reworded (a Minor change, the version raised for it: the publisher's isn't newer)
-# eng-asv 2026.10.8: up to date (ebible:eng-asv)
+# ccel-darby 1.0.0 → 1.1.0: 1 verse reworded (a Minor change)
+# eng-asv 1.0.0 → 1.0.1: no verse changed (a Patch change; the publisher's 2026-10-08 → 2026-11-01)
 lx import --update                        # replace the changed ones and lock them again
 lx import --update eng-asv                # just one (its name, or ebible:eng-asv)
 ```
 
-eBible.org's and SWORD imports are downloaded only when the catalog lists a newer version.
-fetch.bible's and CCEL's are downloaded each time, since their texts change without a new
-version; when one did, its version is raised by what changed (a reworded verse is minor), so
-one version never names two texts.
+eBible.org's and SWORD imports are downloaded only when the catalog lists a newer version of the
+publisher's than `[package.upstream]` has. fetch.bible's and CCEL's are downloaded each time,
+since their texts change without a new version. Either way the package's version is raised by
+what changed (a reworded verse is minor, a removed one major, a new publisher's version with the
+same text a patch), so one version never names two texts.
 
 ## Publishing: a package of your own
 
@@ -605,7 +609,7 @@ kind = "commentary"
 version = "1.0.0"
 language = "en"
 license = "LicenseRef-PublicDomain"
-upstream = "https://ccel.org/ccel/henry/mhc"
+upstream = { url = "https://ccel.org/ccel/henry/mhc.xml", import = "ccel:henry/mhc" }
 versification = "KJV"
 
 [formats]

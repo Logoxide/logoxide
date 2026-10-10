@@ -13,13 +13,17 @@ package (or which can be pushed anywhere as a git repository).
   sword-modules from memory: its entries in their own markup (OSIS or ThML), a file per book,
   with its conf's copyright and license in `COPYRIGHT.txt`
 
-The catalog entry ([`crate::catalog`]) gives the package's name, language, license, and version.
+The catalog entry ([`crate::catalog`]) gives the package's name, language, and license. A new
+import is version 1.0.0, logoxide's own: the publisher's version (an update date, a module's
+`Version`) is kept in `[package.upstream]`, and each update raises the package's version by what
+it changes ([`compare_import`]), so `lx add` can ask for `^1` and updates cross the publisher's
+years.
 */
 
 use crate::{
     catalog::{CatalogEntry, CatalogSource},
     error::{LogoxideError, Result},
-    manifest::{FormatEntry, MANIFEST, Manifest, Package as Info},
+    manifest::{FormatEntry, MANIFEST, Manifest, Package as Info, Upstream},
     package::{Features, Package},
     storage::{MemoryStorage, Storage},
 };
@@ -64,8 +68,8 @@ pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
 /**
 An eBible.org translation's `<id>_usfm.zip` (from [`ebible_zip_url`]) as a package in `dest`:
 `logoxide.toml`, `usfm/` (every book's file), and `copr.htm` (its copyright, the license file). The
-package's id, name, language, and license come from `entry`, its version from eBible.org's update
-date. Checked by opening it: a zip without books is an error
+package's id, name, language, and license come from `entry`, and eBible.org's update date is the
+upstream version. Checked by opening it: a zip without books is an error
 */
 pub fn ebible(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()> {
     let CatalogSource::Ebible { id } = &entry.source else {
@@ -92,7 +96,6 @@ pub fn ebible(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
         license_file,
         publisher: "eBible.org",
         homepage: format!("https://ebible.org/{id}/"),
-        upstream: ebible_zip_url(id),
         versification: None,
     };
     finish(entry, made, staged, dest)
@@ -147,7 +150,6 @@ pub fn fetch_bible(
         license_file,
         publisher: "fetch.bible",
         homepage: String::from("https://fetch.bible/"),
-        upstream: fetch_bible_url(id),
         versification: None,
     };
     finish(entry, made, staged, dest)
@@ -219,8 +221,8 @@ fn inner_text(xml: &str, name: &str) -> Option<String> {
 /**
 A Bible CCEL publishes, from its ThML (the bytes at [`ccel_url`]), as a package in `dest`:
 `logoxide.toml`, `thml/<id>.xml`, and `COPYRIGHT.txt` (its rights, the license file). The file's
-head names it and gives its language and rights (CCEL's list doesn't), and its version: the
-edition's own (`1.0` is `1.0.0`), else its date. Public domain is `LicenseRef-PublicDomain`;
+head names it and gives its language and rights (CCEL's list doesn't), and the upstream version:
+the edition's own (`1.0`), else its date (`2002-11-30`). Public domain is `LicenseRef-PublicDomain`;
 anything else is `LicenseRef-CCEL`, with the statement in the license file. A page in place of
 the file (CCEL answers with one for works it restricts) is an error
 */
@@ -262,10 +264,7 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
         true => "LicenseRef-PublicDomain",
         false => "LicenseRef-CCEL",
     }));
-    entry.version = (head.version.as_deref())
-        .and_then(crate::catalog::dotted_version)
-        .or_else(|| head.date.as_deref().and_then(crate::catalog::date_version))
-        .or(entry.version);
+    entry.version = head.version.or(head.date).or(entry.version);
     let staged = MemoryStorage::new();
     staged.write(&format!("thml/{id}.xml"), xml)?;
     let rights = head
@@ -282,7 +281,6 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
         license_file: Some(String::from("COPYRIGHT.txt")),
         publisher: "CCEL",
         homepage: format!("https://ccel.org/ccel/bible/{id}"),
-        upstream: ccel_url(id),
         versification: None,
     };
     finish(&entry, made, staged, dest)
@@ -437,7 +435,6 @@ pub fn sword(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()>
         publisher: "SWORD",
         homepage: (conf.get("TextSource").filter(|t| t.contains("://")))
             .map_or_else(|| repository.clone(), String::from),
-        upstream: sword_zip_urls(repository, module).swap_remove(0),
         versification: Some(sword_versification(conf.get("Versification"))),
     };
     finish(&entry, made, staged, dest)
@@ -620,13 +617,24 @@ fn fetch_bible_url(id: &str) -> String {
 }
 
 /**
-What an import of `entry` writes as its package's `upstream` (the download it was made from), so
-an imported package names the catalog entry it came from ([`Catalog::find_upstream`]); none for
-packages that aren't imported
+What an import of `entry` writes as its package's `[package.upstream]`: the download it was made
+from, its import name, and the publisher's version the entry lists, so an imported package names
+the catalog entry it came from ([`Catalog::find_upstream`]); none for packages that aren't
+imported
 
 [`Catalog::find_upstream`]: crate::catalog::Catalog::find_upstream
 */
-pub fn upstream(entry: &CatalogEntry) -> Option<String> {
+pub fn upstream(entry: &CatalogEntry) -> Option<Upstream> {
+    Some(Upstream {
+        url: upstream_url(entry)?,
+        import: entry.source.import_name(),
+        version: entry.version.clone(),
+    })
+}
+
+/// The download an import of `entry` is made from (the first of a SWORD module's zips); none for
+/// packages that aren't imported
+pub fn upstream_url(entry: &CatalogEntry) -> Option<String> {
     match &entry.source {
         CatalogSource::Ebible { id } => Some(ebible_zip_url(id)),
         CatalogSource::FetchBible { id, .. } => Some(fetch_bible_url(id)),
@@ -706,18 +714,19 @@ pub struct ImportUpdate {
     pub to: semver::Version,
     /// Its verses' changes (reworded, added, removed, renumbered), and its titles'
     pub diff: crate::summary::Diff,
-    /// The publisher's version isn't newer though the package changed: `to` is the next version
-    /// the change calls for
-    pub bumped: bool,
+    /// The publisher's versions before and after (`[package.upstream] version`), as given
+    pub upstream_from: Option<String>,
+    pub upstream_to: Option<String>,
 }
 
 /**
 How a package made again from its publisher's download (`fresh`, as [`ebible`] and the others
 write it) differs from the one a project has (`current`): none when their declared files are the
-same. The publisher's version is kept when it's newer. When it isn't (fetch.bible's and CCEL's
-change without one), the fresh package's version is raised to the next one its change calls for
-([`crate::summary::next_version`]), in its `logoxide.toml`, so one version never names two texts
-(links record the version they were made in)
+same. The fresh package's version is the current one raised by what changed
+([`crate::summary::next_version`]: rewording is a minor change, removing a verse a major one, a
+new copyright notice or publisher's version alone a patch), written in its `logoxide.toml`, so one
+version never names two texts (links record the version they were made in) and a version says
+what an update can break, whatever the publisher numbers it
 */
 pub fn compare_import(
     current: std::sync::Arc<dyn Storage>,
@@ -725,17 +734,14 @@ pub fn compare_import(
 ) -> Result<Option<ImportUpdate>> {
     use crate::summary::{diff_summaries, next_version, summarize};
     let fresh_storage: std::sync::Arc<dyn Storage> = fresh.clone();
-    // A version raised by an earlier update is newer than the publisher's: compared at it, so
-    // the same text isn't raised again
-    let version_of = |storage: &dyn Storage| -> Result<semver::Version> {
+    let info_of = |storage: &dyn Storage| -> Result<Info> {
         let manifest = Manifest::parse(&storage.read_string(MANIFEST)?)?;
-        (manifest.package.map(|p| p.version))
-            .ok_or_else(|| LogoxideError::Import(String::from("not a package")))
+        (manifest.package).ok_or_else(|| LogoxideError::Import(String::from("not a package")))
     };
-    let had = version_of(current.as_ref())?;
-    if version_of(fresh.as_ref())? < had {
-        set_version(fresh.as_ref(), &had)?;
-    }
+    let had = info_of(current.as_ref())?;
+    let made = info_of(fresh.as_ref())?;
+    // Compared at the current version, so the same download is the same package
+    set_version(fresh.as_ref(), &had.version)?;
     if crate::package::checksum(current.as_ref())? == crate::package::checksum(fresh.as_ref())? {
         return Ok(None);
     }
@@ -744,23 +750,14 @@ pub fn compare_import(
     let (old_summary, old_verses) = summarize(&old)?;
     let (new_summary, new_verses) = summarize(&new)?;
     let diff = diff_summaries((&old_summary, &old_verses), (&new_summary, &new_verses));
-    let from = old.info().version.clone();
-    let published = new.info().version.clone();
-    if published > from {
-        return Ok(Some(ImportUpdate {
-            from,
-            to: published,
-            diff,
-            bumped: false,
-        }));
-    }
-    let to = next_version(&from, diff.change());
+    let to = next_version(&had.version, diff.change());
     set_version(fresh.as_ref(), &to)?;
     Ok(Some(ImportUpdate {
-        from,
+        from: had.version,
         to,
         diff,
-        bumped: true,
+        upstream_from: had.upstream.and_then(|u| u.version),
+        upstream_to: made.upstream.and_then(|u| u.version),
     }))
 }
 
@@ -798,12 +795,40 @@ pub fn import_removals(current: &dyn Storage, fresh: &dyn Storage) -> Result<Vec
         .collect())
 }
 
-/// Whether an import at `installed` is as new as `entry` lists, so it needn't be downloaded again
-/// to know (only where the publisher's versions follow its updates:
-/// [`CatalogSource::versions_track_updates`])
-pub fn import_is_current(entry: &CatalogEntry, installed: &semver::Version) -> bool {
-    let listed = (entry.version.as_deref()).and_then(|v| semver::Version::parse(v).ok());
-    entry.source.versions_track_updates() && listed.is_some_and(|v| v <= *installed)
+/**
+Whether an import made from the publisher's version `upstream` (its `[package.upstream]
+version`) is as new as `entry` lists, so it needn't be downloaded again to know (only where the
+publisher's versions follow its updates: [`CatalogSource::versions_track_updates`]). The
+package's own version is never compared: it's logoxide's, raised by updates
+*/
+pub fn import_is_current(entry: &CatalogEntry, upstream: Option<&str>) -> bool {
+    let (Some(listed), Some(installed)) = (entry.version.as_deref(), upstream) else {
+        return false;
+    };
+    entry.source.versions_track_updates()
+        && compare_publisher_versions(listed, installed).is_some_and(|o| o.is_le())
+}
+
+/**
+Two of a publisher's versions in order, when both are numbers between dots, dashes, or
+underscores (`2026-10-08` before `2026-11-01`, `3.1` before `3.10`; missing parts are 0); others
+only when they're the same
+*/
+pub fn compare_publisher_versions(a: &str, b: &str) -> Option<std::cmp::Ordering> {
+    let parts = |v: &str| -> Option<Vec<u64>> {
+        (v.trim().split(['.', '-', '_']))
+            .map(|p| p.parse().ok())
+            .collect()
+    };
+    match (parts(a), parts(b)) {
+        (Some(mut a), Some(mut b)) => {
+            let len = a.len().max(b.len());
+            a.resize(len, 0);
+            b.resize(len, 0);
+            Some(a.cmp(&b))
+        }
+        _ => (a.trim() == b.trim()).then_some(std::cmp::Ordering::Equal),
+    }
 }
 
 /// How an import made its package
@@ -813,10 +838,12 @@ struct Made {
     license_file: Option<String>,
     publisher: &'static str,
     homepage: String,
-    upstream: String,
     /// The versification the publisher names (SWORD's conf), else the package's `own`
     versification: Option<String>,
 }
+
+/// The version a new import has: logoxide's own, which updates raise by what they change
+pub const IMPORT_VERSION: semver::Version = semver::Version::new(1, 0, 0);
 
 /// Writes the package's `logoxide.toml`, checks it opens with books, and copies it into `dest`
 fn finish(
@@ -825,9 +852,6 @@ fn finish(
     staged: MemoryStorage,
     dest: &dyn Storage,
 ) -> Result<()> {
-    let version = (entry.version.as_deref())
-        .and_then(|v| semver::Version::parse(v).ok())
-        .unwrap_or_else(|| semver::Version::new(0, 0, 0));
     let info = Info {
         id: entry.id.clone(),
         name: entry.name.clone(),
@@ -835,7 +859,7 @@ fn finish(
         authors: vec![],
         description: entry.description.clone(),
         aliases: entry.aliases.clone(),
-        version,
+        version: IMPORT_VERSION,
         kind: entry.kind,
         language: entry.language.clone(),
         direction: entry.direction,
@@ -849,7 +873,7 @@ fn finish(
         keywords: entry.keywords.clone(),
         categories: entry.categories.clone(),
         about_books: entry.about_books.clone(),
-        upstream: Some(made.upstream),
+        upstream: upstream(entry),
         versification: made.versification.unwrap_or_else(|| String::from("own")),
         maps_to: None,
         include: vec![],
@@ -938,7 +962,20 @@ mod tests {
                 info.abbreviation.as_str(),
                 info.version.to_string()
             ),
-            ("eng-asv", "ASV", "2026.10.8".to_string())
+            ("eng-asv", "ASV", "1.0.0".to_string())
+        );
+        let upstream = info.upstream.as_ref().unwrap();
+        assert_eq!(
+            (
+                upstream.url.as_str(),
+                upstream.import.as_deref(),
+                upstream.version.as_deref()
+            ),
+            (
+                "https://ebible.org/Scriptures/eng-asv_usfm.zip",
+                Some("ebible:eng-asv"),
+                Some("2026-10-08")
+            )
         );
         assert_eq!(info.license_file.as_deref(), Some("copr.htm"));
         assert_eq!(package.books().len(), 1);
@@ -1009,7 +1046,12 @@ mod tests {
         assert_eq!(info.aliases, ["Holy Bible: Hebrew & Old Testament"]);
         assert_eq!(
             (info.language.as_str(), info.version.to_string()),
-            ("heb", "1.1.0".to_string())
+            ("heb", "1.0.0".to_string())
+        );
+        let upstream = info.upstream.as_ref().unwrap();
+        assert_eq!(
+            (upstream.import.as_deref(), upstream.version.as_deref()),
+            (Some("ccel:heot"), Some("1.1"))
         );
         assert_eq!(info.license.as_deref(), Some("LicenseRef-PublicDomain"));
         assert_eq!(
@@ -1026,7 +1068,8 @@ mod tests {
         let dest = MemoryStorage::new();
         ccel(entry, dated.as_bytes(), &dest).unwrap();
         let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
-        assert_eq!(package.info().version.to_string(), "2002.12.31");
+        let upstream = package.info().upstream.clone().unwrap();
+        assert_eq!(upstream.version.as_deref(), Some("2002-12-31"));
         assert_eq!(package.info().license.as_deref(), Some("LicenseRef-CCEL"));
         // CCEL's page for a work it restricts
         let page = b"<!DOCTYPE html><html><body>Log in</body></html>";
@@ -1162,7 +1205,20 @@ mod tests {
         let info = package.info();
         assert_eq!(
             (info.version.to_string(), info.license.as_deref()),
-            ("1.2.0".to_string(), Some("CC-BY-SA-4.0"))
+            ("1.0.0".to_string(), Some("CC-BY-SA-4.0"))
+        );
+        let upstream = info.upstream.as_ref().unwrap();
+        assert_eq!(
+            (
+                upstream.url.as_str(),
+                upstream.import.as_deref(),
+                upstream.version.as_deref()
+            ),
+            (
+                "https://crosswire.org/ftpmirror/pub/sword/raw/packages/Test.zip",
+                Some("sword:crosswire/Test"),
+                Some("1.2")
+            )
         );
         // No Versification in the conf: SWORD's default
         assert_eq!(info.versification, "KJV");
@@ -1294,19 +1350,23 @@ mod tests {
         ]);
         assert!(compare_import(current.clone(), &same).unwrap().is_none());
 
-        // Reworded at the same version (as fetch.bible's change): the version is raised
+        // Reworded at the same publisher's version (as fetch.bible's change): the version is
+        // raised by the change, a book removed being a major one
         let fresh = made(&[(
             "73-JHNeng-asv.usfm",
             &book("For God so much loved the world."),
         )]);
         let update = compare_import(current.clone(), &fresh).unwrap().unwrap();
         assert_eq!(
+            (update.from.to_string(), update.to.to_string()),
+            ("1.0.0".into(), "2.0.0".into())
+        );
+        assert_eq!(
             (
-                update.from.to_string(),
-                update.to.to_string(),
-                update.bumped
+                update.upstream_from.as_deref(),
+                update.upstream_to.as_deref()
             ),
-            ("2026.10.8".into(), "2027.0.0".into(), true)
+            (Some("2026-10-08"), Some("2026-10-08"))
         );
         assert_eq!(
             (update.diff.changed.len(), update.diff.removed.len()),
@@ -1320,12 +1380,54 @@ mod tests {
             ["JHN notes.md", "logoxide.toml", "usfm/73-JHNeng-asv.usfm"]
         );
         let package = Package::open(current.clone(), Features::default()).unwrap();
-        assert_eq!(package.info().version.to_string(), "2027.0.0");
+        assert_eq!(package.info().version.to_string(), "2.0.0");
         // Made again from the same download: current at its raised version, not raised again
         let again = made(&[(
             "73-JHNeng-asv.usfm",
             &book("For God so much loved the world."),
         )]);
         assert!(compare_import(current.clone(), &again).unwrap().is_none());
+        // The raised version doesn't hide the publisher's next release: the publisher's
+        // versions are compared, never the package's
+        let upstream = package.info().upstream.clone().unwrap();
+        assert!(import_is_current(entry, upstream.version.as_deref()));
+        let next = Catalog::parse_ebible(&csv.replace("2026-10-08", "2026-11-01")).unwrap();
+        let next = &next.entries[0];
+        assert_eq!(next.version.as_deref(), Some("2026-11-01"));
+        assert!(!import_is_current(next, upstream.version.as_deref()));
+        assert!(!import_is_current(next, None));
+        // Its download, with the same text: a patch, which records the publisher's version
+        let storage = Arc::new(MemoryStorage::new());
+        let same_text = zip(&[(
+            "73-JHNeng-asv.usfm",
+            &book("For God so much loved the world."),
+        )]);
+        ebible(next, &same_text, storage.as_ref()).unwrap();
+        let update = compare_import(current.clone(), &storage).unwrap().unwrap();
+        assert_eq!(
+            (
+                update.to.to_string(),
+                update.upstream_from.as_deref(),
+                update.upstream_to.as_deref()
+            ),
+            ("2.0.1".into(), Some("2026-10-08"), Some("2026-11-01"))
+        );
+        apply_import(current.as_ref(), storage.as_ref()).unwrap();
+        let package = Package::open(current.clone(), Features::default()).unwrap();
+        let upstream = package.info().upstream.clone().unwrap();
+        assert!(import_is_current(next, upstream.version.as_deref()));
+    }
+
+    #[test]
+    fn publishers_versions_are_compared_as_numbers() {
+        use std::cmp::Ordering::*;
+        assert_eq!(
+            compare_publisher_versions("2026-10-08", "2026-11-01"),
+            Some(Less)
+        );
+        assert_eq!(compare_publisher_versions("3.10", "3.9"), Some(Greater));
+        assert_eq!(compare_publisher_versions("3.1", "3.1.0"), Some(Equal));
+        assert_eq!(compare_publisher_versions("1.0b", "1.0b"), Some(Equal));
+        assert_eq!(compare_publisher_versions("1.0b", "1.0c"), None);
     }
 }

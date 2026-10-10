@@ -130,12 +130,12 @@ before changing the design.
     `warn_other_registries`). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
     `newest_release`, read with `git show`)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
-    `logoxide.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
-    date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
+    `logoxide.toml` + `usfm/` + `copr.htm` (the license file), its upstream version eBible.org's update
+    date (`2026-10-08`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
     codes; other paths answer with fetch.bible's site, which is refused) into `usx/` +
     `COPYRIGHT.txt`; `ccel` takes a Bible's ThML (`ccel_url`; restricted works answer with a
     page, refused) into `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>`
-    (`thml_head`; version `<version>`, else `DC.Date`; right to left judged from its letters);
+    (`thml_head`; upstream version `<version>`, else `DC.Date`; right to left judged from its letters);
     `sword` unzips a module (`sword_zip_urls`: `packages/<Module>.zip`, then lowercase) into
     sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
     with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
@@ -143,14 +143,19 @@ before changing the design.
     are another verse's entry; the conf's `Versification` is kept (`sword_versification`: SWORD's
     names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
     version, license (`sword_license`), language, and
-    `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Updating:
-    `upstream(entry)` is what each import writes as `upstream`, so `Catalog::find_upstream`
-    finds an installed import's entry (no field records the import name); `compare_import`
-    (current vs. a fresh import: `None` when the declared files match; the summaries' `Diff`;
-    when the publisher's version isn't newer it compares at the current version, then raises
-    it with `next_version`) and `apply_import` (removes declared files the fresh one lacks, through
-    `Storage::remove`, writes the rest; other files stay).
-    `CatalogSource::versions_track_updates` (eBible.org, SWORD) lets `lx` skip downloading.
+    `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Versions
+    (the owner's D1): a new import is `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's
+    version as it gives it (`2026-10-08`, `3.1`) goes in `[package.upstream] version`
+    (`manifest::Upstream`: `url`, `import` like `ebible:eng-asv`, `version`), which
+    `upstream(entry)` writes and catalog entries' `version` holds for imports. Updating:
+    `Catalog::find_upstream` matches `import`, then `url`; `compare_import` (current vs. a fresh
+    import, compared at the current version: `None` when the declared files match; else the
+    summaries' `Diff`, and the version raised by `next_version`; `ImportUpdate` has the
+    publisher's `upstream_from`/`upstream_to`) and `apply_import` (removes declared files the
+    fresh one lacks, through `Storage::remove`, writes the rest; other files stay).
+    `import_is_current(entry, upstream.version)` compares the publisher's versions
+    (`compare_publisher_versions`), never the package's, and only where
+    `CatalogSource::versions_track_updates` (eBible.org, SWORD), so `lx` can skip downloading.
     `downloads(entry)` (each file an import needs, by name, with URLs to try in turn) and
     `build(entry, files, dest)` are the one way every host imports (lx, `Logoxide.importDownloads`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
@@ -316,8 +321,10 @@ before changing the design.
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
   `Files`; `parseCatalogBytes` reads any catalog,
   and a SWORD repository's `.tar.gz` only that way. Updating an import: `LogoxideCatalog.findUpstream`
-  (its entry, from `PackageInfo.upstream`), `Logoxide.importIsCurrent` (skip the download), and
-  `Logoxide.updateImport(current, fresh)` (`ImportUpdate`: versions, `ChangeKind`, description,
+  (its entry, from `PackageInfo.upstream`, an `Upstream` record), `Logoxide.importIsCurrent(entry,
+  upstream.version)` (skip the download), and
+  `Logoxide.updateImport(current, fresh)` (`ImportUpdate`: versions, the publisher's
+  `upstreamFrom`/`upstreamTo`, `ChangeKind`, description,
   `files` to write and `removed` paths to delete; then install with `UpdateMode.Only`). `create.rs`: `fileMetadata`,
   `newPackage` (a package's files from one file), `newCollection`, `parseReferences`, and
   `LogoxidePackage.references()` and `epubFiles()`. `LogoxideVersifications` (`versification.rs`,

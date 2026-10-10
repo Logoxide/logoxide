@@ -865,8 +865,10 @@ fn sword_catalog_and_import() {
             info.license.as_deref(),
             package.books()
         ),
-        ("2.1.0", Some("LicenseRef-PublicDomain"), vec![43])
+        ("1.0.0", Some("LicenseRef-PublicDomain"), vec![43])
     );
+    let upstream = info.upstream.clone().unwrap();
+    assert_eq!(upstream.version.as_deref(), Some("2.1"));
     // A text catalog reads as bytes too
     let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n";
     let ebible =
@@ -911,9 +913,11 @@ fn updating_an_import() {
         .open_package(current.clone(), defaults(), vec![])
         .unwrap();
     let upstream = package.info().upstream.clone().unwrap();
-    assert_eq!(catalog.find_upstream(upstream), Some(entry.clone()));
-    assert!(logoxide.import_is_current(entry.clone(), "2026.10.8".into()));
-    assert!(!logoxide.import_is_current(entry.clone(), "2026.1.1".into()));
+    assert_eq!(catalog.find_upstream(upstream.clone()), Some(entry.clone()));
+    assert_eq!(upstream.version.as_deref(), Some("2026-10-08"));
+    assert!(logoxide.import_is_current(entry.clone(), upstream.version.clone()));
+    assert!(!logoxide.import_is_current(entry.clone(), Some("2026-01-01".into())));
+    assert!(!logoxide.import_is_current(entry.clone(), None));
 
     assert_eq!(
         logoxide
@@ -932,9 +936,10 @@ fn updating_an_import() {
         .unwrap();
     let update = logoxide.update_import(current, fresh).unwrap().unwrap();
     assert_eq!(
-        (update.from.as_str(), update.to.as_str(), update.bumped),
-        ("2026.10.8", "2027.0.0", true)
+        (update.from.as_str(), update.to.as_str()),
+        ("1.0.0", "2.0.0")
     );
+    assert_eq!(update.upstream_to.as_deref(), Some("2026-10-08"));
     assert_eq!(update.change, crate::ChangeKind::Major);
     assert_eq!(update.removed, ["usfm/44-ACTeng-asv.usfm"]);
     assert!(
@@ -947,7 +952,7 @@ fn updating_an_import() {
         .iter()
         .find(|f| f.path == "logoxide.toml")
         .unwrap();
-    assert!(String::from_utf8_lossy(&manifest.bytes).contains("version = \"2027.0.0\""));
+    assert!(String::from_utf8_lossy(&manifest.bytes).contains("version = \"2.0.0\""));
 }
 
 #[test]

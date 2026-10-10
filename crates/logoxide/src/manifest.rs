@@ -119,9 +119,10 @@ pub struct Package {
     /// not the books a Bible has
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub about_books: Vec<String>,
-    /// Where the text was imported from, if anywhere
+    /// Where the text was imported from, if anywhere: the download, the import's name, and the
+    /// publisher's version (written by importers, [`crate::import`])
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub upstream: Option<String>,
+    pub upstream: Option<Upstream>,
     /// `own` (the text's verse markers say), or a named system: `KJV`, `NRSV`, `MT`, ...
     #[serde(default = "own", skip_serializing_if = "is_own")]
     pub versification: String,
@@ -133,6 +134,27 @@ pub struct Package {
     /// these, only what the manifest names is (see [`crate::package::declared_files`])
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub include: Vec<String>,
+}
+
+/**
+`[package.upstream]`: where an imported package's text came from, so an update finds its
+publisher's entry again and knows whether the publisher has a newer one. The package's own
+`version` is logoxide's (1.0.0 for a new import, raised by what each update changes); the
+publisher's, which says nothing about what changed, is kept here as given
+*/
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Upstream {
+    /// The download it was made from (eBible.org's
+    /// `https://ebible.org/Scriptures/eng-asv_usfm.zip`)
+    pub url: String,
+    /// What `lx import` takes for it (`ebible:eng-asv`, `sword:crosswire/KJV`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import: Option<String>,
+    /// The publisher's version of what was downloaded, as the publisher gives it (eBible.org's
+    /// update date `2026-10-08`, a SWORD module's `3.1`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 fn own() -> String {
@@ -674,7 +696,13 @@ impl Manifest {
         };
         for (key, value) in &table {
             match key.as_str() {
-                "package" => check(key, value, fields_of::<Package>(), &mut unknown),
+                "package" => {
+                    check(key, value, fields_of::<Package>(), &mut unknown);
+                    if let Some(upstream) = value.get("upstream") {
+                        let fields = fields_of::<Upstream>();
+                        check("package.upstream", upstream, fields, &mut unknown);
+                    }
+                }
                 "formats" | "dependencies" => {
                     let fields = match key.as_str() {
                         "formats" => fields_of::<FormatEntry>(),
@@ -1154,7 +1182,7 @@ compare = ["mine"]
         let newer = BSB
             .replace(
                 "license = \"LicenseRef-PublicDomain\"",
-                "license = \"LicenseRef-PublicDomain\"\nfunding = \"https://e.org\"",
+                "license = \"LicenseRef-PublicDomain\"\nfunding = \"https://e.org\"\nupstream = { url = \"u\", import = \"ebible:x\", date = \"d\" }",
             )
             .replace(
                 "tag = \"v1.0.0\" }",
@@ -1175,6 +1203,7 @@ compare = ["mine"]
                 "media.files.length",
                 "media.player",
                 "package.funding",
+                "package.upstream.date",
                 "plugins",
                 "settings.theme"
             ]

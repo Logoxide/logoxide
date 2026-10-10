@@ -75,7 +75,17 @@ pub(crate) fn show(
         }
     }
     if let Some(upstream) = &info.upstream {
-        outln!("upstream: {upstream}");
+        let mut about = vec![];
+        if let Some(import) = &upstream.import {
+            about.push(import.clone());
+        }
+        if let Some(version) = &upstream.version {
+            about.push(format!("the publisher's version {version}"));
+        }
+        match about.is_empty() {
+            true => outln!("upstream: {}", upstream.url),
+            false => outln!("upstream: {} ({})", upstream.url, about.join(", ")),
+        }
     }
     let enabled: Vec<&str> = manifest
         .formats(package.enabled())

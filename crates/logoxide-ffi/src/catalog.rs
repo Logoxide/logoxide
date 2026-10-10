@@ -108,7 +108,8 @@ pub struct CatalogEntry {
     pub description: Option<String>,
     pub license: Option<String>,
     pub copyright: Option<String>,
-    /// The newest version, when the catalog says
+    /// The newest version, when the catalog says: for an import, the publisher's own as it gives
+    /// it (`2026-10-08`), which the import keeps as `Upstream.version`
     pub version: Option<String>,
     pub kind: PackageKind,
     pub right_to_left: bool,
@@ -274,11 +275,11 @@ impl LogoxideCatalog {
             .collect()
     }
 
-    /// The entry an imported package was made from, by its `upstream` (`PackageInfo.upstream`):
-    /// how to update an import (`Logoxide::update_import`)
-    pub fn find_upstream(&self, upstream: String) -> Option<CatalogEntry> {
+    /// The entry an imported package was made from, by its `upstream` (`PackageInfo.upstream`:
+    /// its import name, else its download): how to update an import (`Logoxide::update_import`)
+    pub fn find_upstream(&self, upstream: crate::Upstream) -> Option<CatalogEntry> {
         self.catalog
-            .find_upstream(&upstream)
+            .find_upstream(&upstream.into())
             .map(CatalogEntry::from)
     }
 
@@ -320,9 +321,10 @@ pub struct ImportUpdate {
     pub change: ChangeKind,
     /// What changed, in words (`1 verse reworded`)
     pub description: String,
-    /// The publisher's version isn't newer though the package changed: `to` is the next version
-    /// the change calls for
-    pub bumped: bool,
+    /// The publisher's versions before and after (`Upstream.version`), as it gives them; the
+    /// package's `from` and `to` are logoxide's, `to` raised by what changed
+    pub upstream_from: Option<String>,
+    pub upstream_to: Option<String>,
     /// The package's files now, to write over the old (its `logoxide.toml` has `to`)
     pub files: Vec<crate::PackageFile>,
     /// Its old files to delete (ones the publisher dropped); a reader's files beside it aren't

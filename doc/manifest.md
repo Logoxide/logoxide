@@ -59,7 +59,7 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `keywords` | array of strings | no | Words a search should find it by. Each without surrounding spaces, not empty, and not repeated (compared case-insensitively) |
 | `categories` | array of strings | no | At most 5, each from the [fixed list](#categories), not repeated |
 | `about-books` | array of strings | no | The books of the Bible it is mainly about, as uppercase USFM codes (`["ROM", "GAL"]` for a commentary on Romans and Galatians), not repeated. Said by its author, never worked out from its text; not the books a Bible contains |
-| `upstream` | string | no | Where the text was imported from (written by importers; see [Imports](#imports)) |
+| `upstream` | table | no | Where the text was imported from (written by importers; see [Imports](#imports)) |
 | `versification` | string | no | `own` (the default: the text's own verse markers say) or a named versification (`English`, `KJV`, `Original`, …) |
 | `maps-to` | string | only for a map | For `kind = "versification-map"`: the versification it maps `versification` to. Any other kind must not have it |
 | `include` | array of strings | no | More files the package is made of, as [patterns](#what-a-package-is-made-of) (`README.md`, `images/**`) |
@@ -316,10 +316,27 @@ smaller than the change.
 
 ## Imports
 
-Packages made from other publishers' downloads (`lx import`) are ordinary packages whose
-`upstream` is the URL of the download they were made from (eBible.org's
-`https://ebible.org/Scriptures/engkjv_usfm.zip`, a SWORD module's zip), by which an update finds
-the catalog entry again. Their versions follow the publisher's where it has one (eBible.org's
-update dates become `2026.10.8`, a SWORD module's `Version`), so they don't follow the version
-rules above: a date says nothing about what changed. When the publisher's version isn't newer
-but the text changed, an update takes the next version the change calls for.
+Packages made from other publishers' downloads (`lx import`) are ordinary packages that say where
+their text came from in `[package.upstream]`:
+
+```toml
+[package.upstream]
+url = "https://ebible.org/Scriptures/eng-kjv2006_usfm.zip"
+import = "ebible:eng-kjv2006"
+version = "2026-10-08"
+```
+
+| Key | Type | Required | Meaning |
+|---|---|---|---|
+| `url` | string | yes | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books) |
+| `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `sword:crosswire/KJV`) |
+| `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year) |
+
+An update finds the catalog entry again by `import`, else by `url`. The package's own `version`
+follows the rules above like any package's: a new import is `1.0.0`, and each update raises it by
+what changed (a reworded verse is minor, a removed one major, a new copyright notice or a new
+publisher's version with the same text a patch), whatever the publisher numbers its releases,
+so a dependency on `^1` stays safe across the publisher's years. Whether the publisher has a
+newer release is judged by comparing its version in the catalog with `upstream.version`
+(numbers between dots and dashes compared as numbers, so `2026-10-08` is before `2026-11-01`),
+never with the package's version.
