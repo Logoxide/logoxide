@@ -76,6 +76,16 @@ Can run beside phase I in worktrees; each item a commit.
 6. **Checksums remembered** (5.6): `Storage::stamp(path)`; `<cache>/stamps/` with git's 2 s
    rule; `verify`, `--repair`, and `release` always hash.
 
+**Done** (2026-10-11, all of H): H.1 C6 as `logoxide_text::cache` (`BookStore`, `BookCache`;
+the core's `cache.rs` and the LSP read through it, keyed by checksum and format); H.2
+`ErrorKind` with `Fetch` split into `Network`/`Git`/`Archive`, the FFI mapping by kind; H.3
+`storage::write_atomic`, `save_manifest`'s `Conflict`; H.4 `locking.rs` (`try_lock` polled 5 s,
+else `Busy` naming the holder; files under `$XDG_RUNTIME_DIR/logoxide/`, else the default
+cache's `locks/`), `Library::stale_staging`, `lx clean --remove`; H.5 `roots.rs`
+(`<library>/roots/<hash>.toml`, `lx clean --prune-roots`); H.6 `stamps.rs`
+(`Cache::with_stamps`, set by `Library::book_cache`). Decisions the agent took are in its
+commits' messages (977c194, fabb13c, c5460fc, d1295e0, 2872328).
+
 Check: `cargo test --workspace`, the no-read build, `lx check`/`verify` on the KJV and BSB, two
 `lx install`s at once on one library (one waits or says `Busy`).
 
@@ -104,6 +114,16 @@ The largest step. In this order, each a commit, the formats specified in `doc/` 
    read libsword. GBF modules (N4) cataloged and imported as GBF files.
 5. **lx**: `lx show` for a commentary's notes on a passage, a dictionary's entry, a verse's
    cross-references; `lx check` runs the readers; `lx import sword:crosswire/StrongsGreek`.
+**Done** (2026-10-11, I.1–I.4: commits 9876661, 7fdf356, a722c95, 50e3908): `Format::{Gbf,
+Dictionary, Xref}`, `[package] keys`, `doc/entries.md`; logoxide-text `source/{gbf,dictionary,
+xref}.rs`, `keys.rs`, `Source::notes/keys/entry/cross_references`, `hash::entry_hashes`,
+`TextFacts.entries`; `LXE1` (`Summary.entries`, `diff_entries`), `Project::packages_of`,
+`commentaries`, `dictionaries` (kind `lexicon`, which already existed), `cross_references`;
+`sword::catalog`/`import` for dictionaries (`entries/<module>.xml`) and GBF modules; `lx check`
+counts entries. Live: StrongsGreek and MHCC imported, released, verified. sword-modules needed
+no change. Not yet: I.5 (`lx show --notes/--entry/--keys/--xref`) and I.6 (bindings, plugin,
+LSP), below.
+
 6. **Bindings and front ends**: `LogoxidePackage.notes(passage)`, `entry(key)`, `keys()`,
    `crossReferences(verse)`, `LogoxideProject.commentaries()` and the rest; the Obsidian
    plugin's commentary reader (topos's `doc/logoxide.md` step 7 lists it) and Strong's lookup;
@@ -200,6 +220,28 @@ Any order, as they're reachable; each in `logoxide-import`.
   files), filling each `[[media.files]]` entry's `url`/`mirrors`. To settle: GitHub's 2 GiB
   limit, immutable versions duplicating media, and whether a registry's catalog lists media at
   all.
+
+## Status (2026-10-11, logoxide main e872e66)
+
+Done: G.4; all of H; I.1–I.4; L.4; M.1, M.2, M.3's LSP half. Open, in this order:
+
+1. **I.5 and I.6 (Rust)**: `lx show` for notes, entries, keys, cross-references (JSON too,
+   `tests/cli.rs` fixtures); the bindings' `LogoxidePackage.notes/entry/keys/crossReferences`
+   and `LogoxideProject.commentaries/dictionaries/crossReferences` (BoltFFI's Python naming:
+   no `_boltffi_<class>_<method>` collisions); the LSP's `commentaries` and `strongs` settings
+   in hover. An agent for this was briefed and cut off before writing anything.
+2. **I.6 (plugin)**: a commentary reader and Strong's lookup on those bindings, and M.4
+   (`importPrefixes` filter, the H.2 error kinds), after the bindings exist and `pack:wasm`
+   runs. The plugin's M.3 half (mapped references in its reader) waits for the owner's
+   uncommitted `reader.ts` work (G.3).
+3. **L.2 and L.3**: Door43 still times out from this machine (both the catalog API and the git
+   host, checked 2026-10-11): build `door43.rs` on saved fixtures (`manifest.yaml`, the
+   catalog API's JSON, a tar.gz made in the test) and say it's untested live. CCEL commentaries
+   (ThML, `kind = "commentary"`, through `Source::notes`; find CCEL's work pages, e.g. Matthew
+   Henry's `ccel/henry/mhc1.xml`) and books (`kind = "book"`; citations in ThML need
+   `citations::find` extended past EPUBs). An agent for this was briefed and cut off too.
+4. **J** (`logoxide-app`), then **K** (MCP), as written above.
+5. The owner's: G.1 (push the local topos `v0.6.0` tag, made 2026-10-11), G.2, G.3, G.5.
 
 ## Order and split
 
