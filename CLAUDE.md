@@ -398,6 +398,17 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   SWORD's format is `redistributable = false`, `derivatives = "none"`; "free non-commercial
   distribution" is redistributable without derivatives, since the statement grants nothing
   more, which keeps `license::assess`'s `Converted` concern), language, and `COPYRIGHT.txt`).
+  `door43` (`CATALOG`, the catalog API's `search?subject=Bible&stage=prod`, recognized by
+  `is_catalog`, `door43.org/api/v1/catalog`; its JSON `{"ok", "data": [{owner, name, title,
+  language, language_title, language_direction, subject, branch_or_tag_name, release.tag_name,
+  tarbar_url, …}]}` read loosely, as remembered, since the API never answered; `subject`
+  "Bible" only; `door43:<owner>/<repo>`, ids `door43-<owner>-<repo>`, the version the release's
+  tag, `tracks_versions`; the download `archive` at `archive_url(repo, tag)`, then
+  `tarbar_url`; the archive unpacked by the core's `archive::unpack` into a `MemoryStorage`,
+  `manifest.yaml` (serde_yaml 0.9.34, deprecated but frozen) required, its `dublin_core` for
+  the title, description, language and direction, license (`rights`, `CC BY-SA 4.0` as SPDX), and
+  upstream version (`version`, else the tag); every `.usfm` into `usfm/`, `LICENSE.md` the
+  license file when present; versification `own`).
   `license.rs`: `license_from_text`, `says_public_domain` (refuses negations). A vault uses any
   import as a path package in `imports/<id>/`. Versions (the owner's D1): a new import is
   `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's version as it gives it
@@ -510,7 +521,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   commentary's notes and a dictionary's or cross-reference package's entries, reading each),
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
-  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
@@ -606,8 +617,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   its `Files`, so WebAssembly too. topos never depends on logoxide. sword-modules is a
   clean-room crate: read its `CLAUDE.md` and `CLEANROOM.md` before changing it (interface into
   `docs/spec/api.md` first; never read libsword's source)
-- Door43 isn't imported yet: git.door43.org wasn't reachable from the owner's machine
-  (October 2026). The plan is in topos's `doc/logoxide.md` (step 7)
+- Door43 is imported (`door43:<owner>/<repo>`), but written without the service answering:
+  git.door43.org wasn't reachable from the owner's machine (October 2026), so the catalog API's
+  JSON fixture is written from memory (`crates/logoxide-import/tests/fixtures/door43/README.md`);
+  check it live when it answers. Its catalog isn't a default one
 - Licenses are shown, never enforced. No default registry (the owner can't host mirrors)
 - One package for apps: logoxide-ffi includes topos's API
 - Summaries with verse hashes are published for every package (not only Bibles); the parsed cache

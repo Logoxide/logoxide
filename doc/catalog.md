@@ -9,7 +9,7 @@ reference is `crates/logoxide/src/catalog.rs` and `crates/logoxide/src/publish.r
 
 logoxide's `logoxide-import` crate (and so lx and the bindings) also reads other publishers' own
 lists as catalogs (eBible.org's `translations.csv`, fetch.bible's `manifest.json`, CCEL's page of
-its Bibles and its genre indexes, a SWORD repository's `mods.d.tar.gz`); their entries are imported into packages rather
+its Bibles and its genre indexes, Door43's catalog API, a SWORD repository's `mods.d.tar.gz`); their entries are imported into packages rather
 than installed. They aren't described here.
 
 ## The file
@@ -17,7 +17,8 @@ than installed. They aren't described here.
 TOML 1.0, UTF-8. A catalog's location decides how it is read: a name ending in `.csv` is
 eBible.org's form, `.json` fetch.bible's, `.tar.gz` a SWORD repository's, a page on `ccel.org/ccel/`
 CCEL's page of Bibles, and `ccel.org/index/genre/gen-XXX` one of CCEL's genre indexes
-(`gen-COM`'s works are commentaries, `gen-BIB`'s Bibles, any other genre's books; all read by
+(`gen-COM`'s works are commentaries, `gen-BIB`'s Bibles, any other genre's books), and a
+location containing `door43.org/api/v1/catalog` Door43's catalog API (all read by
 `logoxide-import`); anything else is a `catalog.toml`.
 
 ```toml

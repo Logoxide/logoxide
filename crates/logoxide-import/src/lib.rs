@@ -9,6 +9,8 @@ uses as a path package (or which can be pushed anywhere as a git repository).
   `COPYRIGHT.txt`
 - **CCEL** ([`ccel`]): a Bible's ThML, the whole Bible in one file, described by its own head
   (title, language, rights, version), with its rights in `COPYRIGHT.txt`
+- **Door43** ([`door43`]): a Bible's release, its repository's archive at the tag, a resource
+  container whose `manifest.yaml` describes it, its USFM a file per book
 - **SWORD** ([`sword`]): a module's zip from its repository, read with sword-modules from
   memory: a Bible's or commentary's entries in their own markup (OSIS, ThML, or GBF), a file per
   book, or a dictionary's as `entries/<module>.xml`, with its conf's copyright and license in
@@ -27,6 +29,7 @@ and updates cross the publisher's years.
 
 pub mod catalog;
 pub mod ccel;
+pub mod door43;
 pub mod ebible;
 pub mod fetch;
 pub mod license;
@@ -47,7 +50,7 @@ pub use update::{
 };
 
 /// Every publisher's import prefix: what `ebible:<id>` and `fetch:<id>` start with
-pub const PREFIXES: [&str; 4] = ["ebible", "fetch", "ccel", "sword"];
+pub const PREFIXES: [&str; 5] = ["ebible", "fetch", "ccel", "sword", "door43"];
 
 /// The version a new import has: logoxide's own, which updates raise by what they change
 pub const IMPORT_VERSION: semver::Version = semver::Version::new(1, 0, 0);
@@ -59,8 +62,8 @@ pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>> {
 
 /**
 What importing `entry` downloads, so every host fetches the same files the same way: eBible.org's
-zip, fetch.bible's books (each named by its code), CCEL's ThML, or a SWORD module's zip (its
-URLs tried in turn). Packages from git or a registry aren't imported, which is an error
+zip, fetch.bible's books (each named by its code), CCEL's ThML, a SWORD module's zip, or a
+Door43 release's archive (its URLs tried in turn). Packages from git or a registry aren't imported, which is an error
 */
 pub fn downloads(entry: &CatalogEntry) -> Result<Vec<Download>> {
     match &entry.source {
@@ -85,6 +88,7 @@ pub fn build(entry: &CatalogEntry, files: &[(String, Vec<u8>)], dest: &dyn Stora
         Some("fetch") => fetch::import(entry, files, dest),
         Some("ccel") => ccel::import(entry, named("thml")?, dest),
         Some("sword") => sword::import(entry, named("zip")?, dest),
+        Some("door43") => door43::import(entry, named("archive")?, dest),
         Some(other) => Err(LogoxideError::Import(format!(
             "{}: no import reads `{other}:` downloads",
             entry.id

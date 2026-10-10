@@ -649,5 +649,7 @@ lx import ./mhc.thml --kind commentary    # a file someone already has (not yet)
 - **Nothing is hosted**: logoxide, the KJV and BSB packages, and a catalog of them are local
   repositories, so the examples above use `github:someone/...` where today only
   `file://` URLs exist.
-- `lx update` doesn't yet say when a newer major version exists; Door43 imports and an audio
-  player are later steps (`doc/logoxide.md` in topos).
+- `lx update` doesn't yet say when a newer major version exists; an audio player is a later step
+  (`doc/logoxide.md` in topos). Door43 imports (`door43:<owner>/<repo>`, after
+  `lx catalog add "https://git.door43.org/api/v1/catalog/search?subject=Bible&stage=prod"`)
+  were written while git.door43.org didn't answer, so they're untried against it.
