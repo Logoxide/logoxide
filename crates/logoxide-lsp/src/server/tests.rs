@@ -1050,9 +1050,7 @@ fn insertions() {
 /// `markup.width` breaks long lines at spaces, keeping every byte offset
 #[test]
 fn width_wraps_at_spaces() {
-    assert_eq!(bible::wrap("aa bb cc dd\nee ff", 5), "aa bb\ncc dd\nee ff");
-    assert_eq!(bible::wrap("a verylongword b", 4), "a\nverylongword\nb");
-    assert_eq!(bible::wrap("“é” ü ö", 3), "“é”\nü ö");
+    // The wrapping itself is logoxide-text's (`passage::wrap`, tested there)
     let (server, uri, dir) = with_bible("See John 3:16", json!({ "width": 30 }), "width");
     let book = server
         .book(BookParams {

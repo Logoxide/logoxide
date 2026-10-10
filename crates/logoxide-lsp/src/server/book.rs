@@ -164,7 +164,7 @@ impl Server {
         let index = LineIndex::new(text);
         let mut data = vec![];
         let (mut line, mut character) = (0, 0);
-        for (range, token) in &rendered.tokens {
+        for (range, token) in &bible::tokens(&rendered.marks) {
             let mut start = range.start;
             for piece in text[range.clone()].split('\n') {
                 let end = start + piece.len();

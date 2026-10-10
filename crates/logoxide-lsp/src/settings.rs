@@ -157,6 +157,34 @@ impl MarkupSettings {
         ]
     }
 
+    /// How text is written, for logoxide-text: hidden elements, the shown ones' templates, and
+    /// the labels (verse numbers `[{verse}]` and chapters `{name} {chapter}` unless set), each
+    /// with `{name}` for the book's name
+    pub fn style(&self) -> logoxide_text::passage::Style {
+        let label = |element: &MarkupElement, default: &str| {
+            element.shown(true).then(|| {
+                element
+                    .display
+                    .clone()
+                    .unwrap_or_else(|| default.to_string())
+            })
+        };
+        let mut style = logoxide_text::passage::Style {
+            verse_label: label(&self.verse_numbers, "[{verse}]"),
+            chapter_label: label(&self.chapter_numbers, "{name} {chapter}"),
+            width: self.width,
+            ..Default::default()
+        };
+        for (kind, element, default) in self.elements() {
+            if !element.shown(default) {
+                style.hidden.push(kind);
+            } else if let Some(display) = &element.display {
+                style.templates.insert(kind, display.clone());
+            }
+        }
+        style
+    }
+
     /// These settings with `over`'s on top (each `show` and `display` it sets)
     pub fn merged(&self, over: &MarkupSettings) -> MarkupSettings {
         let merge = |base: &MarkupElement, over: &MarkupElement| MarkupElement {

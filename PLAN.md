@@ -8,6 +8,9 @@ chose D1, D2, D11, and the release timing below on 2026-10-10 (each the recommen
 
 Phases 1 to 4.5 change formats or the manifest, so they come **before 0.1.0 is published** (it
 is prepared, not pushed; the owner chose to wait). Phases 5 and 6 can be 0.2.
+The crate layout decided on 2026-10-10 (the package manager never reads text) is
+`PLAN-CRATES.md`, done; the items below that touch text, imports, or passages are placed in its
+layers (4.7, 5.7, 5.8, 5.9, 6).
 
 ## Decisions first
 
@@ -140,7 +143,9 @@ summaries are regenerated and re-tagged at the end.
 
 ## Phase 4: content model
 
-In dependency order. 4.1–4.5 change the manifest, so they come before 0.1.0; 4.6–4.7 can follow.
+In dependency order. 4.1–4.6 are done (October 2026); 4.7 remains, placed in the crate layout
+of `PLAN-CRATES.md` (the core reads no text: readers go in `logoxide-text`, imports in
+`logoxide-import`).
 
 1. **Import versions and `[package.upstream]`** (D1). `upstream` becomes a table:
    `url`, `import` (`ebible:eng-kjv2006`: the import name, which nothing records today), and
@@ -173,26 +178,26 @@ In dependency order. 4.1–4.5 change the manifest, so they come before 0.1.0; 4
 6. **Audio-only packages**: `[media] text = "<dependency>"` and/or `versification = "…"`; such a
    package may have no `[formats]`; timings are checked against that text or the
    versification's counts.
-7. **Commentaries, dictionaries, cross-references** (the largest step):
-   - Commentaries stay OSIS/ThML per book, but SWORD imports take bridges from linked entries,
-     not equal text (today two notes that merely match are merged). `Package::notes(passage)`.
-     Ranges across chapters need topos-bible-markup to read `osisID="John.3.36-John.4.2"` (a
-     topos commit).
-   - Dictionaries (D10): format `dictionary` (`entries/*.xml`), `keys = "strongs-greek" |
-     "strongs-hebrew" | "headword"`, `Package::entry(key)`, `keys()`.
-   - Cross-references: format `xref`, TSV of `from`, `to`, optional weight (OSIS);
-     `Package::cross_references(verse)`.
-   - Summaries for them: `logoxide.entries.bin` (`LXE1`, the same header as phase 3: key hash
-     and text hash per entry or pair); `diff_entries` (a removed key major; reworded or added
-     minor).
-   - `Project::packages_of(kind)` with `commentaries()`, `dictionaries()`, `cross_references()`;
-     mirrored in the FFI.
-   - SWORD: `parse_sword` catalogs dictionary modules (`catalog.rs:368`); `import::sword` reads
-     them (`DictionaryModule::iter`; Strong's from `Feature=GreekDef/HebrewDef`, `G0025` →
-     `G25`).
-   - **sword-modules** needs an API for linked entries (`VerseModule::iter_spans`). Clean-room:
-     specify it in its `docs/spec/api.md` first, then implement, by someone who has never read
-     libsword.
+7. **Commentaries, dictionaries, cross-references** (the largest step), by layer:
+   - **logoxide-text** reads them: commentaries stay OSIS/ThML per book (SWORD imports take
+     bridges from linked entries, not equal text, which `logoxide-import`'s `sword::import`
+     already does through `VerseModule::iter_spans`; logoxide-markup reads
+     `osisID="John.3.36-John.4.2"` as one span), read as `Source::notes(passage)`; dictionaries
+     (D10): format `dictionary` (`entries/*.xml`), `keys = "strongs-greek" | "strongs-hebrew" |
+     "headword"`, read as `entry(key)` and `keys()`; cross-references: format `xref`, TSV of
+     `from`, `to`, optional weight (OSIS), read as `cross_references(verse)`. Each is a
+     `TextFormat` with a reader beside `source/`, and `TextFacts` gains `entries` (each entry's
+     key hash and text hash), the text's half of the summary.
+   - **logoxide** keeps the data: `logoxide.entries.bin` (`LXE1`, the same header as phase 3:
+     key hash and text hash per entry or pair) in `summary`, and `diff_entries` (a removed key
+     major; reworded or added minor); `Project::packages_of(kind)` with `commentaries()`,
+     `dictionaries()`, `cross_references()` (it's the lock); the manifest's formats and keys.
+     The FFI mirrors them.
+   - **logoxide-import**: `sword::catalog` lists dictionary modules; `sword::import` reads them
+     (`DictionaryModule::iter`; Strong's from `Feature=GreekDef/HebrewDef`, `G0025` → `G25`).
+   - **sword-modules**'s API for linked entries (`VerseModule::iter_spans`) exists; a
+     dictionary API, if one is missing, is specified in its `docs/spec/api.md` first, then
+     implemented, by someone who has never read libsword (clean-room).
 
 ## Phase 5: logoxide as a library
 
@@ -224,23 +229,33 @@ Each a commit; together they make 0.2.0.
    only when every stamp matches and is at least 2 s older than the stamp file (git's rule for
    racy files). `verify`, `--repair`, and `release` always hash. `Cache::open` stops hashing every
    file on every open (`cache.rs:126`).
-7. **Orchestration in the core**: `ops::catalogs` (`load_catalogs`, `load_registry`,
-   `registry_url` from `lx/src/cmd/catalog.rs:16`); `ops::import` (download, stage, rename, roll
-   back, from `cmd/import.rs:22`; `plan_updates`/`apply_update` from `:147`; lx keeps only the
-   prompt); `license` (phase 4.4). The FFI's copies (`ffi/src/lib.rs:213`, `project.rs:290`)
-   call them.
-8. **Reading passages**: `Bible::passage` (`logoxide-lsp/src/bible.rs:402`) moves to
-   `CachedPackage::passage`; `Project::read("John 3:16 KJV")`; `Project::compare(passage,
-   bibles)` maps into each Bible's versification and lists what's missing. The LSP builds on it.
+7. **Orchestration above the core**: `ops::catalogs` (`load_catalogs`, `load_registry`,
+   `registry_url` from `lx/src/cmd/catalog.rs`) in the core, since catalogs and registries are
+   the package manager's; the import flow (download, stage, rename, roll back, from
+   `cmd/import.rs`; `plan_updates`/`apply_update`; lx keeps only the prompt) in
+   `logoxide-import`, which already holds `downloads`, `build`, and `update`; `license` is done
+   (phase 4.4). The FFI's copies (`ffi/src/lib.rs`, `project.rs`) call them. The `TextReader`
+   trait is what lets the core orchestrate without reading text.
+8. **Reading passages**: done in part (PLAN-CRATES.md E.3, October 2026): `Bible::passage` and
+   the whole-book rendering moved from the LSP to `logoxide-text::passage` (`text`, `render`,
+   `Style`, `Rendered` with each verse's range), never `CachedPackage::passage`, since the
+   core reads no text. What remains: `read("John 3:16 KJV")` and `compare(passage, bibles)`
+   (maps into each Bible's versification and lists what's missing) are wiring-layer functions
+   that open the project's Bibles and call `passage::text`: in lx and the FFI, or a small
+   `logoxide-app` crate if they're duplicated (decide when written). The LSP builds on
+   `passage` already; the FFI's `LogoxideBook.text` can too.
 9. **A facade and narrower exports**: a `Logoxide` struct (config, library, cache, `Http`,
-   `Fetcher`; `project`, `catalogs`, `install`, `import`, `plan_updates`, `clean`, `read`,
-   `compare`); public: the formats, `storage`, `source`, `net`, `ops`, `read`, `error`;
-   `archive` under `net`, `registry_build` under `publish`, `package::glob` crate-private. No
-   deprecated re-exports (nothing is published). README, CLAUDE.md, 0.2.0.
+   `Fetcher`, and a `Box<dyn TextReader>` the host gives, `DefaultReader` with the `read`
+   feature; `project`, `catalogs`, `install`, `plan_updates`, `clean`; `import`, `read`, and
+   `compare` are the layers above it); public: the formats, `storage`, `reader`, `net`, `ops`,
+   `error`; `archive` under `net`, `registry_build` under `publish`, `package::glob`
+   crate-private. No deprecated re-exports (nothing is published). README, CLAUDE.md, 0.2.0.
 
 ## Phase 6: MCP servers
 
 On rmcp (the official Rust SDK), tokio over stdio, the library through `spawn_blocking`.
+`logoxide-mcp` wires every layer together as lx does: `logoxide` (with `read`), `logoxide-text`
+(passages), `logoxide-import` (catalogs and imports), `logoxide-markup` through them.
 
 1. **logoxide-mcp** (`crates/logoxide-mcp`, read-only): `search_catalogs`, `package_info`,
    `list_packages`, `read_passage`, `compare_passage`, `map_reference`, `show_summary`,
@@ -265,19 +280,20 @@ kinds, `LXE1`), `doc/trust.md` (git hardening, redirects, MCP), CLAUDE.md, and t
 
 ## Checking each step
 
-`cargo fmt`, `cargo clippy --all-targets -D warnings`, `cargo test` (and the FFI's own workspace
-and `npm run pack:wasm` when it's touched); `lx check` and `lx verify` on
+`cargo fmt`, `cargo clippy --all-targets -D warnings`, `cargo test`, `cargo check -p logoxide
+--no-default-features --all-targets` (the core reads no text; CI runs it), and the FFI's own
+workspace and `npm run pack:wasm` when it's touched; `lx check` and `lx verify` on
 `~/Development/logoxide-packages/{kjv,bsb}`; an import from each source (`ebible:`, `fetch:`,
-`ccel:`, `sword:`) once phase 4 lands; then `cargo install --path crates/lx` and
-`crates/logoxide-lsp`.
+`ccel:`, `sword:`); then `cargo install --path crates/lx` and `crates/logoxide-lsp`.
 
 ## How the work is split
 
 - Phases 1 and 2: in parallel, each in its own worktree, one commit per item.
 - Phase 3: topos first (books, `VerseSpan.part`), then logoxide items in order (3.2 is free to
   go first).
-- Phase 4: 4.1–4.5 in order; 4.6 after 4.3; 4.7 last, with the sword-modules spec written first
-  by a clean-room agent.
+- Phase 4: 4.1–4.6 done; 4.7 last, by layer as written, with any sword-modules spec written
+  first by a clean-room agent. The crate layout it builds on is `PLAN-CRATES.md` (phases A–F
+  done, October 2026).
 - Phase 5: in order; 5.1–5.2 can start any time.
 - Phase 6 after 5.
 

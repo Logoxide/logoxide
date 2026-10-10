@@ -3,8 +3,9 @@ logoxide-text: what's in a Bible or a book. It knows no packages, only files: a 
 read as verses ([`source`]: USX, USFM, OSIS, ThML into logoxide-markup's tree), each verse's
 words hashed by a rule that never changes ([`hash`]), a file's own title ([`titles`]), a
 versification map's lines and the mapping of references through them ([`versification`]), a
-recording's verse timings ([`timings`]), an EPUB's metadata ([`metadata`]) and the passages it
-cites ([`citations`]), and the script a text is written in ([`script`]).
+passage or a whole book as plain text with where each verse is ([`passage`]), a recording's verse
+timings ([`timings`]), an EPUB's metadata ([`metadata`]) and the passages it cites
+([`citations`]), and the script a text is written in ([`script`]).
 
 Files come through [`Files`], a read-only view of a folder, memory, or a host's files, so it runs
 wherever logoxide-markup does, WebAssembly included. The package manager (`logoxide`) never
@@ -17,6 +18,7 @@ pub mod error;
 pub mod files;
 pub mod hash;
 pub mod metadata;
+pub mod passage;
 pub mod script;
 pub mod skipped;
 pub mod source;

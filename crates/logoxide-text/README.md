@@ -11,6 +11,8 @@ What's in a Bible or a book: verses, hashes, titles, numbering. It knows no pack
 - **Titles**: a file's own title (`\toc2`, `\h`, `\toc1`; an EPUB's `dc:title`)
 - **Versification maps**: Paratext `.vrs` lines, and references mapped through them both ways
   and through each other (`versification`)
+- **Passages as text**: a passage or a whole book as plain text in a style (labels, hidden
+  elements, templates, a width), with where each verse is and what marks each run (`passage`)
 - **Timings**: WebVTT cues named by verse, checked against a text (`timings`)
 - **Citations**: the passages an EPUB cites, found by topos (`citations`); an EPUB's metadata
   (`metadata`); the script a text is written in (`script`)

@@ -370,7 +370,10 @@ before changing the design.
   `count_elements`. `titles`: a file's own title (`own_title`, `book_file_titles`,
   `epub_title`). `versification`: `.vrs` maps and routing (below, under the core's bullet).
   `timings`: WebVTT cues by verse (`parse_timings`, `check_timings`, `book_verses`).
-  `citations::find`: an EPUB's references through topos-formats. `versification::system(name)`:
+  `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
+  label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
+  templates, `width` to `wrap` at), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
+  `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats. `versification::system(name)`:
   SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
   chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's
   `FileMetadata` (`epub_metadata`, `opf_metadata`, `elements`); `archive::unzip` (limits);
@@ -385,7 +388,10 @@ before changing the design.
   no_panic` check it; never read libsword or other SWORD readers' code (its `CLEANROOM.md`)
 - `crates/logoxide-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on logoxide). `bible.rs`'s `Bible` reads a package or a plain
-  USX folder through logoxide sources; `settings.rs` finds the project (the `project` setting, a
+  USX folder through logoxide sources, and renders hover text and whole books through
+  logoxide-text's `passage` (`MarkupSettings::style()` makes its `Style`; `bible::tokens` maps
+  the markup's kinds to the editor's semantic tokens; `Part` and `Rendered` are logoxide-text's);
+  `settings.rs` finds the project (the `project` setting, a
   workspace folder with a `logoxide.toml`, else the library's own; the server's machine library is
   set by `main.rs`, and tests have none) and loads `bibles = ["id"]` or, with no Bible settings,
   the project's Bibles. `epub = true` (opt-in) searches EPUBs (and `pdf = true` PDFs, with

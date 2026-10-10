@@ -225,6 +225,12 @@ before B.2.
 3. **logoxide-lsp**: `bible.rs` on `logoxide-text` (`open`, `passage`, `search`); `settings.rs`'s
    `MarkupElement` on `logoxide_markup::Kind`; `workspace.rs` keeps topos-formats for EPUB and
    PDF text.
+   **Done** (2026-10-11): `logoxide-text::passage` (`Style`, `text`, `render`, `Rendered`,
+   `Part`, `wrap`) holds what `bible.rs` rendered; the LSP keeps the books, maps the markup's
+   kinds to its tokens (`bible::tokens`), and names the documents; `MarkupSettings::style()`
+   makes the `Style`. Item 1 (lx's own `TextReader`) was superseded by C5's adapter in the
+   core, and the FFI (2) reads through the core's `read` feature and `logoxide-import`; its
+   `LogoxideBook.text` still renders on logoxide-markup directly.
 4. **obsidian-logoxide** (C8): drop any `topos` import; `ToposBook` → `LogoxideBook`. Rebuild
    with `npm run pack:wasm`; run its headless tests.
 5. **logoxide.nvim**: nothing (it speaks to the LSP).
@@ -242,6 +248,9 @@ before B.2.
   `logoxide-app` crate if they're duplicated: decide when written).
 - **5.9 (facade)**: `Logoxide` holds a `Box<dyn TextReader>` given by the host.
 - **6 (MCP)**: logoxide-mcp depends on every layer, like lx.
+
+**Done** (2026-10-11): PLAN.md's phase 4 intro, 4.7, 5.7, 5.8 (E.3's part done), 5.9, 6,
+"Checking each step", and "How the work is split" say this.
 
 ## Docs and CI with each change
 
