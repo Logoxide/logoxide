@@ -192,6 +192,22 @@ implementation). lx's `cmd/import.rs` and the FFI's `importEbible`, `importFetch
 catalog list` loads catalogs through `logoxide_import::catalog::parse` when the URL is a
 publisher's, else `logoxide::catalog::Catalog::parse`.
 
+**Done** (2026-10-11, branch `phase-d`): `crates/logoxide-import` with `catalog` (`parse`,
+`parse_text`, `is_publishers`, `publisher_name`), a module per publisher (`ebible`, `fetch`,
+`ccel`, `sword`, each with `catalog` and `import`), `license`, and `update`; the core's
+`CatalogSource` is `Git`, `Registry`, and `External { import, upstream, tracks_versions,
+downloads }` (A.4, taken as the owner chose on 2026-10-11: the core keeps only what it decides
+with, and the import crate's `build` dispatches on the prefix). Where the plan was changed:
+`DEFAULT_CATALOGS` and the four URL constants stay in the core (a manifest's default catalogs
+are the package manager's to know); `works.toml` stays whole in the core, `of_import` being a
+string lookup, and `catalog::known_works` is public for the parsers; `compare_import` takes a
+`TextReader`, but the crate depends on the core's `read` feature all the same, since `finish`
+checks an import by opening it; the core's last use of sword-modules (`[media] versification`
+counts) went to logoxide-text as `versification::system`, so the core's `read` feature is
+logoxide-text alone. The FFI's `CatalogSource` has the one `External` variant and loses
+`importEbible`, `importFetchBible`, `importCcel`, and `importSword` (`importDownloads` and
+`importDownloaded` import every publisher); the Obsidian plugin is adapted to that.
+
 ## Phase E: wiring
 
 After C and D, except E.2a (`LogoxideBook` on logoxide-markup, the bridge dropped), which comes

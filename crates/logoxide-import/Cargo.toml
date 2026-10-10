@@ -1,0 +1,31 @@
+[package]
+name = "logoxide-import"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Packages from other publishers' downloads: eBible.org, fetch.bible, CCEL, and SWORD repositories, as logoxide catalogs and imports"
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bible", "usfm", "usx", "sword", "import"]
+categories = ["text-processing"]
+
+[dependencies]
+# The package manager, with its reader: an import is checked by reading it (it must have books),
+# and updating one compares the two texts' summaries
+logoxide.workspace = true
+logoxide-text.workspace = true
+# SWORD modules, read from memory (so WebAssembly too), and their versification systems' names
+sword-modules = { workspace = true, features = ["zip", "bzip2", "xz"] }
+serde_json.workspace = true
+semver = { version = "1", features = ["serde"] }
+toml = { version = "0.9", features = ["preserve_order"] }
+toml_edit = "0.23"
+# A SWORD repository's `mods.d.tar.gz`
+flate2 = "1"
+tar = { version = "0.4", default-features = false }
+
+[dev-dependencies]
+# Building the downloads the tests read
+zip = { version = "2", default-features = false, features = ["deflate"] }

@@ -97,7 +97,7 @@ fn read_catalog(location: &str, base: &Path) -> logoxide::Result<logoxide::catal
             message: e.to_string(),
         })?
     };
-    logoxide::catalog::Catalog::parse_bytes(location, &bytes)
+    logoxide_import::catalog::parse(location, &bytes)
 }
 
 /**
@@ -334,7 +334,7 @@ fn source_key(entry: &logoxide::catalog::CatalogEntry) -> String {
     match &entry.source {
         logoxide::catalog::CatalogSource::Git { url } => url.clone(),
         logoxide::catalog::CatalogSource::Registry { catalog } => format!("{catalog}#{}", entry.id),
-        other => other.import_name().unwrap_or_default(),
+        other => other.import_name().unwrap_or_default().to_string(),
     }
 }
 
@@ -440,7 +440,7 @@ pub(crate) fn search(
         let entries: Vec<serde_json::Value> = (found.iter().take(limit))
             .map(|e| {
                 let install = match (&e.source, e.source.import_name()) {
-                    (_, Some(name)) => vec![String::from("import"), name],
+                    (_, Some(name)) => vec![String::from("import"), name.to_string()],
                     _ if through.contains_key(&source_key(e)) => {
                         vec![String::from("add"), through[&source_key(e)].clone()]
                     }

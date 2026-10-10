@@ -62,6 +62,17 @@ use topos_bible::{
 
 use crate::error::{Result, TextError};
 
+/// A versification system with each chapter's verse count, as SWORD defines them (`KJV`, `KJVA`,
+/// `NRSV`, `NRSVA`, `MT`, `Leningrad`, `Synodal`, `Vulg`, `LXX`, …): `verse_count(book, chapter)`
+pub use sword_modules::Versification as System;
+
+/// The versification system SWORD names `name` (`KJV`, ignoring case), if it knows one: a
+/// recording numbered by one (`[media] versification`) is checked against its counts when there
+/// is no text
+pub fn system(name: &str) -> Option<&'static System> {
+    System::get(name)
+}
+
 /// One verse: its book, chapter, and number (0 for a psalm's title)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Verse {

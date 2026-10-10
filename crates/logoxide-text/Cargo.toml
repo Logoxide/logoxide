@@ -16,6 +16,8 @@ topos-bible.workspace = true
 # Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
 topos-bible-formats.workspace = true
 logoxide-markup.workspace = true
+# SWORD's versification systems (KJV, NRSV, …): each chapter's verse count
+sword-modules.workspace = true
 serde.workspace = true
 sha2 = "0.10"
 thiserror = "2"

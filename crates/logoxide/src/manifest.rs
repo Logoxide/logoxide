@@ -144,14 +144,14 @@ pub struct Package {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edition_year: Option<i32>,
     /// Where the text was imported from, if anywhere: the download, the import's name, and the
-    /// publisher's version (written by importers, [`crate::import`])
+    /// publisher's version (written by `logoxide-import`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub upstream: Option<Upstream>,
     /// `own` (the text's verse markers say), or a named system: `KJV`, `NRSV`, `MT`, ...
     #[serde(default = "own", skip_serializing_if = "is_own")]
     pub versification: String,
     /// For a versification map: the versification it maps `versification` to
-    /// ([`crate::versification`])
+    /// (logoxide-text's `versification`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maps_to: Option<String>,
     /// More files the package is made of, as patterns (`README.md`, `images/**`): besides
@@ -261,7 +261,7 @@ pub enum Format {
     /// references in it)
     Epub,
     /// A versification map's lines, as Paratext's `.vrs` files write them
-    /// ([`crate::versification`])
+    /// (logoxide-text's `versification`)
     Vrs,
 }
 

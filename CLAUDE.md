@@ -139,23 +139,27 @@ before changing the design.
     names and declared sizes (the top folder, the limits, before anything is written), then
     writing each file to storage as it's read; `Refs::find_commit` takes a revision of at least
     `MIN_REV_PREFIX` hex digits naming one commit
-  - `catalog.rs`: catalogs to search (`Catalog::parse` by extension: a `catalog.toml` of git
-    packages, eBible.org's `translations.csv` (its downloadable, redistributable rows), or
-    fetch.bible's `manifest.json` (`https://v1.fetch.bible/manifest.json`, not
-    `/bibles/manifest.json`, an older form)), CCEL's page of its Bibles (`CCEL_CATALOG`, HTML:
-    `parse_ccel` takes each `<h2>` link's work and title; no language or license, which the
-    file's head gives on import), or a SWORD repository's `mods.d.tar.gz` (`parse_bytes` /
-    `parse_sword`: Bibles and commentaries in OSIS or ThML that aren't locked; GBF isn't read).
-    `SWORD_REPOSITORIES` names the HTTPS repositories in CrossWire's list (`crosswire`,
-    `crosswire-beta`, `ebible`, …; others by host, `sword_repository_name`). Ids are prefixed
+  - `catalog.rs`: catalogs to search: `Catalog::parse` reads a `catalog.toml` of git packages
+    and registry releases; other publishers' lists (eBible.org's `translations.csv`,
+    fetch.bible's `manifest.json`, CCEL's page of its Bibles, a SWORD repository's
+    `mods.d.tar.gz`) are read by `crates/logoxide-import` into the same `Catalog`, each entry a
+    `CatalogSource::External` (phase D, October 2026): its `import` name (`ebible:eng-kjv2006`,
+    `sword:crosswire/KJV`: a prefix naming the publisher, a colon, the publisher's id), the
+    `upstream` URL the import is made from, `tracks_versions` (whether a newer download always
+    has a newer `version`: eBible.org's dates and SWORD's `Version`s do), and `downloads` (each
+    file the import needs, by name, with URLs to try in turn), so the package manager knows no
+    publisher, only what an entry says of itself (`prefix`, `import_id`, `import_name`,
+    `upstream_url`, `downloads`, `versions_track_updates`). Ids are prefixed
     (`ebible-eng-kjv2006`, `fetch-eng_kjv`, `ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
     first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
     and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
     sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
     `[settings] catalogs`, then those four (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
-    CCEL, CrossWire) unless `default-catalogs = false`. Each imported kind names its prefix
-    (`CatalogSource::prefix`: `ebible`, `fetch`, `ccel`, `sword`), and `Catalog::find_import`
-    finds `ebible:<id>` (or `sword:crosswire/KJV`) in a catalog; `lx import` looks through the
+    CCEL, CrossWire; the URLs are the core's, what a manifest means by a default) unless
+    `default-catalogs = false`. `Catalog::find_import` finds `ebible:<id>` (or
+    `sword:crosswire/KJV`) in a catalog, `find_upstream` an imported package's entry by its
+    `[package.upstream]` `import`, then `url`; `known_works` gives imports the works
+    `works.toml` knows their names to be; `lx import` looks through the
     project's catalogs in order (and for `sword:<known repository>/…`, that repository's). `Project::add_catalog`/`remove_catalog` edit them (removing a
     default turns the defaults off and names the others; naming them all again turns them back on). Registries (`[settings.registries]`, `Project::add_registry`) are named catalogs: a folder
     of package repositories (`Catalog::from_packages`; lx scans it) or a catalog, so
@@ -168,39 +172,6 @@ before changing the design.
     `warn_shadowed`; lx add through a registry warns when another registry lists the id,
     `warn_other_registries`). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
     `newest_release`, read with `git show`)
-  - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
-    `logoxide.toml` + `usfm/` + `copr.htm` (the license file), its upstream version eBible.org's update
-    date (`2026-10-08`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
-    codes; other paths answer with fetch.bible's site, which is refused) into `usx/` +
-    `COPYRIGHT.txt`; `ccel` takes a Bible's ThML (`ccel_url`; restricted works answer with a
-    page, refused) into `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>`
-    (`thml_head`; upstream version `<version>`, else `DC.Date`; its script, and so its direction, judged from its letters (`language::dominant_script`));
-    `sword` unzips a module (`sword_zip_urls`: `packages/<Module>.zip`, then lowercase) into
-    sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
-    with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
-    milestones, making linked verses bridges from sword-modules' `iter_spans` (`n="16-17"`, or
-    one id into the next chapter, `osisID="John.3.36-John.4.2"`, which logoxide-markup reads
-    as one span to `last_chapter`), and leaving out introductions stored at an earlier verse's
-    entry (`EntryLocation`); the conf's `Versification` is kept (`sword_versification`: SWORD's
-    names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
-    version, license (`sword_license`) and rights (`sword_rights`: permission given to CrossWire
-    or only in SWORD's format is `redistributable = false`, `derivatives = "none"`), language,
-    and
-    `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Versions
-    (the owner's D1): a new import is `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's
-    version as it gives it (`2026-10-08`, `3.1`) goes in `[package.upstream] version`
-    (`manifest::Upstream`: `url`, `import` like `ebible:eng-asv`, `version`, and `note`, words for a hand-made package's source with no URL, which then has none), which
-    `upstream(entry)` writes and catalog entries' `version` holds for imports. Updating:
-    `Catalog::find_upstream` matches `import`, then `url`; `compare_import` (current vs. a fresh
-    import, compared at the current version: `None` when the declared files match; else the
-    summaries' `Diff`, and the version raised by `next_version`; `ImportUpdate` has the
-    publisher's `upstream_from`/`upstream_to`) and `apply_import` (removes declared files the
-    fresh one lacks, through `Storage::remove`, writes the rest; other files stay).
-    `import_is_current(entry, upstream.version)` compares the publisher's versions
-    (`compare_publisher_versions`), never the package's, and only where
-    `CatalogSource::versions_track_updates` (eBible.org, SWORD), so `lx` can skip downloading.
-    `downloads(entry)` (each file an import needs, by name, with URLs to try in turn) and
-    `build(entry, files, dest)` are the one way every host imports (lx, `Logoxide.importDownloads`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
     `mirrors` (tried in order after it: `MediaFile::urls`), size, SHA-256, and book, never
     stored in the package (its `sha256` must be 64 hex digits); `verify` checks a download
@@ -218,8 +189,8 @@ before changing the design.
     let a package have no `[formats]` (it opens with `NoText` even as a Bible, and isn't one of
     a project's Bibles); `check_package_timings_with(package, text)` checks against the text
     `Project::media_text` opens (lx check and media check; not installed: warned, verses
-    unchecked), else its own, else the versification's counts from sword-modules' systems
-    (release checks without the dependency). The FFI's `LogoxidePackage.mediaText()`,
+    unchecked), else its own, else the versification's counts from SWORD's systems
+    (logoxide-text's `versification::system`; release checks without the dependency). The FFI's `LogoxidePackage.mediaText()`,
     `mediaVersification()`
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.
@@ -323,6 +294,57 @@ before changing the design.
     package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs).
     The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) loads whole (2424
     verses; its `S3Y = DAG` lines map), with two lines past its counts warned of
+- `crates/logoxide-import`: packages from other publishers' downloads (PLAN-CRATES.md phase D,
+  October 2026; logoxide's `import.rs`, its catalog parsers, and `license_from_text` until
+  then). Above the core, as lx and the bindings are: it depends on `logoxide` with its `read`
+  feature (an import is checked by reading it), logoxide-text, and sword-modules, which the
+  core no longer does. `catalog::parse(location, bytes)` (and `parse_text`) reads any
+  publisher's list by its form (`.csv` eBible.org's, `.json` fetch.bible's, `ccel.org/ccel/`
+  CCEL's, `.tar.gz` a SWORD repository's; else the core's `Catalog::parse`), each entry an
+  `External` source made by `external(prefix, id, tracks_versions, downloads)`;
+  `is_publishers`, `publisher_name`. A module per publisher, each with `catalog` and `import`:
+  `ebible` (`translations.csv`'s downloadable, redistributable rows; `<id>_usfm.zip` into
+  `logoxide.toml` + `usfm/` + `copr.htm`, the license file read for a Creative Commons license
+  or the public domain; its upstream version eBible.org's update date), `fetch` (`manifest.json`,
+  `https://v1.fetch.bible/manifest.json`, not `/bibles/manifest.json`, an older form; each
+  book's USX, a download named by its lowercase code (`book_url`; other paths answer with
+  fetch.bible's site, refused) into `usx/` + `COPYRIGHT.txt`), `ccel` (each `<h2>` link's work
+  and title; a Bible's ThML (`url`; restricted works answer with a page, refused) into
+  `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>` (`thml_head`; upstream
+  version `<version>`, else `DC.Date`; its script, and so its direction, judged from its
+  letters), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
+  `crosswire`, `crosswire-beta`, `ebible`, …; others by host, `repository_name`;
+  `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS or ThML that aren't
+  locked, GBF isn't read; `zip_urls`: `packages/<Module>.zip`, then lowercase; the zip into
+  sword-modules' `MemoryFiles`, each book written in the module's markup (`osis/John.xml` with
+  verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter milestones,
+  making linked verses bridges from sword-modules' `iter_spans` (`n="16-17"`, or one id into
+  the next chapter, `osisID="John.3.36-John.4.2"`, which logoxide-markup reads as one span to
+  `last_chapter`), and leaving out introductions stored at an earlier verse's entry
+  (`EntryLocation`); the repository root is read back from the entry's first download URL; the
+  conf's `Versification` is kept (`sword::versification`: SWORD's names as SWORD spells them,
+  `KJV` when absent; other imports say `own`); the conf gives version, license
+  (`sword::license`) and rights (`sword::rights`: permission given to CrossWire or only in
+  SWORD's format is `redistributable = false`, `derivatives = "none"`; "free non-commercial
+  distribution" is redistributable without derivatives, since the statement grants nothing
+  more, which keeps `license::assess`'s `Converted` concern), language, and `COPYRIGHT.txt`).
+  `license.rs`: `license_from_text`, `says_public_domain` (refuses negations). A vault uses any
+  import as a path package in `imports/<id>/`. Versions (the owner's D1): a new import is
+  `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's version as it gives it
+  (`2026-10-08`, `3.1`) goes in `[package.upstream] version` (`manifest::Upstream`: `url`,
+  `import` like `ebible:eng-asv`, `version`, `converted` for SWORD, and `note`, words for a
+  hand-made package's source with no URL, which then has none), which `upstream(entry)` writes
+  and catalog entries' `version` holds for imports. `downloads(entry)` and
+  `build(entry, files, dest)` (dispatching on the prefix) are the one way every host imports
+  (lx's `cmd/import.rs`, `Logoxide.importDownloads`/`importDownloaded`); `PREFIXES` is what
+  `lx import` accepts. `update.rs`: `compare_import(current, fresh, reader)` (compared at the
+  current version: `None` when the declared files match; else the summaries' `Diff`, and the
+  version raised by `next_version`; `ImportUpdate` has the publisher's
+  `upstream_from`/`upstream_to`), `apply_import` (removes declared files the fresh one lacks,
+  through `Storage::remove`, writes the rest; other files stay), `import_removals`,
+  `import_is_current(entry, upstream.version)` (compares the publisher's versions,
+  `compare_publisher_versions`, never the package's, and only where `tracks_versions`, so `lx`
+  can skip downloading)
 - `crates/logoxide-text`: what's in a Bible or a book, knowing no packages (PLAN-CRATES.md phase
   C, October 2026; logoxide's `source/`, `versification.rs`, and the parsing halves of `summary`,
   `titles`, `media`, `references`, `create`, and `language` until then). Files come through its
@@ -348,7 +370,9 @@ before changing the design.
   `count_elements`. `titles`: a file's own title (`own_title`, `book_file_titles`,
   `epub_title`). `versification`: `.vrs` maps and routing (below, under the core's bullet).
   `timings`: WebVTT cues by verse (`parse_timings`, `check_timings`, `book_verses`).
-  `citations::find`: an EPUB's references through topos-formats. `metadata`: an EPUB's
+  `citations::find`: an EPUB's references through topos-formats. `versification::system(name)`:
+  SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
+  chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's
   `FileMetadata` (`epub_metadata`, `opf_metadata`, `elements`); `archive::unzip` (limits);
   `script::dominant_script`. Its `bible_data()` is topos's with the deuterocanon, as the core's
 - `crates/logoxide-markup`: Bible markup (OSIS, ThML, GBF, TEI, USX, plain text) parsed into one

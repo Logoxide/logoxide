@@ -4,7 +4,7 @@ places in it.
 
 A book is one tree, and a verse is not an element in it: USX marks where each verse starts
 (`<verse sid>`) and ends (`<verse eid>`), and a verse can start in one paragraph and end in the
-next. [`verses`] finds where each verse is, and [`slice`] copies the tree between two places,
+next. [`verses`] finds where each verse is, and [`slice()`] copies the tree between two places,
 keeping the elements around the cut (a paragraph cut in two is two paragraphs), so a passage
 renders with its paragraphs and poetry intact.
 
@@ -351,7 +351,7 @@ pub fn slice(nodes: &[Node], start: &NodePath, end: Option<&NodePath>) -> Vec<No
 }
 
 /**
-The places each part of a passage covers, as `start..end` for [`slice`], in the passage's order
+The places each part of a passage covers, as `start..end` for [`slice()`], in the passage's order
 - Verses the book doesn't have are left out; a part with none of its verses is left out
 - A whole chapter is every verse the book has in it, whatever the versification says
 - A verse's parts are all in it: `Genesis 1:20` covers both `20a` and `20b`

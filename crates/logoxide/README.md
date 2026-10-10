@@ -12,9 +12,9 @@ so references like `John 3:16 KJV` are checked against that translation.
   references topos finds
 - Everything reads through a `Storage` (a folder, memory, or a host's files), so the same code
   runs in WebAssembly
-- Catalogs (`catalog.toml`, eBible.org, fetch.bible, CCEL, SWORD repositories), importers for
-  those publishers' downloads, registries of release archives, versification maps, and audio and
-  video listed by URL and hash
+- Catalogs (`catalog.toml`; eBible.org's, fetch.bible's, CCEL's, and SWORD repositories' lists
+  through the `logoxide-import` crate, which makes those publishers' downloads into packages),
+  registries of release archives, versification maps, and audio and video listed by URL and hash
 
 ```toml
 [dependencies]
