@@ -101,8 +101,9 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
 - `logoxide-ffi`: bindings for TypeScript/WebAssembly and Python (npm and PyPI `logoxide`), with
   topos's whole API in the same package: packages opened from the bytes the host reads, their
   cache handed back to save, a vault's manifest and lock, catalogs and imports, and installing
-  without `git`, the host downloading refs and archives over HTTP; see
-  `crates/logoxide-ffi/README.md`
+  without `git`, the host downloading refs, archives, and catalogs over HTTP (logoxide-app's,
+  with the host as its `Http`); natively, passages read and compared as `lx read` and
+  `lx compare` do; see `crates/logoxide-ffi/README.md`
 
 The Obsidian plugin (`obsidian-logoxide`) uses logoxide-ffi: Bibles in its vault's `Logoxide/`
 folder, added from its settings by searching the catalogs or by git URL.
@@ -198,7 +199,7 @@ topos's API.
 
 - **Versions**: the workspace's version, its `logoxide`, `logoxide-markup`, `logoxide-text`,
   `logoxide-import`, and `logoxide-app` dependencies', and logoxide-ffi's must be
-  the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag).
+  the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.2.0.
 - **topos**: the topos tag the bindings build against is `v` and topos-bible's version in
   `Cargo.toml` (`scripts/topos-ref.sh`); both workflows read it from there.
 - **Unpublished dependencies**: until topos 0.6 and sword-modules 0.1 are on crates.io, CI builds
