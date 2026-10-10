@@ -27,6 +27,12 @@ their USFM codes:
   (`ACT 19:40-41 = ACT 19:40`; Paratext marks these with `&`, which is allowed and ignored).
   Writing the same verse on several lines does the same: `PSA 51:0 = PSA 51:1` and
   `PSA 51:0 = PSA 51:2`
+- Several lines may map onto one verse of `maps-to`, in any form: the BSB's own file has
+  `ESG 5:10-11 = ESG 5:1-2`, `ESG 5:12 = ESG 5:2`, and `ESG 5:16-28 = ESG 5:2-14` (and
+  `ESG 5:13 = ESG 5:2a`, …), lines ending in Greek Esther 5:2, whose words the BSB numbers six
+  ways. Mapped back, such a verse is every verse mapped onto it (Original `ESG 5:2` is the BSB's
+  5:11-16), as for `&ACT 19:40-41 = ACT 19:40`. On the left side, a verse on several lines is a mistake unless
+  each names it alone (one verse written to each of many)
 - Verse 0 is a psalm's title, which English Bibles don't number
 - A verse may name a part (`ESG 1:1a`, Paratext's lettered parts): it's mapped as the whole
   verse, so `ESG 1:1 = ESG 1:1a` and `ESG 1:2 = ESG 1:1b` map both to 1:1; the part is kept in
@@ -398,10 +404,11 @@ impl VersificationMap {
     }
 
     /**
-    The lines a map can't be made with: a verse on one side of several lines, unless each of them
-    names it alone on that side (one verse written to each of many, line by line); ranges of
-    different lengths where neither is one verse. A part of a verse (`ESG 1:1a`) is apart from the
-    rest of it, so lines naming parts overlap nothing
+    The lines a map can't be made with: a verse on the left of several lines, unless each of them
+    names it alone there (one verse written to each of many, line by line); ranges of different
+    lengths where neither is one verse. A part of a verse (`ESG 1:1a`) is apart from the rest of
+    it, so lines naming parts overlap nothing. The right side may overlap: several verses mapped
+    onto one are many to one, which Paratext's own files have (the BSB's Greek Esther 5:2)
     */
     fn mistakes(&self) -> Vec<String> {
         let mut problems = vec![];
@@ -415,28 +422,25 @@ impl VersificationMap {
                 ));
             }
         }
-        for (side, range) in [
-            ("left", (|m: &Mapping| m.from) as fn(&Mapping) -> VerseRange),
-            ("right", |m: &Mapping| m.to),
-        ] {
-            // Each verse, with the lines naming it (not only a part of it) and whether alone
-            let mut seen: BTreeMap<Verse, Vec<(&str, bool)>> = BTreeMap::new();
-            for m in &self.mappings {
-                let r = range(m);
-                for verse in r.verses() {
-                    if r.part_of(verse.verse).is_none() {
-                        seen.entry(verse).or_default().push((&m.at, r.count() == 1));
-                    }
+        // Each verse of the left side, with the lines naming it (not only a part of it) and
+        // whether alone
+        let mut seen: BTreeMap<Verse, Vec<(&str, bool)>> = BTreeMap::new();
+        for m in &self.mappings {
+            for verse in m.from.verses() {
+                if m.from.part_of(verse.verse).is_none() {
+                    seen.entry(verse)
+                        .or_default()
+                        .push((&m.at, m.from.count() == 1));
                 }
             }
-            for (verse, lines) in seen {
-                if lines.len() > 1 && lines.iter().any(|(_, alone)| !alone) {
-                    let at: Vec<&str> = lines.iter().map(|(at, _)| *at).collect();
-                    problems.push(format!(
-                        "{verse} is on the {side} of overlapping lines ({})",
-                        at.join(", ")
-                    ));
-                }
+        }
+        for (verse, lines) in seen {
+            if lines.len() > 1 && lines.iter().any(|(_, alone)| !alone) {
+                let at: Vec<&str> = lines.iter().map(|(at, _)| *at).collect();
+                problems.push(format!(
+                    "{verse} is on the left of overlapping lines ({})",
+                    at.join(", ")
+                ));
             }
         }
         problems
@@ -995,9 +999,7 @@ MAL 4:1-6 = MAL 3:19-24
         );
         assert!(bad("GEN 1:1-3 = GEN 1:2-3").contains("one length"));
         assert!(bad("GEN 1:1-3 = GEN 1:2-4\nGEN 1:3 = GEN 1:9").contains("GEN 1:3 is on the left"));
-        assert!(
-            bad("GEN 1:1 = GEN 1:5\nGEN 1:2-3 = GEN 1:5-6").contains("GEN 1:5 is on the right")
-        );
+        assert!(bad("GEN 1:1-2 = GEN 1:5-6\nGEN 1:2 = GEN 1:9").contains("GEN 1:2 is on the left"));
         assert!(bad("GEN 4:10-5:11 = GEN 4:10-5:11").contains("span chapters"));
         assert!(bad("GEN 1:3-1 = GEN 1:1").contains("ends before"));
         assert!(bad("hello").contains("no mapping"));
@@ -1092,5 +1094,37 @@ MAL 4:1-6 = MAL 3:19-24
         // A book topos doesn't know, in counts or left out, is passed over
         let map = VersificationMap::parse("A", "B", [("x.vrs", "ZZZ 1:5\n-ZZZ 1:3\n")]).unwrap();
         assert!(map.counts().is_empty() && map.excluded().is_empty());
+    }
+
+    #[test]
+    fn several_lines_may_map_onto_one_verse() {
+        // The BSB's versification.vrs: three lines end in Greek Esther 5:2
+        let text = "ESG 5:10-11 = ESG 5:1-2\nESG 5:12 = ESG 5:2\nESG 5:13 = ESG 5:2a\nESG 5:16-28 = ESG 5:2-14\n";
+        let map = VersificationMap::parse("BSB", "Original", [("b.vrs", text)]).unwrap();
+        assert!(map.problems().is_empty(), "{:?}", map.problems());
+        let maps = Versifications::new(vec![map]);
+        let to = |r: &str, from: &str, to: &str| {
+            let m = maps.map_reference(r, from, to, None).unwrap();
+            (m.text(), m.missing_text())
+        };
+        let found = |there: &str| (String::from(there), String::new());
+        // Forward, each verse has its one place
+        assert_eq!(
+            to("Greek Esther 5:11", "BSB", "Original"),
+            found("Greek Esther 5:2")
+        );
+        assert_eq!(
+            to("Greek Esther 5:12", "BSB", "Original"),
+            found("Greek Esther 5:2")
+        );
+        assert_eq!(
+            to("Greek Esther 5:17", "BSB", "Original"),
+            found("Greek Esther 5:3")
+        );
+        // Back, every verse mapped onto it
+        assert_eq!(
+            to("Greek Esther 5:2", "Original", "BSB"),
+            found("Greek Esther 5:11-13,16")
+        );
     }
 }

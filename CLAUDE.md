@@ -257,11 +257,14 @@ before changing the design.
     both ways (so `Mapped::missing`); count lines (`counts()`) let `problems()` say which verses
     don't exist, only said (`lx check` warns), since Paratext's own files have some (the BSB's
     ESG 8:36-41); mapping lines naming a book topos doesn't know are passed over
-    (`passed_over()`, warned of). Overlaps and uneven ranges stay errors (`mistakes`, and
+    (`passed_over()`, warned of). Several lines may map onto one target verse (Paratext's data
+    is authoritative: the BSB's lines onto Greek Esther 5:2); mapped back, it's every verse
+    mapped onto it (Original ESG 5:2 is the BSB's 5:11-16). A verse on the left of overlapping
+    lines (not each naming it alone) and uneven ranges stay errors (`mistakes`, and
     `Mapping::pairs` returns one). The summary counts `mappings`; any change is minor. Sample
     package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs).
-    The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) still fails on two
-    overlapping ranges onto Greek Esther 5:2 (lines 333 and 338)
+    The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) loads whole (2424
+    verses; its `S3Y = DAG` lines map), with two lines past its counts warned of
 - `crates/logoxide-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on logoxide). `bible.rs`'s `Bible` reads a package or a plain
   USX folder through logoxide sources; `settings.rs` finds the project (the `project` setting, a
