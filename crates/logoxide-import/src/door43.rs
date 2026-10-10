@@ -243,7 +243,7 @@ release's tag). An archive without a `manifest.yaml` or USFM is an error
 pub fn import(entry: &CatalogEntry, archive: &[u8], dest: &dyn Storage) -> Result<()> {
     let repository = import_id(entry, "door43", "Door43")?;
     let unpacked = MemoryStorage::new();
-    logoxide::archive::unpack(archive, &unpacked)?;
+    logoxide::net::archive::unpack(archive, &unpacked)?;
     let manifest = unpacked.read_string("manifest.yaml").map_err(|_| {
         LogoxideError::Import(format!(
             "{repository}: no manifest.yaml (is it a resource container?)"

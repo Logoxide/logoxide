@@ -410,7 +410,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   tarbar_url, …}]}` read loosely, as remembered, since the API never answered; `subject`
   "Bible" only; `door43:<owner>/<repo>`, ids `door43-<owner>-<repo>`, the version the release's
   tag, `tracks_versions`; the download `archive` at `archive_url(repo, tag)`, then
-  `tarbar_url`; the archive unpacked by the core's `archive::unpack` into a `MemoryStorage`,
+  `tarbar_url`; the archive unpacked by the core's `net::archive::unpack` into a `MemoryStorage`,
   `manifest.yaml` (serde_yaml 0.9.34, deprecated but frozen) required, its `dublin_core` for
   the title, description, language and direction, license (`rights`, `CC BY-SA 4.0` as SPDX), and
   upstream version (`version`, else the tag); every `.usfm` into `usfm/`, `LICENSE.md` the
