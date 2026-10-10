@@ -207,7 +207,7 @@ pub(crate) fn catalog_build(
             }
             e => e,
         })?;
-    std::fs::write(&output, &built.text)
+    logoxide::storage::write_atomic(&output, built.text.as_bytes())
         .map_err(|e| logoxide::LogoxideError::io(&output.display().to_string(), e))?;
     let plural = if built.count == 1 { "" } else { "s" };
     outln!(

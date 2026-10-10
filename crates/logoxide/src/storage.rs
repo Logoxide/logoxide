@@ -163,6 +163,48 @@ fn staging_path(full: &Path) -> PathBuf {
     full.with_file_name(format!(".{name}.{}.{n}.tmp", std::process::id()))
 }
 
+/**
+Writes a file so that a reader sees the old file or the whole new one, never half, and a crash
+or a power cut loses neither: the bytes go to a file beside it with a name of its own
+([`staging_path`]), are synced to disk, renamed over the old file, and the folder is synced so the
+rename itself lasts. Folders on the way are made. For the manifest, the lock, catalogs, and
+whatever else is written over in place; [`FsStorage::write`] goes through it
+*/
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    std::fs::create_dir_all(&parent)?;
+    let partial = staging_path(path);
+    let written = (|| {
+        let mut file = std::fs::File::create(&partial)?;
+        std::io::Write::write_all(&mut file, bytes)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&partial, path)?;
+        sync_dir(&parent)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    written
+}
+
+/// Syncs a folder's entries to disk, so a rename in it lasts (where folders can be opened: on
+/// Windows they can't, and the rename is durable as the file system makes it)
+fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(dir)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
+
 impl Storage for FsStorage {
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let full = self.path(path)?;
@@ -199,19 +241,9 @@ impl Storage for FsStorage {
     fn write(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let full = self.path(path)?;
         self.unlinked(path)?;
-        if let Some(parent) = full.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| LogoxideError::io(path, e))?;
-        }
-        // Written beside it, then moved into place, so a reader never sees half a file
+        // Written beside it, synced, then moved into place, so a reader never sees half a file
         // (a name of its own, so no other file, like `JHN.partial`, is written over)
-        let partial = staging_path(&full);
-        let written =
-            std::fs::write(&partial, bytes).and_then(|()| std::fs::rename(&partial, &full));
-        if let Err(e) = written {
-            let _ = std::fs::remove_file(&partial);
-            return Err(LogoxideError::io(path, e));
-        }
-        Ok(())
+        write_atomic(&full, bytes).map_err(|e| LogoxideError::io(path, e))
     }
 
     /// Removes a file, then the folders it leaves empty (never the root)
@@ -383,6 +415,24 @@ mod tests {
             storage.walk("a").unwrap(),
             ["a/JHN.partial", "a/JHN.usx", "a/b.txt"]
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn atomic_writes_replace_and_leave_nothing_beside() {
+        let dir = std::env::temp_dir().join(format!("logoxide-atomic-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("deep/logoxide.toml");
+        write_atomic(&path, b"one").unwrap();
+        write_atomic(&path, b"two").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "two");
+        let names: Vec<String> = (std::fs::read_dir(dir.join("deep")).unwrap())
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["logoxide.toml"]);
+        // A path that can't be written leaves no staging file either
+        std::fs::write(dir.join("file"), "x").unwrap();
+        assert!(write_atomic(&dir.join("file/under"), b"x").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

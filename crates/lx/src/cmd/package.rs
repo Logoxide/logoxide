@@ -720,9 +720,9 @@ pub(crate) fn release(
             .map_err(|e: toml_edit::TomlError| logoxide::LogoxideError::Manifest(e.to_string()))?;
         doc["package"]["version"] = toml_edit::value(minimum.to_string());
         if !dry_run {
-            std::fs::write(&manifest_path, doc.to_string()).map_err(|e| {
-                logoxide::LogoxideError::io(&manifest_path.display().to_string(), e)
-            })?;
+            logoxide::storage::write_atomic(&manifest_path, doc.to_string().as_bytes()).map_err(
+                |e| logoxide::LogoxideError::io(&manifest_path.display().to_string(), e),
+            )?;
         }
         outln!("version set to {minimum}");
         plan.summary.version = minimum;

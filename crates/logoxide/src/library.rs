@@ -183,20 +183,20 @@ impl Packages for LibraryPackages<'_> {
         Ok(Arc::new(FsStorage::new(self.base.join(relative))))
     }
 
-    /// Its own files rewritten in place, and ones it doesn't have removed (a book added to its
-    /// `usx/`); other files (annotations) stay
+    /// Its own files rewritten in place (each atomically, so a reader never sees half a book),
+    /// then ones it doesn't have removed (a book added to its `usx/`), last, so a repair that
+    /// stops partway has taken nothing away; other files (annotations) stay
     fn repair(&self, locked: &LockedPackage, files: &dyn Storage) -> Result<()> {
         let dir = FsStorage::new(self.library.package_dir(locked, self.base));
+        let declared = crate::package::declared_files(&dir)?;
         let wanted = files.walk("")?;
-        for path in crate::package::declared_files(&dir)? {
-            if !wanted.contains(&path) {
-                let full = self.library.package_dir(locked, self.base).join(&path);
-                std::fs::remove_file(&full)
-                    .map_err(|e| LogoxideError::io(&full.display().to_string(), e))?;
-            }
+        for path in &wanted {
+            dir.write(path, &files.read(path)?)?;
         }
-        for path in wanted {
-            dir.write(&path, &files.read(&path)?)?;
+        for path in declared {
+            if !wanted.contains(&path) {
+                dir.remove(&path)?;
+            }
         }
         Ok(())
     }

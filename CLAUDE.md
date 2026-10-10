@@ -93,8 +93,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     terms objects; SWORD's; `catalog.toml`'s `rights`, which `entry_table` writes)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
-    `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
-    unique temporary file; `FsStorage::no_symlinks()` never goes through a link under its root
+    `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through
+    `write_atomic` (a unique temporary file beside the target, synced, renamed over it, the folder
+    synced: whole or not at all; also for the manifest, the lock, `catalog.toml`, and what
+    `lx publish` writes); `FsStorage::no_symlinks()` never goes through a link under its root
     (`symlink_metadata` part by part: refused to read, write, or remove, left out of listings),
     used by `lx release` and `lx publish` (so the summary is of what the commit packs) and by
     `lx import --update` (`apply_import`)
@@ -196,7 +198,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
-    beside its folder, then renamed into place)
+    beside its folder, then renamed into place; a repair writes each file atomically and removes
+    what the version no longer has last)
   - `resolve.rs`: manifest + previous lock → new lock, installing as it goes (`Frozen`: `locked`
     keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`), through `Packages`
     (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
@@ -214,7 +217,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     registry; a local one can (`folder_tag_version` reads a `folder`'s tags)
   - `project.rs`: a folder with `logoxide.toml` (edited with toml_edit, keeping comments; or
     `from_text` and `manifest_text` for hosts that do the reading and writing) and its
-    lock; `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
+    lock; `save_manifest` keeps the text it read and refuses with `Conflict` when the file
+    changed since (open again, redo the change); `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
     `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
     and `lx add` warn of

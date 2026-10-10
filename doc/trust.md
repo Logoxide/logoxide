@@ -105,6 +105,17 @@ it can always be built again from the text. Published summaries (`logoxide.summa
 `logoxide.verses.bin`) are part of the package and covered by its checksum; `lx verify` rebuilds
 them from the text to check that they match.
 
+## Writes
+
+`logoxide.toml`, `logoxide.lock`, a registry's `catalog.toml` and archives, and every file in
+the library and the cache are written whole or not at all: to a temporary file beside the
+target, synced to disk, renamed over it, then the folder synced, so a reader never sees half a
+file and a crash leaves the old one. A new version is built in a staging folder beside its place
+and renamed in, so a half-installed version is never taken for an installed one; a repair writes
+each file atomically and removes what a version no longer has last. `lx` reads `logoxide.toml`
+again before writing it and refuses (`Conflict`) if it changed since the project was opened, so
+an edit made meanwhile isn't written over.
+
 ## Media
 
 Audio and video are listed by URL, size, and SHA-256 in the package (so the lock's checksum

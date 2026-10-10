@@ -121,6 +121,9 @@ pub struct Project {
     doc: DocumentMut,
     manifest: Manifest,
     lock: Option<Lockfile>,
+    /// `logoxide.toml`'s text as it was read (or last written), so a change made since by
+    /// someone else is seen before it's written over
+    manifest_on_disk: Option<String>,
 }
 
 fn read_optional(path: &Path) -> Result<Option<String>> {
@@ -135,11 +138,11 @@ impl Project {
     /// The project in `dir` (an empty one if it has no `logoxide.toml` yet)
     pub fn open(dir: impl Into<PathBuf>) -> Result<Project> {
         let dir = dir.into();
-        let text = read_optional(&dir.join(MANIFEST))?.unwrap_or_default();
-        let doc: DocumentMut = text
+        let text = read_optional(&dir.join(MANIFEST))?;
+        let doc: DocumentMut = (text.as_deref().unwrap_or_default())
             .parse()
             .map_err(|e: toml_edit::TomlError| LogoxideError::Manifest(e.to_string()))?;
-        let manifest = Manifest::parse(&text)?;
+        let manifest = Manifest::parse(text.as_deref().unwrap_or_default())?;
         let lock = read_optional(&dir.join(LOCKFILE))?
             .map(|t| Lockfile::parse(&t))
             .transpose()?;
@@ -148,6 +151,7 @@ impl Project {
             doc,
             manifest,
             lock,
+            manifest_on_disk: text,
         })
     }
 
@@ -167,6 +171,7 @@ impl Project {
             doc,
             manifest: Manifest::parse(text)?,
             lock: lock.map(Lockfile::parse).transpose()?,
+            manifest_on_disk: manifest.map(String::from),
         })
     }
 
@@ -185,13 +190,14 @@ impl Project {
                 path.display()
             )));
         }
-        let project = Project {
+        let mut project = Project {
             dir,
             doc: NEW_MANIFEST
                 .parse()
                 .map_err(|e: toml_edit::TomlError| LogoxideError::Manifest(e.to_string()))?,
             manifest: Manifest::default(),
             lock: None,
+            manifest_on_disk: None,
         };
         project.save_manifest()?;
         Ok(project)
@@ -464,12 +470,29 @@ impl Project {
         Ok(())
     }
 
-    /// Writes `logoxide.toml`
-    pub fn save_manifest(&self) -> Result<()> {
+    /**
+    Writes `logoxide.toml` (whole, or not at all: [`crate::storage::write_atomic`]). If the file
+    changed since this project read it (another lx, an editor), nothing is written and the error
+    is [`LogoxideError::Conflict`]: open the project again and redo the change
+    */
+    pub fn save_manifest(&mut self) -> Result<()> {
         let path = self.dir.join(MANIFEST);
-        std::fs::create_dir_all(&self.dir)
-            .map_err(|e| LogoxideError::io(&self.dir.display().to_string(), e))?;
-        std::fs::write(&path, self.doc.to_string())
+        if read_optional(&path)? != self.manifest_on_disk {
+            return Err(LogoxideError::Conflict {
+                path: path.display().to_string(),
+            });
+        }
+        let text = self.doc.to_string();
+        crate::storage::write_atomic(&path, text.as_bytes())
+            .map_err(|e| LogoxideError::io(&path.display().to_string(), e))?;
+        self.manifest_on_disk = Some(text);
+        Ok(())
+    }
+
+    /// Writes `logoxide.lock`, whole or not at all
+    fn save_lock(&self, lock: &Lockfile) -> Result<()> {
+        let path = self.dir.join(LOCKFILE);
+        crate::storage::write_atomic(&path, lock.to_toml()?.as_bytes())
             .map_err(|e| LogoxideError::io(&path.display().to_string(), e))
     }
 
@@ -523,9 +546,7 @@ impl Project {
             frozen,
         };
         let lock = resolver.resolve(&self.manifest)?;
-        let path = self.dir.join(LOCKFILE);
-        std::fs::write(&path, lock.to_toml()?)
-            .map_err(|e| LogoxideError::io(&path.display().to_string(), e))?;
+        self.save_lock(&lock)?;
         Ok(self.lock.insert(lock))
     }
 
@@ -777,6 +798,34 @@ mod tests {
     use crate::catalog::{
         CCEL_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG, SWORD_CATALOG,
     };
+
+    #[test]
+    fn a_manifest_changed_since_it_was_read_isnt_written_over() {
+        let dir = std::env::temp_dir().join(format!("logoxide-conflict-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut project = Project::init(&dir).unwrap();
+        let mut other = Project::open(&dir).unwrap();
+        project
+            .add_catalog("https://example.org/catalog.toml")
+            .unwrap();
+        project.save_manifest().unwrap();
+        other.add_catalog("https://example.org/other.toml").unwrap();
+        assert!(matches!(
+            other.save_manifest(),
+            Err(LogoxideError::Conflict { .. })
+        ));
+        assert!(
+            std::fs::read_to_string(dir.join(MANIFEST))
+                .unwrap()
+                .contains("catalog.toml")
+        );
+        // Saved again by the one that wrote it: no conflict with itself
+        project
+            .add_catalog("https://example.org/third.toml")
+            .unwrap();
+        project.save_manifest().unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn dependencies_are_turned_off_and_on() {
