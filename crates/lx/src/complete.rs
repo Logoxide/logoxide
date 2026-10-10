@@ -52,8 +52,10 @@ pub fn package(current: &OsStr) -> Vec<CompletionCandidate> {
                 if location.contains("://") {
                     return vec![];
                 }
+                // Only a folder or a file: completing downloads nothing
+                let http = logoxide_app::http::NoHttp;
                 let Ok(catalog) =
-                    crate::cmd::catalog::load_registry(registry, location, dir, false)
+                    logoxide_app::catalogs::load_registry(&http, registry, location, dir)
                 else {
                     return vec![];
                 };

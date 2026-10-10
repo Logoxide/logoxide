@@ -564,7 +564,10 @@ impl Project {
     }
 
     /// The Bibles the manifest asks for, and those in its collections, each opened
-    fn bibles(&self, library: &Library) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
+    pub fn bibles(
+        &self,
+        library: &Library,
+    ) -> Result<Vec<(&crate::LockedPackage, crate::Package)>> {
         let mut bibles = vec![];
         let Some(lock) = &self.lock else {
             return Ok(bibles);

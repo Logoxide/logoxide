@@ -798,9 +798,7 @@ pub(crate) fn show_remote(
     tag: Option<&str>,
     references: Option<&str>,
 ) -> logoxide::Result<()> {
-    use logoxide::git::Fetcher;
-    let library = cli.library();
-    let fetcher = cli.fetcher(&library);
+    let fetcher = cli.fetcher();
     let tag = match tag {
         Some(tag) => tag.to_string(),
         None => {
@@ -860,7 +858,7 @@ pub(crate) fn release(
     dry_run: bool,
 ) -> logoxide::Result<()> {
     let library = cli.library();
-    let git = cli.fetcher(&library);
+    let git = cli.git(&library);
     let mut plan = logoxide::release::plan(path, &git, &DefaultReader)?;
     print_skipped(&plan.skipped);
     if let Some((old, d)) = &plan.previous {
@@ -977,7 +975,7 @@ pub(crate) fn diff(
     to: Option<&str>,
 ) -> logoxide::Result<()> {
     let library = cli.library();
-    let git = cli.fetcher(&library);
+    let git = cli.git(&library);
     // A package in a folder of its repository: its tags are `<folder>/v…`
     let (root, prefix) = git.package_in(path)?;
     let url = root.display().to_string();

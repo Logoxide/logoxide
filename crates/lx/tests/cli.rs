@@ -1102,3 +1102,119 @@ fn a_commentarys_notes_are_shown() {
     let out = world.lx(&["show", &path, "--notes", "John 3:16", "--keys"]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// A Bible of John 3:16-17 as USX, numbered by `versification`, its verses' text given
+fn numbered_bible(dir: &Path, id: &str, versification: &str, sixteen: &str, seventeen: &str) {
+    std::fs::create_dir_all(dir.join("usx")).unwrap();
+    std::fs::write(
+        dir.join("logoxide.toml"),
+        format!(
+            "[package]\nid = \"{id}\"\nname = \"Test {id}\"\nabbreviation = \"{}\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\nversification = \"{versification}\"\n\n[formats]\nusx = {{ path = \"usx/\" }}\n",
+            id.to_uppercase()
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("usx/JHN.usx"),
+        format!(
+            r#"<usx version="3.0"><book code="JHN" style="id"/><chapter number="3" style="c"/><para style="p"><verse number="16" style="v"/>{sixteen} <verse number="17" style="v"/>{seventeen}</para></usx>"#
+        ),
+    )
+    .unwrap();
+}
+
+#[test]
+fn a_passage_is_read_from_the_bible_it_names() {
+    let world = World::new("read");
+    package(&world.path("one"), "one", "1.0.0");
+    package(&world.path("two"), "two", "1.0.0");
+    std::fs::write(
+        world.path("two/usx/JHN.usx"),
+        r#"<usx version="3.0"><book code="JHN" style="id"/><chapter number="3" style="c"/><para style="p"><verse number="16" style="v"/>God loved the world. <verse number="17" style="v"/>He sent his Son.</para></usx>"#,
+    )
+    .unwrap();
+    world.ok(&["init"]);
+    world.ok(&["add", "--path", "../one"]);
+    world.ok(&["add", "--path", "../two"]);
+    // The Bible named after it, by abbreviation in any case; else the first
+    assert_eq!(
+        world.ok(&["read", "John 3:16 two"]),
+        "John 3:16 (TWO)\n[16] God loved the world.\n"
+    );
+    assert_eq!(
+        world.ok(&["read", "John 3:16-17", "--no-labels"]),
+        "John 3:16-17 (ONE)\nFor God so loved For God sent\n"
+    );
+    let read = world.json(&["--format", "json", "read", "John 3:17 (TWO)"]);
+    assert_eq!(
+        read,
+        serde_json::json!({
+            "bible": "two", "abbreviation": "TWO", "reference": "John 3:17",
+            "osis": "John.3.17", "versification": "own", "text": "[17] He sent his Son."
+        })
+    );
+    // Not a reference (the Bibles' John 3 ends at verse 17)
+    let out = world.lx(&["read", "John 3:18 ONE"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("isn't a Bible reference"));
+    // Compared: every Bible, or those named, in that order
+    assert_eq!(
+        world.ok(&["compare", "John 3:16", "--bibles", "TWO,one"]),
+        "John 3:16 (TWO)\n[16] God loved the world.\n\nJohn 3:16 (ONE)\n[16] For God so loved\n"
+    );
+    let all = world.json(&["--format", "json", "compare", "John 3:17"]);
+    assert_eq!(all.as_array().map(Vec::len), Some(2));
+    assert_eq!(all[1]["text"], "[17] He sent his Son.");
+    let out = world.lx(&["compare", "John 3:16", "--bibles", "three"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("no Bible `three`"));
+}
+
+#[test]
+fn a_passage_is_compared_in_each_bibles_numbering() {
+    let world = World::new("compare");
+    numbered_bible(
+        &world.path("eng"),
+        "eng",
+        "English",
+        "For God so loved",
+        "For God sent",
+    );
+    // Shifted numbers this verse 17
+    numbered_bible(
+        &world.path("shi"),
+        "shi",
+        "Shifted",
+        "Before it.",
+        "God loved the world.",
+    );
+    let map = world.path("map");
+    std::fs::create_dir_all(&map).unwrap();
+    std::fs::write(
+        map.join("logoxide.toml"),
+        "[package]\nid = \"eng-shi\"\nname = \"English to Shifted\"\nabbreviation = \"ENG-SHI\"\nversion = \"1.0.0\"\nkind = \"versification-map\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\nversification = \"English\"\nmaps-to = \"Shifted\"\n\n[formats]\nvrs = { path = \"eng-shi.vrs\" }\n",
+    )
+    .unwrap();
+    std::fs::write(map.join("eng-shi.vrs"), "JHN 3:16 = JHN 3:17\n").unwrap();
+    world.ok(&["init"]);
+    for dir in ["../eng", "../shi", "../map"] {
+        world.ok(&["add", "--path", dir]);
+    }
+    assert_eq!(
+        world.ok(&["compare", "John 3:16 ENG", "--bibles", "ENG,SHI"]),
+        "John 3:16 (ENG)\n[16] For God so loved\n\nJohn 3:17 (SHI, numbered Shifted)\n[17] God loved the world.\n"
+    );
+    // English 3:17 has no counterpart: 3:17 in Shifted is 3:16's
+    let compared = world.json(&[
+        "--format",
+        "json",
+        "compare",
+        "John 3:16-17",
+        "--bibles",
+        "ENG,SHI",
+    ]);
+    assert_eq!(compared[1]["reference"], "John 3:17");
+    assert_eq!(compared[1]["mapped"], true);
+    assert_eq!(compared[1]["missing"], "John 3:17");
+    assert_eq!(compared[0]["missing"], "");
+}

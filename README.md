@@ -10,7 +10,7 @@ command line.
 ## Quick start
 
 ```sh
-cargo install logoxide-cli          # the `lx` command; fetching packages needs `git` installed
+cargo install logoxide-cli          # the `lx` command (fetching packages uses `git` if it's installed)
 ```
 
 ```sh
@@ -81,9 +81,18 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
   package (`lx media add <file> --url <URL>`). An audio Bible's timings say where each verse is: a
   WebVTT file per recording (`timings/JHN.vtt`), each cue named by its verse (`JHN 3:16`).
   `lx media check` checks the timings against the text and downloads and checks every file
+- Reading: `lx read "John 3:16 KJV"` prints a passage from the vault's Bible it names (else the
+  first), and `lx compare "Psalm 51:1" --bibles KJV,BSB` the passage in each, numbered as each
+  numbers it (through the vault's versification maps), saying what one lacks; text or JSON
 - `lx init`, `new`, `add`, `remove`, `enable`, `disable`, `install`, `update`, `list`, `show`,
   `check`, `release`, `diff`, `verify`, `info`, `clean`, `search`, `import`, `catalog`,
-  `registry`, `publish`, `yank`, `media`, `map`, with completion (`source <(COMPLETE=bash lx)`)
+  `registry`, `publish`, `yank`, `media`, `map`, `read`, `compare`, with completion
+  (`source <(COMPLETE=bash lx)`)
+
+- `logoxide-app`: what every front end does, written once (catalogs over HTTP, imports and their
+  updates, installs with or without `git`, cleaning, media checks, reading and comparing
+  passages) behind one `Logoxide` facade; lx is argument parsing and printing on top of it. See
+  `crates/logoxide-app/README.md`
 
 - `logoxide-lsp`: the language server for Bible references and text (topos's `topos-lsp` until
   October 2026). Its Bibles are packages from the workspace's `logoxide.toml` (a vault), else the
@@ -134,7 +143,8 @@ lx show --git https://example.org/bsb      # a release's summary, without its te
 The library is `LOGOXIDE_HOME` (else `$XDG_DATA_HOME/logoxide`), or `--library DIR`: any folder,
 including inside a vault's `.obsidian/` so it syncs. The cache is per device: `LOGOXIDE_CACHE`,
 else `$XDG_CACHE_HOME/logoxide`. `~/.config/logoxide/config.toml` can set both, and catalogs and
-registries for every project. Fetching git packages runs the `git` command.
+registries for every project. Fetching git packages runs the `git` command; where it isn't
+installed, lx reads repositories over HTTPS instead (their refs, and archives of commits).
 
 ## A package
 
@@ -172,7 +182,7 @@ Every key is in [doc/manifest.md](doc/manifest.md).
 ## Install
 
 ```sh
-cargo install logoxide-cli    # lx (needs git at run time)
+cargo install logoxide-cli    # lx (uses git at run time where it's installed, else HTTPS archives)
 cargo install logoxide-lsp    # the language server
 npm install logoxide          # or: pip install logoxide (the bindings, with topos's API)
 ```
@@ -186,7 +196,8 @@ Rust 1.89 or later.
 this one (`../topos`): BoltFFI only exports the items of path dependencies, and they re-export
 topos's API.
 
-- **Versions**: the workspace's version, its `logoxide` dependency's, and logoxide-ffi's must be
+- **Versions**: the workspace's version, its `logoxide`, `logoxide-markup`, `logoxide-text`,
+  `logoxide-import`, and `logoxide-app` dependencies', and logoxide-ffi's must be
   the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag).
 - **topos**: the topos tag the bindings build against is `v` and topos-bible's version in
   `Cargo.toml` (`scripts/topos-ref.sh`); both workflows read it from there.

@@ -20,16 +20,13 @@ path = "src/main.rs"
 logoxide.workspace = true
 logoxide-text.workspace = true
 logoxide-import.workspace = true
+logoxide-app.workspace = true
 topos-bible.workspace = true
 clap = { version = "4", features = ["derive"] }
 semver = "1"
 toml_edit = "0.23"
-# Catalogs and imports over HTTPS (packages themselves come through git)
-ureq = "3"
 serde_json.workspace = true
 serde.workspace = true
-# Hashing media as it downloads (lx media check)
-sha2 = "0.10"
 clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
 
 # Stopping quietly when what reads lx's output stops (`lx list | head`)

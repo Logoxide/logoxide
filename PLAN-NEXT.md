@@ -15,6 +15,7 @@ logoxide-text         what's in a Bible or a book: verses, hashes, titles, maps,
 sword-modules         SWORD containers
 logoxide              packages, versions, catalogs, summaries as data; asks a TextReader
 logoxide-import       publishers' lists and downloads into packages
+logoxide-app          what every front end does: catalogs over HTTP, imports, read, compare
 lx, logoxide-ffi, logoxide-lsp, (logoxide-mcp)
 ```
 
@@ -259,8 +260,15 @@ checkpoint before writing code; the designs below are theirs, so the next agent 
    recorded Bible; README's "Several translations"; a headless check with a map package made
    in `test-vault/Logoxide/imports/` (a copy of `imports/edtest` with `versification =
    "MapTest"` and a `versification-map` package `KJV` → `MapTest`, `JHN 3:16 = JHN 3:17`).
-5. **J `logoxide-app`** (not started; design settled, see the J section above and these
-   specifics): `http.rs` with `Http { get, get_to }` and a `Note` callback (`Downloading`,
+5. **J `logoxide-app`**: J.1, J.2, and J.4's docs done (branch phase-j). Left: J.3 (the FFI on
+   the facade: `HostHttp`, `readPassage`/`comparePassage`, its `Round`'s `RefCell` → `Mutex` if
+   the core's `Fetcher` is to be `Send + Sync`; logoxide-app asks `Send + Sync` only of its own
+   boxed fetcher, so nothing forces it), J.3's narrower exports (5.9), topos's layer table in
+   `doc/logoxide.md`, 0.2.0. Deviations from the design below: warnings stream through a `Warn`
+   callback (`&mut dyn FnMut(String)`) rather than coming back in `Loaded`/`Resolved`/
+   `UpdatePlans`, so those printed before an error still are; `load_catalogs` returns the
+   catalogs, `registry_url` the URL, `plan_updates` the plans; `Changed` is boxed; cleaning is
+   `clean::clean` with a `Cleaning` callback. The design: `http.rs` with `Http { get, get_to }` and a `Note` callback (`Downloading`,
    `Insecure`) so the crate never prints, `UreqHttp::new(user_agent)` moved from
    `lx/src/net.rs` (20 s connect, 60 s response, 1 h body, proxy, three tries with 500·3ⁿ ms
    pauses, HTTPS kept, 1 GiB cap; `get_to` retries only before the sink has bytes);

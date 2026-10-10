@@ -6,7 +6,7 @@ use clap::{Args, Parser, Subcommand};
 use clap_complete::engine::ArgValueCompleter;
 use logoxide::{Features, FsStorage, Library, Package, Project, Storage, manifest::MANIFEST};
 
-use crate::{complete, config, net::Web};
+use crate::{app, complete, config};
 
 #[derive(Parser)]
 #[command(
@@ -30,8 +30,8 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub(crate) cache_dir: Option<PathBuf>,
     /// How to print: text, or json (list, info, check, diff, verify, search, catalog list,
-    /// import --update, show --references, --notes, --entry, --keys, and --xref); tsv for show
-    /// --references
+    /// import --update, read, compare, show --references, --notes, --entry, --keys, and --xref);
+    /// tsv for show --references
     #[arg(long, global = true, value_enum, default_value_t = Format::Text)]
     pub(crate) format: Format,
 }
@@ -79,8 +79,18 @@ impl Cli {
         Ok(project)
     }
 
-    pub(crate) fn fetcher(&self, library: &Library) -> Web {
-        Web(config().git(Some(library.git_dir())))
+    /// What installs fetch packages with: `git` where it runs, else HTTP alone
+    pub(crate) fn fetcher(&self) -> &'static (dyn logoxide::git::Fetcher + Send + Sync) {
+        app().fetcher()
+    }
+
+    /// The `git` command, for what needs it (releasing, publishing, a package's own tags)
+    pub(crate) fn git(&self, library: &Library) -> logoxide_app::fetch::GitFetcher {
+        logoxide_app::fetch::GitFetcher::new(
+            config().git(Some(library.git_dir())),
+            app().http_arc(),
+            crate::notes(),
+        )
     }
 }
 
@@ -359,6 +369,49 @@ pub(crate) enum Command {
         #[arg(long = "with", value_hint = clap::ValueHint::DirPath)]
         with: Vec<PathBuf>,
     },
+    /// A passage from one of the project's Bibles: the one named after it (`lx read "John 3:16
+    /// KJV"`, by abbreviation or alias), else the first; as text or `--format json`
+    Read {
+        /// `John 3:16`, `Ps 23 BSB`, `Romans 8:28-39 (kjv)`
+        reference: String,
+        #[command(flatten)]
+        text: TextArgs,
+    },
+    /// A passage in several of the project's Bibles (all of them without --bibles), each in its
+    /// own numbering through the project's versification maps, saying what of it one lacks
+    Compare {
+        /// `John 3:16`, numbered as the Bible named after it, else the first of --bibles
+        reference: String,
+        /// The Bibles, by name, abbreviation, or alias (`--bibles KJV,BSB`)
+        #[arg(long, value_delimiter = ',', add = ArgValueCompleter::new(complete::dependency))]
+        bibles: Vec<String>,
+        #[command(flatten)]
+        text: TextArgs,
+    },
+}
+
+/// How `lx read` and `lx compare` write a passage
+#[derive(Args, Clone, Copy)]
+pub(crate) struct TextArgs {
+    /// Break lines longer than this many characters
+    #[arg(long)]
+    pub(crate) width: Option<usize>,
+    /// Without verse numbers and chapter labels
+    #[arg(long)]
+    pub(crate) no_labels: bool,
+}
+
+impl TextArgs {
+    /// logoxide-text's reading style, with these changes
+    pub(crate) fn style(self) -> logoxide_app::Style {
+        let mut style = logoxide_app::Style::reading();
+        style.width = self.width;
+        if self.no_labels {
+            style.verse_label = None;
+            style.chapter_label = None;
+        }
+        style
+    }
 }
 
 #[derive(Subcommand)]
