@@ -139,7 +139,8 @@ before changing the design.
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
     beside its folder, then renamed into place)
-  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes, through `Packages`
+  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes (`Frozen`: `locked`
+    keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`), through `Packages`
     (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
     registries: paths and `file://` by default, HTTPS in lx and through the host in the
     bindings). A `registry` dependency (a catalog's URL) gets the newest release its catalog lists
@@ -222,7 +223,7 @@ before changing the design.
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
-  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install`, `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
+  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't

@@ -14,7 +14,7 @@ use crate::{
     library::Library,
     lock::{LOCKFILE, Lockfile},
     manifest::{Dependency, DetailedDependency, MANIFEST, Manifest, PackageKind},
-    resolve::{Resolver, Update},
+    resolve::{Frozen, Resolver, Update},
 };
 use std::collections::BTreeMap;
 
@@ -442,13 +442,26 @@ impl Project {
         fetcher: &dyn Fetcher,
         update: Update,
     ) -> Result<&Lockfile> {
-        self.install_with(library, fetcher, update, false)
+        self.install_with(library, fetcher, update, false, Frozen::default())
+    }
+
+    /**
+    [`Project::install`] keeping what's locked (Cargo's `--locked`: the lock file must come out
+    as it was) and/or fetching nothing (`--offline`: everything must be installed already)
+    */
+    pub fn install_frozen(
+        &mut self,
+        library: &Library,
+        fetcher: &dyn Fetcher,
+        frozen: Frozen,
+    ) -> Result<&Lockfile> {
+        self.install_with(library, fetcher, Update::Nothing, false, frozen)
     }
 
     /// [`Project::install`], putting back the files of installed versions that changed (a
     /// reader edited them) instead of stopping there; files the packages don't declare stay
     pub fn repair(&mut self, library: &Library, fetcher: &dyn Fetcher) -> Result<&Lockfile> {
-        self.install_with(library, fetcher, Update::Nothing, true)
+        self.install_with(library, fetcher, Update::Nothing, true, Frozen::default())
     }
 
     fn install_with(
@@ -457,6 +470,7 @@ impl Project {
         fetcher: &dyn Fetcher,
         update: Update,
         repair: bool,
+        frozen: Frozen,
     ) -> Result<&Lockfile> {
         let packages = library.packages(&self.dir);
         let resolver = Resolver {
@@ -465,6 +479,7 @@ impl Project {
             previous: self.lock.as_ref(),
             update,
             repair,
+            frozen,
         };
         let lock = resolver.resolve(&self.manifest)?;
         let path = self.dir.join(LOCKFILE);

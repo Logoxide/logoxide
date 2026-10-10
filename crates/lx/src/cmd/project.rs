@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use logoxide::{
     FsStorage, MemoryStorage, Project, Storage,
     manifest::{DetailedDependency, MANIFEST},
-    resolve::Update,
+    resolve::{Frozen, Update},
 };
 
 use crate::{
@@ -334,14 +334,19 @@ pub(crate) fn repair(cli: &Cli) -> logoxide::Result<()> {
     Ok(())
 }
 
-pub(crate) fn install(cli: &Cli, update: Update) -> logoxide::Result<()> {
+/// Installs what's locked, moving what `update` allows, within what `frozen` allows
+pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
     let previous = project.lock().cloned();
     let before: Vec<String> = (previous.iter())
         .flat_map(|l| l.packages.iter().map(|p| p.name()))
         .collect();
-    let lock = project.install(&library, &cli.fetcher(&library), update)?;
+    let fetcher = cli.fetcher(&library);
+    let lock = match frozen == Frozen::default() {
+        true => project.install(&library, &fetcher, update)?,
+        false => project.install_frozen(&library, &fetcher, frozen)?,
+    };
     // A release whose tag now names another commit: what was read before may not be what's
     // read now
     for moved in previous.map(|p| lock.moved_since(&p)).unwrap_or_default() {

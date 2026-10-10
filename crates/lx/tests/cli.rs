@@ -411,6 +411,62 @@ fn a_gone_commit_and_a_moved_tag_are_said() {
 }
 
 #[test]
+fn locked_and_offline_installs() {
+    let world = World::new("frozen");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+    let lock_path = world.path("vault/logoxide.lock");
+    let lock = std::fs::read(&lock_path).unwrap();
+    world.ok(&["install", "--locked"]);
+    world.ok(&["install", "--offline"]);
+    world.ok(&["install", "--locked", "--offline"]);
+    assert_eq!(std::fs::read(&lock_path).unwrap(), lock);
+
+    // The manifest asks for something the lock doesn't have
+    let other = world.path("ob");
+    released(&other, "ob", "1.0.0");
+    let manifest_path = world.path("vault/logoxide.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    std::fs::write(
+        &manifest_path,
+        format!("{manifest}ob = {{ git = \"{}\" }}\n", other.display()),
+    )
+    .unwrap();
+    let out = world.lx(&["install", "--locked"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("`ob` isn't locked"), "{error}");
+    assert!(error.contains("--locked"), "{error}");
+    let out = world.lx(&["install", "--offline"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("offline nothing is fetched"), "{error}");
+    assert_eq!(std::fs::read(&lock_path).unwrap(), lock);
+    assert!(!world.path("library/packages/ob").exists());
+
+    // Locked, but not installed (another device): offline can't, locked can
+    std::fs::write(&manifest_path, manifest).unwrap();
+    std::fs::remove_dir_all(world.path("library/packages")).unwrap();
+    let out = world.lx(&["install", "--offline"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        error.contains("tb 1.0.0 isn't installed, and offline nothing is fetched"),
+        "{error}"
+    );
+    world.ok(&["install", "--locked"]);
+    world.ok(&["install", "--offline"]);
+    assert_eq!(std::fs::read(&lock_path).unwrap(), lock);
+
+    // Nothing locked yet
+    std::fs::remove_file(&lock_path).unwrap();
+    assert_eq!(world.lx(&["install", "--locked"]).status.code(), Some(1));
+    assert!(!lock_path.exists());
+}
+
+#[test]
 fn two_bibles_with_one_name_are_warned_of() {
     let world = World::new("clash");
     world.ok(&["init"]);

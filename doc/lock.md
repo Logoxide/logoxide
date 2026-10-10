@@ -100,6 +100,10 @@ never share a folder.
   branch) is an error saying to update that package. Updating warns of a release that came back
   changed: a tag naming another commit, or a registry version with another archive or checksum
   (`Lockfile::moved_since`).
+- Installing may be **locked** (`lx install --locked`, as in CI): the lock must come out exactly
+  as it was, so a dependency it lacks or that the manifest now asks for differently is an error,
+  as is having no lock. It may be **offline** (`lx install --offline`): nothing is fetched, so
+  what isn't installed already, or isn't locked, is an error. Both are Cargo's.
 - A git tag's version must equal the `version` in its `logoxide.toml`.
 - A git or registry package can't have `path` dependencies.
 - Dependencies with `enabled = false` stay locked and installed; nothing reads them.

@@ -176,6 +176,13 @@ pub(crate) enum Command {
         /// of stopping; files that aren't the package's (annotations) stay
         #[arg(long)]
         repair: bool,
+        /// Fail if logoxide.lock would change (a dependency it lacks, or one the manifest now asks
+        /// for differently), as in CI
+        #[arg(long, conflicts_with = "repair")]
+        locked: bool,
+        /// Fetch nothing: fail if anything isn't installed already
+        #[arg(long, conflicts_with = "repair")]
+        offline: bool,
     },
     /// Moves packages to the newest versions their requirements allow
     Update {

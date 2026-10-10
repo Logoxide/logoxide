@@ -6,7 +6,10 @@ use std::{
 };
 
 use logoxide::{
-    Library, LogoxideError, Project, git::GitCli, manifest::DetailedDependency, resolve::Update,
+    Library, LogoxideError, Project,
+    git::GitCli,
+    manifest::DetailedDependency,
+    resolve::{Frozen, Update},
 };
 
 fn git(dir: &Path, args: &[&str]) {
@@ -412,6 +415,45 @@ fn collection(dir: &Path, package: &str, url: &Path, version: &str) {
     git(dir, &["add", "-A"]);
     git(dir, &["commit", "-q", "-m", "1.0.0"]);
     git(dir, &["tag", "v1.0.0"]);
+}
+
+#[test]
+fn a_locked_install_keeps_the_lock_as_it_is() {
+    let world = World::new("locked");
+    let mine = world.path("vault/mine");
+    std::fs::create_dir_all(&mine).unwrap();
+    release(&mine, "mine", "0.1.0", "mine", "");
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    let locked = Frozen {
+        locked: true,
+        offline: false,
+    };
+    // No lock file to keep
+    project
+        .add(
+            "mine",
+            &DetailedDependency {
+                path: Some("mine".into()),
+                default_features: true,
+                ..DetailedDependency::default()
+            },
+        )
+        .unwrap();
+    assert!(project.install_frozen(&library, &fetcher, locked).is_err());
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap().clone();
+    project.install_frozen(&library, &fetcher, locked).unwrap();
+    // A path package's new version would change it
+    release(&mine, "mine", "0.2.0", "mine", "");
+    let error = project
+        .install_frozen(&library, &fetcher, locked)
+        .unwrap_err();
+    assert!(error.to_string().contains("would change"), "{error}");
+    assert_eq!(project.lock().unwrap(), &lock);
 }
 
 #[test]

@@ -63,6 +63,19 @@ impl Update {
     }
 }
 
+/**
+How far installing may go beyond the lock file and the library, as Cargo's `--locked` and
+`--offline`: for CI, and for machines without a network
+*/
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Frozen {
+    /// The lock file must come out as it was: a dependency it lacks, or anything that would
+    /// change it, is an error
+    pub locked: bool,
+    /// Nothing is fetched: what isn't installed (or locked) already is an error
+    pub offline: bool,
+}
+
 pub struct Resolver<'a> {
     pub packages: &'a dyn Packages,
     pub fetcher: &'a dyn Fetcher,
@@ -72,6 +85,8 @@ pub struct Resolver<'a> {
     /// Installed versions whose files changed are fetched again and put back, instead of being
     /// an error
     pub repair: bool,
+    /// Whether the lock file may change, and whether anything may be fetched
+    pub frozen: Frozen,
 }
 
 /// A dependency to resolve, and where it was named
@@ -143,6 +158,45 @@ impl Resolver<'_> {
     /// The lock file for `manifest`, with every package it names installed
     pub fn resolve(&self, manifest: &Manifest) -> Result<Lockfile> {
         self.check_update(manifest)?;
+        if self.frozen.locked && self.previous.is_none() {
+            return Err(LogoxideError::Resolve(String::from(
+                "there's no logoxide.lock to keep (install without --locked to write one)",
+            )));
+        }
+        let lock = self.resolve_all(manifest)?;
+        if self.frozen.locked && self.previous != Some(&lock) {
+            return Err(LogoxideError::Resolve(String::from(
+                "logoxide.lock would change (the manifest asks for something it doesn't have): \
+                 install without --locked to update it",
+            )));
+        }
+        Ok(lock)
+    }
+
+    /// Nothing may be fetched offline: `what` (of the dependency `name`) needs fetching
+    fn may_fetch(&self, name: &str, what: &str) -> Result<()> {
+        if self.frozen.offline {
+            return Err(LogoxideError::Resolve(format!(
+                "`{name}`: {what} isn't installed, and offline nothing is fetched"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Nothing new may be chosen when the lock file must stay as it is, nor offline (choosing
+    /// reads tags or a catalog)
+    fn may_choose(&self, name: &str) -> Result<()> {
+        let why = match (self.frozen.locked, self.frozen.offline) {
+            (true, _) => "logoxide.lock must stay as it is (--locked)",
+            (_, true) => "offline nothing is fetched to choose a version from",
+            _ => return Ok(()),
+        };
+        Err(LogoxideError::Resolve(format!(
+            "`{name}` isn't locked as the manifest asks for it, and {why}"
+        )))
+    }
+
+    fn resolve_all(&self, manifest: &Manifest) -> Result<Lockfile> {
         let mut lock = Lockfile::default();
         let mut todo: VecDeque<Want> = VecDeque::new();
         for (name, dependency) in &manifest.dependencies {
@@ -395,7 +449,10 @@ impl Resolver<'_> {
                 GitRef::Rev(kept.commit.clone().unwrap_or_default()),
                 kept.tag.clone(),
             ),
-            None => self.reference(&want.name, url, d)?,
+            None => {
+                self.may_choose(&want.name)?;
+                self.reference(&want.name, url, d)?
+            }
         };
         let mut locked = self.install(&want.name, d, url, &reference, kept)?;
         locked.tag = tag;
@@ -490,6 +547,8 @@ impl Resolver<'_> {
             }
             // Changed, and repairing: fetched again below, and its files put back
         }
+        let what = kept.map_or_else(|| url.to_string(), LockedPackage::label);
+        self.may_fetch(name, &what)?;
         let fetched = MemoryStorage::new();
         let commit = (self.fetcher.fetch(url, reference, &fetched)).map_err(|e| match (kept, e) {
             // The lock's commit, fetched by itself: a tag moved or a branch rewritten since takes
@@ -616,6 +675,7 @@ impl Resolver<'_> {
         let mut locked = match kept {
             Some(kept) => kept.clone(),
             None => {
+                self.may_choose(&want.name)?;
                 let text = self.fetcher.download(registry)?;
                 let catalog =
                     crate::catalog::Catalog::parse(registry, &String::from_utf8_lossy(&text))?;
@@ -687,6 +747,7 @@ impl Resolver<'_> {
                 return Ok(locked);
             }
         }
+        self.may_fetch(&want.name, &locked.label())?;
         // From the archive's URL, else each mirror: the first whose bytes hash as listed
         let urls: Vec<String> = (locked.archive.iter().chain(&locked.mirrors))
             .cloned()
