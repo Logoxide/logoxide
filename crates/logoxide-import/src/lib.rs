@@ -10,8 +10,9 @@ uses as a path package (or which can be pushed anywhere as a git repository).
 - **CCEL** ([`ccel`]): a Bible's ThML, the whole Bible in one file, described by its own head
   (title, language, rights, version), with its rights in `COPYRIGHT.txt`
 - **SWORD** ([`sword`]): a module's zip from its repository, read with sword-modules from
-  memory: its entries in their own markup (OSIS or ThML), a file per book, with its conf's
-  copyright and license in `COPYRIGHT.txt`
+  memory: a Bible's or commentary's entries in their own markup (OSIS, ThML, or GBF), a file per
+  book, or a dictionary's as `entries/<module>.xml`, with its conf's copyright and license in
+  `COPYRIGHT.txt`
 
 Each publisher's list is read into a logoxide [`Catalog`](logoxide::catalog::Catalog) ([`catalog::parse`]), every entry a
 [`CatalogSource::External`] naming its import (`ebible:eng-asv`), the download it's made from,
@@ -35,7 +36,7 @@ pub mod update;
 use logoxide::{
     LogoxideError, Result,
     catalog::{CatalogEntry, CatalogSource, Download},
-    manifest::{FormatEntry, MANIFEST, Manifest, Package as Info, Upstream},
+    manifest::{Format, FormatEntry, Keys, MANIFEST, Manifest, Package as Info, Upstream},
     package::{Features, Package},
     storage::{MemoryStorage, Storage},
 };
@@ -175,6 +176,8 @@ pub(crate) struct Made {
     pub(crate) homepage: String,
     /// The versification the publisher names (SWORD's conf), else the package's `own`
     pub(crate) versification: Option<String>,
+    /// For a dictionary, what its entries are keyed by
+    pub(crate) keys: Option<Keys>,
 }
 
 /// Writes the package's `logoxide.toml`, checks it opens with books, and copies it into `dest`
@@ -225,14 +228,20 @@ pub(crate) fn finish(
         upstream: upstream(entry),
         versification: made.versification.unwrap_or_else(|| String::from("own")),
         maps_to: None,
+        keys: made.keys,
         include: vec![],
+    };
+    // A dictionary's files are in `entries/`; every other format's folder is named for it
+    let folder = match Format::from_name(made.format) {
+        Some(Format::Dictionary) => "entries",
+        _ => made.format,
     };
     let manifest = Manifest {
         package: Some(info),
         formats: [(
             made.format.to_string(),
             FormatEntry {
-                path: format!("{}/", made.format),
+                path: format!("{folder}/"),
                 feature: None,
             },
         )]
@@ -244,8 +253,12 @@ pub(crate) fn finish(
     staged.write(MANIFEST, format!("{header}{text}").as_bytes())?;
     let staged = std::sync::Arc::new(staged);
     let package = Package::open(staged.clone(), Features::default())?;
-    if package.books().is_empty() {
+    let verses = (package.text_format()).is_some_and(|(f, _)| f.is_verse_text());
+    if verses && package.books().is_empty() {
         return Err(LogoxideError::Import(format!("{}: no books", entry.id)));
+    }
+    if !verses && package.source().keys().is_empty() {
+        return Err(LogoxideError::Import(format!("{}: no entries", entry.id)));
     }
     for path in staged.walk("")? {
         dest.write(&path, &staged.read(&path)?)?;

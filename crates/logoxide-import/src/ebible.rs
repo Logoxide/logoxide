@@ -185,6 +185,7 @@ pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
         publisher: "eBible.org",
         homepage: format!("https://ebible.org/{id}/"),
         versification: None,
+        keys: None,
     };
     finish(&entry, made, staged, dest)
 }

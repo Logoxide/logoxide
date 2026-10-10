@@ -1,6 +1,7 @@
 /*!
 A package: a `logoxide.toml` with `[package]`, and its text in one or more formats. Opening one
-picks the best format its enabled features turn on (USX, then USFM, OSIS, and ThML).
+picks the best format its enabled features turn on (USX, then USFM, OSIS, ThML, and GBF; a
+dictionary's entries or cross-references, which hold no verses, are read the same way).
 */
 
 use std::sync::Arc;
@@ -21,8 +22,8 @@ pub struct Package {
     manifest: Manifest,
     storage: Arc<dyn Storage>,
     enabled: Enabled,
-    /// The format read as verses, and its folder (none for a book, a collection, or a recording
-    /// of another package's text)
+    /// The format being read, and its folder (none for a book, a collection, or a recording of
+    /// another package's text)
     text: Option<(Format, String)>,
     #[cfg(feature = "read")]
     source: Box<dyn Source>,
@@ -103,8 +104,9 @@ impl Package {
         })
     }
 
-    /// The format read as verses, and its folder: none for a package without verse text (a
-    /// book, a collection, a recording of another package's text)
+    /// The format being read, and its folder: none for a package without text logoxide reads (a
+    /// book, a collection, a recording of another package's text). A dictionary's or
+    /// cross-references' isn't verse text ([`Format::is_verse_text`])
     pub fn text_format(&self) -> Option<(Format, &str)> {
         self.text.as_ref().map(|(f, dir)| (*f, dir.as_str()))
     }

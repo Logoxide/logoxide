@@ -231,6 +231,7 @@ pub fn import(entry: &CatalogEntry, books: &[(String, Vec<u8>)], dest: &dyn Stor
         publisher: "fetch.bible",
         homepage: String::from("https://fetch.bible/"),
         versification: None,
+        keys: None,
     };
     finish(entry, made, staged, dest)
 }

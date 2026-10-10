@@ -11,7 +11,8 @@ what its import downloads:
   are in each file's head, read when it's imported ([`crate::ccel::catalog`])
 - **SWORD repositories** (a repository's `mods.d.tar.gz`, every module's conf;
   [`logoxide::catalog::SWORD_CATALOG`] is CrossWire's): the Bibles and commentaries whose markup
-  is OSIS or ThML, and which aren't locked, each a module zip ([`crate::sword::catalog`])
+  is OSIS, ThML, or GBF, and the dictionaries in any markup logoxide-markup reads, which aren't
+  locked, each a module zip ([`crate::sword::catalog`])
 
 [`parse`] reads any of them, or a `catalog.toml`, by where it came from.
 */

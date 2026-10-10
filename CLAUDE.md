@@ -14,7 +14,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs
   - `reader.rs`: the boundary. `TextReader` (`counts`: each book's verse counts; `facts`: a
     `TextFacts`, the text's half of a summary, with the verse hashes by a `HashRule`, titles and
-    the untitled files, cited passages, the mapping count, and `Skipped`; `timing_problems`) is
+    the untitled files, cited passages, the mapping count, `entries` (each dictionary entry's or
+    cross-reference passage's `EntryHash`: 8 bytes of the key's hash, 7 of its text's by the
+    verse rule, from logoxide-text's `hash::entry_hashes`), and `Skipped`; `timing_problems`) is
     taken by `summary::summarize`, `release::plan`/`summary_in`, `Cache::open`,
     `Project::translations`/`numbering`/`map_reference`, and `import::compare_import`. `NoReader`
     reads nothing (tests, hosts that only install); `DefaultReader` (`read`) is the adapter onto
@@ -24,8 +26,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     errors, `versification_map(package)` reads a map package's `.vrs` files, and the text crate's
     `Skipped` and `VerseRecord` (topos `BookId`) become the core's `Skipped` and `VerseHash`
     (`books.rs` numbers, which stay the summary format's). `Package::text_format` says which
-    format is read as verses without a parser; `Package::source()` (`read`) is logoxide-text's
-    `Source`
+    format is being read (`Format::is_verse_text`: not a dictionary's or cross-references',
+    which `Project::bibles` leaves out) without a parser; `Package::source()` (`read`) is
+    logoxide-text's `Source`
   - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
     `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`, machine-wide (flags and env win over
     library/cache; a project's catalogs come first and its registry names win). lx reads it once
@@ -49,8 +52,14 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `in_use`: the lock's packages from dependencies that are on, which `bibles`, `translations`,
     and `versifications` read). `[package]` has `authors` (a list) and `description`. Kinds
     include `book` and `collection` (no `[formats]`, only dependencies; a project's Bibles
-    include a collection's); the `epub` format is kept as files, not read as verses. Keys it
-    doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
+    include a collection's); the `epub` format is kept as files, not read as verses. Formats
+    `gbf` (GBF with its `<SB>`/`<SC>`/`<SV>` sync marks, `.gbf` and `.txt`), `dictionary`
+    (`entries/*.xml`, `<entry key=… headword=… link=…>` bodies in the markup the root declares,
+    the owner's D10) and `xref` (`xref/*.tsv`: `from`, `to`, optional weight, OSIS references)
+    are specified in `doc/entries.md`; `[package] keys` (`Keys`: `strongs-greek`,
+    `strongs-hebrew`, `headword`) is required with a `dictionary` format and refused without
+    one; a dictionary's kind is `lexicon` (no new kind), cross-references' `cross-references`.
+    Keys it doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
     older lx reads a newer manifest. `validate` refuses a `git`/`registry`/`tag`/`branch`/`rev`
     that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
@@ -219,7 +228,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     lock; `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
     `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
     Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
-    and `lx add` warn of
+    and `lx add` warn of; `packages_of(library, kind)` opens the packages of a kind among
+    `in_use`, with `commentaries()`, `dictionaries()` (kind `lexicon`), and `cross_references()`
   - `summary.rs`: `logoxide.summary.toml` (verse counts in book order, sizes, element counts
     without structural markers; `verse-hash = 1`) and `logoxide.verses.bin` (`LXV2`: a header
     of the hash rule (u16), the record length (12; readers skip bytes past what they know), and a
@@ -245,7 +255,15 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     verse again after an update.
     `files-checksum` hashes the formats' files alone, so `diff_summaries` sees a book (no
     verses) change: a minor change. The passages a book cites go in `logoxide.references.bin`
-    (the summary counts its references)
+    (the summary counts its references). Dictionaries and cross-references publish
+    `logoxide.entries.bin` (`LXE1`: `LXV2`'s header with its own magic and a record length of
+    15, then a record an entry: 8 bytes of the key's hash, `HASH_BYTES` of its text's by the
+    verse rule; `EntryHash`, `encode_entries`/`decode_entries`; the summary counts `entries`,
+    and `Summary::read` checks the count and the rule agree), carried in `Summary::entry_hashes`
+    (`serde(skip)`, like `cited`, so `read`, `write`, and `summarize` keep their shapes);
+    `diff_entries` (an entry removed is major, reworded or added minor: `Diff::entries_removed`,
+    `entries_changed`, `entries_added`, which `release::describe` names) runs in `diff_summaries`,
+    and `files_changed` only counts when neither side has verses or entries
   - `references.rs`: the Bible references in a package's EPUBs, found by logoxide-text's
     `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly too). `find`
     (`read`) reads the books: each reference's OSIS passage, file, CFI, chapter, UTF-16 range,
@@ -317,14 +335,23 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   version `<version>`, else `DC.Date`; its script, and so its direction, judged from its
   letters), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
   `crosswire`, `crosswire-beta`, `ebible`, …; others by host, `repository_name`;
-  `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS or ThML that aren't
-  locked, GBF isn't read; `zip_urls`: `packages/<Module>.zip`, then lowercase; the zip into
-  sword-modules' `MemoryFiles`, each book written in the module's markup (`osis/John.xml` with
-  verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter milestones,
-  making linked verses bridges from sword-modules' `iter_spans` (`n="16-17"`, or one id into
-  the next chapter, `osisID="John.3.36-John.4.2"`, which logoxide-markup reads as one span to
-  `last_chapter`), and leaving out introductions stored at an earlier verse's entry
-  (`EntryLocation`); the repository root is read back from the entry's first download URL; the
+  `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS, ThML, or GBF and its
+  dictionaries (RawLD, RawLD4, zLD, in any markup; listed as `kind = "lexicon"`) that aren't
+  locked; `zip_urls`: `packages/<Module>.zip`, then lowercase; the zip into sword-modules'
+  `MemoryFiles`, each book written in the module's markup (`osis/John.xml` with verse
+  milestones, CCEL-style ThML, or `gbf/John.gbf` (N4: `<SBJohn>`, `<SCn>`, `<SVn>`, a bridge
+  `<SV16><SV17>`; a run into the next chapter has its text at its first verse and the next
+  chapter's verses as an empty bridge ended by `<CM>`)), dropping the entries' own book and
+  chapter milestones or sync marks, making linked verses bridges from sword-modules'
+  `iter_spans` (`n="16-17"`, or one id into the next chapter, `osisID="John.3.36-John.4.2"`,
+  which logoxide-markup reads as one span to `last_chapter`), and leaving out introductions
+  stored at an earlier verse's entry (`EntryLocation`); a dictionary (`Module::Dictionary`) is
+  `entries/<module>.xml` in `doc/entries.md`'s form (`entries_file`: the root's `markup` is the
+  conf's `SourceType`; `keys` from `Feature=GreekDef`/`HebrewDef`, else headword
+  (`dictionary_keys`); stored keys in normal form, `00025` → `G25` (`import_key`); a TEI entry's
+  first `<orth>` as its headword; `@LINK` aliases as `link` entries), `Made.keys` writes the
+  manifest's `keys`, and `finish` refuses one with no entries as it refuses a Bible with no
+  books; the repository root is read back from the entry's first download URL; the
   conf's `Versification` is kept (`sword::versification`: SWORD's names as SWORD spells them,
   `KJV` when absent; other imports say `own`); the conf gives version, license
   (`sword::license`) and rights (`sword::rights`: permission given to CrossWire or only in
@@ -358,7 +385,22 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   31,102 verses). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
   book; it's scanned for the books its verse markers name, cut into books, and its last parse
   kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers.
-  Preference: USX, USFM, OSIS, ThML. `Source::skipped` says what was passed over (`Skipped`,
+  GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM
+  code, English name, or GBF's numbers 1–39 and 64–90), `<SC…>`/`<SV…>` become chapter and verse
+  markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is
+  one bridge), each book wrapped in a division. Preference: USX, USFM, OSIS, ThML, GBF. A
+  commentary is any verse source: `Source::notes(passage)` (a default on the trait over `book`
+  and `passage_ranges`) gives each span covering the passage as a `Note` with its tree. Two
+  formats hold no verses and open as sources with no books, so `open` returns one `Box<dyn
+  Source>` for any format: `dictionary.rs` (`TextFormat::Dictionary`, `entries/*.xml` as
+  `doc/entries.md` specifies: the root's `markup` names the bodies' markup; files indexed once,
+  bodies parsed on `Source::entry(key)`; `keys()` in file order; an `<entry link=…/>` alias
+  reads as its target, one step) and `xref.rs` (`TextFormat::Xref`, `xref/*.tsv` lines parsed
+  by topos's `parse_osis`; `Source::cross_references(verse)` is every line whose `from` covers
+  it; `keys()` the distinct `from`s and `entry(from)` their targets as one text, which is what
+  the summary hashes). `keys.rs`: `normalize_key` (Strong's `G0025` → `G25`), `fold` (the
+  catalog's, copied: case, combining marks, final sigma), `key_hash` (8 bytes of SHA-256 of the
+  normal form). `hash::entry_hashes(source, rule)` gives an `EntryRecord` a key. `Source::skipped` says what was passed over (`Skipped`,
   `SkipReason`): peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know
   (JUB until it does) and files naming no book warned of (the owner's D4); a book in two files is
   an error naming both. `lx check` (and its JSON's `skipped`), `lx release`, and `lx import`
@@ -536,5 +578,5 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   unit tests
 - Commit messages end with a `Co-Authored-By` line
 - Formats for other implementations are specified in `doc/` (`manifest.md`, `catalog.md`,
-  `lock.md`, `summaries.md`, `trust.md`): change them with the code. `scripts/` has CI's helpers
+  `lock.md`, `summaries.md`, `entries.md`, `trust.md`): change them with the code. `scripts/` has CI's helpers
   (`check-versions.sh`, `topos-ref.sh`, `patch-unpublished.sh`); the minimum Rust is 1.89

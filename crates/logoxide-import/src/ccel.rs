@@ -261,6 +261,7 @@ pub fn import(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()
         publisher: "CCEL",
         homepage: format!("https://ccel.org/ccel/bible/{id}"),
         versification: None,
+        keys: None,
     };
     finish(&entry, made, staged, dest)
 }
