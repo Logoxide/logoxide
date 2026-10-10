@@ -86,8 +86,10 @@ before changing the design.
     `SWORD_REPOSITORIES` names the HTTPS repositories in CrossWire's list (`crosswire`,
     `crosswire-beta`, `ebible`, …; others by host, `sword_repository_name`). Ids are prefixed
     (`ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
-    first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first; a
-    vault's `[settings] catalogs`, then those four (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
+    first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
+    and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
+    sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
+    `[settings] catalogs`, then those four (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
     CCEL, CrossWire) unless `default-catalogs = false`. Each imported kind names its prefix
     (`CatalogSource::prefix`: `ebible`, `fetch`, `ccel`, `sword`), and `Catalog::find_import`
     finds `ebible:<id>` (or `sword:crosswire/KJV`) in a catalog; `lx import` looks through the

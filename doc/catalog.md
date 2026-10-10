@@ -78,7 +78,10 @@ size = 1834201
 | `path` | string | no | Its path in the folder the catalog was built from (`books/romans`), which names it there as its id does |
 | `commit` | string | no | Written by `lx catalog build` (the commit of the newest release); informational |
 
-An entry must have `git` or at least one `release`. Unknown keys in an entry are ignored. When
+An entry must have `git` or at least one `release`. Unknown keys in an entry are ignored.
+Searches match without regard to case or combining marks (both sides are lowercased, decomposed
+to NFD, stripped of every mark, Unicode's `General_Category=Mark`, and a final sigma read as
+`σ`), so `ιησους` finds `Ἰησοῦς`, `בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. When
 catalogs are searched together, the first entry with a given id wins, so catalogs with
 overlapping ids should prefix them (logoxide's importers use `ebible-`, `ccel-`, `sword-`).
 

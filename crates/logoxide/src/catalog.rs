@@ -1170,11 +1170,19 @@ pub(crate) fn date_version(date: &str) -> Option<String> {
     Some(format!("{y}.{m}.{d}"))
 }
 
-/// Lowercase, without accents' combining marks, for matching
+/**
+Text as search matches it: lowercase, decomposed (NFD) so that every combining mark (accents,
+Greek breathings, Hebrew points and cantillation, Arabic vowels) can be dropped, then composed
+again, with a final sigma as any other. `Ἰησοῦς` matches `ιησους`, `בְּרֵאשִׁית` `בראשית`, and
+`José` `jose`
+*/
 fn fold(text: &str) -> String {
+    use unicode_normalization::{UnicodeNormalization, char::is_combining_mark};
     text.to_lowercase()
-        .chars()
-        .filter(|c| !('\u{300}'..='\u{36f}').contains(c))
+        .nfd()
+        .filter(|c| !is_combining_mark(*c))
+        .map(|c| if c == 'ς' { 'σ' } else { c })
+        .nfc()
         .collect()
 }
 
@@ -1341,6 +1349,51 @@ mod tests {
                 url: "https://github.com/someone/kjv".into()
             }
         );
+    }
+
+    #[test]
+    fn folds_accents_points_and_final_sigma() {
+        assert_eq!(fold("Ἰησοῦς"), fold("ιησους"));
+        assert_eq!(fold("ΙΗΣΟΥΣ"), "ιησουσ");
+        assert_eq!(fold("בְּרֵאשִׁית"), fold("בראשית"));
+        assert_eq!(fold("José"), "jose");
+        // Composed again: a Korean word stays whole syllables
+        assert_eq!(fold("성경"), "성경");
+        let catalog = Catalog::parse_toml(
+            r#"
+[[package]]
+id = "tr"
+name = "Ἡ Καινὴ Διαθήκη"
+abbreviation = "TR"
+language = "grc"
+keywords = ["Ἰησοῦς"]
+git = "https://example.org/tr"
+
+[[package]]
+id = "wlc"
+name = "תּוֹרָה נְבִיאִים וּכְתוּבִים"
+abbreviation = "WLC"
+language = "hbo"
+keywords = ["בְּרֵאשִׁית"]
+git = "https://example.org/wlc"
+
+[[package]]
+id = "rv"
+name = "Reina-Valera"
+abbreviation = "RV"
+language = "es"
+description = "Traducción de Casiodoro de Reina, revisada por Cipriano de Valera; José"
+git = "https://example.org/rv"
+"#,
+        )
+        .unwrap();
+        let ids = |q: &str| (catalog.search(q).iter().map(|e| e.id.clone())).collect::<Vec<_>>();
+        assert_eq!(ids("ιησους"), ["tr"]);
+        assert_eq!(ids("καινη διαθηκη"), ["tr"]);
+        assert_eq!(ids("בראשית"), ["wlc"]);
+        assert_eq!(ids("תורה"), ["wlc"]);
+        assert_eq!(ids("jose"), ["rv"]);
+        assert_eq!(ids("traduccion"), ["rv"]);
     }
 
     #[test]
