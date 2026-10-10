@@ -1,8 +1,11 @@
 # logoxide (bindings)
 
 logoxide's packages with topos's whole API, in one package for TypeScript/WebAssembly, Python,
-Swift, and Kotlin (through [BoltFFI](https://github.com/boltffi/boltffi)). `Topos`, `ToposBook`,
-`ToposTranslations`, and the rest are the same as in topos's own package (`topos-bible`).
+Swift, and Kotlin (through [BoltFFI](https://github.com/boltffi/boltffi)). `Topos`,
+`ToposTranslations`, and the rest are the same as in topos's own package (`topos-bible`). A book's
+text is logoxide's own `LogoxideBook` (`pkg.book(id)`, or `LogoxideBook.parse(topos, "usx", text)`
+for a file of your own): its verses, and passages as HTML or plain text. It was topos's
+`ToposBook`, with the same methods; its `BookVerse` and `BookTextOptions` keep their names.
 
 The host reads and writes the files: an app's file API is often asynchronous (Obsidian's vault),
 and WebAssembly has none. logoxide reads the text from the bytes it's given, and hands back the
@@ -55,7 +58,7 @@ const installer = logoxide.installer(); // keep one: what it's given is kept
 let step = installer.inspect(url, null, null, null);
 while (step.tag === "Fetch") { await answer(step.request); step = installer.inspect(url, null, null, null); }
 const { info } = step.inspected;
-project = project.addDependency(info.id, { git: url, version: info.version, path: null, tag: null,
+project = project.addDependency(info.id, { git: url, registry: null, version: info.version, path: null, tag: null,
   branch: null, rev: null, features: [], defaultFeatures: true, packageId: null, abbreviation: null, aliases: null });
 
 let result = installer.install(project, { tag: "Nothing" }); // or { tag: "All" }, { tag: "Only", ids }

@@ -1,6 +1,6 @@
 /*!
-logoxide's API for every language binding, with topos's (`Topos`, `ToposBook`, `ToposTranslations`,
-...) in the same package, so an app needs only this one.
+logoxide's API for every language binding, with topos's (`Topos`, `ToposTranslations`, ...) in the
+same package, so an app needs only this one. A book's text is logoxide's own [`LogoxideBook`].
 
 The host reads and writes files, as an app's file API is often asynchronous (Obsidian's vault)
 and WebAssembly has none: a package is opened from its files' bytes ([`Logoxide::open_package`]),
@@ -9,6 +9,7 @@ and the cache files it writes are handed back ([`LogoxidePackage::cache_writes`]
 `logoxide.toml` and `logoxide.lock` ask for, and where each one's files are.
 */
 
+mod book;
 mod catalog;
 mod create;
 mod installer;
@@ -18,6 +19,7 @@ mod project;
 mod tests;
 mod versification;
 
+pub use book::*;
 pub use catalog::*;
 pub use create::*;
 pub use installer::*;
@@ -39,6 +41,8 @@ pub enum LogoxideError {
     Lock { message: String },
     /// None of the package's enabled formats can be read, or a book's text can't be
     Text { message: String },
+    /// Markup in a format logoxide-markup doesn't read (see [`LogoxideBook::parse`])
+    InvalidMarkup { message: String },
     /// Reading or writing files failed, or there's no file access (in WebAssembly)
     Files { message: String },
     /// A cached file is damaged or from another version
@@ -196,7 +200,7 @@ impl Logoxide {
         logoxide_core::manifest::MAX_CATEGORIES as u32
     }
 
-    /// A USFM book as USX, for `ToposBook.parse(topos, "usx", ...)` (a reader of book files)
+    /// A USFM book as USX, for `LogoxideBook.parse(topos, "usx", ...)` (a reader of book files)
     pub fn usfm_to_usx(&self, usfm: String) -> Result<String, LogoxideError> {
         Ok(logoxide_core::source::usfm_to_usx(&usfm)?)
     }

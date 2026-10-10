@@ -18,16 +18,13 @@ crate-type = ["staticlib", "cdylib"]
 logoxide_core = { package = "logoxide", path = "../logoxide" }
 boltffi = "0.31.0"
 semver = "1"
+# Bible text: LogoxideBook's tree, as HTML or plain text
+logoxide-markup = { path = "../logoxide-markup", features = ["html"] }
 # topos's whole API, re-exported (its library is named topos_bible, like its packages). BoltFFI only
 # exports the items of path dependencies, so this needs a topos checkout beside logoxide
-# (CI checks out the tag matching topos-bible's version)
-topos-ffi = { path = "../../../topos/crates/topos-ffi" }
-# Until ToposBook becomes logoxide-ffi's own (PLAN-CRATES.md phase E): topos-ffi's books take
-# topos-bible-markup's tree, the core gives logoxide-markup's (the same code, moved), so `book`
-# carries one into the other through postcard
-topos-bible-markup = { path = "../../../topos/crates/topos-markup", features = ["serde"] }
-postcard = { version = "1", features = ["use-std"] }
-serde = "1"
+# (CI checks out the tag matching topos-bible's version). Without its `markup` feature: books are
+# logoxide's (`LogoxideBook`, with the names `BookVerse` and `BookTextOptions` that ToposBook had)
+topos-ffi = { path = "../../../topos/crates/topos-ffi", default-features = false }
 
 [dev-dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }

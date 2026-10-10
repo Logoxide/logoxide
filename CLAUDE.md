@@ -393,11 +393,14 @@ before changing the design.
   `topos_bible`). The host does all I/O: `Logoxide.openPackage(files, features, cache)` takes
   bytes and `LogoxidePackage.cacheWrites()` hands back what the cache wrote; `openPackageDir` is
   native only. Opening goes through the `Logoxide` object because BoltFFI's WebAssembly
-  constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
-  `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry logoxide's books and counts
-  across; until `ToposBook` becomes logoxide-ffi's own (PLAN-CRATES.md phase E), `package::to_topos`
-  carries logoxide-markup's tree into topos-bible-markup's through postcard (the same types,
-  moved). `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
+  constructors return `null` on errors while methods throw. A book's text is its own
+  `LogoxideBook` (`book.rs`, topos-ffi's `ToposBook` until October 2026, on logoxide-markup with
+  its `html` feature, which only this crate turns on): `parse(topos, markup, text)` (an unknown
+  markup is `InvalidMarkup`), `verses` (`BookVerse`), `chapterVerses`, passages and chapters as
+  HTML or text (`BookTextOptions`); `LogoxidePackage.book` gives one through `from_tree`
+  (Rust-only). topos-ffi comes without its `markup` feature, so it exports no `ToposBook`,
+  `BookVerse`, or `BookTextOptions` to clash with these. `ToposTranslations::from`/`core`
+  (Rust-only, in topos-ffi) carry logoxide's counts across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
   `PackageInfo`, carries `script` and the language's name), and `Logoxide.importEbible`,
   `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
   try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,
