@@ -36,7 +36,7 @@ mod publish;
 use cli::{CatalogCommand, Cli, Command, Format, MediaCommand, RegistryCommand};
 use cmd::{
     catalog::{
-        Filters, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_remove,
+        Filters, Shown, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_remove,
         package_url, search,
     },
     import::{import, import_update},
@@ -110,7 +110,7 @@ fn main() -> ExitCode {
         } => release(&cli, path, *set_version, *dry_run),
         Command::Diff { path, from, to } => diff(&cli, path, from, to.as_deref()),
         Command::Verify(args) => verify(args, json),
-        Command::Check { package, cache } => check(package, cache.clone(), json),
+        Command::Check { package, cache } => check(package, cache.clone(), json, &cli.library()),
         Command::New(args) => new(args),
         Command::Init { dir } => logoxide::Project::init(dir)
             .map(|p| outln!("created {}", p.dir().join(MANIFEST).display())),
@@ -165,6 +165,7 @@ fn main() -> ExitCode {
             books,
             category,
             limit,
+            flat,
             json,
         } => search(
             &cli,
@@ -175,8 +176,11 @@ fn main() -> ExitCode {
                 books: books.filters(),
                 category: category.as_deref(),
             },
-            *limit,
-            *json || cli.format == Format::Json,
+            Shown {
+                limit: *limit,
+                json: *json || cli.format == Format::Json,
+                flat: *flat,
+            },
         ),
         Command::Import {
             source,
@@ -194,12 +198,12 @@ fn main() -> ExitCode {
             name,
             private,
         }) => publish::init(&publish::Host::parse(host), name.as_deref(), *private),
-        Command::Publish { path, to, all } => {
+        Command::Publish { path, to, all, yes } => {
             let library = cli.library();
             let (host, git) = (publish::Host::parse(to), cli.fetcher(&library));
             match all {
-                true => publish::publish_all(path, &host, &git),
-                false => publish::publish(path, &host, &git),
+                true => publish::publish_all(path, &host, &git, *yes),
+                false => publish::publish(path, &host, &git, *yes),
             }
         }
         Command::Yank {
@@ -231,7 +235,9 @@ fn main() -> ExitCode {
             book,
             package,
         }) => media_add(file, url, book.as_deref(), package),
-        Command::Media(MediaCommand::Check { package, offline }) => media_check(package, *offline),
+        Command::Media(MediaCommand::Check { package, offline }) => {
+            media_check(package, *offline, &cli.library())
+        }
         Command::Map {
             reference,
             from,

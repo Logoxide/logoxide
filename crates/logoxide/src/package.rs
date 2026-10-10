@@ -58,13 +58,16 @@ impl Package {
         formats.sort();
         let Some(&(format, path)) = formats.first() else {
             let enabled_formats = manifest.formats(&enabled);
-            // A Bible is read as verses; a book or a collection can have none
+            // A Bible is read as verses; a book or a collection can have none, and so can a
+            // recording that reads another package's text ([media] text)
             let kind = manifest
                 .package
                 .as_ref()
                 .map(|p| p.kind)
                 .unwrap_or_default();
-            if kind == manifest::PackageKind::Bible {
+            let recording = (manifest.formats.is_empty())
+                && (manifest.media.as_ref()).is_some_and(crate::media::Media::names_its_text);
+            if kind == manifest::PackageKind::Bible && !recording {
                 let names: Vec<&str> = enabled_formats.iter().map(|(n, _)| *n).collect();
                 return Err(LogoxideError::NoReadableFormat(names.join(", ")));
             }

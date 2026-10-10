@@ -57,16 +57,22 @@ commentaries whose markup is OSIS or ThML):
 
 ```sh
 lx search "american standard"
-# ASV (eng-asv): American Standard Version (1901), English, LicenseRef-PublicDomain
-#     lx import ebible:eng-asv
-# ASV (eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
-#     lx import fetch:eng_asv
-# ASV (sword-asv): American Standard Version (1901), en, LicenseRef-PublicDomain
-#     lx import sword:crosswire/ASV
+# American Standard Version (work `asv`): 4 editions
+#   ASV (ebible-eng-asv): American Standard Version (1901), English, LicenseRef-PublicDomain
+#       lx import ebible:eng-asv
+#   ASV (fetch-eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
+#       lx import fetch:eng_asv
+#   ASV (sword-asv): American Standard Version (1901), en, LicenseRef-PublicDomain
+#       lx import sword:crosswire/ASV
+#   ASV (ccel-asv): American Standard Version of the Holy Bible (1901), und, no license given
+#       lx import ccel:asv
+# ABT (fetch-eng_abt): American Standard Version (1901) Byzantine Text, English, LicenseRef-PublicDomain
+#     lx import fetch:eng_abt
 # …
-# ASV (ccel-asv): American Standard Version of the Holy Bible (1901), und, no license given
-#     lx import ccel:asv
 ```
+
+Each work's editions are gathered under its name (the works logoxide's table knows, and those a
+catalog's packages name with `work`); `--flat` lists them one by one, best first.
 
 CCEL's page of its Bibles gives only their titles (`und` for the language until it's imported:
 each file's head says its language, rights, and version).
@@ -88,10 +94,10 @@ Add what the vault uses. Git packages are installed into the library (`LOGOXIDE_
 ```sh
 lx add github:someone/kjv                                 # the newest release, ^1.0.1
 lx add github:someone/bsb --version 1                     # any 1.x
-lx import ebible:eng-asv                                  # into imports/eng-asv
+lx import ebible:eng-asv                                  # into imports/ebible-eng-asv
 lx list
 # bsb 1.0.1  BSB (Berean Standard Bible), LicenseRef-PublicDomain  https://github.com/someone/bsb v1.0.1
-# eng-asv 2026.10.8  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/eng-asv
+# ebible-eng-asv 1.0.0  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/ebible-eng-asv
 # kjv 1.0.1  KJV (King James Version (1769)), LicenseRef-PublicDomain  https://github.com/someone/kjv v1.0.1
 ```
 
@@ -108,10 +114,15 @@ lx import sword:crosswire/KJV   # the module's OSIS entries, a file a book (osis
 lx import sword:crosswire/MHCC  # a commentary: kind = "commentary", an entry a span of verses
 ```
 
-Each import's version is its publisher's: eBible.org's update date (`2026.10.8`), CCEL's edition
-(`1.0.0`, else the file's date), a SWORD module's `Version` (`3.1.0`). Its license is shown as
-the publisher states it (public domain, a Creative Commons license, the GPL), else
-`LicenseRef-<publisher>` with the statement in the package's license file. Locked SWORD modules
+Each import's version is logoxide's own: 1.0.0 when it's imported, then raised by what each update
+changes, like any package's, so a dependency on `^1` is safe across the publisher's years. The
+publisher's version, as it gives it (eBible.org's update date `2026-10-08`, CCEL's edition `1.0`
+or else the file's date, a SWORD module's `Version` `3.1`), is kept in `[package.upstream]` with
+the download's URL and the import's name (`ebible:eng-asv`). Its license is shown as
+the publisher states it (public domain, a Creative Commons license, eBible.org's read from its
+`copr.htm`, the GPL), else `LicenseRef-<publisher>` with the statement in the package's license
+file, and what the publisher says beyond it in `[package.rights]` (a SWORD module only CrossWire
+may distribute isn't redistributable: `lx publish` asks before publishing it). Locked SWORD modules
 and those in GBF or plain text aren't listed: logoxide reads OSIS and ThML.
 
 The manifest now reads:
@@ -120,7 +131,7 @@ The manifest now reads:
 [dependencies]
 kjv = { git = "https://github.com/someone/kjv", version = "1.0.1" }
 bsb = { git = "https://github.com/someone/bsb", version = "1" }
-eng-asv = { path = "imports/eng-asv" }
+ebible-eng-asv = { path = "imports/ebible-eng-asv" }
 ```
 
 `github:owner/repo` is short for `https://github.com/owner/repo` (`gitlab:` and `codeberg:` work
@@ -176,7 +187,7 @@ same verses, and a changed file is caught by its checksum:
 cd ~/Notes                                # synced: logoxide.toml, logoxide.lock, imports/
 lx install
 # bsb 1.0.1
-# eng-asv 2026.10.8
+# ebible-eng-asv 1.0.0
 # kjv 1.0.1
 # 3 packages, locked in ./logoxide.lock
 ```
@@ -200,21 +211,22 @@ changed, saying how (a reader's files beside them stay):
 
 ```sh
 lx import --update --dry-run              # what would change
-# ccel-darby 1.0.0 → 1.1.0: 1 verse reworded (a Minor change, the version raised for it: the publisher's isn't newer)
-# eng-asv 2026.10.8: up to date (ebible:eng-asv)
+# ccel-darby 1.0.0 → 1.1.0: 1 verse reworded (a Minor change)
+# ebible-eng-asv 1.0.0 → 1.0.1: no verse changed (a Patch change; the publisher's 2026-10-08 → 2026-11-01)
 lx import --update                        # replace the changed ones and lock them again
-lx import --update eng-asv                # just one (its name, or ebible:eng-asv)
+lx import --update ebible-eng-asv         # just one (its name, or ebible:eng-asv)
 ```
 
-eBible.org's and SWORD imports are downloaded only when the catalog lists a newer version.
-fetch.bible's and CCEL's are downloaded each time, since their texts change without a new
-version; when one did, its version is raised by what changed (a reworded verse is minor), so
-one version never names two texts.
+eBible.org's and SWORD imports are downloaded only when the catalog lists a newer version of the
+publisher's than `[package.upstream]` has. fetch.bible's and CCEL's are downloaded each time,
+since their texts change without a new version. Either way the package's version is raised by
+what changed (a reworded verse is minor, a removed one major, a new publisher's version with the
+same text a patch), so one version never names two texts.
 
 ## Publishing: a package of your own
 
 A package is a git repository with a `logoxide.toml` and its text, released by tags (`v1.0.0`).
-Start from a folder of USX or USFM books, or from an import (`imports/eng-asv` is already one):
+Start from a folder of USX or USFM books, or from an import (`imports/ebible-eng-asv` is already one):
 
 ```toml
 [package]
@@ -605,7 +617,7 @@ kind = "commentary"
 version = "1.0.0"
 language = "en"
 license = "LicenseRef-PublicDomain"
-upstream = "https://ccel.org/ccel/henry/mhc"
+upstream = { url = "https://ccel.org/ccel/henry/mhc.xml", import = "ccel:henry/mhc" }
 versification = "KJV"
 
 [formats]

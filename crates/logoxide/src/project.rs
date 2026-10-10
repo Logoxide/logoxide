@@ -71,6 +71,45 @@ pub fn name_clashes(
     clashes
 }
 
+/// Two or more of a project's Bibles that are one work: [`Project::same_works`]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SameWork {
+    /// The work's id (`kjv`)
+    pub work: String,
+    /// Each package that is it (`kjv 1.0.0`, `ebible-eng-kjv2006 (path …) 1.0.0`), in the
+    /// project's order
+    pub packages: Vec<String>,
+}
+
+/**
+The works more than one Bible is, from each Bible's label, package id, and `work`. A Bible that
+doesn't say its work takes the work of another with its package id (a fork named with `package =
+"kjv"` is the work its original says)
+*/
+pub fn same_works(
+    bibles: impl IntoIterator<Item = (String, String, Option<String>)>,
+) -> Vec<SameWork> {
+    let bibles: Vec<(String, String, Option<String>)> = bibles.into_iter().collect();
+    let said: BTreeMap<&str, &str> = (bibles.iter())
+        .filter_map(|(_, id, work)| Some((id.as_str(), work.as_deref()?)))
+        .collect();
+    let mut works: Vec<SameWork> = vec![];
+    for (label, id, work) in &bibles {
+        let Some(work) = work.as_deref().or_else(|| said.get(id.as_str()).copied()) else {
+            continue;
+        };
+        match works.iter_mut().find(|w| w.work == work) {
+            Some(same) => same.packages.push(label.clone()),
+            None => works.push(SameWork {
+                work: work.to_string(),
+                packages: vec![label.clone()],
+            }),
+        }
+    }
+    works.retain(|w| w.packages.len() > 1);
+    works
+}
+
 /// A new project's `logoxide.toml`
 const NEW_MANIFEST: &str = "# The Bibles this uses: `lx add --git URL`\n[dependencies]\n";
 
@@ -510,7 +549,8 @@ impl Project {
                 todo.extend(inside.rev());
                 continue;
             }
-            if package.info().kind == PackageKind::Bible {
+            // A recording without a text of its own (`[media] text`) has no verses to give
+            if package.info().kind == PackageKind::Bible && package.source().format().is_some() {
                 bibles.push((locked, package));
             }
         }
@@ -545,6 +585,39 @@ impl Project {
             let (abbreviation, aliases) = self.names(locked, package.info());
             (locked.label(), abbreviation, aliases)
         })))
+    }
+
+    /**
+    The works two or more of the project's Bibles (those [`Project::translations`] gives topos)
+    are: two editions of the KJV, two forks of one package, or a package the manifest asks for
+    at one version and a collection at another. Not wrong, but worth saying
+    */
+    pub fn same_works(&self, library: &Library) -> Result<Vec<SameWork>> {
+        let bibles = self.bibles(library)?;
+        Ok(same_works(bibles.iter().map(|(locked, package)| {
+            let info = package.info();
+            (locked.label(), info.id.clone(), info.work.clone())
+        })))
+    }
+
+    /**
+    The text a recording with no text of its own reads (`[media] text`, a dependency of this
+    project's package), as installed: none when it names none. One that isn't locked or
+    installed is an error saying to install it
+    */
+    pub fn media_text(&self, library: &Library) -> Result<Option<crate::Package>> {
+        let Some(name) = (self.manifest.media.as_ref()).and_then(|m| m.text.as_deref()) else {
+            return Ok(None);
+        };
+        let locked = (self.lock.as_ref())
+            .and_then(|lock| lock.get(name))
+            .ok_or_else(|| {
+                LogoxideError::NotFound(format!(
+                    "{name}, the text [media] names, isn't locked (run `lx install` in {})",
+                    self.dir.display()
+                ))
+            })?;
+        library.open(locked, &self.dir).map(Some)
     }
 
     /// The versification maps in use (any package of the lock in use, so a Bible's own
@@ -871,6 +944,36 @@ path = "gill"
         assert_eq!(
             project.manifest_text().matches("[[media.files]]").count(),
             2
+        );
+    }
+
+    #[test]
+    fn bibles_of_one_work_are_found() {
+        let bible = |label: &str, id: &str, work: Option<&str>| {
+            (label.to_string(), id.to_string(), work.map(String::from))
+        };
+        let found = same_works([
+            bible("kjv 1.0.0", "kjv", Some("kjv")),
+            bible("bsb 1.0.0", "bsb", Some("bsb")),
+            bible(
+                "ebible-eng-kjv2006 1.0.0",
+                "ebible-eng-kjv2006",
+                Some("kjv"),
+            ),
+            // A fork that doesn't say: its original's work
+            bible("kjv-bob (kjv) 1.0.0", "kjv", None),
+            bible("mine 0.1.0", "mine", None),
+        ]);
+        assert_eq!(
+            found,
+            [SameWork {
+                work: String::from("kjv"),
+                packages: vec![
+                    String::from("kjv 1.0.0"),
+                    String::from("ebible-eng-kjv2006 1.0.0"),
+                    String::from("kjv-bob (kjv) 1.0.0")
+                ],
+            }]
         );
     }
 }

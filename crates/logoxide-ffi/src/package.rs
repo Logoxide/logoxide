@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use boltffi::*;
 use logoxide_core::{
-    Cache, CachedPackage, Features, MemoryStorage, Package, Storage,
+    Cache, CachedPackage, Features, MemoryStorage, Package, Storage, license,
     manifest::{self, Direction, PackageKind as CoreKind},
     source::SkipReason,
     topos_bible::data::{books::BookId, translations::Translations},
@@ -72,10 +72,16 @@ pub struct PackageInfo {
     pub kind: PackageKind,
     /// BCP 47: `en`, `grc`
     pub language: String,
-    /// Whether the text is written right to left
+    /// The language's name, when the package gives it (`English`)
+    pub language_name: Option<String>,
+    /// Its script, ISO 15924 (`Latn`, `Hebr`): as said, else the language tag's
+    pub script: Option<String>,
+    /// Whether the text is written right to left (as said, else as its script runs)
     pub right_to_left: bool,
     /// An SPDX expression (`CC0-1.0`)
     pub license: Option<String>,
+    /// What the license allows: `[package.rights]`, with the rest derived from `license`
+    pub rights: Rights,
     /// A file in the package with the license's text
     pub license_file: Option<String>,
     pub publisher: Option<String>,
@@ -91,8 +97,12 @@ pub struct PackageInfo {
     pub categories: Vec<String>,
     /// The books of the Bible it's mainly about, as USFM codes (`ROM`), as its author says
     pub about_books: Vec<String>,
-    /// Where the text was imported from, if anywhere
-    pub upstream: Option<String>,
+    /// The work it's an edition of (`kjv`), and which edition (`1769-oxford`) of what year
+    pub work: Option<String>,
+    pub edition: Option<String>,
+    pub edition_year: Option<i32>,
+    /// Where the text was imported from, if anywhere (`[package.upstream]`)
+    pub upstream: Option<Upstream>,
     /// `own` (the text's verse markers say), or a named system like `English`
     pub versification: String,
     /// For a versification map: the versification it maps `versification` to
@@ -111,8 +121,11 @@ impl From<&manifest::Package> for PackageInfo {
             version: info.version.to_string(),
             kind: info.kind.into(),
             language: info.language.clone(),
-            right_to_left: info.direction == Direction::Rtl,
+            language_name: info.language_name.clone(),
+            script: info.text_script(),
+            right_to_left: info.text_direction() == Direction::Rtl,
             license: info.license.clone(),
+            rights: info.text_rights().into(),
             license_file: info.license_file.clone(),
             publisher: info.publisher.clone(),
             homepage: info.homepage.clone(),
@@ -122,9 +135,146 @@ impl From<&manifest::Package> for PackageInfo {
             keywords: info.keywords.clone(),
             categories: info.categories.clone(),
             about_books: info.about_books.clone(),
-            upstream: info.upstream.clone(),
+            work: info.work.clone(),
+            edition: info.edition.clone(),
+            edition_year: info.edition_year,
+            upstream: info.upstream.as_ref().map(Upstream::from),
             versification: info.versification.clone(),
             maps_to: info.maps_to.clone(),
+        }
+    }
+}
+
+/**
+Where an imported package's text came from (`[package.upstream]`): the download, the import's
+name (`ebible:eng-asv`), and the publisher's version as it gives it (`2026-10-08`). The package's
+own `version` is logoxide's, raised by each update
+*/
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Upstream {
+    pub url: String,
+    pub import: Option<String>,
+    pub version: Option<String>,
+    /// The import rewrote the publisher's markup (a SWORD module's entries as OSIS files), its
+    /// words unchanged: not a derivative to logoxide, but worth saying where the license allows
+    /// none
+    pub converted: bool,
+}
+
+impl From<&manifest::Upstream> for Upstream {
+    fn from(u: &manifest::Upstream) -> Self {
+        Self {
+            url: u.url.clone(),
+            import: u.import.clone(),
+            version: u.version.clone(),
+            converted: u.converted,
+        }
+    }
+}
+
+impl From<Upstream> for manifest::Upstream {
+    fn from(u: Upstream) -> Self {
+        Self {
+            url: u.url,
+            import: u.import,
+            version: u.version,
+            converted: u.converted,
+        }
+    }
+}
+
+/// Whether a license allows derivatives (translations, revisions, adaptations)
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Derivatives {
+    Allowed,
+    /// Under the same terms (Creative Commons' ShareAlike, the GPL)
+    ShareAlike,
+    Forbidden,
+}
+
+/**
+What a license allows (`[package.rights]`, and what's derived from a license logoxide knows),
+each unknown when neither says. Shown, never enforced
+*/
+#[data]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Rights {
+    /// May be shared as it is
+    pub redistributable: Option<bool>,
+    pub derivatives: Option<Derivatives>,
+    /// May be sold or used commercially
+    pub commercial: Option<bool>,
+    /// Sharing it must name its source
+    pub attribution: Option<bool>,
+}
+
+impl From<license::Rights> for Rights {
+    fn from(r: license::Rights) -> Self {
+        Self {
+            redistributable: r.redistributable,
+            derivatives: r.derivatives.map(|d| match d {
+                license::Derivatives::Allowed => Derivatives::Allowed,
+                license::Derivatives::ShareAlike => Derivatives::ShareAlike,
+                license::Derivatives::None => Derivatives::Forbidden,
+            }),
+            commercial: r.commercial,
+            attribution: r.attribution,
+        }
+    }
+}
+
+impl From<Rights> for license::Rights {
+    fn from(r: Rights) -> Self {
+        Self {
+            redistributable: r.redistributable,
+            derivatives: r.derivatives.map(|d| match d {
+                Derivatives::Allowed => license::Derivatives::Allowed,
+                Derivatives::ShareAlike => license::Derivatives::ShareAlike,
+                Derivatives::Forbidden => license::Derivatives::None,
+            }),
+            commercial: r.commercial,
+            attribution: r.attribution,
+        }
+    }
+}
+
+/// What a license concern is about (`LicenseConcern`)
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConcernKind {
+    /// No SPDX license given
+    NoLicense,
+    /// A license logoxide doesn't know to be free or open
+    NotFree,
+    /// Its rights say it isn't redistributable
+    NotRedistributable,
+    /// Its license allows no derivatives, and its import converted the publisher's markup
+    Converted,
+}
+
+/// Something to know before redistributing a package (shown, never enforced)
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LicenseConcern {
+    pub kind: ConcernKind,
+    pub message: String,
+    /// To be confirmed before publishing, not only said (a package that isn't redistributable)
+    pub serious: bool,
+}
+
+impl From<license::Concern> for LicenseConcern {
+    fn from(c: license::Concern) -> Self {
+        Self {
+            serious: c.is_serious(),
+            kind: match c.kind {
+                license::ConcernKind::NoLicense => ConcernKind::NoLicense,
+                license::ConcernKind::NotFree => ConcernKind::NotFree,
+                license::ConcernKind::NotRedistributable => ConcernKind::NotRedistributable,
+                license::ConcernKind::Converted => ConcernKind::Converted,
+            },
+            message: c.message,
         }
     }
 }
@@ -394,6 +544,15 @@ impl LogoxidePackage {
         PackageInfo::from(self.cached.package().info())
     }
 
+    /// What to know before redistributing it, from its license and rights (shown, never
+    /// enforced): no license, one not known to be free, rights saying it isn't redistributable
+    /// (`serious`: ask before publishing), markup converted where derivatives aren't allowed
+    pub fn license_concerns(&self) -> Vec<LicenseConcern> {
+        (license::assess(self.cached.package().info()).into_iter())
+            .map(LicenseConcern::from)
+            .collect()
+    }
+
     /// A hash of every file (`sha256:` and hex), to compare with the lock file's
     pub fn checksum(&self) -> Result<String, LogoxideError> {
         Ok(self.cached.package().checksum()?)
@@ -419,6 +578,17 @@ impl LogoxidePackage {
             .flat_map(|m| m.files.iter())
             .map(MediaFile::from)
             .collect()
+    }
+
+    /// For a recording without a text of its own, the dependency whose text it reads (`[media]
+    /// text`: show its verses with the timings)
+    pub fn media_text(&self) -> Option<String> {
+        (self.cached.package().manifest().media.as_ref()).and_then(|m| m.text.clone())
+    }
+
+    /// The versification a recording is numbered by (`[media] versification`), if it says
+    pub fn media_versification(&self) -> Option<String> {
+        (self.cached.package().manifest().media.as_ref()).and_then(|m| m.versification.clone())
     }
 
     /// The Bible references in its books (EPUBs), in book order, each with its chapter and CFI;

@@ -46,7 +46,31 @@ pub(crate) fn media_add(
     Ok(())
 }
 
-pub(crate) fn media_check(package: &std::path::Path, offline: bool) -> logoxide::Result<()> {
+/**
+The text a recording with no text of its own reads (`[media] text`), as installed for its folder
+(`lx install` there): none when it names none, and a warning when it isn't installed (its
+timings' verses then go unchecked)
+*/
+pub(crate) fn media_text(
+    dir: &std::path::Path,
+    package: &logoxide::Package,
+    library: &logoxide::Library,
+) -> Option<logoxide::Package> {
+    let name = package.manifest().media.as_ref()?.text.clone()?;
+    match logoxide::Project::open(dir).and_then(|project| project.media_text(library)) {
+        Ok(text) => text,
+        Err(error) => {
+            errln!("warning: [media] text `{name}`: {error}; its timings' verses aren't checked");
+            None
+        }
+    }
+}
+
+pub(crate) fn media_check(
+    package: &std::path::Path,
+    offline: bool,
+    library: &logoxide::Library,
+) -> logoxide::Result<()> {
     let opened = logoxide::Package::open(Arc::new(FsStorage::new(package)), Default::default())?;
     let files = (opened.manifest().media.as_ref())
         .map(|m| m.files.clone())
@@ -55,7 +79,8 @@ pub(crate) fn media_check(package: &std::path::Path, offline: bool) -> logoxide:
         outln!("no media listed");
         return Ok(());
     }
-    let timings = logoxide::media::check_package_timings(&opened)?;
+    let text = media_text(package, &opened, library);
+    let timings = logoxide::media::check_package_timings_with(&opened, text.as_ref())?;
     if opened
         .manifest()
         .media

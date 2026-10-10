@@ -67,12 +67,15 @@ size = 1834201
 | `language` | string | yes | BCP 47 |
 | `aliases` | array of strings | no | |
 | `language-name` | string | no | The language's name (`English`) |
+| `script` | string | no | ISO 15924 (`Latn`, `Hebr`). Absent, the language tag's script subtag, if any |
 | `description` | string | no | |
 | `license` | string | no | SPDX expression, shown, never enforced |
+| `rights` | table | no | What the license allows, where said rather than derived (`redistributable`, `derivatives`, `commercial`, `attribution`), as in the manifest's [`[package.rights]`](manifest.md#packagerights) |
 | `kind` | string | no | As in the manifest; `bible` when absent |
-| `direction` | string | no | `ltr` (default) or `rtl` |
+| `direction` | string | no | `ltr` or `rtl`. Absent, the script's (as in the manifest), else `ltr` |
 | `version` | string | no | The newest version, for display |
 | `keywords`, `categories`, `about-books` | arrays of strings | no | As in the manifest; searches match them (a word naming a book of the Bible matches what's about it) |
+| `work`, `edition`, `edition-year` | string, string, integer | no | As in the manifest ([works and editions](manifest.md#works-and-editions)): searches match the work's names, and `lx search` gathers a work's editions (`--flat` doesn't). Imports from other publishers' lists are given the work logoxide's table knows their import name to be |
 | `git` | string | one of `git` or `release` | The package's git repository (`github:owner/repo` is accepted and expanded) |
 | `release` | array of tables | | The archives a registry publishes, oldest first (below) |
 | `path` | string | no | Its path in the folder the catalog was built from (`books/romans`), which names it there as its id does |
@@ -85,7 +88,7 @@ or combining marks (both sides are lowercased, decomposed to NFD, stripped of ev
 Unicode's `General_Category=Mark`, and a final sigma read as `σ`), so `ιησους` finds `Ἰησοῦς`,
 `בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. When catalogs are searched together, the
 first entry with a given id wins, so catalogs with overlapping ids should prefix them
-(logoxide's importers use `ebible-`, `ccel-`, `sword-`); `lx search` and `lx import` warn when an
+(logoxide's importers use `ebible-`, `fetch-`, `ccel-`, `sword-`); `lx search` and `lx import` warn when an
 id is listed by more than one of the project's catalogs, and `lx add` when another of its
 registries lists the id it adds.
 

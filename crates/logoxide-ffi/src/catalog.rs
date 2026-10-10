@@ -105,10 +105,15 @@ pub struct CatalogEntry {
     /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it
     pub language: String,
     pub language_name: Option<String>,
+    /// Its script, ISO 15924 (`Latn`, `Hebr`), when the catalog or the language tag says
+    pub script: Option<String>,
     pub description: Option<String>,
     pub license: Option<String>,
+    /// What its license allows: as the catalog says, with the rest derived from `license`
+    pub rights: crate::Rights,
     pub copyright: Option<String>,
-    /// The newest version, when the catalog says
+    /// The newest version, when the catalog says: for an import, the publisher's own as it gives
+    /// it (`2026-10-08`), which the import keeps as `Upstream.version`
     pub version: Option<String>,
     pub kind: PackageKind,
     pub right_to_left: bool,
@@ -122,6 +127,23 @@ pub struct CatalogEntry {
     pub keywords: Vec<String>,
     pub categories: Vec<String>,
     pub about_books: Vec<String>,
+    /// The work it's an edition of (`kjv`): a logoxide catalog's, or the one logoxide's table of
+    /// works knows an import to be
+    pub work: Option<String>,
+    /// Which edition (`1769-oxford`), and its year, when a logoxide catalog says
+    pub edition: Option<String>,
+    pub edition_year: Option<i32>,
+}
+
+/// A work's entries in a search (`LogoxideCatalog.searchGrouped`), or one entry of none
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkGroup {
+    /// The work's id (`kjv`), if its entries name one
+    pub work: Option<String>,
+    /// Its name (`King James Version`), from logoxide's table of works, else its id
+    pub name: Option<String>,
+    pub entries: Vec<CatalogEntry>,
 }
 
 impl From<&CoreEntry> for CatalogEntry {
@@ -133,8 +155,10 @@ impl From<&CoreEntry> for CatalogEntry {
             aliases: e.aliases.clone(),
             language: e.language.clone(),
             language_name: e.language_name.clone(),
+            script: e.script.clone(),
             description: e.description.clone(),
             license: e.license.clone(),
+            rights: e.text_rights().into(),
             copyright: e.copyright.clone(),
             version: e.version.clone(),
             kind: e.kind.into(),
@@ -177,6 +201,9 @@ impl From<&CoreEntry> for CatalogEntry {
             keywords: e.keywords.clone(),
             categories: e.categories.clone(),
             about_books: e.about_books.clone(),
+            work: e.work.clone(),
+            edition: e.edition.clone(),
+            edition_year: e.edition_year,
         }
     }
 }
@@ -190,8 +217,10 @@ impl From<CatalogEntry> for CoreEntry {
             aliases: e.aliases,
             language: e.language,
             language_name: e.language_name,
+            script: e.script,
             description: e.description,
             license: e.license,
+            rights: e.rights.into(),
             copyright: e.copyright,
             version: e.version,
             kind: e.kind.into(),
@@ -224,6 +253,9 @@ impl From<CatalogEntry> for CoreEntry {
             keywords: e.keywords,
             categories: e.categories,
             about_books: e.about_books,
+            work: e.work,
+            edition: e.edition,
+            edition_year: e.edition_year,
         }
     }
 }
@@ -274,11 +306,29 @@ impl LogoxideCatalog {
             .collect()
     }
 
-    /// The entry an imported package was made from, by its `upstream` (`PackageInfo.upstream`):
-    /// how to update an import (`Logoxide::update_import`)
-    pub fn find_upstream(&self, upstream: String) -> Option<CatalogEntry> {
+    /// `search`'s packages grouped by the work each is an edition of (every KJV together), in
+    /// the order of each work's best; at most `limit` packages (all for 0)
+    pub fn search_grouped(&self, query: String, limit: u32) -> Vec<WorkGroup> {
+        let found = self.catalog.search(&query);
+        let limit = if limit == 0 {
+            found.len()
+        } else {
+            limit as usize
+        };
+        (logoxide_core::catalog::group_by_work(found.into_iter().take(limit)).into_iter())
+            .map(|group| WorkGroup {
+                name: group.name(),
+                work: group.work.clone(),
+                entries: group.entries.into_iter().map(CatalogEntry::from).collect(),
+            })
+            .collect()
+    }
+
+    /// The entry an imported package was made from, by its `upstream` (`PackageInfo.upstream`:
+    /// its import name, else its download): how to update an import (`Logoxide::update_import`)
+    pub fn find_upstream(&self, upstream: crate::Upstream) -> Option<CatalogEntry> {
         self.catalog
-            .find_upstream(&upstream)
+            .find_upstream(&upstream.into())
             .map(CatalogEntry::from)
     }
 
@@ -320,9 +370,10 @@ pub struct ImportUpdate {
     pub change: ChangeKind,
     /// What changed, in words (`1 verse reworded`)
     pub description: String,
-    /// The publisher's version isn't newer though the package changed: `to` is the next version
-    /// the change calls for
-    pub bumped: bool,
+    /// The publisher's versions before and after (`Upstream.version`), as it gives them; the
+    /// package's `from` and `to` are logoxide's, `to` raised by what changed
+    pub upstream_from: Option<String>,
+    pub upstream_to: Option<String>,
     /// The package's files now, to write over the old (its `logoxide.toml` has `to`)
     pub files: Vec<crate::PackageFile>,
     /// Its old files to delete (ones the publisher dropped); a reader's files beside it aren't

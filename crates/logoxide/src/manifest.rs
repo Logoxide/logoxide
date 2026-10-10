@@ -85,13 +85,26 @@ pub struct Package {
     pub version: semver::Version,
     #[serde(default)]
     pub kind: PackageKind,
-    /// BCP 47: `en`, `grc`
+    /// BCP 47: `en`, `grc`, `sr-Latn` ([`crate::language`])
     pub language: String,
-    #[serde(default, skip_serializing_if = "Direction::is_ltr")]
-    pub direction: Direction,
+    /// The language's name (`English`), when the tag doesn't say enough: an import keeps the
+    /// publisher's own here when it isn't a tag (`und`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language_name: Option<String>,
+    /// Its script, ISO 15924 (`Latn`, `Hebr`): when not said, the language tag's (see
+    /// [`Package::text_script`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub script: Option<String>,
+    /// Which way its text runs: when not said, the script's (see [`Package::text_direction`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub direction: Option<Direction>,
     /// An SPDX expression (`CC0-1.0`, `LicenseRef-PublicDomain`); shown, never enforced
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
+    /// What the license allows, where it's said rather than derived from `license`
+    /// (`[package.rights]`; see [`Package::text_rights`] and [`crate::license`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rights: Option<crate::license::Rights>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub license_file: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -119,9 +132,21 @@ pub struct Package {
     /// not the books a Bible has
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub about_books: Vec<String>,
-    /// Where the text was imported from, if anywhere
+    /// The work it's an edition of (`kjv`), by the id logoxide's table of works gives it
+    /// ([`crate::works`]), or another of the same form: packages of one work are editions of
+    /// one text, which searches group
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub upstream: Option<String>,
+    pub work: Option<String>,
+    /// Which edition of its work it is (`1769-oxford`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
+    /// The year of that edition (`1769`; before the common era, negative)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition_year: Option<i32>,
+    /// Where the text was imported from, if anywhere: the download, the import's name, and the
+    /// publisher's version (written by importers, [`crate::import`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream: Option<Upstream>,
     /// `own` (the text's verse markers say), or a named system: `KJV`, `NRSV`, `MT`, ...
     #[serde(default = "own", skip_serializing_if = "is_own")]
     pub versification: String,
@@ -133,6 +158,47 @@ pub struct Package {
     /// these, only what the manifest names is (see [`crate::package::declared_files`])
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub include: Vec<String>,
+}
+
+/**
+`[package.upstream]`: where an imported package's text came from, so an update finds its
+publisher's entry again and knows whether the publisher has a newer one. The package's own
+`version` is logoxide's (1.0.0 for a new import, raised by what each update changes); the
+publisher's, which says nothing about what changed, is kept here as given
+*/
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub struct Upstream {
+    /// The download it was made from (eBible.org's
+    /// `https://ebible.org/Scriptures/eng-asv_usfm.zip`)
+    pub url: String,
+    /// What `lx import` takes for it (`ebible:eng-asv`, `sword:crosswire/KJV`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import: Option<String>,
+    /// The publisher's version of what was downloaded, as the publisher gives it (eBible.org's
+    /// update date `2026-10-08`, a SWORD module's `3.1`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The import rewrote the publisher's markup (a SWORD module's entries made into OSIS
+    /// files), its words unchanged. logoxide doesn't count that as a derivative (the owner's D7),
+    /// but `lx publish` says so when the license allows none
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub converted: bool,
+}
+
+impl Package {
+    /// Its script: `script`, else the language tag's script subtag (`sr-Latn`); none if neither
+    /// says
+    pub fn text_script(&self) -> Option<String> {
+        (self.script.clone()).or_else(|| crate::language::script_of_tag(&self.language))
+    }
+
+    /// Which way its text runs: `direction`, else its script's ([`crate::language::RTL_SCRIPTS`]
+    /// run right to left), else left to right
+    pub fn text_direction(&self) -> Direction {
+        (self.direction)
+            .unwrap_or_else(|| crate::language::script_direction(self.text_script().as_deref()))
+    }
 }
 
 fn own() -> String {
@@ -164,12 +230,6 @@ pub enum Direction {
     #[default]
     Ltr,
     Rtl,
-}
-
-impl Direction {
-    fn is_ltr(&self) -> bool {
-        *self == Direction::Ltr
-    }
 }
 
 /// Where a format's files are, and the feature that turns it on (always on without one)
@@ -563,12 +623,31 @@ impl Manifest {
                 ));
             }
             check_metadata(package)?;
-            // A collection is only its dependencies
+            crate::language::check_language(&package.language)?;
+            if let Some(script) = &package.script {
+                crate::language::check_script(script)?;
+            }
+            if let Some(license) = &package.license {
+                crate::license::check_license(license)?;
+            }
+            if let Some(work) = &package.work {
+                check_id("work", work)?;
+            }
+            if let Some(edition) = &package.edition {
+                check_id("edition", edition)?;
+            }
+            // A collection is only its dependencies; a recording may read another's text
+            let recording = (self.media.as_ref()).is_some_and(crate::media::Media::names_its_text);
             match (
                 package.kind == PackageKind::Collection,
                 self.formats.is_empty(),
             ) {
-                (false, true) => return err(String::from("a package needs [formats]")),
+                (false, true) if !recording => {
+                    return err(String::from(
+                        "a package needs [formats] (a recording without a text of its own \
+                         names the one it reads: [media] text, or versification)",
+                    ));
+                }
                 (true, false) => {
                     return err(String::from(
                         "a collection has no [formats]: its packages are its dependencies",
@@ -650,6 +729,21 @@ impl Manifest {
             for file in &media.files {
                 crate::media::check_sha256(&file.sha256)?;
             }
+            if let Some(text) = &media.text
+                && !self.dependencies.contains_key(text)
+            {
+                return err(format!(
+                    "[media] text `{text}` names no dependency: the recording reads a text \
+                     [dependencies] has"
+                ));
+            }
+            if media
+                .versification
+                .as_deref()
+                .is_some_and(|v| v.trim().is_empty())
+            {
+                return err(String::from("[media] versification is empty"));
+            }
         }
         Ok(())
     }
@@ -674,7 +768,17 @@ impl Manifest {
         };
         for (key, value) in &table {
             match key.as_str() {
-                "package" => check(key, value, fields_of::<Package>(), &mut unknown),
+                "package" => {
+                    check(key, value, fields_of::<Package>(), &mut unknown);
+                    if let Some(upstream) = value.get("upstream") {
+                        let fields = fields_of::<Upstream>();
+                        check("package.upstream", upstream, fields, &mut unknown);
+                    }
+                    if let Some(rights) = value.get("rights") {
+                        let fields = fields_of::<crate::license::Rights>();
+                        check("package.rights", rights, fields, &mut unknown);
+                    }
+                }
                 "formats" | "dependencies" => {
                     let fields = match key.as_str() {
                         "formats" => fields_of::<FormatEntry>(),
@@ -929,6 +1033,31 @@ readme = "README.md""#,
     }
 
     #[test]
+    fn languages_scripts_and_directions() {
+        let with = |language: &str, lines: &str| {
+            Manifest::parse(&format!(
+                "[package]\nid = \"x\"\nname = \"X\"\nabbreviation = \"X\"\nversion = \"1.0.0\"\n\
+                 language = \"{language}\"\n{lines}\n[formats]\nusx = {{ path = \"usx/\" }}\n"
+            ))
+            .map(|m| m.package.unwrap())
+        };
+        // The script from the tag, the direction from the script
+        let serbian = with("sr-Latn", "").unwrap();
+        assert_eq!(serbian.text_script().as_deref(), Some("Latn"));
+        assert_eq!(serbian.text_direction(), Direction::Ltr);
+        let hebrew = with("he", "script = \"Hebr\"").unwrap();
+        assert_eq!(hebrew.text_direction(), Direction::Rtl);
+        // Said, the direction wins
+        let said = with("he", "script = \"Hebr\"\ndirection = \"ltr\"").unwrap();
+        assert_eq!(said.text_direction(), Direction::Ltr);
+        // Neither says: left to right
+        assert_eq!(with("he", "").unwrap().text_direction(), Direction::Ltr);
+        let error = |language: &str, lines: &str| with(language, lines).unwrap_err().to_string();
+        assert!(error("en_US", "").contains("isn't a BCP 47 tag"));
+        assert!(error("en", "script = \"latin\"").contains("ISO 15924"));
+    }
+
+    #[test]
     fn book_codes_from_names() {
         assert_eq!(book_code("Romans").as_deref(), Some("ROM"));
         assert_eq!(book_code("rom").as_deref(), Some("ROM"));
@@ -1154,7 +1283,7 @@ compare = ["mine"]
         let newer = BSB
             .replace(
                 "license = \"LicenseRef-PublicDomain\"",
-                "license = \"LicenseRef-PublicDomain\"\nfunding = \"https://e.org\"",
+                "license = \"LicenseRef-PublicDomain\"\nfunding = \"https://e.org\"\nupstream = { url = \"u\", import = \"ebible:x\", date = \"d\" }",
             )
             .replace(
                 "tag = \"v1.0.0\" }",
@@ -1175,6 +1304,7 @@ compare = ["mine"]
                 "media.files.length",
                 "media.player",
                 "package.funding",
+                "package.upstream.date",
                 "plugins",
                 "settings.theme"
             ]

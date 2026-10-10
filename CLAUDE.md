@@ -37,6 +37,35 @@ before changing the design.
     that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
     package in a folder of its repository (tags `<folder>/v<version>`, `lx add --folder`)
+  - `works.rs`: works and editions (the owner's D9): `[package] work = "kjv"`, `edition`,
+    `edition-year`; `data/works.toml` is logoxide's table (each work's name, aliases, optional
+    Wikidata QID, and the import names checked against the publishers' lists to be it: KJV,
+    ASV, WEB, BSB, Douay-Rheims, LXX, Vulgate so far; no QIDs yet). `of_import`/`of_source`
+    give an import its work (catalog entries and `import::finish`), never guessed from titles.
+    `Catalog::search` matches a work's names; `search_grouped`/`group_by_work` gather editions
+    (`WorkGroup`); `Project::same_works` (a Bible without `work` takes that of another with its
+    package id: forks inherit it) is what lx warns of after add, install, and import;
+    `works::describe` for lx info and show. The FFI's `PackageInfo` and `CatalogEntry` carry
+    `work`, `edition`, `editionYear`; `LogoxideCatalog.searchGrouped`
+  - `language.rs`: `language` is checked as well-formed BCP 47 (`language-tags`, its grammar
+    only, so eBible.org's `eng` stays), `script` as ISO 15924's form; `Package::text_script` is
+    `script`, else the tag's subtag, and `text_direction` is `direction`, else the script's
+    (`RTL_SCRIPTS`), else left to right (`direction` is an `Option` in the manifest). Imports:
+    `normalize_language` (SWORD's `en_US` is `en-US`; what isn't a tag is `und`, the publisher's
+    text kept in `language-name`), eBible.org's `script` column by name (`script_code`), and
+    CCEL's script judged from its letters (`dominant_script`), which sets the direction. An
+    import writes `direction` only where the script doesn't imply it
+  - `license.rs`: `license` is checked as an SPDX expression (`spdx`, lax; `LicenseRef-*`);
+    `[package.rights]` (`Rights`: `redistributable`, `derivatives` allowed/share-alike/none,
+    `commercial`, `attribution`), with `derived_rights` for a single known license (CC, public
+    domain, permissive, copyleft) and what's said winning (`Package::text_rights`,
+    `CatalogEntry::text_rights`). `says_public_domain` refuses negations ("not public domain");
+    `license_from_text` reads a Creative Commons link or name (eBible.org's `copr.htm`, which its
+    import reads). `assess(info) -> Vec<Concern>` (moved from lx's publish.rs): no license, not
+    free, not redistributable (`is_serious`), and `Converted` (`upstream.converted`, set by SWORD
+    imports, when derivatives are "none": not a derivative to logoxide, the owner's D7, but
+    said). Catalog entries carry `rights` (eBible.org's list: redistributable; fetch.bible's
+    terms objects; SWORD's; `catalog.toml`'s `rights`, which `entry_table` writes)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
     (`MemoryStorage`), or a host's files in WebAssembly, so nothing else touches `std::fs`.
     `FsStorage` takes only plain relative paths (no `..`, `:`, or NUL) and writes through a
@@ -109,7 +138,7 @@ before changing the design.
     `parse_sword`: Bibles and commentaries in OSIS or ThML that aren't locked; GBF isn't read).
     `SWORD_REPOSITORIES` names the HTTPS repositories in CrossWire's list (`crosswire`,
     `crosswire-beta`, `ebible`, …; others by host, `sword_repository_name`). Ids are prefixed
-    (`ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
+    (`ebible-eng-kjv2006`, `fetch-eng_kjv`, `ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
     first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
     and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
     sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
@@ -130,27 +159,34 @@ before changing the design.
     `warn_other_registries`). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
     `newest_release`, read with `git show`)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
-    `logoxide.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update
-    date (`2026.10.8`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
+    `logoxide.toml` + `usfm/` + `copr.htm` (the license file), its upstream version eBible.org's update
+    date (`2026-10-08`); `fetch_bible` takes each book's USX (`fetch_bible_book_url`, lowercase
     codes; other paths answer with fetch.bible's site, which is refused) into `usx/` +
     `COPYRIGHT.txt`; `ccel` takes a Bible's ThML (`ccel_url`; restricted works answer with a
     page, refused) into `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>`
-    (`thml_head`; version `<version>`, else `DC.Date`; right to left judged from its letters);
+    (`thml_head`; upstream version `<version>`, else `DC.Date`; its script, and so its direction, judged from its letters (`language::dominant_script`));
     `sword` unzips a module (`sword_zip_urls`: `packages/<Module>.zip`, then lowercase) into
     sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
     with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
     milestones, making linked verses bridges (`n="16-17"`), and leaving out introductions that
     are another verse's entry; the conf's `Versification` is kept (`sword_versification`: SWORD's
     names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
-    version, license (`sword_license`), language, and
-    `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Updating:
-    `upstream(entry)` is what each import writes as `upstream`, so `Catalog::find_upstream`
-    finds an installed import's entry (no field records the import name); `compare_import`
-    (current vs. a fresh import: `None` when the declared files match; the summaries' `Diff`;
-    when the publisher's version isn't newer it compares at the current version, then raises
-    it with `next_version`) and `apply_import` (removes declared files the fresh one lacks, through
-    `Storage::remove`, writes the rest; other files stay).
-    `CatalogSource::versions_track_updates` (eBible.org, SWORD) lets `lx` skip downloading.
+    version, license (`sword_license`) and rights (`sword_rights`: permission given to CrossWire
+    or only in SWORD's format is `redistributable = false`, `derivatives = "none"`), language,
+    and
+    `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Versions
+    (the owner's D1): a new import is `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's
+    version as it gives it (`2026-10-08`, `3.1`) goes in `[package.upstream] version`
+    (`manifest::Upstream`: `url`, `import` like `ebible:eng-asv`, `version`), which
+    `upstream(entry)` writes and catalog entries' `version` holds for imports. Updating:
+    `Catalog::find_upstream` matches `import`, then `url`; `compare_import` (current vs. a fresh
+    import, compared at the current version: `None` when the declared files match; else the
+    summaries' `Diff`, and the version raised by `next_version`; `ImportUpdate` has the
+    publisher's `upstream_from`/`upstream_to`) and `apply_import` (removes declared files the
+    fresh one lacks, through `Storage::remove`, writes the rest; other files stay).
+    `import_is_current(entry, upstream.version)` compares the publisher's versions
+    (`compare_publisher_versions`), never the package's, and only where
+    `CatalogSource::versions_track_updates` (eBible.org, SWORD), so `lx` can skip downloading.
     `downloads(entry)` (each file an import needs, by name, with URLs to try in turn) and
     `build(entry, files, dest)` are the one way every host imports (lx, `Logoxide.importDownloads`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
@@ -165,7 +201,14 @@ before changing the design.
     `check_package_timings` (verses the text lacks, checked against each chapter's verse numbers,
     so verse 0 is one where the text has it; another book, out of order, overlapping, missing
     files, or unlisted ones anywhere under the folder), which `lx check`, `lx media check`, and
-    `lx release` run. topos's subtitle parser isn't used: it only takes numbered cues
+    `lx release` run. topos's subtitle parser isn't used: it only takes numbered cues. Audio
+    only: `[media] text = "<dependency>"` and/or `versification = "KJV"` (`Media::names_its_text`)
+    let a package have no `[formats]` (it opens with `NoText` even as a Bible, and isn't one of
+    a project's Bibles); `check_package_timings_with(package, text)` checks against the text
+    `Project::media_text` opens (lx check and media check; not installed: warned, verses
+    unchecked), else its own, else the versification's counts from sword-modules' systems
+    (release checks without the dependency). The FFI's `LogoxidePackage.mediaText()`,
+    `mediaVersification()`
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
@@ -285,7 +328,7 @@ before changing the design.
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
@@ -306,8 +349,10 @@ before changing the design.
   naming where it was redirected); packages through git. The
   project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
   own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
-  import --update, show --references; others refuse it). `lx publish` warns of a license that
-  isn't free or the public domain. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
+  import --update, show --references; others refuse it). `lx publish` prints
+  `license::assess`'s concerns, and for a package whose rights say it isn't redistributable
+  warns loudly and asks (`--yes` answers; required outside a terminal: the owner's D8, still
+  never enforced); `lx info` prints the rights. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
   `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
   folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
   Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
@@ -321,15 +366,19 @@ before changing the design.
   native only. Opening goes through the `Logoxide` object because BoltFFI's WebAssembly
   constructors return `null` on errors while methods throw. `ToposBook::from_tree` and
   `ToposTranslations::from`/`core` (Rust-only, in topos-ffi) carry logoxide's books and counts
-  across. `LogoxideCatalog` (`catalog.rs`) searches catalogs, and `Logoxide.importEbible`,
+  across. `LogoxideCatalog` (`catalog.rs`) searches catalogs (`CatalogEntry`, like
+  `PackageInfo`, carries `script` and the language's name), and `Logoxide.importEbible`,
   `importFetchBible`, `importCcel`, and `importSword` (a `Sword` source lists its `zipUrls`, to
   try in order) make downloads into a package's files, as do `importDownloads` (what to fetch,
   for any source) and `importDownloaded`; `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
-  `Files`; `parseCatalogBytes` reads any catalog,
+  `Files`; `PackageInfo` and `CatalogEntry` carry `rights` (said and derived),
+  `LogoxidePackage.licenseConcerns()` gives `license::assess`'s concerns; `parseCatalogBytes` reads any catalog,
   and a SWORD repository's `.tar.gz` only that way. Updating an import: `LogoxideCatalog.findUpstream`
-  (its entry, from `PackageInfo.upstream`), `Logoxide.importIsCurrent` (skip the download), and
-  `Logoxide.updateImport(current, fresh)` (`ImportUpdate`: versions, `ChangeKind`, description,
+  (its entry, from `PackageInfo.upstream`, an `Upstream` record), `Logoxide.importIsCurrent(entry,
+  upstream.version)` (skip the download), and
+  `Logoxide.updateImport(current, fresh)` (`ImportUpdate`: versions, the publisher's
+  `upstreamFrom`/`upstreamTo`, `ChangeKind`, description,
   `files` to write and `removed` paths to delete; then install with `UpdateMode.Only`). `create.rs`: `fileMetadata`,
   `newPackage` (a package's files from one file), `newCollection`, `parseReferences`, and
   `LogoxidePackage.references()` and `epubFiles()`. `LogoxideVersifications` (`versification.rs`,

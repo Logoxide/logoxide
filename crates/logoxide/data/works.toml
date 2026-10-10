@@ -1,0 +1,75 @@
+# The works logoxide knows: a text, whatever its editions, formats, and publishers (the KJV is
+# one work; the 1769 Oxford text and a 1611 facsimile are two of its editions). Each is keyed by
+# the id a package's `work` names it by, with:
+#
+# - `name`: what it's called
+# - `aliases`: other names searches should find it by
+# - `wikidata`: its Wikidata item (`Q…`), when known for certain; optional
+# - `imports`: the import names (as `lx import` takes them) known to be it. An import of one of
+#   these is given its `work`; nothing is ever guessed from a title. Only names checked against
+#   the publishers' own lists belong here
+#
+# Translations of a text (Brenton's English Septuagint) are works of their own, not editions of
+# the text they translate.
+
+[kjv]
+name = "King James Version"
+aliases = ["KJV", "Authorized Version", "AV", "King James Bible"]
+imports = [
+    "ebible:eng-kjv2006",
+    "ebible:eng-kjv",
+    "fetch:eng_kjv",
+    "fetch:eng_kjvp",
+    "ebible:engkjvcpb",
+    "sword:crosswire/KJV",
+    "sword:crosswire/KJVA",
+    "sword:crosswire/KJVPCE",
+    "ccel:kjv",
+]
+
+[asv]
+name = "American Standard Version"
+aliases = ["ASV"]
+imports = ["ebible:eng-asv", "fetch:eng_asv", "sword:crosswire/ASV", "ccel:asv"]
+
+[web]
+name = "World English Bible"
+aliases = ["WEB"]
+imports = [
+    "ebible:engwebp",
+    "ebible:eng-web",
+    "ebible:engwebpb",
+    "ebible:eng-webbe",
+    "ebible:eng-web-c",
+    "ebible:engwebu",
+    "fetch:eng_web",
+    "fetch:eng_webb",
+    "fetch:eng_webu",
+    "ccel:web",
+]
+
+[bsb]
+name = "Berean Standard Bible"
+aliases = ["BSB", "Berean Study Bible"]
+imports = ["ebible:engbsb", "fetch:eng_bsb", "sword:crosswire/BSB"]
+
+[douay-rheims]
+name = "Douay-Rheims Bible"
+aliases = ["Douay-Rheims", "DRA", "DRB", "Douay"]
+imports = ["ebible:engDRA", "fetch:eng_drae", "ccel:douayr"]
+
+[lxx]
+name = "Septuagint"
+aliases = ["LXX", "Greek Old Testament"]
+imports = ["sword:crosswire/LXX", "fetch:grc_lxx", "ebible:grcbrent", "fetch:grc_bre"]
+
+[vulgate]
+name = "Vulgate"
+aliases = ["Vulgata", "Latin Vulgate"]
+imports = [
+    "ebible:latVUC",
+    "fetch:lat_clv",
+    "sword:crosswire/Vulgate",
+    "sword:crosswire/VulgClementine",
+    "ccel:vul",
+]

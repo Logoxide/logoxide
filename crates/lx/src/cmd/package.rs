@@ -34,11 +34,17 @@ pub(crate) fn show(
     if !info.authors.is_empty() {
         outln!("by {}", info.authors.join(", "));
     }
+    let language = match &info.language_name {
+        Some(name) => format!("{} ({name})", info.language),
+        None => info.language.clone(),
+    };
+    let script = (info.text_script())
+        .map(|s| format!(", script: {s}"))
+        .unwrap_or_default();
     outln!(
-        "kind: {:?}, language: {}, direction: {:?}",
+        "kind: {:?}, language: {language}{script}, direction: {:?}",
         info.kind,
-        info.language,
-        info.direction
+        info.text_direction()
     );
     outln!(
         "license: {}",
@@ -47,6 +53,13 @@ pub(crate) fn show(
             .or(info.license_file.as_deref())
             .unwrap_or("none given")
     );
+    if let Some(work) = logoxide::works::describe(info) {
+        outln!("work: {work}");
+    }
+    let rights = info.text_rights();
+    if !rights.is_empty() {
+        outln!("rights: {}", rights.describe());
+    }
     if let Some(media) = manifest.media.as_ref().filter(|m| !m.files.is_empty()) {
         let bytes: u64 = media.files.iter().map(|f| f.size).sum();
         outln!(
@@ -75,7 +88,17 @@ pub(crate) fn show(
         }
     }
     if let Some(upstream) = &info.upstream {
-        outln!("upstream: {upstream}");
+        let mut about = vec![];
+        if let Some(import) = &upstream.import {
+            about.push(import.clone());
+        }
+        if let Some(version) = &upstream.version {
+            about.push(format!("the publisher's version {version}"));
+        }
+        match about.is_empty() {
+            true => outln!("upstream: {}", upstream.url),
+            false => outln!("upstream: {} ({})", upstream.url, about.join(", ")),
+        }
     }
     let enabled: Vec<&str> = manifest
         .formats(package.enabled())
@@ -276,6 +299,7 @@ pub(crate) fn check(
     args: &PackageArgs,
     cache: Option<PathBuf>,
     json: bool,
+    library: &logoxide::Library,
 ) -> logoxide::Result<()> {
     let package = args.open()?;
     let (id, version) = (
@@ -288,7 +312,16 @@ pub(crate) fn check(
         print_skipped(&skipped);
     }
     let package_kind = package.info().kind;
-    let timings = logoxide::media::check_package_timings(&package)?;
+    let text = crate::cmd::media::media_text(&args.path, &package, library);
+    let timings = logoxide::media::check_package_timings_with(&package, text.as_ref())?;
+    // What a recording without a text of its own reads
+    let reads = (package.manifest().media.as_ref())
+        .filter(|m| m.names_its_text())
+        .map(|m| match (&m.text, &m.versification) {
+            (Some(text), _) => format!("{text}'s text"),
+            (None, Some(versification)) => format!("the {versification} versification"),
+            (None, None) => String::new(),
+        });
     let titles = logoxide::titles::titles(&package)?;
     // A map is read whole: its lines parse, name known books, and don't overlap
     let map = (package_kind == logoxide::manifest::PackageKind::VersificationMap)
@@ -386,6 +419,10 @@ pub(crate) fn check(
         (logoxide::manifest::PackageKind::Collection, _) => {
             outln!("a collection: no text of its own, only its dependencies")
         }
+        _ if books == 0 && reads.is_some() => outln!(
+            "a recording of {}: no text of its own",
+            reads.unwrap_or_default()
+        ),
         _ if books == 0 => {
             outln!("no verse text (a {package_kind:?}): its files are kept as they are")
         }

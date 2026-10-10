@@ -70,7 +70,9 @@ pub mod create;
 pub mod error;
 pub mod git;
 pub mod import;
+pub mod language;
 pub mod library;
+pub mod license;
 pub mod lock;
 pub mod manifest;
 pub mod media;
@@ -88,6 +90,7 @@ pub mod text;
 pub mod titles;
 pub mod topos_config;
 pub mod versification;
+pub mod works;
 
 use std::sync::LazyLock;
 

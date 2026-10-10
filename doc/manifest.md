@@ -43,13 +43,16 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `name` | string | yes | Its full name |
 | `abbreviation` | string | yes | What references name it by (`John 3:16 BSB`) |
 | `version` | string | yes | A [semantic version](https://semver.org); see [Versions](#versions) |
-| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`) |
+| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`, `sr-Latn`; `und` when unknown), well-formed by RFC 5646's grammar (`en_US` is refused). Its subtags aren't looked up, so an ISO 639-3 code (`eng`) is kept |
+| `language-name` | string | no | The language's name (`English`); an import keeps the publisher's own text here when it isn't a tag, and says `und` |
+| `script` | string | no | Its script, an ISO 15924 code (`Latn`, `Hebr`, `Grek`: four letters, the first a capital). Without it, the language tag's script subtag (`sr-Latn`), if any |
 | `kind` | string | no | One of the [kinds](#kinds); `bible` when absent |
 | `authors` | array of strings | no | Who wrote it (a book's authors, a translation's translators), in order |
 | `description` | string | no | A sentence or two (a book's subtitle) |
 | `aliases` | array of strings | no | Other names references may use (`AV`, `King James`) |
-| `direction` | string | no | `ltr` (the default) or `rtl` |
-| `license` | string | no | An SPDX expression (`CC0-1.0`, `CC-BY-SA-4.0`, `LicenseRef-PublicDomain`). Shown to users, never enforced |
+| `direction` | string | no | `ltr` or `rtl`. Without it, the script's: `rtl` for the scripts written right to left (`Arab`, `Hebr`, `Syrc`, `Thaa`, `Nkoo`, `Adlm`, `Samr`, `Mand`, and the other historic ones Unicode gives that class), else `ltr` |
+| `license` | string | no | An SPDX expression (`CC0-1.0`, `CC-BY-SA-4.0`, `MIT OR Apache-2.0`, `LicenseRef-PublicDomain`), checked as one (leniently: `GPL-2.0+`, `/` for `OR`, deprecated ids), with `LicenseRef-<name>` for a license SPDX has no id for. Shown to users, never enforced |
+| `rights` | table | no | What the license allows, where it's said rather than derived: see [`[package.rights]`](#packagerights) |
 | `license-file` | string | no | The license's path in the package. It is part of the package |
 | `publisher` | string | no | Who publishes the text |
 | `homepage` | string | no | A URL |
@@ -59,13 +62,17 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `keywords` | array of strings | no | Words a search should find it by. Each without surrounding spaces, not empty, and not repeated (compared case-insensitively) |
 | `categories` | array of strings | no | At most 5, each from the [fixed list](#categories), not repeated |
 | `about-books` | array of strings | no | The books of the Bible it is mainly about, as uppercase USFM codes (`["ROM", "GAL"]` for a commentary on Romans and Galatians), not repeated. Said by its author, never worked out from its text; not the books a Bible contains |
-| `upstream` | string | no | Where the text was imported from (written by importers; see [Imports](#imports)) |
+| `work` | string | no | The work it's an edition of (`kjv`), as an id (like `id`'s): see [Works and editions](#works-and-editions) |
+| `edition` | string | no | Which edition of its work it is (`1769-oxford`), as an id |
+| `edition-year` | integer | no | That edition's year (`1769`; negative before the common era) |
+| `upstream` | table | no | Where the text was imported from (written by importers; see [Imports](#imports)) |
 | `versification` | string | no | `own` (the default: the text's own verse markers say) or a named versification (`English`, `KJV`, `Original`, …) |
 | `maps-to` | string | only for a map | For `kind = "versification-map"`: the versification it maps `versification` to. Any other kind must not have it |
 | `include` | array of strings | no | More files the package is made of, as [patterns](#what-a-package-is-made-of) (`README.md`, `images/**`) |
 
-A package (other than a collection) must have a non-empty `[formats]`. A collection must have
-none. A versification map must give both `versification` (not `own`) and `maps-to`.
+A package (other than a collection) must have a non-empty `[formats]`, unless it's a recording
+that reads another package's text (`[media] text` or `versification`: see [Audio
+only](#audio-only)). A collection must have none. A versification map must give both `versification` (not `own`) and `maps-to`.
 
 Versification names are matched ignoring case. A Bible imported from a SWORD module keeps the
 module's own (its conf's `Versification`, `KJV` when it gives none), spelled as SWORD spells it:
@@ -77,6 +84,49 @@ Esther's lettered chapters (A to F, the Greek additions some Bibles number apart
 format: chapters are numbers. No import makes them (SWORD numbers chapters by its versification,
 and eBible.org and fetch.bible give Greek Esther, `ESG`, numbered chapters). In OSIS and ThML, a
 verse marker with a lettered chapter (`Esth.A.1`, `|Esth|A|1|`) is passed over with a warning.
+
+### `[package.rights]`
+
+What the license allows, in four words, each optional:
+
+```toml
+[package.rights]
+redistributable = false   # may be shared as it is, by anyone
+derivatives = "none"      # "allowed", "share-alike" (under the same terms), or "none"
+commercial = false        # may be sold or used commercially
+attribution = true        # sharing it must name its source
+```
+
+For a license logoxide knows they're derived from `license`: the public domain
+(`LicenseRef-PublicDomain`, `CC0-1.0`, `CC-PDDC`, `PDDL-1.0`, `Unlicense`, `0BSD`, `MIT-0`,
+`WTFPL`: everything allowed, no attribution), Creative Commons (`CC-BY-*`: redistributable with
+attribution; `-NC` no commercial use, `-ND` no derivatives, `-SA` derivatives under the same
+terms), permissive licenses (`MIT`, `ISC`, `Zlib`, `BSL-1.0`, `Apache-*`, `BSD-*`, …: everything
+allowed, with attribution), and copyleft ones (`GPL-*`, `LGPL-*`, `AGPL-*`, `GFDL-*`, `MPL-*`,
+`EUPL-*`, `EPL-*`, `OFL-*`, `ODbL-*`: derivatives under the same terms). Only a single license is
+derived from (not an expression of several). What's said here wins over what's derived; what
+neither says is unknown. Importers write what a publisher says beyond its license (a SWORD module
+CrossWire alone may distribute is `redistributable = false`, `derivatives = "none"`).
+
+Like the license, rights are shown, never enforced. `lx publish` warns of a package that has no
+license or one not known to be free (unless `redistributable = true` is said), and when its
+rights say it isn't redistributable, warns loudly and asks first (`--yes` answers);
+see [trust.md](trust.md#licenses).
+
+### Works and editions
+
+A work is a text whatever its editions, formats, and publishers: the King James Version is one
+work, and the 1769 Oxford text, a 1611 facsimile, and the Pure Cambridge Edition are editions of
+it. `work` names it by an id, so packages of one work can be found together (`lx search` gathers
+each work's editions under its name) and a vault using two of them is told so (`lx add`, `lx
+install`, and `lx import` warn: not wrong, but perhaps not meant).
+
+logoxide keeps a table of works (`crates/logoxide/data/works.toml`): each work's id, name,
+aliases (which searches match), its Wikidata item when known, and the import names known to be it
+(`ebible:eng-kjv2006`, `sword:crosswire/KJV`). An import whose name is listed is given that
+`work`; nothing is ever guessed from a title. Other ids may be used for works the table doesn't
+have. A package that doesn't say its work takes the work of another of the project's Bibles with
+its `id` (a fork, added with `package = "kjv"`, is its original's work).
 
 ### Kinds
 
@@ -244,6 +294,8 @@ book = "JHN"
 | Key | Type | Meaning |
 |---|---|---|
 | `timings` | string | A folder in the package holding each file's verse timings |
+| `text` | string | For a recording without a text of its own: the dependency (a key of `[dependencies]`) whose text it reads |
+| `versification` | string | The versification it's numbered by (`KJV`), whose verse counts its timings are checked against when there's no text |
 | `files` | array of tables | Each file |
 | `files.path` | string | Its name in the package (what its timings are named after) |
 | `files.url` | string | Where it is served |
@@ -269,6 +321,36 @@ each verse exists in the package's text (verse 0, a psalm's title, only where th
 one 0; a bridge's every verse), is in the file's `book` if it has one, verses come in the text's
 order without overlapping, every listed file that should have timings has them, and every
 `*.vtt` anywhere under the timings folder belongs to a listed file.
+
+### Audio only
+
+A recording needn't carry a text of its own. `text` names the dependency whose text it reads,
+and `versification` the versification it's numbered by; a package with either may have no
+`[formats]`, and opens with no verses (it isn't one of a project's Bibles, so references never
+name it):
+
+```toml
+[package]
+id = "bsb-audio"
+name = "The Berean Standard Bible, read aloud"
+abbreviation = "BSBA"
+version = "1.0.0"
+language = "en"
+
+[dependencies]
+bsb = { git = "https://example.org/bsb", version = "1" }
+
+[media]
+text = "bsb"
+versification = "KJV"
+timings = "timings/"
+```
+
+Its timings are checked (`lx check`, `lx media check`) against the text `text` names, as
+installed for the package's folder (`lx install` there; when it isn't, that's said and the
+verses go unchecked), else against its own text, else against `versification`'s verse counts
+(those logoxide has: SWORD's systems, `KJV`, `NRSV`, `Synodal`, …; another name is said). `lx
+release` checks only what it can without installing: the files, and the verses' order.
 
 ## `[titles]`
 
@@ -316,10 +398,28 @@ smaller than the change.
 
 ## Imports
 
-Packages made from other publishers' downloads (`lx import`) are ordinary packages whose
-`upstream` is the URL of the download they were made from (eBible.org's
-`https://ebible.org/Scriptures/engkjv_usfm.zip`, a SWORD module's zip), by which an update finds
-the catalog entry again. Their versions follow the publisher's where it has one (eBible.org's
-update dates become `2026.10.8`, a SWORD module's `Version`), so they don't follow the version
-rules above: a date says nothing about what changed. When the publisher's version isn't newer
-but the text changed, an update takes the next version the change calls for.
+Packages made from other publishers' downloads (`lx import`) are ordinary packages that say where
+their text came from in `[package.upstream]`:
+
+```toml
+[package.upstream]
+url = "https://ebible.org/Scriptures/eng-kjv2006_usfm.zip"
+import = "ebible:eng-kjv2006"
+version = "2026-10-08"
+```
+
+| Key | Type | Required | Meaning |
+|---|---|---|---|
+| `url` | string | yes | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books) |
+| `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `sword:crosswire/KJV`) |
+| `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year) |
+| `converted` | boolean | no | The import rewrote the publisher's markup, its words unchanged (a SWORD module's entries made into OSIS or ThML files). Not a derivative to logoxide, but `lx publish` says so when the license allows no derivatives. Default `false` |
+
+An update finds the catalog entry again by `import`, else by `url`. The package's own `version`
+follows the rules above like any package's: a new import is `1.0.0`, and each update raises it by
+what changed (a reworded verse is minor, a removed one major, a new copyright notice or a new
+publisher's version with the same text a patch), whatever the publisher numbers its releases,
+so a dependency on `^1` stays safe across the publisher's years. Whether the publisher has a
+newer release is judged by comparing its version in the catalog with `upstream.version`
+(numbers between dots and dashes compared as numbers, so `2026-10-08` is before `2026-11-01`),
+never with the package's version.
