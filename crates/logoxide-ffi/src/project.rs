@@ -143,7 +143,7 @@ impl TryFrom<Dependency> for DetailedDependency {
         let version = (d.version.as_deref())
             .map(semver::VersionReq::parse)
             .transpose()
-            .map_err(|e| LogoxideError::Manifest {
+            .map_err(|e| LogoxideError::Invalid {
                 message: format!("version: {e}"),
             })?;
         Ok(DetailedDependency {

@@ -42,7 +42,7 @@ pub trait Storage: Send + Sync {
     /// A file as text (a byte order mark is dropped)
     fn read_string(&self, path: &str) -> Result<String> {
         let bytes = self.read(path)?;
-        let text = String::from_utf8(bytes).map_err(|e| LogoxideError::io(path, e))?;
+        let text = String::from_utf8(bytes).map_err(|e| LogoxideError::io_message(path, e))?;
         Ok(match text.strip_prefix('\u{feff}') {
             Some(rest) => rest.to_string(),
             None => text,
@@ -124,10 +124,10 @@ impl FsStorage {
             at.push(part);
             match std::fs::symlink_metadata(&at) {
                 Ok(meta) if meta.file_type().is_symlink() => {
-                    return Err(LogoxideError::Io {
-                        path: path.to_string(),
-                        message: String::from("a link, which isn't followed here"),
-                    });
+                    return Err(LogoxideError::io_message(
+                        path,
+                        "a link, which isn't followed here",
+                    ));
                 }
                 Ok(_) => {}
                 Err(_) => break,
@@ -267,7 +267,10 @@ impl MemoryStorage {
 impl Storage for MemoryStorage {
     fn read(&self, path: &str) -> Result<Vec<u8>> {
         let path = checked(path)?;
-        let files = self.files.read().map_err(|e| LogoxideError::io(path, e))?;
+        let files = self
+            .files
+            .read()
+            .map_err(|e| LogoxideError::io_message(path, e))?;
         files
             .get(path)
             .cloned()
@@ -281,7 +284,10 @@ impl Storage for MemoryStorage {
         } else {
             format!("{dir}/")
         };
-        let files = self.files.read().map_err(|e| LogoxideError::io(dir, e))?;
+        let files = self
+            .files
+            .read()
+            .map_err(|e| LogoxideError::io_message(dir, e))?;
         let mut names: Vec<String> = files
             .keys()
             .filter_map(|path| {
@@ -301,14 +307,20 @@ impl Storage for MemoryStorage {
 
     fn write(&self, path: &str, bytes: &[u8]) -> Result<()> {
         let path = checked(path)?;
-        let mut files = self.files.write().map_err(|e| LogoxideError::io(path, e))?;
+        let mut files = self
+            .files
+            .write()
+            .map_err(|e| LogoxideError::io_message(path, e))?;
         files.insert(path.to_string(), bytes.to_vec());
         Ok(())
     }
 
     fn remove(&self, path: &str) -> Result<()> {
         let path = checked(path)?;
-        let mut files = self.files.write().map_err(|e| LogoxideError::io(path, e))?;
+        let mut files = self
+            .files
+            .write()
+            .map_err(|e| LogoxideError::io_message(path, e))?;
         files.remove(path);
         Ok(())
     }

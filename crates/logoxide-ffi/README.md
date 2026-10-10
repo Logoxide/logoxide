@@ -43,7 +43,9 @@ packages.get("bsb").book(john.bookId).html(john, { notes: false, headings: true,
 - Opening counts every book's verses unless the cache has them; for USFM that means parsing the
   whole text (under a second for the KJV), so give the cache back next time
 - `checksum()` is what the lock file's `checksum` should be, to catch changed files
-- Errors are thrown as `LogoxideErrorException` (`error.value` is `{ tag, message }`)
+- Errors are thrown as `LogoxideErrorException` (`error.value` is `{ tag, message }`; the tag is
+  the core's kind: `NotFound`, `Io`, `Invalid`, `Network`, `Git`, `Archive`, `Integrity`,
+  `Resolve`, `Busy`, `Conflict`, and `InvalidMarkup` for `LogoxideBook.parse`)
 
 ## Installing
 

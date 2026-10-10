@@ -60,10 +60,7 @@ const CATALOG: &str = "catalog.toml";
 const INDEX: &str = "index";
 
 fn io(path: &Path, e: std::io::Error) -> LogoxideError {
-    LogoxideError::Io {
-        path: path.display().to_string(),
-        message: e.to_string(),
-    }
+    LogoxideError::io(&path.display().to_string(), e)
 }
 
 /// Runs `gh`; what it printed
@@ -71,15 +68,17 @@ fn gh(args: &[&str]) -> logoxide::Result<String> {
     let output = std::process::Command::new("gh")
         .args(args)
         .output()
-        .map_err(|e| LogoxideError::Fetch {
-            url: String::from("gh"),
-            message: format!("couldn't run gh (https://cli.github.com, then gh auth login): {e}"),
+        .map_err(|e| {
+            LogoxideError::network(
+                "gh",
+                format!("couldn't run gh (https://cli.github.com, then gh auth login): {e}"),
+            )
         })?;
     if !output.status.success() {
-        return Err(LogoxideError::Fetch {
-            url: format!("gh {}", args.join(" ")),
-            message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
-        });
+        return Err(LogoxideError::network(
+            &format!("gh {}", args.join(" ")),
+            String::from_utf8_lossy(&output.stderr).trim().to_string(),
+        ));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }

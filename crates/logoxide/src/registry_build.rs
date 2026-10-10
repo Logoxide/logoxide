@@ -34,9 +34,9 @@ pub fn git_in(repo: &Path, args: &[&str]) -> Result<String> {
         .arg(repo)
         .args(args)
         .output()
-        .map_err(|e| LogoxideError::io(&repo.display().to_string(), format!("git: {e}")))?;
+        .map_err(|e| LogoxideError::git(&repo.display().to_string(), format!("git: {e}")))?;
     if !output.status.success() {
-        return Err(LogoxideError::io(
+        return Err(LogoxideError::git(
             &repo.display().to_string(),
             format!(
                 "git {}: {}",

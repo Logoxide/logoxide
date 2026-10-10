@@ -801,10 +801,8 @@ pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Resu
                 .get(..16)
                 .unwrap_or_default();
             let version = key.split('+').next().unwrap_or(key);
-            std::fs::remove_dir_all(&dir).map_err(|e| logoxide::LogoxideError::Io {
-                path: dir.display().to_string(),
-                message: e.to_string(),
-            })?;
+            std::fs::remove_dir_all(&dir)
+                .map_err(|e| logoxide::LogoxideError::io(&dir.display().to_string(), e))?;
             let cache = library.cache_dir().join("books").join(id);
             let _ = std::fs::remove_dir_all(cache.join(format!("{version}-{short}")));
             // The id's folder too, once it has no versions (remove_dir only removes empty ones)

@@ -611,20 +611,16 @@ impl Resolver<'_> {
         let what = kept.map_or_else(|| url.to_string(), LockedPackage::label);
         self.may_fetch(name, &what)?;
         let fetched = MemoryStorage::new();
-        let commit = (self.fetcher.fetch(url, reference, &fetched)).map_err(|e| match (kept, e) {
+        let commit = (self.fetcher.fetch(url, reference, &fetched)).map_err(|e| match kept {
             // The lock's commit, fetched by itself: a tag moved or a branch rewritten since takes
             // it off the host
-            (Some(kept), LogoxideError::Fetch { url, message }) => LogoxideError::Fetch {
-                url,
-                message: format!(
-                    "{message} (the locked commit {} of {} may no longer be on the host: if its \
-                     tag was moved or its branch rewritten, `lx update {name}` locks what's there \
-                     now)",
-                    kept.commit.as_deref().unwrap_or("?"),
-                    kept.label()
-                ),
-            },
-            (_, e) => e,
+            Some(kept) if e.is_fetch() => e.with_fetch_note(&format!(
+                "(the locked commit {} of {} may no longer be on the host: if its tag was moved \
+                 or its branch rewritten, `lx update {name}` locks what's there now)",
+                kept.commit.as_deref().unwrap_or("?"),
+                kept.label()
+            )),
+            _ => e,
         })?;
         // A package in a folder of its repository is that folder's files
         let fetched = match d.folder.as_deref().map(|f| f.trim_matches('/')) {

@@ -514,7 +514,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
 
 ## Conventions
 
-- Like topos: no `unwrap` in library code, errors in `LogoxideError`, comments and docs in plain
+- Like topos: no `unwrap` in library code, errors in `LogoxideError` (`#[non_exhaustive]`; callers
+  branch on `kind()`: `ErrorKind`'s `NotFound`, `Io`, `Invalid`, `Network`, `Git`, `Archive`,
+  `Integrity`, `Resolve`, `Busy`, `Conflict`; `Io` and `Network` keep a `source()`; the FFI's
+  `LogoxideError` is the kinds), comments and docs in plain
   prose, `cargo fmt` and `cargo clippy --all-targets -D warnings` clean
 - Check behavior on the real packages (`lx check ~/Development/logoxide-packages/kjv`), not only
   unit tests

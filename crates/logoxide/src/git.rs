@@ -73,16 +73,10 @@ pub fn is_insecure(url: &str) -> bool {
 /// A local file named by a path or a `file://` URL (anything else isn't local: an error)
 pub fn read_local(url: &str) -> Result<Vec<u8>> {
     if url.contains("://") && !url.starts_with("file://") {
-        return Err(LogoxideError::Fetch {
-            url: url.to_string(),
-            message: String::from("no way to download here"),
-        });
+        return Err(LogoxideError::network(url, "no way to download here"));
     }
     let path = url.strip_prefix("file://").unwrap_or(url);
-    std::fs::read(path).map_err(|e| LogoxideError::Fetch {
-        url: url.to_string(),
-        message: e.to_string(),
-    })
+    std::fs::read(path).map_err(|e| LogoxideError::io(url, e))
 }
 
 /// Which commit of a repository: a tag, a branch, a revision, or its default branch
@@ -124,13 +118,13 @@ pub trait Fetcher {
                 Err(e) => failures.push(e.to_string()),
             }
         }
-        Err(LogoxideError::Fetch {
-            url: urls.first().cloned().unwrap_or_default(),
-            message: match failures.is_empty() {
+        Err(LogoxideError::network(
+            urls.first().map(String::as_str).unwrap_or_default(),
+            match failures.is_empty() {
                 true => String::from("nowhere to download it from"),
                 false => failures.join("; "),
             },
-        })
+        ))
     }
 
     /// The repository's files at `reference` into `dest` (without `.git`), and the commit
@@ -268,10 +262,7 @@ that never answers, or sends a byte a minute, would otherwise hold lx forever). 
 read as it runs, so a full pipe never stops it
 */
 fn run(mut command: Command, url: &str, timeout: Duration) -> Result<String> {
-    let fail = |message: String| LogoxideError::Fetch {
-        url: url.to_string(),
-        message,
-    };
+    let fail = |message: String| LogoxideError::git(url, message);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -359,10 +350,10 @@ also put after `--`, where git reads no options
 */
 fn check_args(url: &str, reference: &GitRef) -> Result<()> {
     let refuse = |what: &str| {
-        Err(LogoxideError::Fetch {
-            url: url.to_string(),
-            message: format!("{what} isn't one git should be given"),
-        })
+        Err(LogoxideError::git(
+            url,
+            format!("{what} isn't one git should be given"),
+        ))
     };
     if url.starts_with('-') || url.trim().is_empty() || url.contains('\0') {
         return refuse("this URL");

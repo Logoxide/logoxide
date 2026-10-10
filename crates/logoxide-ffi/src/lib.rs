@@ -32,36 +32,33 @@ use boltffi::*;
 
 #[error]
 #[derive(Clone, Debug, PartialEq, Eq)]
+/// What went wrong, by the core's kinds (`logoxide::error::ErrorKind`): hosts branch on the
+/// tag and show the message
 pub enum LogoxideError {
-    /// A file a package needs isn't there
+    /// A file, a package, or a version that isn't there
     NotFound { message: String },
-    /// `logoxide.toml` can't be read or doesn't make sense
-    Manifest { message: String },
-    /// `logoxide.lock` can't be read
-    Lock { message: String },
-    /// None of the package's enabled formats can be read, or a book's text can't be
-    Text { message: String },
+    /// Reading or writing files failed, or there's no file access (in WebAssembly)
+    Io { message: String },
+    /// A file that doesn't make sense: a manifest, a lock, a catalog, a cache, a map, a timings
+    /// file, a book's text, or a download that can't be made into a package
+    Invalid { message: String },
     /// Markup in a format logoxide-markup doesn't read (see [`LogoxideBook::parse`])
     InvalidMarkup { message: String },
-    /// Reading or writing files failed, or there's no file access (in WebAssembly)
-    Files { message: String },
-    /// A cached file is damaged or from another version
-    Cache { message: String },
-    /// A catalog can't be read
-    Catalog { message: String },
-    /// A download can't be made into a package
-    Import { message: String },
-    /// A package's media list or timings are wrong
-    Media { message: String },
-    /// A versification map can't be read, or none leads where asked
-    Versification { message: String },
-    /// A download or a git repository couldn't be reached
+    /// A download couldn't be made or didn't answer
     Network { message: String },
+    /// The `git` command failed, or a repository's refs don't name what was asked for
+    Git { message: String },
+    /// An archive can't be unpacked, or is larger than allowed
+    Archive { message: String },
     /// What was fetched isn't what was listed or locked (its hash or checksum differs), or a
     /// release changed under its version
     Integrity { message: String },
     /// No versions satisfy what's asked, or a package names what it may not
     Resolve { message: String },
+    /// Another process holds the library or the project: try again
+    Busy { message: String },
+    /// A file changed since it was read, so writing it would lose that change
+    Conflict { message: String },
 }
 
 /// logoxide-text's errors, as the core maps them
@@ -73,24 +70,20 @@ impl From<logoxide_text::TextError> for LogoxideError {
 
 impl From<logoxide_core::LogoxideError> for LogoxideError {
     fn from(error: logoxide_core::LogoxideError) -> Self {
-        use logoxide_core::LogoxideError as E;
+        use logoxide_core::error::ErrorKind as K;
         let message = error.to_string();
-        match error {
-            E::NotFound(_) => LogoxideError::NotFound { message },
-            E::Manifest(_) | E::Newer(_) => LogoxideError::Manifest { message },
-            E::Lock(_) => LogoxideError::Lock { message },
-            E::NoReadableFormat(_) | E::Book { .. } => LogoxideError::Text { message },
-            E::Cache(_) => LogoxideError::Cache { message },
-            E::Catalog(_) => LogoxideError::Catalog { message },
-            E::Import(_) => LogoxideError::Import { message },
-            E::Media(_) => LogoxideError::Media { message },
-            E::Versification(_) => LogoxideError::Versification { message },
-            E::Fetch { .. } => LogoxideError::Network { message },
-            E::Mismatch { .. } | E::Checksum { .. } | E::Changed { .. } => {
-                LogoxideError::Integrity { message }
-            }
-            E::Resolve(_) => LogoxideError::Resolve { message },
-            E::Io { .. } | E::BadPath(_) | E::ReadOnly => LogoxideError::Files { message },
+        match error.kind() {
+            K::NotFound => LogoxideError::NotFound { message },
+            K::Io => LogoxideError::Io { message },
+            K::Network => LogoxideError::Network { message },
+            K::Git => LogoxideError::Git { message },
+            K::Archive => LogoxideError::Archive { message },
+            K::Integrity => LogoxideError::Integrity { message },
+            K::Resolve => LogoxideError::Resolve { message },
+            K::Busy => LogoxideError::Busy { message },
+            K::Conflict => LogoxideError::Conflict { message },
+            // `Invalid`, and any kind a newer core adds
+            _ => LogoxideError::Invalid { message },
         }
     }
 }
@@ -194,7 +187,7 @@ impl Logoxide {
         let info = parsed
             .package
             .as_ref()
-            .ok_or_else(|| LogoxideError::Manifest {
+            .ok_or_else(|| LogoxideError::Invalid {
                 message: String::from("no [package]: a vault's logoxide.toml, not a package's"),
             })?;
         Ok(PackageInfo::from(info))

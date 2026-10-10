@@ -70,10 +70,8 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     ));
     let _ = std::fs::remove_dir_all(&staging);
     let made = import_files(entry, &FsStorage::new(&staging)).and_then(|()| {
-        std::fs::rename(&staging, &dir).map_err(|e| logoxide::LogoxideError::Io {
-            path: dir.display().to_string(),
-            message: e.to_string(),
-        })
+        std::fs::rename(&staging, &dir)
+            .map_err(|e| logoxide::LogoxideError::io(&dir.display().to_string(), e))
     });
     if let Err(error) = made {
         let _ = std::fs::remove_dir_all(&staging);

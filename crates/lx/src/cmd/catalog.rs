@@ -92,10 +92,8 @@ fn read_catalog(location: &str, base: &Path) -> logoxide::Result<logoxide::catal
         get(location)?
     } else {
         let path = base.join(location);
-        std::fs::read(&path).map_err(|e| logoxide::LogoxideError::Io {
-            path: path.display().to_string(),
-            message: e.to_string(),
-        })?
+        std::fs::read(&path)
+            .map_err(|e| logoxide::LogoxideError::io(&path.display().to_string(), e))?
     };
     logoxide_import::catalog::parse(location, &bytes)
 }
@@ -181,10 +179,7 @@ pub(crate) fn load_registry(
 
 fn canonical(path: &Path) -> logoxide::Result<PathBuf> {
     path.canonicalize()
-        .map_err(|e| logoxide::LogoxideError::Io {
-            path: path.display().to_string(),
-            message: e.to_string(),
-        })
+        .map_err(|e| logoxide::LogoxideError::io(&path.display().to_string(), e))
 }
 
 /**
@@ -212,10 +207,8 @@ pub(crate) fn catalog_build(
             }
             e => e,
         })?;
-    std::fs::write(&output, &built.text).map_err(|e| logoxide::LogoxideError::Io {
-        path: output.display().to_string(),
-        message: e.to_string(),
-    })?;
+    std::fs::write(&output, &built.text)
+        .map_err(|e| logoxide::LogoxideError::io(&output.display().to_string(), e))?;
     let plural = if built.count == 1 { "" } else { "s" };
     outln!(
         "Wrote {}: {} package{plural} ({} read, {} unchanged)",

@@ -121,10 +121,7 @@ impl Round<'_> {
     fn ask(&self, request: FetchRequest) -> logoxide_core::LogoxideError {
         let message = format!("needs {request:?}");
         self.need.borrow_mut().get_or_insert(request);
-        logoxide_core::LogoxideError::Fetch {
-            url: String::new(),
-            message,
-        }
+        logoxide_core::LogoxideError::network("", message)
     }
 
     fn refs(&self, url: &str) -> logoxide_core::Result<Refs> {
@@ -150,11 +147,8 @@ impl Round<'_> {
                 .refs(url)?
                 .find_commit(reference)
                 .map_err(|e| match e {
-                    logoxide_core::LogoxideError::Fetch { message, .. } => {
-                        logoxide_core::LogoxideError::Fetch {
-                            url: url.to_string(),
-                            message,
-                        }
+                    logoxide_core::LogoxideError::Git { message, .. } => {
+                        logoxide_core::LogoxideError::git(url, message)
                     }
                     e => e,
                 })?,
@@ -322,7 +316,7 @@ impl LogoxideInstaller {
         &self,
         run: impl FnOnce(&Round<'_>) -> logoxide_core::Result<T>,
     ) -> Result<Result<T, FetchRequest>, LogoxideError> {
-        let mut given = self.given.lock().map_err(|_| LogoxideError::Files {
+        let mut given = self.given.lock().map_err(|_| LogoxideError::Io {
             message: String::from("an earlier call panicked"),
         })?;
         let round = Round {
@@ -364,7 +358,7 @@ impl LogoxideInstaller {
             Ok(lock) => lock,
             Err(request) => return Ok(InstallStep::Fetch { request }),
         };
-        let given = self.given.lock().map_err(|_| LogoxideError::Files {
+        let given = self.given.lock().map_err(|_| LogoxideError::Io {
             message: String::from("an earlier call panicked"),
         })?;
         let mut files = vec![];
@@ -442,7 +436,7 @@ impl LogoxideInstaller {
 
     /// The answer to a `Refs` request
     pub fn provide_refs(&self, repository: String, bytes: Vec<u8>) -> Result<(), LogoxideError> {
-        let refs = Refs::parse(&bytes).map_err(|e| LogoxideError::Files {
+        let refs = Refs::parse(&bytes).map_err(|e| LogoxideError::Git {
             message: format!("{repository}: {e}"),
         })?;
         if let Ok(mut given) = self.given.lock() {
@@ -459,7 +453,7 @@ impl LogoxideInstaller {
         bytes: Vec<u8>,
     ) -> Result<(), LogoxideError> {
         let files = MemoryStorage::new();
-        archive::unpack(&bytes, &files).map_err(|e| LogoxideError::Files {
+        archive::unpack(&bytes, &files).map_err(|e| LogoxideError::Archive {
             message: format!("{repository} at {commit}: {e}"),
         })?;
         if let Ok(mut given) = self.given.lock() {

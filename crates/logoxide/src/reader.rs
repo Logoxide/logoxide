@@ -199,10 +199,7 @@ mod with_text {
             match e {
                 TextError::Book { book, message } => LogoxideError::Book { book, message },
                 TextError::NotFound(what) => LogoxideError::NotFound(what),
-                TextError::Files(what) => LogoxideError::Io {
-                    path: String::new(),
-                    message: what,
-                },
+                TextError::Files(what) => LogoxideError::io_message("", what),
                 TextError::Versification(what) => LogoxideError::Versification(what),
                 TextError::Timings(what) => LogoxideError::Media(what),
                 TextError::Archive(what) => LogoxideError::Import(what),

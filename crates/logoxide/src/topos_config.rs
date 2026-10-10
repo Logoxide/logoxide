@@ -45,10 +45,7 @@ pub fn expand_home(path: &str) -> PathBuf {
 }
 
 fn read_text(path: &Path) -> Result<String> {
-    std::fs::read_to_string(path).map_err(|e| LogoxideError::Io {
-        path: path.display().to_string(),
-        message: e.to_string(),
-    })
+    std::fs::read_to_string(path).map_err(|e| LogoxideError::io(&path.display().to_string(), e))
 }
 
 /// The config file's table: `path`'s, else the default one's; empty when there is none
@@ -60,10 +57,8 @@ pub fn read(path: Option<&Path>) -> Result<toml::Table> {
             None => return Ok(toml::Table::new()),
         },
     };
-    (read_text(&path)?.parse()).map_err(|e: toml::de::Error| LogoxideError::Io {
-        path: path.display().to_string(),
-        message: e.to_string(),
-    })
+    (read_text(&path)?.parse())
+        .map_err(|e: toml::de::Error| LogoxideError::io_message(&path.display().to_string(), e))
 }
 
 /// A key's paths: one (`"a.json"`) or a list; `merge-data` and `merge_data` are the same key
@@ -83,14 +78,11 @@ fn paths(config: &toml::Table, key: &str) -> Vec<PathBuf> {
 /// `remove-data`, as topos reads them
 pub fn bible_data(config: &toml::Table) -> Result<BibleData> {
     fn json<T: serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
-        serde_json::from_str(&read_text(path)?).map_err(|e| LogoxideError::Io {
-            path: path.display().to_string(),
-            message: e.to_string(),
-        })
+        serde_json::from_str(&read_text(path)?)
+            .map_err(|e| LogoxideError::io_message(&path.display().to_string(), e))
     }
-    let bad = |path: &Path, e: &dyn std::fmt::Display| LogoxideError::Io {
-        path: path.display().to_string(),
-        message: e.to_string(),
+    let bad = |path: &Path, e: &dyn std::fmt::Display| {
+        LogoxideError::io_message(&path.display().to_string(), e)
     };
     let mut input = match paths(config, "data").first() {
         Some(path) => json::<BibleDataInput>(path)?,
