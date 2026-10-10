@@ -14,7 +14,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs
   - `reader.rs`: the boundary. `TextReader` (`counts`: each book's verse counts; `facts`: a
     `TextFacts`, the text's half of a summary, with the verse hashes by a `HashRule`, titles and
-    the untitled files, cited passages, the mapping count, and `Skipped`; `timing_problems`) is
+    the untitled files, cited passages, the mapping count, `entries` (each dictionary entry's or
+    cross-reference passage's `EntryHash`: 8 bytes of the key's hash, 7 of its text's by the
+    verse rule, from logoxide-text's `hash::entry_hashes`), and `Skipped`; `timing_problems`) is
     taken by `summary::summarize`, `release::plan`/`summary_in`, `Cache::open`,
     `Project::translations`/`numbering`/`map_reference`, and `import::compare_import`. `NoReader`
     reads nothing (tests, hosts that only install); `DefaultReader` (`read`) is the adapter onto
@@ -24,8 +26,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     errors, `versification_map(package)` reads a map package's `.vrs` files, and the text crate's
     `Skipped` and `VerseRecord` (topos `BookId`) become the core's `Skipped` and `VerseHash`
     (`books.rs` numbers, which stay the summary format's). `Package::text_format` says which
-    format is read as verses without a parser; `Package::source()` (`read`) is logoxide-text's
-    `Source`
+    format is being read (`Format::is_verse_text`: not a dictionary's or cross-references',
+    which `Project::bibles` leaves out) without a parser; `Package::source()` (`read`) is
+    logoxide-text's `Source`
   - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
     `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`, machine-wide (flags and env win over
     library/cache; a project's catalogs come first and its registry names win). lx reads it once
@@ -362,7 +365,22 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   31,102 verses). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
   book; it's scanned for the books its verse markers name, cut into books, and its last parse
   kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers.
-  Preference: USX, USFM, OSIS, ThML. `Source::skipped` says what was passed over (`Skipped`,
+  GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM
+  code, English name, or GBF's numbers 1–39 and 64–90), `<SC…>`/`<SV…>` become chapter and verse
+  markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is
+  one bridge), each book wrapped in a division. Preference: USX, USFM, OSIS, ThML, GBF. A
+  commentary is any verse source: `Source::notes(passage)` (a default on the trait over `book`
+  and `passage_ranges`) gives each span covering the passage as a `Note` with its tree. Two
+  formats hold no verses and open as sources with no books, so `open` returns one `Box<dyn
+  Source>` for any format: `dictionary.rs` (`TextFormat::Dictionary`, `entries/*.xml` as
+  `doc/entries.md` specifies: the root's `markup` names the bodies' markup; files indexed once,
+  bodies parsed on `Source::entry(key)`; `keys()` in file order; an `<entry link=…/>` alias
+  reads as its target, one step) and `xref.rs` (`TextFormat::Xref`, `xref/*.tsv` lines parsed
+  by topos's `parse_osis`; `Source::cross_references(verse)` is every line whose `from` covers
+  it; `keys()` the distinct `from`s and `entry(from)` their targets as one text, which is what
+  the summary hashes). `keys.rs`: `normalize_key` (Strong's `G0025` → `G25`), `fold` (the
+  catalog's, copied: case, combining marks, final sigma), `key_hash` (8 bytes of SHA-256 of the
+  normal form). `hash::entry_hashes(source, rule)` gives an `EntryRecord` a key. `Source::skipped` says what was passed over (`Skipped`,
   `SkipReason`): peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know
   (JUB until it does) and files naming no book warned of (the owner's D4); a book in two files is
   an error naming both. `lx check` (and its JSON's `skipped`), `lx release`, and `lx import`

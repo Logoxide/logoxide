@@ -14,7 +14,10 @@ use sha2::{Digest, Sha256};
 use topos_bible::data::books::BookId;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::source::Book;
+use crate::{
+    keys::{KEY_HASH_BYTES, key_hash},
+    source::{Book, Source},
+};
 
 /// Bytes of SHA-256 kept per verse
 pub const HASH_BYTES: usize = 7;
@@ -126,6 +129,36 @@ pub fn book_hashes(book: &Book, rule: HashRule) -> Vec<VerseRecord> {
         }
     }
     out
+}
+
+/// One entry of a dictionary (or one passage's cross-references) and the hash of its words
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EntryRecord {
+    /// The first bytes of SHA-256 of its key's normal form ([`key_hash`])
+    pub key: [u8; KEY_HASH_BYTES],
+    /// Its text's hash by the rule, as a verse's ([`verse_hash`])
+    pub hash: [u8; HASH_BYTES],
+}
+
+/**
+Each entry of a dictionary or cross-reference source ([`Source::keys`], in order) and the hash
+of its words by `rule` (notes left out, as for a verse; a cross-reference passage's text is its
+targets, `doc/entries.md`): what `logoxide.entries.bin` records. A key whose entry can't be
+found (an alias to nothing) hashes empty text
+*/
+pub fn entry_hashes(source: &dyn Source, rule: HashRule) -> crate::Result<Vec<EntryRecord>> {
+    let mut out = vec![];
+    for key in source.keys() {
+        let text = match source.entry(&key)? {
+            Some(entry) => verse_text(&entry.nodes, rule),
+            None => String::new(),
+        };
+        out.push(EntryRecord {
+            key: key_hash(&key),
+            hash: verse_hash(&text),
+        });
+    }
+    Ok(out)
 }
 
 /// `WordsOfJesus` → `words-of-jesus`

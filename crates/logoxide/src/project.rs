@@ -551,8 +551,10 @@ impl Project {
                 todo.extend(inside.rev());
                 continue;
             }
-            // A recording without a text of its own (`[media] text`) has no verses to give
-            if package.info().kind == PackageKind::Bible && package.text_format().is_some() {
+            // A recording without a text of its own (`[media] text`) has no verses to give, nor
+            // has a dictionary
+            let verses = (package.text_format()).is_some_and(|(format, _)| format.is_verse_text());
+            if package.info().kind == PackageKind::Bible && verses {
                 bibles.push((locked, package));
             }
         }

@@ -42,6 +42,17 @@ const HEADER: usize = 8;
 const RECORD: usize = 12;
 /// Bytes of SHA-256 kept per verse
 pub const HASH_BYTES: usize = 7;
+/// Bytes of SHA-256 kept of an entry's key
+pub const KEY_HASH_BYTES: usize = 8;
+
+/// One entry of a dictionary (or one passage's cross-references) and the hash of its text:
+/// the key by its hash (logoxide-text's `keys::key_hash` of its normal form), since keys are
+/// words, not numbers
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EntryHash {
+    pub key: [u8; KEY_HASH_BYTES],
+    pub hash: [u8; HASH_BYTES],
+}
 
 /// The first [`HASH_BYTES`] bytes of a text's SHA-256: a verse's hash, once its words are the
 /// text a rule gives

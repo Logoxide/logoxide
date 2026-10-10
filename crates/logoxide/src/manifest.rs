@@ -376,7 +376,13 @@ impl Format {
     pub fn readable(self) -> bool {
         matches!(
             self,
-            Format::Usx | Format::Usfm | Format::Osis | Format::Thml
+            Format::Usx
+                | Format::Usfm
+                | Format::Osis
+                | Format::Thml
+                | Format::Gbf
+                | Format::Dictionary
+                | Format::Xref
         )
     }
 

@@ -21,6 +21,9 @@ pub enum TextError {
     /// An EPUB or other archive, or the metadata in it
     #[error("{0}")]
     Archive(String),
+    /// A dictionary's entries or cross-references that can't be read as such
+    #[error("entries: {0}")]
+    Entries(String),
 }
 
 pub type Result<T> = std::result::Result<T, TextError>;

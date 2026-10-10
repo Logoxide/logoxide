@@ -20,7 +20,7 @@ use crate::{
     error::Result,
     package::Package,
     references::Cited,
-    summary::{HashRule, VerseHash},
+    summary::{EntryHash, HashRule, VerseHash},
 };
 
 /// What a package's text gives its summary: the half a reader makes (the package manager adds
@@ -43,6 +43,9 @@ pub struct TextFacts {
     pub references: u64,
     /// For a versification map, how many verses it maps
     pub mappings: u64,
+    /// For a dictionary or cross-references, every entry (each key once) and the hash of its
+    /// words, made by the rule asked for
+    pub entries: Vec<EntryHash>,
     /// Files, or books in them, that were passed over, and why
     pub skipped: Vec<Skipped>,
 }
@@ -159,7 +162,7 @@ mod with_text {
         manifest::{Format, PackageKind},
         package::Package,
         storage::Storage,
-        summary::{HashRule, VerseHash},
+        summary::{EntryHash, HashRule, VerseHash},
     };
 
     /// A package's storage as the files logoxide-text reads
@@ -206,6 +209,10 @@ mod with_text {
                 TextError::Versification(what) => LogoxideError::Versification(what),
                 TextError::Timings(what) => LogoxideError::Media(what),
                 TextError::Archive(what) => LogoxideError::Import(what),
+                TextError::Entries(what) => LogoxideError::Book {
+                    book: String::from("entries"),
+                    message: what,
+                },
             }
         }
     }
@@ -226,13 +233,17 @@ mod with_text {
     }
 
     impl Format {
-        /// The format as logoxide-text reads it, if it reads it
+        /// The format as logoxide-text reads it, if it reads it (every format
+        /// [`Format::readable`] says it does)
         pub fn text_format(self) -> Option<TextFormat> {
             Some(match self {
                 Format::Usx => TextFormat::Usx,
                 Format::Usfm => TextFormat::Usfm,
                 Format::Osis => TextFormat::Osis,
                 Format::Thml => TextFormat::Thml,
+                Format::Gbf => TextFormat::Gbf,
+                Format::Dictionary => TextFormat::Dictionary,
+                Format::Xref => TextFormat::Xref,
                 _ => return None,
             })
         }
@@ -246,6 +257,21 @@ mod with_text {
                 rule.number()
             ))
         })
+    }
+
+    /// Each entry of a dictionary or cross-reference source and the hash of its words by
+    /// `rule`, as `logoxide.entries.bin` has them
+    pub(crate) fn entry_hashes(
+        source: &dyn logoxide_text::Source,
+        rule: HashRule,
+    ) -> Result<Vec<EntryHash>> {
+        let rule = text_rule(rule)?;
+        Ok((hash::entry_hashes(source, rule)?.into_iter())
+            .map(|r| EntryHash {
+                key: r.key,
+                hash: r.hash,
+            })
+            .collect())
     }
 
     /// Each verse of a book and the hash of its words by `rule`, as `logoxide.verses.bin` has
@@ -350,6 +376,7 @@ mod with_text {
             if package.info().kind == PackageKind::VersificationMap {
                 facts.mappings = versification_map(package)?.len() as u64;
             }
+            facts.entries = entry_hashes(source, rule)?;
             facts.skipped = (source.skipped().iter()).cloned().map(Into::into).collect();
             Ok(facts)
         }

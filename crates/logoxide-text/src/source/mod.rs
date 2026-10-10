@@ -1,28 +1,38 @@
 /*!
 A package's text in one format, read a book at a time into logoxide-markup's tree, the same
-whatever the format: USX and USFM (a book a file), OSIS and ThML (a whole Bible in one file, or a
-book a file).
+whatever the format: USX and USFM (a book a file), OSIS, ThML, and GBF (a whole Bible in one
+file, or a book a file). A commentary is read the same way, and its notes on a passage are the
+verses covering it ([`Source::notes`]). Two formats hold no verses: a dictionary's entries by key
+([`Source::entry`], [`DictionarySource`]) and cross-references by verse
+([`Source::cross_references`], [`XrefSource`]); they open as sources too, with no books, so one
+[`open`] gives one `Box<dyn Source>` for any format.
 */
 
+mod dictionary;
+mod gbf;
 mod osis;
 mod thml;
 mod usfm;
 mod usx;
 mod whole;
+mod xref;
 
 use std::{collections::BTreeMap, sync::Arc};
 
 use logoxide_markup::{
     Node,
-    verses::{VerseSpan, chapter_verses},
+    verses::{VerseSpan, chapter_verses, passage_ranges, slice},
 };
 use serde::{Deserialize, Serialize};
-use topos_bible::data::books::BookId;
+use topos_bible::{data::books::BookId, segments::Passage};
 
+pub use dictionary::DictionarySource;
+pub use gbf::GbfSource;
 pub use osis::OsisSource;
 pub use thml::ThmlSource;
 pub use usfm::{UsfmSource, usfm_to_usx};
 pub use usx::UsxSource;
+pub use xref::XrefSource;
 
 pub use crate::skipped::{PERIPHERALS, SkipReason, Skipped, is_peripheral};
 
@@ -31,7 +41,8 @@ use crate::{
     files::Files,
 };
 
-/// The formats read as verses, best first (USX is the richest and the most exact)
+/// The formats read: those read as verses, best first (USX is the richest and the most exact),
+/// then a dictionary's entries and cross-references, which hold no verses
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TextFormat {
@@ -39,6 +50,12 @@ pub enum TextFormat {
     Usfm,
     Osis,
     Thml,
+    /// GBF, with its sync marks for books, chapters, and verses ([`GbfSource`])
+    Gbf,
+    /// A dictionary's entries by key (`entries/*.xml`, [`DictionarySource`])
+    Dictionary,
+    /// Cross-references by verse (`xref/*.tsv`, [`XrefSource`])
+    Xref,
 }
 
 impl TextFormat {
@@ -49,6 +66,9 @@ impl TextFormat {
             TextFormat::Usfm => "usfm",
             TextFormat::Osis => "osis",
             TextFormat::Thml => "thml",
+            TextFormat::Gbf => "gbf",
+            TextFormat::Dictionary => "dictionary",
+            TextFormat::Xref => "xref",
         }
     }
 
@@ -58,8 +78,16 @@ impl TextFormat {
             "usfm" => TextFormat::Usfm,
             "osis" => TextFormat::Osis,
             "thml" => TextFormat::Thml,
+            "gbf" => TextFormat::Gbf,
+            "dictionary" => TextFormat::Dictionary,
+            "xref" => TextFormat::Xref,
             _ => return None,
         })
+    }
+
+    /// Whether it's read as verses (a Bible's or a commentary's text), rather than as entries
+    pub fn is_verse_text(self) -> bool {
+        !matches!(self, TextFormat::Dictionary | TextFormat::Xref)
     }
 }
 
@@ -71,7 +99,47 @@ pub fn open(files: Arc<dyn Files>, format: TextFormat, dir: &str) -> Result<Box<
         TextFormat::Usfm => Box::new(UsfmSource::open(files, dir)?),
         TextFormat::Osis => Box::new(OsisSource::open(files, dir)?),
         TextFormat::Thml => Box::new(ThmlSource::open(files, dir)?),
+        TextFormat::Gbf => Box::new(GbfSource::open(files, dir)?),
+        TextFormat::Dictionary => Box::new(DictionarySource::open(files, dir)?),
+        TextFormat::Xref => Box::new(XrefSource::open(files, dir)?),
     })
+}
+
+/// A note of a commentary: the verses one of its spans covers, and the tree of the note
+#[derive(Clone, Debug, PartialEq)]
+pub struct Note {
+    pub chapter: u8,
+    pub verse: u8,
+    /// The chapter `last` is in: `chapter`, unless the note runs into a later one
+    pub last_chapter: u8,
+    /// The last verse the note covers (`verse` when it's on one)
+    pub last: u8,
+    /// Which part of the verse (1 for `20a`), 0 for the whole
+    pub part: u8,
+    pub nodes: Vec<Node>,
+}
+
+/// A dictionary's entry (or, for cross-references, a verse's targets as one text)
+#[derive(Clone, Debug, PartialEq)]
+pub struct Entry {
+    /// Its key in normal form (`G25`; [`crate::keys::normalize_key`])
+    pub key: String,
+    /// The word it's about, when the dictionary says (`ἀγαπάω`)
+    pub headword: Option<String>,
+    /// Its text, parsed by the markup its file declares (an alias's is its target's)
+    pub nodes: Vec<Node>,
+}
+
+/// One cross-reference: from a passage to another, perhaps weighted
+#[derive(Clone, Debug, PartialEq)]
+pub struct CrossReference {
+    /// The passage it's for, as an OSIS reference in normal form (`John.3.16`,
+    /// `John.3.16-John.3.18`)
+    pub from: String,
+    /// The passage referred to, the same way
+    pub to: String,
+    /// How strong the link is, when the file says
+    pub weight: Option<f64>,
 }
 
 /// A book's text: its tree, and where each verse is in it
@@ -111,6 +179,49 @@ pub trait Source: Send + Sync {
     /// know)
     fn skipped(&self) -> &[Skipped] {
         &[]
+    }
+
+    /**
+    A commentary's notes on a passage (in any verse source: a Bible's are its verses): each
+    verse span covering any of the passage's verses, with its tree, in the book's order. A
+    span across chapters is found by any verse it covers; a passage's verses the book lacks
+    find nothing
+    */
+    fn notes(&self, passage: &Passage) -> Result<Vec<Note>> {
+        let book = self.book(passage.book)?;
+        let mut notes = vec![];
+        for range in passage_ranges(&book.spans, passage) {
+            for span in book.spans.get(range).into_iter().flatten() {
+                notes.push(Note {
+                    chapter: span.chapter,
+                    verse: span.verse,
+                    last_chapter: span.last_chapter,
+                    last: span.last,
+                    part: span.part,
+                    nodes: slice(&book.nodes, &span.start, Some(&span.end)),
+                });
+            }
+        }
+        Ok(notes)
+    }
+
+    /// A dictionary's keys in normal form, in its files' order (for cross-references, the
+    /// passages lines are for); empty for a verse source
+    fn keys(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// A dictionary's entry for a key (matched by its normal form, then loosely:
+    /// [`crate::keys::fold`]); for cross-references, a passage's targets as one text (what a
+    /// summary hashes); none in a verse source, or for a key it lacks
+    fn entry(&self, _key: &str) -> Result<Option<Entry>> {
+        Ok(None)
+    }
+
+    /// The cross-references for a verse (an OSIS reference, `John.3.16`): every line whose
+    /// passage covers it, in file order; none in other sources
+    fn cross_references(&self, _verse: &str) -> Result<Vec<CrossReference>> {
+        Ok(vec![])
     }
 }
 

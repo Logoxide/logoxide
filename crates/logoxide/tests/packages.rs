@@ -151,3 +151,71 @@ fn topos_checks_references_against_the_package() {
     assert_eq!(parse("John 3:19 TB"), None);
     assert_eq!(parse("John 3:19"), Some(None));
 }
+
+const DICTIONARY_MANIFEST: &str = r#"
+[package]
+id = "strongs"
+name = "Strong's Greek"
+abbreviation = "STR"
+version = "1.0.0"
+language = "grc"
+kind = "lexicon"
+keys = "strongs-greek"
+
+[formats]
+dictionary = { path = "entries/" }
+"#;
+
+const ENTRIES: &str = r#"<entries keys="strongs-greek" markup="tei">
+<entry key="G0025" headword="ἀγαπάω"><entryFree><orth>ἀγαπάω</orth> to love</entryFree></entry>
+<entry key="G26">love</entry>
+</entries>"#;
+
+/// A dictionary opens as a package with entries and no books, and its facts have each entry
+/// hashed; a GBF Bible reads as any other
+#[test]
+fn dictionaries_and_gbf_bibles_are_read() {
+    use logoxide::TextReader;
+    let storage: Arc<dyn Storage> = Arc::new(MemoryStorage::with([
+        ("logoxide.toml", DICTIONARY_MANIFEST),
+        ("entries/greek.xml", ENTRIES),
+    ]));
+    let package = Package::open(storage, Features::default()).unwrap();
+    assert!(package.books().is_empty());
+    let (format, dir) = package.text_format().unwrap();
+    assert_eq!(
+        (format, dir),
+        (logoxide::manifest::Format::Dictionary, "entries")
+    );
+    assert!(!format.is_verse_text());
+    let entry = package.source().entry("g25").unwrap().unwrap();
+    assert_eq!(entry.headword.as_deref(), Some("ἀγαπάω"));
+    let facts = DefaultReader
+        .facts(&package, logoxide::summary::HashRule::CURRENT)
+        .unwrap();
+    assert_eq!(facts.entries.len(), 2);
+    assert_ne!(facts.entries[0].key, facts.entries[1].key);
+    assert!(facts.verses.is_empty() && facts.untitled.is_empty());
+
+    let gbf = "<SC3><SV16>For God so loved the world.<SV17>For God did not send His Son.";
+    let storage: Arc<dyn Storage> = Arc::new(MemoryStorage::with([
+        (
+            "logoxide.toml",
+            MANIFEST
+                .replace(
+                    "usx = { path = \"usx/\", feature = \"usx\" }",
+                    "gbf = { path = \"gbf/\" }",
+                )
+                .as_str(),
+        ),
+        ("gbf/JHN.gbf", gbf),
+    ]));
+    let package = Package::open(storage, Features::default()).unwrap();
+    assert_eq!(package.books(), [JOHN]);
+    assert_eq!(text(&package, 3, 16), "For God so loved the world.");
+    let facts = DefaultReader
+        .facts(&package, logoxide::summary::HashRule::CURRENT)
+        .unwrap();
+    assert_eq!((facts.verses.len(), facts.entries.len()), (2, 0));
+    assert_eq!(facts.titles["gbf/JHN.gbf"], "John");
+}

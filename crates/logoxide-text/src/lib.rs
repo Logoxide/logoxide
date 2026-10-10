@@ -1,7 +1,9 @@
 /*!
 logoxide-text: what's in a Bible or a book. It knows no packages, only files: a format's files
-read as verses ([`source`]: USX, USFM, OSIS, ThML into logoxide-markup's tree), each verse's
-words hashed by a rule that never changes ([`hash`]), a file's own title ([`titles`]), a
+read as verses ([`source`]: USX, USFM, OSIS, ThML, and GBF into logoxide-markup's tree; a
+commentary's notes by passage), a dictionary's entries by key and cross-references by verse
+([`source`] too, with [`keys`] for how keys are matched), each verse's or entry's words hashed by
+a rule that never changes ([`hash`]), a file's own title ([`titles`]), a
 versification map's lines and the mapping of references through them ([`versification`]), a
 passage or a whole book as plain text with where each verse is ([`passage`]), a recording's verse
 timings ([`timings`]), an EPUB's metadata ([`metadata`]) and the passages it cites
@@ -17,6 +19,7 @@ pub mod citations;
 pub mod error;
 pub mod files;
 pub mod hash;
+pub mod keys;
 pub mod metadata;
 pub mod passage;
 pub mod script;
@@ -32,7 +35,7 @@ pub use error::{Result, TextError};
 pub use files::{Files, MemoryFiles};
 pub use logoxide_markup as markup;
 pub use skipped::{PERIPHERALS, SkipReason, Skipped, is_peripheral};
-pub use source::{Book, Source, TextFormat};
+pub use source::{Book, CrossReference, Entry, Note, Source, TextFormat};
 pub use topos_bible;
 
 use topos_bible::data::BibleData;

@@ -126,7 +126,7 @@ Fields are separated by one tab; a line's trailing whitespace is dropped. A line
 `#` is a comment, and an empty line is passed over. One line per pair: the same `from` and `to`
 twice is an error naming the line. A line with fewer than two fields, a field that isn't an OSIS
 reference of a book logoxide knows, or a weight that isn't a number, is an error naming the file
-and line. Book names are OSIS's (`Gen`, `1Sam`, `John`), matched ignoring case.
+and line. Book names are OSIS's (`Gen`, `1Sam`, `John`), as OSIS spells them.
 
 A verse's **cross-references** are the lines whose `from` covers it (`John.3.16-John.3.18`
 covers `John.3.17`), in file and line order.
