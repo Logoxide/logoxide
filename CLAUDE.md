@@ -146,7 +146,8 @@ before changing the design.
     entries have `registry`, `archive`, `mirrors` (the release's, tried in turn by
     `Fetcher::download_any`, which passes over bytes that don't hash as listed), `sha256`, and
     its library folder is `<version>+a<hash>`. A lock entry is kept
-    while the manifest still allows it (unless updating); fetched text is checked against the
+    while the manifest still allows it (unless updating), found first among what the same asker
+    locked (`Resolver::kept`: the manifest's top-level `dependencies`, or its parent's); fetched text is checked against the
     locked checksum; a tag's version must match its `logoxide.toml`. A package from another
     machine (git or a registry) can't name a path, a local or `file://` repository, or a local
     registry; a local one can (`folder_tag_version` reads a `folder`'s tags)

@@ -397,6 +397,60 @@ fn collections_bring_in_their_packages() {
     assert_eq!(translations.get("LIB"), None);
 }
 
+/// A collection (released `v1.0.0`) of one package, with its requirement
+fn collection(dir: &Path, package: &str, url: &Path, version: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(
+        dir.join("logoxide.toml"),
+        format!(
+            "[package]\nid = \"library\"\nname = \"A Library\"\nabbreviation = \"LIB\"\nversion = \"1.0.0\"\nkind = \"collection\"\nlanguage = \"en\"\n\n[dependencies]\n{package} = {{ git = \"{}\", version = \"{version}\" }}\n",
+            url.display()
+        ),
+    )
+    .unwrap();
+    git(dir, &["init", "-q", "-b", "main"]);
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-q", "-m", "1.0.0"]);
+    git(dir, &["tag", "v1.0.0"]);
+}
+
+#[test]
+fn each_asker_keeps_its_own_version() {
+    let world = World::new("askers");
+    let bible = world.path("repos/tb");
+    std::fs::create_dir_all(&bible).unwrap();
+    release(&bible, "tb", "1.0.0", "one", "");
+    release(&bible, "tb", "2.0.0", "two", "");
+    let shelf = world.path("repos/library");
+    collection(&shelf, "tb", &bible, "1");
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("library", &git_dep(&shelf, None)).unwrap();
+    project.add("tb", &git_dep(&bible, Some(">=1"))).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap().clone();
+    assert_eq!(locked(&project), ["library 1.0.0", "tb 1.0.0", "tb 2.0.0"]);
+    assert_eq!(lock.get("tb").unwrap().version.to_string(), "2.0.0");
+
+    // Installing again: the manifest's tb stays 2.0.0, though 1.0.0 (the collection's) also
+    // matches `>=1` and comes first in the lock
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(project.lock().unwrap(), &lock);
+    // And on another device, from the same lock file
+    project.save_manifest().unwrap();
+    let mut other = Project::open(world.path("vault")).unwrap();
+    other
+        .install(&world.library("other"), &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(other.lock().unwrap(), &lock);
+}
+
 #[test]
 fn annotations_stay_and_edits_are_repaired() {
     let world = World::new("annotations");

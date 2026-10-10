@@ -87,6 +87,9 @@ struct Want {
     from_remote: bool,
     /// The index (in the lock file) of the package that named it, if not the manifest
     parent: Option<usize>,
+    /// That package as locked (its id, rename, and name), to find what the previous lock file
+    /// gave it
+    parent_locked: Option<(String, Option<String>, String)>,
 }
 
 /// A tag's version: `v1.2.0` or `1.2.0`
@@ -158,6 +161,7 @@ impl Resolver<'_> {
                 from_git: false,
                 from_remote: false,
                 parent: None,
+                parent_locked: None,
             });
         }
         while let Some(want) = todo.pop_front() {
@@ -228,6 +232,7 @@ impl Resolver<'_> {
                     from_git: locked.git.is_some() || locked.registry.is_some(),
                     from_remote: want.from_remote || is_remote(&locked),
                     parent: Some(index),
+                    parent_locked: Some((locked.id.clone(), locked.rename.clone(), locked.name())),
                 });
             }
         }
@@ -365,31 +370,26 @@ impl Resolver<'_> {
         })?;
         let url = &crate::git::expand_url(url);
         // What the previous lock file has, if the manifest still allows it and it isn't updating
-        let kept = self
-            .previous
-            .filter(|_| !self.update.allows(&want.name))
-            .and_then(|previous| {
-                previous.packages.iter().find(|p| {
-                    // Still what the manifest asks for: the same tag, branch, or revision, or (for a
-                    // version requirement, whose tag was chosen) a version it allows
-                    let same = match (&d.tag, &d.branch, &d.rev) {
-                        (Some(tag), _, _) => p.tag.as_ref() == Some(tag),
-                        (_, Some(branch), _) => p.branch.as_ref() == Some(branch),
-                        (_, _, Some(rev)) => p.rev.as_ref() == Some(rev),
-                        _ => {
-                            p.branch.is_none()
-                                && p.rev.is_none()
-                                && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
-                        }
-                    };
-                    p.id == d.package_id(&want.name)
-                        && p.git.as_deref() == Some(url.as_str())
-                        && p.folder.as_deref().map(|f| f.trim_matches('/'))
-                            == d.folder.as_deref().map(|f| f.trim_matches('/'))
-                        && p.commit.is_some()
-                        && same
-                })
-            });
+        let kept = self.kept(want, |p| {
+            // Still what the manifest asks for: the same tag, branch, or revision, or (for a
+            // version requirement, whose tag was chosen) a version it allows
+            let same = match (&d.tag, &d.branch, &d.rev) {
+                (Some(tag), _, _) => p.tag.as_ref() == Some(tag),
+                (_, Some(branch), _) => p.branch.as_ref() == Some(branch),
+                (_, _, Some(rev)) => p.rev.as_ref() == Some(rev),
+                _ => {
+                    p.branch.is_none()
+                        && p.rev.is_none()
+                        && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+                }
+            };
+            p.id == d.package_id(&want.name)
+                && p.git.as_deref() == Some(url.as_str())
+                && p.folder.as_deref().map(|f| f.trim_matches('/'))
+                    == d.folder.as_deref().map(|f| f.trim_matches('/'))
+                && p.commit.is_some()
+                && same
+        });
         let (reference, tag) = match kept {
             Some(kept) => (
                 GitRef::Rev(kept.commit.clone().unwrap_or_default()),
@@ -404,6 +404,26 @@ impl Resolver<'_> {
         locked.features = features;
         locked.default_features = d.default_features;
         Ok(locked)
+    }
+
+    /**
+    What the previous lock file has for a dependency, if it's still what's asked for (`fits`)
+    and isn't being updated: first what the same asker locked (the manifest's top-level
+    `dependencies`, or the package that named it), then any entry. A lock can hold one package
+    at two versions (a collection's `kjv` 1, the manifest's 2); each keeps its own
+    */
+    fn kept(&self, want: &Want, fits: impl Fn(&LockedPackage) -> bool) -> Option<&LockedPackage> {
+        let previous = self.previous.filter(|_| !self.update.allows(&want.name))?;
+        let asker: Option<&Vec<String>> = match &want.parent_locked {
+            None => Some(&previous.dependencies),
+            Some((id, rename, name)) => (previous.named(name))
+                .or_else(|| (previous.packages.iter()).find(|p| p.id == *id && p.rename == *rename))
+                .map(|p| &p.dependencies),
+        };
+        let theirs = (asker.into_iter().flatten())
+            .filter_map(|name| previous.named(name))
+            .find(|p| fits(p));
+        theirs.or_else(|| previous.packages.iter().find(|p| fits(p)))
     }
 
     /// The commit a dependency asks for, and the tag it's from (for version requirements)
@@ -572,18 +592,13 @@ impl Resolver<'_> {
         let d = &want.dependency;
         let id = d.package_id(&want.name);
         crate::manifest::check_id("package", id)?;
-        let kept = self
-            .previous
-            .filter(|_| !self.update.allows(&want.name))
-            .and_then(|previous| {
-                previous.packages.iter().find(|p| {
-                    p.id == id
-                        && p.registry.as_deref() == Some(registry)
-                        && p.archive.is_some()
-                        && p.sha256.is_some()
-                        && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
-                })
-            });
+        let kept = self.kept(want, |p| {
+            p.id == id
+                && p.registry.as_deref() == Some(registry)
+                && p.archive.is_some()
+                && p.sha256.is_some()
+                && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+        });
         let mut locked = match kept {
             Some(kept) => kept.clone(),
             None => {

@@ -88,6 +88,10 @@ never share a folder.
   matching unyanked release for a registry ([catalog.md](catalog.md)). Updating by name takes
   only names the manifest has or packages the lock holds (as a package brings them in); any other
   is refused, rather than updating nothing.
+- A lock can hold one package at two versions (a collection asks for `kjv` 1, the manifest for
+  `kjv` 2). The entry kept for a dependency is first the one the same asker locked (the
+  top-level `dependencies` for the manifest's, the naming package's `dependencies` for its own),
+  then any entry that still fits.
 - What is fetched is checked against the lock: an archive must hash to `sha256`, and the
   package's files to `checksum`. An installed copy whose checksum no longer matches (its files
   were edited) is an error unless the user asks to repair it, which puts back its declared files
