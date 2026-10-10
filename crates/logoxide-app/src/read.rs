@@ -91,7 +91,7 @@ fn bibles<'a>(
 ) -> Result<Vec<Bible<'a>>> {
     let found = project.bibles(library)?;
     if found.is_empty() {
-        return Err(LogoxideError::NotFound(String::from(
+        return Err(LogoxideError::Resolve(String::from(
             "this project has no Bibles (lx add, lx import)",
         )));
     }
@@ -146,7 +146,7 @@ fn parse(
 ) -> Result<(Passage, Option<String>)> {
     let translations = project.translations(library, reader)?;
     let found = (bible_data().parse_with_translation(reference, &translations))
-        .ok_or_else(|| LogoxideError::Manifest(format!("`{reference}` isn't a Bible reference")))?;
+        .ok_or_else(|| LogoxideError::Resolve(format!("`{reference}` isn't a Bible reference")))?;
     Ok((found.passage, found.translation.map(|t| t.name)))
 }
 
@@ -202,7 +202,7 @@ pub fn compare(
     let mut chosen: Vec<&Bible> = vec![];
     for name in names {
         let bible = (all.iter().find(|b| b.is(name))).ok_or_else(|| {
-            LogoxideError::NotFound(format!("no Bible `{name}` in this project (lx list)"))
+            LogoxideError::Resolve(format!("no Bible `{name}` in this project (lx list)"))
         })?;
         chosen.push(bible);
     }

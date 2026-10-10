@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use logoxide::{FsStorage, Project, manifest::MANIFEST};
 
-use crate::{cmd::package::timings_report, net};
+use crate::{app, cmd::package::timings_report};
 
 pub(crate) fn media_add(
     file: &std::path::Path,
@@ -102,7 +102,7 @@ pub(crate) fn media_check(
                 false => format!("{} (mirror {url})", file.path),
             };
             // Hashed as it downloads: media can be larger than memory should hold
-            match net::verify_media(url, file) {
+            match logoxide_app::media::verify(app().http(), url, file) {
                 Ok(()) => outln!("ok: {shown}"),
                 Err(error) => {
                     failed += 1;

@@ -24,6 +24,7 @@ use logoxide::{
 use logoxide_import::ImportUpdate;
 
 use crate::{
+    Warn,
     catalogs::{load_catalog, load_catalogs, shadowed},
     http::Http,
 };
@@ -42,13 +43,6 @@ pub fn check_source(source: &str) -> Result<()> {
     )))
 }
 
-/// The catalog entry an import name finds, and what to warn of
-#[derive(Debug)]
-pub struct Found {
-    pub entry: CatalogEntry,
-    pub warnings: Vec<String>,
-}
-
 /**
 The entry `source` (`ebible:eng-kjv2006`, `sword:crosswire/KJV`) names in the project's catalogs,
 the first that lists it; a SWORD repository CrossWire lists (`sword:crosswire-beta/…`) is read
@@ -60,17 +54,18 @@ pub fn find_entry(
     config: &Config,
     project: &Project,
     source: &str,
-) -> Result<Found> {
+    warn: Warn,
+) -> Result<CatalogEntry> {
     check_source(source)?;
-    let loaded = load_catalogs(http, &config.catalogs(project.manifest()), project.dir())?;
-    let (mut catalogs, mut warnings) = (loaded.catalogs, loaded.warnings);
+    let locations = config.catalogs(project.manifest());
+    let mut catalogs = load_catalogs(http, &locations, project.dir(), warn)?;
     if !catalogs.iter().any(|c| c.find_import(source).is_some())
         && let Some(url) = (source.strip_prefix("sword:"))
             .and_then(|rest| rest.split_once('/'))
             .and_then(|(repository, _)| logoxide_import::sword::catalog_url(repository))
     {
         let catalog = load_catalog(http, &url, project.dir())?;
-        warnings.extend(catalog.warnings.iter().cloned());
+        catalog.warnings.iter().cloned().for_each(&mut *warn);
         catalogs.push(catalog);
     }
     let (used, entry) = (catalogs.iter())
@@ -80,11 +75,10 @@ pub fn find_entry(
                 "{source}: in none of this project's catalogs (lx catalog list)"
             ))
         })?;
-    warnings.extend(shadowed(&catalogs, &entry.id, &used.name));
-    Ok(Found {
-        entry: entry.clone(),
-        warnings,
-    })
+    if let Some(warning) = shadowed(&catalogs, &entry.id, &used.name) {
+        warn(warning);
+    }
+    Ok(entry.clone())
 }
 
 /// An import made and added
@@ -98,8 +92,6 @@ pub struct Imported {
     /// What the download had that isn't read as a Bible's books (front matter, a glossary,
     /// books logoxide doesn't know)
     pub skipped: Vec<Skipped>,
-    /// What to warn of (finding it in the catalogs: [`Found::warnings`])
-    pub warnings: Vec<String>,
 }
 
 /// Downloads what a catalog entry's import needs (each file from the first of its URLs that has
@@ -191,17 +183,7 @@ pub fn run(
         name: entry.name.clone(),
         dir,
         skipped,
-        warnings: vec![],
     })
-}
-
-/// What updating each of a project's imports would do ([`plan_updates`])
-#[derive(Debug, Default)]
-pub struct UpdatePlans {
-    pub plans: Vec<UpdatePlan>,
-    /// What to warn of: what the catalogs passed over, and a SWORD repository's catalog that
-    /// couldn't be read (`<dependency>: <error>`)
-    pub warnings: Vec<String>,
 }
 
 /// One import, and what updating it would do
@@ -247,8 +229,9 @@ Each of the project's imports (path packages whose `upstream` a catalog entry's 
 or only the one `name` names (by dependency or import name), made again from its publisher's
 download and compared with the one the project has, by `reader`. An entry whose versions follow
 its updates (eBible.org's dates, SWORD's `Version`) is only downloaded when the catalog lists a
-newer version. One that fails is [`Outcome::Failed`], and the rest go on. Nothing is changed:
-[`apply_update`] replaces one
+newer version. One that fails is [`Outcome::Failed`], and the rest go on. Warned of: what the
+catalogs passed over, and a SWORD repository's catalog that couldn't be read (`<dependency>:
+<error>`). Nothing is changed: [`apply_update`] replaces one
 */
 pub fn plan_updates(
     http: &dyn Http,
@@ -256,9 +239,10 @@ pub fn plan_updates(
     project: &Project,
     reader: &dyn TextReader,
     name: Option<&str>,
-) -> Result<UpdatePlans> {
-    let loaded = load_catalogs(http, &config.catalogs(project.manifest()), project.dir())?;
-    let (mut catalogs, mut warnings) = (loaded.catalogs, loaded.warnings);
+    warn: Warn,
+) -> Result<Vec<UpdatePlan>> {
+    let locations = config.catalogs(project.manifest());
+    let mut catalogs = load_catalogs(http, &locations, project.dir(), warn)?;
     let paths: Vec<(String, String)> = (project.manifest().dependencies.iter())
         .filter_map(|(dep, d)| match d {
             Dependency::Detailed(d) => Some((dep.clone(), d.path.clone()?)),
@@ -285,10 +269,10 @@ pub fn plan_updates(
         {
             match load_catalog(http, &format!("{root}/mods.d.tar.gz"), project.dir()) {
                 Ok(catalog) => {
-                    warnings.extend(catalog.warnings.iter().cloned());
+                    catalog.warnings.iter().cloned().for_each(&mut *warn);
                     catalogs.push(catalog);
                 }
-                Err(e) => warnings.push(format!("{dep}: {e}")),
+                Err(e) => warn(format!("{dep}: {e}")),
             }
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
@@ -330,7 +314,7 @@ pub fn plan_updates(
             "{name}: no import of that name in this project"
         )));
     }
-    Ok(UpdatePlans { plans, warnings })
+    Ok(plans)
 }
 
 /// An import made again and compared with `current`: `None` when its declared files match

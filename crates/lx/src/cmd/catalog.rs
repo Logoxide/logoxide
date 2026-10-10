@@ -5,11 +5,9 @@ use std::path::{Path, PathBuf};
 use logoxide::{MemoryStorage, Storage, manifest::MANIFEST};
 
 use crate::{
-    book_names,
+    app, book_names,
     cli::{Cli, Format},
-    config,
-    net::get,
-    print_json,
+    config, print_json, warn,
 };
 
 /// Each catalog that can be read, in order; one that can't is a warning, unless none can be
@@ -17,32 +15,7 @@ pub(crate) fn load_catalogs(
     locations: &[String],
     base: &Path,
 ) -> logoxide::Result<Vec<logoxide::catalog::Catalog>> {
-    let mut catalogs = vec![];
-    for location in locations {
-        match load_catalog(location, base) {
-            Ok(catalog) => catalogs.push(catalog),
-            Err(e) if locations.len() > 1 => errln!("warning: {e}"),
-            Err(e) => return Err(e),
-        }
-    }
-    if catalogs.is_empty() {
-        return Err(logoxide::LogoxideError::Catalog(String::from(
-            "no catalog could be read",
-        )));
-    }
-    Ok(catalogs)
-}
-
-/// Warns when more than one of `catalogs` lists `id` ([`logoxide::catalog::Catalog::shadowed`]),
-/// naming `used`, the one whose entry is taken
-pub(crate) fn warn_shadowed(catalogs: &[logoxide::catalog::Catalog], id: &str, used: &str) {
-    let shadowed = logoxide::catalog::Catalog::shadowed(catalogs);
-    if let Some((_, names)) = shadowed.iter().find(|(shadowed, _)| shadowed == id) {
-        errln!(
-            "warning: `{id}` is in {}; {used}'s is used",
-            names.join(", ")
-        );
-    }
+    logoxide_app::catalogs::load_catalogs(app().http(), locations, base, &mut warn())
 }
 
 /**
@@ -56,21 +29,12 @@ pub(crate) fn warn_other_registries(
     location: &str,
     id: &str,
 ) {
-    let registries = config().registries(project.manifest());
-    let mut used = registry.clone();
-    if !registries.contains_key(&used.name) {
-        used.name = location.to_string();
+    let (http, config) = (app().http(), config());
+    let other =
+        logoxide_app::catalogs::other_registries(http, config, project, registry, location, id);
+    if let Some(warning) = other {
+        errln!("warning: {warning}");
     }
-    let name = used.name.clone();
-    let mut catalogs = vec![used];
-    for (other, at) in registries {
-        if other != name
-            && let Ok(other) = load_registry(&other, &at, project.dir(), false)
-        {
-            catalogs.push(other);
-        }
-    }
-    warn_shadowed(&catalogs, id, &name);
 }
 
 /// A catalog, warning of the entries it passed over
@@ -78,24 +42,11 @@ pub(crate) fn load_catalog(
     location: &str,
     base: &Path,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
-    let catalog = read_catalog(location, base)?;
+    let catalog = logoxide_app::catalogs::load_catalog(app().http(), location, base)?;
     for warning in &catalog.warnings {
         errln!("warning: {warning}");
     }
     Ok(catalog)
-}
-
-/// A catalog, without its warnings printed
-fn read_catalog(location: &str, base: &Path) -> logoxide::Result<logoxide::catalog::Catalog> {
-    // A plain HTTP catalog is warned of by `get`, which sees where it was redirected
-    let bytes = if location.starts_with("https://") || location.starts_with("http://") {
-        get(location)?
-    } else {
-        let path = base.join(location);
-        std::fs::read(&path)
-            .map_err(|e| logoxide::LogoxideError::io(&path.display().to_string(), e))?
-    };
-    logoxide_import::catalog::parse(location, &bytes)
 }
 
 /**
@@ -103,27 +54,7 @@ A package's git URL from what's typed: a name through one of the project's regis
 (`dorean-local:books/romans`), `github:owner/repo`, or a URL
 */
 pub(crate) fn registry_url(project: &logoxide::Project, text: &str) -> logoxide::Result<String> {
-    let registries = config().registries(project.manifest());
-    let Some((registry, name)) = logoxide::catalog::split_registry_name(text, &registries) else {
-        return Ok(logoxide::git::expand_url(text));
-    };
-    let catalog = load_registry(registry, &registries[registry], project.dir(), true)?;
-    let entry = catalog.find(name)?.ok_or_else(|| {
-        logoxide::LogoxideError::Catalog(format!(
-            "{registry} has no package `{name}` (lx search --registry {registry})"
-        ))
-    })?;
-    warn_other_registries(project, &catalog, &registries[registry], &entry.id);
-    match &entry.source {
-        logoxide::catalog::CatalogSource::Git { url } => Ok(url.clone()),
-        logoxide::catalog::CatalogSource::Registry { .. } => Err(logoxide::LogoxideError::Catalog(
-            format!("{text} is published as archives, not in a git repository"),
-        )),
-        other => Err(logoxide::LogoxideError::Catalog(format!(
-            "{text} is imported, not added: lx import {}",
-            other.import_name().unwrap_or_default()
-        ))),
-    }
+    logoxide_app::catalogs::registry_url(app().http(), config(), project, text, &mut warn())
 }
 
 /// [`registry_url`] in the project `cli` names (`lx show --git dorean-local:kjv`)
@@ -134,17 +65,10 @@ pub(crate) fn package_url(cli: &Cli, text: &str) -> logoxide::Result<String> {
     registry_url(&cli.project(&cli.library())?, text)
 }
 
-/// A registry's location as a path: `~/` is the home folder, a relative one the project's
-fn registry_path(location: &str, base: &Path) -> PathBuf {
-    match (location.strip_prefix("~/"), std::env::var_os("HOME")) {
-        (Some(rest), Some(home)) => PathBuf::from(home).join(rest),
-        _ => base.join(location),
-    }
-}
-
 /**
 A registry's packages: a folder's repositories (every git repository with a `logoxide.toml`, at any
-depth, named by its path there), else a catalog at that URL or path
+depth, named by its path there), else a catalog at that URL or path; what it passed over is
+warned of when `warn`
 */
 pub(crate) fn load_registry(
     name: &str,
@@ -152,25 +76,9 @@ pub(crate) fn load_registry(
     base: &Path,
     warn: bool,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
-    let is_url = location.contains("://");
-    let folder = registry_path(location, base);
-    if is_url || !folder.is_dir() {
-        let mut catalog = match is_url {
-            true => read_catalog(location, base)?,
-            // By its whole path, so a dependency names it from anywhere
-            false => read_catalog(&canonical(&folder)?.display().to_string(), Path::new(""))?,
-        };
-        if warn {
-            for warning in &catalog.warnings {
-                errln!("warning: {warning}");
-            }
-        }
-        catalog.name = name.to_string();
-        return Ok(catalog);
-    }
-    let (catalog, warnings) = logoxide::registry_build::folder_catalog(name, &canonical(&folder)?)?;
+    let catalog = logoxide_app::catalogs::load_registry(app().http(), name, location, base)?;
     if warn {
-        for warning in warnings {
+        for warning in &catalog.warnings {
             errln!("warning: {warning}");
         }
     }
@@ -537,9 +445,7 @@ pub(crate) fn search(
 }
 
 pub(crate) fn catalog_entry(cli: &Cli, url: &str) -> logoxide::Result<()> {
-    use logoxide::git::Fetcher;
-    let library = cli.library();
-    let fetcher = cli.fetcher(&library);
+    let fetcher = cli.fetcher();
     let tags = fetcher.tags(url)?;
     let newest = (tags.into_iter())
         .filter_map(|(t, _)| Some((logoxide::resolve::tag_version(&t)?, t)))

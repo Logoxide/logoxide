@@ -1,8 +1,8 @@
 /*!
 Catalogs and registries, read from where the project and logoxide's config say: a URL (through an
 [`Http`]), a file, or a registry's folder of repositories. What a catalog passed over, and what
-couldn't be read when others could, come back as warnings in the words lx prints after
-`warning: `; nothing here prints
+couldn't be read when others could, are given to a [`Warn`] as they're found, in the words lx
+prints after `warning: `; nothing here prints
 */
 
 use std::path::{Path, PathBuf};
@@ -13,35 +13,35 @@ use logoxide::{
     config::Config,
 };
 
-use crate::http::Http;
+use crate::{Warn, http::Http};
 
-/// Catalogs read, and what to warn of: each one's passed-over entries, and each that couldn't be
-/// read when another could
-#[derive(Debug, Default)]
-pub struct Loaded {
-    pub catalogs: Vec<Catalog>,
-    pub warnings: Vec<String>,
-}
-
-/// Each catalog that can be read, in order; one that can't is a warning, unless none can be
-pub fn load_catalogs(http: &dyn Http, locations: &[String], base: &Path) -> Result<Loaded> {
-    let mut loaded = Loaded::default();
+/**
+Each catalog that can be read, in order, each one's passed-over entries warned of; one that
+can't be read is a warning, unless none can be
+*/
+pub fn load_catalogs(
+    http: &dyn Http,
+    locations: &[String],
+    base: &Path,
+    warn: Warn,
+) -> Result<Vec<Catalog>> {
+    let mut catalogs = vec![];
     for location in locations {
         match load_catalog(http, location, base) {
             Ok(catalog) => {
-                loaded.warnings.extend(catalog.warnings.iter().cloned());
-                loaded.catalogs.push(catalog);
+                catalog.warnings.iter().cloned().for_each(&mut *warn);
+                catalogs.push(catalog);
             }
-            Err(e) if locations.len() > 1 => loaded.warnings.push(e.to_string()),
+            Err(e) if locations.len() > 1 => warn(e.to_string()),
             Err(e) => return Err(e),
         }
     }
-    if loaded.catalogs.is_empty() {
+    if catalogs.is_empty() {
         return Err(LogoxideError::Catalog(String::from(
             "no catalog could be read",
         )));
     }
-    Ok(loaded)
+    Ok(catalogs)
 }
 
 /**
@@ -100,50 +100,41 @@ pub fn other_registries(
     shadowed(&catalogs, id, &name)
 }
 
-/// A package's git URL, and what to warn of on the way
-#[derive(Debug)]
-pub struct Resolved {
-    pub url: String,
-    pub warnings: Vec<String>,
-}
-
 /**
 A package's git URL from what's typed: a name through one of the project's registries
-(`dorean-local:books/romans`), `github:owner/repo`, or a URL
+(`dorean-local:books/romans`), `github:owner/repo`, or a URL. Warned of: what the registry's
+catalog passed over, and another registry listing the same id
 */
 pub fn registry_url(
     http: &dyn Http,
     config: &Config,
     project: &Project,
     text: &str,
-) -> Result<Resolved> {
+    warn: Warn,
+) -> Result<String> {
     let registries = config.registries(project.manifest());
     let Some((registry, name)) = logoxide::catalog::split_registry_name(text, &registries) else {
-        return Ok(Resolved {
-            url: logoxide::git::expand_url(text),
-            warnings: vec![],
-        });
+        return Ok(logoxide::git::expand_url(text));
     };
     let catalog = load_registry(http, registry, &registries[registry], project.dir())?;
-    let mut warnings = catalog.warnings.clone();
+    catalog.warnings.iter().cloned().for_each(&mut *warn);
     let entry = catalog.find(name)?.ok_or_else(|| {
         LogoxideError::Catalog(format!(
             "{registry} has no package `{name}` (lx search --registry {registry})"
         ))
     })?;
-    warnings.extend(other_registries(
+    if let Some(warning) = other_registries(
         http,
         config,
         project,
         &catalog,
         &registries[registry],
         &entry.id,
-    ));
+    ) {
+        warn(warning);
+    }
     match &entry.source {
-        CatalogSource::Git { url } => Ok(Resolved {
-            url: url.clone(),
-            warnings,
-        }),
+        CatalogSource::Git { url } => Ok(url.clone()),
         CatalogSource::Registry { .. } => Err(LogoxideError::Catalog(format!(
             "{text} is published as archives, not in a git repository"
         ))),

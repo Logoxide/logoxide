@@ -30,7 +30,6 @@ macro_rules! errln {
 mod cli;
 mod cmd;
 mod complete;
-mod net;
 mod publish;
 
 use cli::{CatalogCommand, Cli, Command, Format, MediaCommand, RegistryCommand};
@@ -44,6 +43,7 @@ use cmd::{
     media::{media_add, media_check},
     package::{Lookup, check, diff, lookup, new, release, show, show_remote, verify},
     project::{add, clean, info, install, is_enabled, list, remove, repair, set_enabled},
+    read::{compare, read},
 };
 
 /// Prints a value as JSON
@@ -59,6 +59,48 @@ static CONFIG: std::sync::OnceLock<logoxide::config::Config> = std::sync::OnceLo
 
 fn config() -> &'static logoxide::config::Config {
     CONFIG.get_or_init(Default::default)
+}
+
+/// What lx works with (logoxide-app's facade: the config, library, downloads, fetcher, and
+/// reader), made once the command line is read
+static APP: std::sync::OnceLock<logoxide_app::Logoxide> = std::sync::OnceLock::new();
+
+/// Whether downloads go unsaid (JSON output)
+static QUIET: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn app() -> &'static logoxide_app::Logoxide {
+    APP.get_or_init(|| {
+        logoxide_app::Logoxide::default_native(
+            config().clone(),
+            config().library(None, None),
+            &user_agent(),
+            notes(),
+        )
+    })
+}
+
+/// What lx's downloads say they are
+fn user_agent() -> String {
+    format!(
+        "lx/{} (+https://github.com/Logoxide/logoxide)",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+/// Each download said on stderr (unless lx prints JSON), and each warning
+fn notes() -> logoxide_app::Notes {
+    std::sync::Arc::new(|note: &logoxide_app::Note| {
+        if note.is_warning() {
+            errln!("warning: {note}");
+        } else if !QUIET.load(std::sync::atomic::Ordering::Relaxed) {
+            errln!("{note}");
+        }
+    })
+}
+
+/// Prints each warning as it's found
+fn warn() -> impl FnMut(String) {
+    |warning: String| errln!("warning: {warning}")
 }
 
 fn main() -> ExitCode {
@@ -86,7 +128,16 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     let json = cli.format == Format::Json;
-    net::set_quiet(json || matches!(cli.command, Command::Search { json: true, .. }));
+    QUIET.store(
+        json || matches!(cli.command, Command::Search { json: true, .. }),
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    let _ = APP.set(logoxide_app::Logoxide::default_native(
+        config().clone(),
+        cli.library(),
+        &user_agent(),
+        notes(),
+    ));
     let format = cli.format.name();
     let result = match &cli.command {
         Command::Show {
@@ -229,7 +280,7 @@ fn main() -> ExitCode {
         }) => publish::init(&publish::Host::parse(host), name.as_deref(), *private),
         Command::Publish { path, to, all, yes } => {
             let library = cli.library();
-            let (host, git) = (publish::Host::parse(to), cli.fetcher(&library));
+            let (host, git) = (publish::Host::parse(to), cli.git(&library));
             match all {
                 true => publish::publish_all(path, &host, &git, *yes),
                 false => publish::publish(path, &host, &git, *yes),
@@ -273,6 +324,12 @@ fn main() -> ExitCode {
             to,
             with,
         } => map(&cli, reference, from, to, with),
+        Command::Read { reference, text } => read(&cli, reference, text.style(), json),
+        Command::Compare {
+            reference,
+            bibles,
+            text,
+        } => compare(&cli, reference, bibles, text.style(), json),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -313,13 +370,15 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
                 | Command::Search { .. }
                 | Command::Catalog(CatalogCommand::List)
                 | Command::Import { update: true, .. }
+                | Command::Read { .. }
+                | Command::Compare { .. }
         );
     match cli.format {
         Format::Text => Ok(()),
         Format::Json if json => Ok(()),
         Format::Tsv if references => Ok(()),
         Format::Json => Err(logoxide::LogoxideError::Manifest(String::from(
-            "--format json: only for list, info, check, diff, verify, search, catalog list, import --update, and show --references, --notes, --entry, --keys, or --xref",
+            "--format json: only for list, info, check, diff, verify, search, catalog list, import --update, read, compare, and show --references, --notes, --entry, --keys, or --xref",
         ))),
         Format::Tsv => Err(logoxide::LogoxideError::Manifest(String::from(
             "--format tsv: only for show --references",

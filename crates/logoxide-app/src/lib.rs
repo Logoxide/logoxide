@@ -6,7 +6,8 @@ catalogs and registries read over HTTP ([`catalogs`]), packages fetched with or 
 
 It sits above the package manager (`logoxide`) and the importers (`logoxide-import`), and prints
 nothing: downloads and plain-HTTP warnings are said through a [`Notes`] callback, and what to warn
-of comes back with each result, in the words lx prints after `warning: `. Downloads go through an
+of (a catalog's passed-over entries, an id two catalogs list) to a [`Warn`] as it's found, in the
+words lx prints after `warning: `. Downloads go through an
 [`Http`](http::Http): [`http::UreqHttp`] with the `ureq` feature (on by default), else the host's
 own, so WebAssembly builds without a network stack
 */
@@ -78,6 +79,9 @@ impl std::fmt::Display for Note {
 
 /// Where [`Note`]s go
 pub type Notes = Arc<dyn Fn(&Note) + Send + Sync>;
+
+/// Where warnings go as they're found, each in words (without `warning: `)
+pub type Warn<'a> = &'a mut dyn FnMut(String);
 
 /// Notes that go nowhere
 pub fn quiet() -> Notes {
@@ -168,9 +172,13 @@ impl Logoxide {
     }
 
     /// The project's catalogs (its own, then the config's, then the defaults), in order
-    pub fn catalogs(&self, project: &Project) -> Result<catalogs::Loaded> {
+    pub fn catalogs(
+        &self,
+        project: &Project,
+        warn: Warn,
+    ) -> Result<Vec<logoxide::catalog::Catalog>> {
         let locations = self.config.catalogs(project.manifest());
-        catalogs::load_catalogs(self.http(), &locations, project.dir())
+        catalogs::load_catalogs(self.http(), &locations, project.dir(), warn)
     }
 
     /// A registry of the project's (or the config's) by name
@@ -199,17 +207,14 @@ impl Logoxide {
 
     /// An import (`ebible:eng-kjv2006`) found in the project's catalogs, made in its
     /// `imports/<id>/`, added, and installed ([`import::find_entry`], [`import::run`])
-    pub fn import(&self, project: &mut Project, source: &str) -> Result<import::Imported> {
-        let found = import::find_entry(self.http(), &self.config, project, source)?;
-        let mut imported = import::run(
-            project,
-            &self.library,
-            &found.entry,
-            self.http(),
-            self.fetcher(),
-        )?;
-        imported.warnings = found.warnings;
-        Ok(imported)
+    pub fn import(
+        &self,
+        project: &mut Project,
+        source: &str,
+        warn: Warn,
+    ) -> Result<import::Imported> {
+        let entry = import::find_entry(self.http(), &self.config, project, source, warn)?;
+        import::run(project, &self.library, &entry, self.http(), self.fetcher())
     }
 
     /// What updating the project's imports (or the one `name` names) would do
@@ -218,8 +223,10 @@ impl Logoxide {
         &self,
         project: &Project,
         name: Option<&str>,
-    ) -> Result<import::UpdatePlans> {
-        import::plan_updates(self.http(), &self.config, project, self.reader(), name)
+        warn: Warn,
+    ) -> Result<Vec<import::UpdatePlan>> {
+        let reader = self.reader();
+        import::plan_updates(self.http(), &self.config, project, reader, name, warn)
     }
 
     /// The library cleaned of what none of `projects` locks and no root keeps

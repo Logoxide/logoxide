@@ -9,7 +9,10 @@ use logoxide::{
     resolve::{Frozen, Update},
 };
 
+use logoxide_app::clean::Cleaning;
+
 use crate::{
+    app,
     cli::{AddArgs, Cli, Format},
     cmd::catalog::{load_registry, registry_url, warn_other_registries},
     config, print_json,
@@ -72,7 +75,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             }
         }
         (None, Some(url), _) => {
-            let fetcher = cli.fetcher(&library);
+            let fetcher = cli.fetcher();
             let reference = match (&args.tag, &args.branch, &args.rev) {
                 (Some(t), _, _) => logoxide::git::GitRef::Tag(t.clone()),
                 (_, Some(b), _) => logoxide::git::GitRef::Branch(b.clone()),
@@ -86,7 +89,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
                 None => String::from(MANIFEST),
             };
             logoxide::git::Fetcher::fetch_files(
-                &fetcher,
+                fetcher,
                 url,
                 &reference,
                 &[manifest_path.as_str()],
@@ -102,7 +105,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
                 && dependency.branch.is_none()
                 && dependency.rev.is_none()
             {
-                let tags = logoxide::git::Fetcher::tags(&fetcher, url)?;
+                let tags = logoxide::git::Fetcher::tags(fetcher, url)?;
                 let newest = tags
                     .iter()
                     .filter_map(|(t, _)| {
@@ -208,8 +211,8 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
     // Installed from the edited manifest before it's written: if installing fails, the file is
     // as it was
     project.add(&name, &dependency)?;
-    let fetcher = cli.fetcher(&library);
-    let lock = (project.install(&library, &fetcher, Update::Only([name.clone()].into()))?).clone();
+    let fetcher = cli.fetcher();
+    let lock = (project.install(&library, fetcher, Update::Only([name.clone()].into()))?).clone();
     project.save_manifest()?;
     let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
     outln!(
@@ -372,7 +375,7 @@ pub(crate) fn remove(cli: &Cli, id: &str) -> logoxide::Result<()> {
         )));
     }
     // Written only once the rest still installs
-    project.install(&library, &cli.fetcher(&library), Update::Nothing)?;
+    project.install(&library, cli.fetcher(), Update::Nothing)?;
     project.save_manifest()?;
     outln!("removed {id}");
     Ok(())
@@ -413,7 +416,7 @@ pub(crate) fn repair(cli: &Cli) -> logoxide::Result<()> {
         })
         .map(|p| p.label())
         .collect();
-    let lock = project.repair(&library, &cli.fetcher(&library))?;
+    let lock = project.repair(&library, cli.fetcher())?;
     for label in &changed {
         outln!("repaired {label}");
     }
@@ -434,11 +437,7 @@ pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Re
     let before: Vec<String> = (previous.iter())
         .flat_map(|l| l.packages.iter().map(|p| p.name()))
         .collect();
-    let fetcher = cli.fetcher(&library);
-    let lock = match frozen == Frozen::default() {
-        true => project.install(&library, &fetcher, update)?,
-        false => project.install_frozen(&library, &fetcher, frozen)?,
-    };
+    let lock = app().install(&mut project, update, frozen)?;
     // A release whose tag now names another commit: what was read before may not be what's
     // read now
     for moved in previous.map(|p| lock.moved_since(&p)).unwrap_or_default() {
@@ -450,7 +449,7 @@ pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Re
             moved.after
         );
     }
-    warn_of_absolute_paths(lock);
+    warn_of_absolute_paths(&lock);
     for package in &lock.packages {
         let note = if before.contains(&package.name()) {
             ""
@@ -759,10 +758,6 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
     Ok(())
 }
 
-/// How old a staging folder (a version an install was writing) must be before `lx clean`
-/// takes it for a dead install's
-const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
-
 pub(crate) fn clean(
     cli: &Cli,
     remove: bool,
@@ -770,104 +765,49 @@ pub(crate) fn clean(
     prune_roots: bool,
 ) -> logoxide::Result<()> {
     let library = cli.library();
-    // No install may write while versions are judged and removed
-    let _lock = library.lock()?;
-    // A version an install never finished (it died more than a day ago: a live one holds the
-    // lock, and a day is longer than any install)
-    for staging in library.stale_staging(STALE_STAGING) {
-        match remove {
-            true => {
-                std::fs::remove_dir_all(&staging)
-                    .map_err(|e| logoxide::LogoxideError::io(&staging.display().to_string(), e))?;
-                outln!(
-                    "removed {}: left by an install that didn't finish",
-                    staging.display()
-                );
-            }
-            false => outln!(
-                "stale: {} (left by an install that didn't finish; lx clean --remove deletes it)",
-                staging.display()
-            ),
-        }
-    }
     let mut projects = vec![Project::open(library.root())?, cli.project(&library)?];
     for dir in keep {
         projects.push(Project::open(dir)?);
     }
-    let mut used: Vec<(String, String)> = (projects.iter())
-        .filter_map(|p| p.lock())
-        .flat_map(|lock| lock.packages.iter())
-        .filter(|p| p.path.is_none())
-        .map(|p| (p.id.clone(), p.key()))
-        .collect();
-    // Every project that installed from this library (its roots) keeps what it locked, so a
-    // vault elsewhere, or on another machine sharing the library, isn't cleaned out from here.
-    // One whose folder is gone from this machine is said, and forgotten only when asked
-    let mut roots = library.roots()?;
-    for root in roots.iter().filter(|r| r.is_gone()) {
-        match (prune_roots, &root.file) {
-            (true, Some(file)) => {
-                std::fs::remove_file(file)
-                    .map_err(|e| logoxide::LogoxideError::io(&file.display().to_string(), e))?;
-                outln!("forgot {}: its project is gone", root.path);
-            }
-            _ => outln!(
-                "{}: its project is gone, but its {} version{} stay (lx clean --prune-roots forgets it)",
-                root.path,
-                root.packages.len(),
-                if root.packages.len() == 1 { "" } else { "s" }
-            ),
-        }
-    }
-    if prune_roots {
-        roots.retain(|r| !r.is_gone());
-    }
-    used.extend(roots.iter().flat_map(|r| r.package_keys()));
-    let unused: Vec<(String, String)> = (library.installed().into_iter())
-        .filter(|v| !used.contains(v))
-        .collect();
-    if unused.is_empty() {
+    let cleaned = app().clean(&projects, remove, prune_roots, &mut |step| match step {
+        Cleaning::Staging {
+            path,
+            removed: true,
+        } => outln!(
+            "removed {}: left by an install that didn't finish",
+            path.display()
+        ),
+        Cleaning::Staging { path, .. } => outln!(
+            "stale: {} (left by an install that didn't finish; lx clean --remove deletes it)",
+            path.display()
+        ),
+        Cleaning::RootGone {
+            path,
+            forgotten: true,
+            ..
+        } => outln!("forgot {path}: its project is gone"),
+        Cleaning::RootGone { path, versions, .. } => outln!(
+            "{path}: its project is gone, but its {versions} version{} stay (lx clean --prune-roots forgets it)",
+            if versions == 1 { "" } else { "s" }
+        ),
+        Cleaning::Kept { id, key, others } => outln!(
+            "kept {id} {key}: {} file{} not the package's ({})",
+            others.len(),
+            if others.len() == 1 { " is" } else { "s are" },
+            others.join(", ")
+        ),
+        Cleaning::Removed { id, key } => outln!("removed {id} {key}"),
+        Cleaning::Unused { id, key, dir } => outln!("unused: {id} {key} ({})", dir.display()),
+        _ => {}
+    })?;
+    if cleaned.unused == 0 {
         outln!("every installed version is used");
         return Ok(());
-    }
-    for (id, key) in &unused {
-        let dir = library.root().join("packages").join(id).join(key);
-        // Files that aren't the package's (a reader's annotations) are never removed: the folder
-        // stays, and says why
-        let others = logoxide::package::other_files(&FsStorage::new(&dir))?;
-        if !others.is_empty() {
-            outln!(
-                "kept {id} {key}: {} file{} not the package's ({})",
-                others.len(),
-                if others.len() == 1 { " is" } else { "s are" },
-                others.join(", ")
-            );
-            continue;
-        }
-        if remove {
-            // Its parsed books are `<id>/<version>-<checksum>`: by the files' checksum, since
-            // forks share versions
-            let checksum = logoxide::package::checksum(&FsStorage::new(&dir))?;
-            let short = checksum
-                .trim_start_matches("sha256:")
-                .get(..16)
-                .unwrap_or_default();
-            let version = key.split('+').next().unwrap_or(key);
-            std::fs::remove_dir_all(&dir)
-                .map_err(|e| logoxide::LogoxideError::io(&dir.display().to_string(), e))?;
-            let cache = library.cache_dir().join("books").join(id);
-            let _ = std::fs::remove_dir_all(cache.join(format!("{version}-{short}")));
-            // The id's folder too, once it has no versions (remove_dir only removes empty ones)
-            let _ = std::fs::remove_dir(library.root().join("packages").join(id));
-            outln!("removed {id} {key}");
-        } else {
-            outln!("unused: {id} {key} ({})", dir.display());
-        }
     }
     if !remove {
         outln!(
             "{} unused (other vaults may use them: --keep <their folder>); lx clean --remove deletes them",
-            unused.len()
+            cleaned.unused
         );
     }
     Ok(())
