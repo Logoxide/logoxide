@@ -24,7 +24,7 @@ When a dependency is first resolved, logoxide takes what its source says:
 - **registry**: the catalog at that URL names a release, its archive URL, and the archive's
   SHA-256 and files' checksum. Whoever controls the catalog controls which archive is accepted:
   the archive is checked against the catalog, and the catalog against nothing.
-- **imports** (`lx import ebible:…`, `fetch:…`, `ccel:…`, `sword:…`): the publisher's download
+- **imports** (`lx import ebible:…`, `fetch:…`, `ccel:…`, `sword:…`, `door43:…`): the publisher's download
   (from its URL as the catalog gives it), made into a package in the project's folder. It is
   then a path package, which the project holds itself.
 

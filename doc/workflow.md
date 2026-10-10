@@ -106,10 +106,16 @@ fetch.bible's, `ccel:` for CCEL's, `sword:<repository>/<module>` for a SWORD rep
 `lx import` looks it up in the project's catalogs in order, the same ones `lx search` reads
 (`lx catalog list`). The other SWORD repositories CrossWire lists are known by name, so
 `lx import sword:crosswire-beta/<module>` works without adding their catalog; any other is added
-by its `mods.d.tar.gz` (`lx catalog add https://example.org/sword/mods.d.tar.gz`).
+by its `mods.d.tar.gz` (`lx catalog add https://example.org/sword/mods.d.tar.gz`). A CCEL work
+other than a Bible is `ccel:<author>/<work>`, as its address names it (`ccel.org/ccel/henry/mhc1`),
+and needs no catalog: its file's head says whether it's a Bible, a commentary, or a book
+(`DC.Type`). CCEL's genre indexes list them for `lx search`
+(`lx catalog add https://ccel.org/index/genre/gen-COM`, its 213 commentaries; not searched by
+default).
 
 ```sh
 lx import ccel:kjv              # CCEL's ThML, a whole Bible in one file, with the Apocrypha
+lx import ccel:henry/mhc1       # any other CCEL work by its author and name: here a commentary
 lx import sword:crosswire/KJV   # the module's OSIS entries, a file a book (osis/John.xml)
 lx import sword:crosswire/MHCC  # a commentary: kind = "commentary", an entry a span of verses
 ```
@@ -599,7 +605,9 @@ What's missing here is logoxide's side, not topos's:
   verses it's on (an entry SWORD links over a range is one bridged span), in OSIS or ThML a book
   a file, so the package opens and versions like a Bible. What isn't there yet: a commentary's
   own summary (sections, not verse counts), reading one in the Obsidian plugin (it installs, but
-  gets no reader), and CCEL's commentaries (its import takes Bibles).
+  gets no reader). CCEL's commentaries import too (`lx import ccel:henry/mhc1`): its ThML marks
+  each section with an empty `<scripCom>`, read as a verse marker, and a chapter's introduction
+  is the note on its verse 0.
 
 What's below is how it could look, not what runs.
 
@@ -632,7 +640,7 @@ sword = []
 
 ```sh
 lx import sword:crosswire/MHC             # from CrossWire's repository, through sword-modules (works)
-lx import ccel:henry/mhc                  # CCEL's ThML commentaries (not yet: CCEL's import takes Bibles)
+lx import ccel:henry/mhc1                 # CCEL's ThML commentaries, a volume a work (works)
 lx import ./mhc.thml --kind commentary    # a file someone already has (not yet)
 ```
 
@@ -641,5 +649,7 @@ lx import ./mhc.thml --kind commentary    # a file someone already has (not yet)
 - **Nothing is hosted**: logoxide, the KJV and BSB packages, and a catalog of them are local
   repositories, so the examples above use `github:someone/...` where today only
   `file://` URLs exist.
-- `lx update` doesn't yet say when a newer major version exists; Door43 imports and an audio
-  player are later steps (`doc/logoxide.md` in topos).
+- `lx update` doesn't yet say when a newer major version exists; an audio player is a later step
+  (`doc/logoxide.md` in topos). Door43 imports (`door43:<owner>/<repo>`, after
+  `lx catalog add "https://git.door43.org/api/v1/catalog/search?subject=Bible&stage=prod"`)
+  were written while git.door43.org didn't answer, so they're untried against it.

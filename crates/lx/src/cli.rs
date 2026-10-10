@@ -109,7 +109,7 @@ pub(crate) enum Command {
         /// The release (the newest by default)
         #[arg(long, requires = "git")]
         tag: Option<String>,
-        /// List the passages its books (EPUBs) cite, and how often
+        /// List the passages its books (EPUBs, a book's ThML) cite, and how often
         #[arg(long)]
         references: bool,
         /// With --references: every reference, with where it is (chapter, paragraph, CFI,

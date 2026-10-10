@@ -8,7 +8,8 @@ it shows, but nothing it points at is gone).
 A title is, in order:
 - what `[titles]` in `logoxide.toml` gives the file (`"usx/JHN.usx" = "John"`)
 - what the file says (logoxide-text reads it): a Bible book's short name (USFM's `\toc2`, else
-  `\h`, else `\toc1`, in USX the paragraphs of those styles), an EPUB's `dc:title`
+  `\h`, else `\toc1`, in USX the paragraphs of those styles), an EPUB's `dc:title`, a ThML
+  book's `DC.Title`
 - for a Bible book, its name in English (`John`); a file holding many books (a whole OSIS or ThML
   Bible) is titled by the package's name
 
@@ -32,7 +33,7 @@ pub struct Titled {
     pub title: Option<String>,
 }
 
-/// The title of each Bible book's file and each EPUB, in path order
+/// The title of each Bible book's file and each book's (an EPUB, a book's ThML), in path order
 pub fn titles(package: &Package) -> Result<Vec<Titled>> {
     let given = &package.manifest().titles;
     let storage = package.storage();
@@ -46,8 +47,11 @@ pub fn titles(package: &Package) -> Result<Vec<Titled>> {
         };
         found.insert(file.path, title);
     }
-    for path in crate::references::epub_files(package)? {
-        let title = logoxide_text::titles::epub_title(&storage.read(&path)?);
+    for path in crate::references::book_files(package)? {
+        let title = match logoxide_text::citations::is_thml(&path) {
+            true => logoxide_text::titles::thml_title(&storage.read_string(&path)?),
+            false => logoxide_text::titles::epub_title(&storage.read(&path)?),
+        };
         found.insert(path, title);
     }
     Ok(found

@@ -68,6 +68,12 @@ pub fn find_entry(
         catalog.warnings.iter().cloned().for_each(&mut *warn);
         catalogs.push(catalog);
     }
+    // A CCEL work by its author and name (`ccel:henry/mhc1`) needs no catalog
+    if !catalogs.iter().any(|c| c.find_import(source).is_some())
+        && let Some(catalog) = logoxide_import::ccel::named_catalog(source)
+    {
+        catalogs.push(catalog);
+    }
     let (used, entry) = (catalogs.iter())
         .find_map(|c| Some((c, c.find_import(source)?)))
         .ok_or_else(|| {
@@ -274,6 +280,15 @@ pub fn plan_updates(
                 }
                 Err(e) => warn(format!("{dep}: {e}")),
             }
+        }
+        // A CCEL work imported by its name
+        if !catalogs
+            .iter()
+            .any(|c| c.find_upstream(&upstream).is_some())
+            && let Some(catalog) =
+                (upstream.import.as_deref()).and_then(logoxide_import::ccel::named_catalog)
+        {
+            catalogs.push(catalog);
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
             if name == Some(dep.as_str()) {

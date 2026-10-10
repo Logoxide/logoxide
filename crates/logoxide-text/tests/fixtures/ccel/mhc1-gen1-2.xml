@@ -1,0 +1,551 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ThML PUBLIC 
+    "-//CCEL/DTD Theological Markup Language//EN"
+    "http://www.ccel.org/dtd/ThML10.dtd">
+<!--
+<?xml-stylesheet type="text/xml"
+    href="http://www.ccel.org/ss/thml.html.xsl" ?>
+<?xml-stylesheet type="text/xsl"
+    href="http://www.ccel.org/ss/thml.html.xsl" ?>
+-->
+<!-- Copyright Christian Classics Ethereal Library -->
+<ThML>
+<ThML.head><electronicEdInfo><DC><DC.Title>Commentary on the Whole Bible …</DC.Title><DC.Type>Text.Commentary</DC.Type></DC></electronicEdInfo></ThML.head>
+<ThML.body>
+<div1 title="Genesis" n="i">
+<div2 title="Introduction" n="i">
+ <h2>Genesis</h2>
+<hr />
+
+<div class="Center">
+<p><b>AN</b></p>
+<h3>EXPOSITION,</h3>
+<h4>W I T H   P R A C T I C A L …</h4>
+<h5>OF THE FIRST BOOK OF MOSES, CALLED</h5>
+<h2>G E N E S I S.</h2>
+<hr style="width:2in" />
+</div>
+<p class="indent"><span class="smallcaps">We</span> have now
+before us the holy Bible, or <i>book,</i> for so <i>bible</i>
+signifies. We call it <i>the book,</i> by way of eminency; for it
+…<i>written</i> to us, that they might be
+…<scripRef passage="Hos 8:12" parsed="|Hos|8|12|0|0" osisRef="Bible:Hos.8.12">Hos. viii. 12</scripRef>. The scriptures, or writings …<i>light
+that shines in a dark place</i> (<scripRef passage="2Pe 1:19" parsed="|2Pet|1|19|0|0" osisRef="Bible:2Pet.1.19">2
+Pet. i. 19</scripRef>), and a dark place indeed …</p>
+<p class="indent">We have before us that part …<i>Old Testament,</i> containing the acts and
+…<i>testament,</i> or
+<i>covenant</i> (<b><i>Diatheke</i></b>), because it was a settled
+…<i>will</i> of God concerning man in a …<i>the Lamb slain from the …</i>
+(<scripRef passage="Re 13:8" parsed="|Rev|13|8|0|0" osisRef="Bible:Rev.13.8">Rev. xiii. 8</scripRef>.) It is called
+the <i>Old Testament,</i> with relation to the <i>New,</i> which
+does not cancel and …<scripRef passage="2Co 3:9" parsed="|2Cor|3|9|0|0" osisRef="Bible:2Cor.3.9">2 Cor. iii.
+9</scripRef>.)</p>
+<p class="indent">We have before us that part …<i>Pentateuch,</i> or five books of
+Moses, that …<i>law,</i>
+the <i>prophets,</i> and the <i>psalms,</i> or <i>Hagiographa,</i>
+these are the <i>law;</i> for they contain not only …<i>writing</i> in all the book of Genesis, …<scripRef passage="Ex 17:14" parsed="|Exod|17|14|0|0" osisRef="Bible:Exod.17.14">Exod. xvii.
+14</scripRef>); and some think Moses …</p>
+<p class="indent">We have before us the first …<i>Genesis,</i> written, some
+think, when …<i>Genesis</i> is a name borrowed from the …<i>original,</i> or <i>generation:</i> fitly is
+this book so …<i>Genesis</i> too (<scripRef passage="Mt 1:1" parsed="|Matt|1|1|0|0" osisRef="Bible:Matt.1.1">Matt. i. 1</scripRef>,) <b><i>Biblos geneseos,</i></b> the
+book of the <i>genesis,</i> or <i>generation,</i> of Jesus Christ.
+Blessed be …</p>
+</div2>
+<div2 title="Chapter I" n="ii">
+
+<h2>G E N E S I S</h2>
+<h3>CHAP. I.</h3> 
+<p class="intro">The foundation of all …<scripRef passage="Job 35:10" parsed="|Job|35|10|0|0" osisRef="Bible:Job.35.10">Job xxxv. 10</scripRef>). Concerning
+this the pagan …<scripRef passage="Ps 119:130" parsed="|Ps|119|130|0|0" osisRef="Bible:Ps.119.130">Ps. cxix. 130.</scripRef>. The
+<scripRef passage="Ge 1:1" parsed="|Gen|1|1|0|0" osisRef="Bible:Gen.1.1">first verse</scripRef> of the Bible
+gives us a …<scripRef passage="Heb 11:3" parsed="|Heb|11|3|0|0" osisRef="Bible:Heb.11.3">Heb. xi. 3</scripRef>.</p>
+<p class="intro">We have three things in this …<scripRef passage="Ge 1:1,2" parsed="|Gen|1|1|1|2" osisRef="Bible:Gen.1.1-Gen.1.2">ver. 1, 2</scripRef>. II. A particular account of …<scripRef passage="Ge 1:3-5" parsed="|Gen|1|3|1|5" osisRef="Bible:Gen.1.3-Gen.1.5">ver. 3-5</scripRef>; of the firmament the second day,
+<scripRef passage="Ge 1:6-8" parsed="|Gen|1|6|1|8" osisRef="Bible:Gen.1.6-Gen.1.8">ver. 6-8</scripRef>; of the sea, the
+earth, and …<scripRef passage="Ge 1:9-13" parsed="|Gen|1|9|1|13" osisRef="Bible:Gen.1.9-Gen.1.13">ver. 9-13</scripRef>; of the lights of heaven 
+…<scripRef passage="Ge 1:14-19" parsed="|Gen|1|14|1|19" osisRef="Bible:Gen.1.14-Gen.1.19">ver. 14-19</scripRef>;
+of the fish and fowl the fifth day, <scripRef passage="Ge 1:20-23" parsed="|Gen|1|20|1|23" osisRef="Bible:Gen.1.20-Gen.1.23">ver. 20-23</scripRef>; of the beasts, <scripRef passage="Ge 1:24,25" parsed="|Gen|1|24|1|25" osisRef="Bible:Gen.1.24-Gen.1.25">ver. 24, 25</scripRef>; of man, <scripRef passage="Ge 1:26-28" parsed="|Gen|1|26|1|28" osisRef="Bible:Gen.1.26-Gen.1.28">ver. 26-28</scripRef>; and of food for both
+the sixth day, <scripRef passage="Ge 1:29,30" parsed="|Gen|1|29|1|30" osisRef="Bible:Gen.1.29-Gen.1.30">ver. 29,
+30</scripRef>. III. The review and …<scripRef passage="Ge 1:31" parsed="|Gen|1|31|0|0" osisRef="Bible:Gen.1.31">ver. 31</scripRef>.</p>
+ <scripCom type="Commentary" passage="Ge 1" parsed="|Gen|1|0|0|0" osisRef="Bible:Gen.1" />
+<scripCom type="Commentary" passage="Ge 1:1-2" parsed="|Gen|1|1|1|2" osisRef="Bible:Gen.1.1-Gen.1.2" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">1 In the beginning God …<i>was</i> upon the face of the deep. …</p>
+<p class="indent">In these verses we have the …</p>
+<p class="indent">I. In its epitome, <scripRef passage="Ge 1:1" parsed="|Gen|1|1|0|0" osisRef="Bible:Gen.1.1"><i>v.</i> 1</scripRef>, where we find, to our …<i>God the Father Almighty is …</i> and as such we believe in him.</p>
+<p class="indent">1. Observe, in this verse, …</p>
+<p class="indent">(1.) The effect produced—<i>the heaven and
+the earth,</i> that is, the world, …<i>world and all things therein,</i>
+<scripRef passage="Ac 17:24" parsed="|Acts|17|24|0|0" osisRef="Bible:Acts.17.24">Acts xvii. 24</scripRef>. The world is
+a great house, …<i>Lord, how manifold are thy
+works,</i> and all good! [2.] Great …</p>
+<p class="indent">(2.) The author and cause of …<i>Elohim,</i> which bespeaks, [1.]
+The …<i>El</i> signifies <i>the strong
+God;</i> and what less than almighty …<scripRef passage="Pr 8:30" parsed="|Prov|8|30|0|0" osisRef="Bible:Prov.8.30">Prov. viii. 30</scripRef>), nay, we are often told …<scripRef passage="Joh 1:3,10,Eph 3:9,Col 1:16,Heb 1:2" parsed="|John|1|3|0|0;|John|1|10|0|0;|Eph|3|9|0|0;|Col|1|16|0|0;|Heb|1|2|0|0" osisRef="Bible:John.1.3 Bible:John.1.10 Bible:Eph.3.9 Bible:Col.1.16 Bible:Heb.1.2">John i. 3, 10; Eph.
+iii. 9; …</scripRef>. O what high thoughts
+should …</p>
+<p class="indent">(3.) The manner in which this …<i>God created it,</i> that is, made it out of …
+otherwise, for nothing is …</p>
+<p class="indent">(4.) When this work was produced: <i>In the
+beginning,</i> that is, in the beginning of …<i>In the beginning was
+the Word,</i> <scripRef passage="Joh 1:1" parsed="|John|1|1|0|0" osisRef="Bible:John.1.1">John i. 1</scripRef>.</p>
+<p class="indent">2. Let us learn hence, (1.) …<scripRef passage="Ps 121:2,124:8" parsed="|Ps|121|2|0|0;|Ps|124|8|0|0" osisRef="Bible:Ps.121.2 Bible:Ps.124.8">Ps. cxxi. 2; cxxiv. 8</scripRef>. (4.) That the
+God we serve …<scripRef passage="Ne 9:5,6" parsed="|Neh|9|5|9|6" osisRef="Bible:Neh.9.5-Neh.9.6">Neh. ix. 5,
+6</scripRef>. If he made the world, he …<scripRef passage="Ac 17:24,25" parsed="|Acts|17|24|17|25" osisRef="Bible:Acts.17.24-Acts.17.25">Acts
+xvii. 24, 25</scripRef>), and yet he justly requires …<scripRef passage="Re 4:11" parsed="|Rev|4|11|0|0" osisRef="Bible:Rev.4.11">Rev. iv.
+11</scripRef>. If all is of him, all must be to him.</p>
+<p class="indent">II. Here is the work of …<scripRef passage="Ge 1:2" parsed="|Gen|1|2|0|0" osisRef="Bible:Gen.1.2"><i>v.</i> 2</scripRef>, where we
+have an account of …</p>
+<p class="indent">1. A chaos was the first …<scripRef passage="Ge 1:10" parsed="|Gen|1|10|0|0" osisRef="Bible:Gen.1.10"><i>v.</i>
+10</scripRef>), because it did most …<i>earth,</i> mere earth, destitute of its …<i>the
+deep,</i> both for its vastness and …<i>without form and void. Tohu</i>
+and <i>Bohu, confusion</i> and <i>emptiness;</i> so these words are
+rendered, <scripRef passage="Isa 34:11" parsed="|Isa|34|11|0|0" osisRef="Bible:Isa.34.11">Isa. xxxiv. 11</scripRef>.
+It was shapeless, it was …<i>and not the image of the things,</i> <scripRef passage="Heb 10:1" parsed="|Heb|10|1|0|0" osisRef="Bible:Heb.10.1">Heb. x. 1</scripRef>. The earth is almost reduced …<scripRef passage="Jer 4:23" parsed="|Jer|4|23|0|0" osisRef="Bible:Jer.4.23">Jer. iv. 23</scripRef>,
+<i>I beheld the earth, and lo it …</i> To
+those who have their …<i>darkness,</i> thick darkness,
+<i>was upon the face of the deep.</i> God did not create this
+…<scripRef passage="Isa 45:7" parsed="|Isa|45|7|0|0" osisRef="Bible:Isa.45.7">Isa. xlv. 7</scripRef>), for it was
+only the want …<i>there</i> is disorder, confusion, and …</p>
+<p class="indent">2. The Spirit of God was the …<i>moved upon the face of the waters.</i> When we consider the
+earth …<scripRef passage="Eze 37:9" parsed="|Ezek|37|9|0|0" osisRef="Bible:Ezek.37.9">Ezek. xxxvii.
+9</scripRef>. Now there is hope …<scripRef passage="Ps 33:6,Job 26:13" parsed="|Ps|33|6|0|0;|Job|26|13|0|0" osisRef="Bible:Ps.33.6 Bible:Job.26.13">Ps. xxxiii. 6; Job xxvi. 13</scripRef>;
+and by the same mighty …<i>hen gathers her chickens …</i> and hovers over them, to …<scripRef passage="Mt 23:37" parsed="|Matt|23|37|0|0" osisRef="Bible:Matt.23.37">Matt. xxiii. 37</scripRef>,—as the
+eagle stirs up her …<i>flutters</i> over her young (it is
+the …<scripRef passage="De 32:11" parsed="|Deut|32|11|0|0" osisRef="Bible:Deut.32.11">Deut. xxxii. 11</scripRef>. Learn hence, That God is …
+at the
+beginning of time, …<i>a land of darkness as …</i> (<scripRef passage="Job 10:22" parsed="|Job|10|22|0|0" osisRef="Bible:Job.10.22">Job x. 22</scripRef>), and can make them glorious
+bodies.</p>
+ </div><scripCom type="Commentary" passage="Ge 1:3-5" parsed="|Gen|1|3|1|5" osisRef="Bible:Gen.1.3-Gen.1.5" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">3 And God said, Let there be …<i>it was</i> good:
+and God divided the …</p>
+<p class="indent">We have here a further …<i>that his deeds may be made
+manifest,</i> <scripRef passage="Joh 3:21" parsed="|John|3|21|0|0" osisRef="Bible:John.3.21">John iii. 21</scripRef>.
+Light is the great beauty …<i>by what way the light is
+parted,</i> <scripRef passage="Job 38:19,24" parsed="|Job|38|19|0|0;|Job|38|24|0|0" osisRef="Bible:Job.38.19 Bible:Job.38.24">Job xxxviii. 19,
+24</scripRef>. By the sight of it let us …<scripRef passage="1Jo 1:5" parsed="|1John|1|5|0|0" osisRef="Bible:1John.1.5">1 John i. 5</scripRef>),
+and the <i>Father of lights</i> (<scripRef passage="Jam 1:17" parsed="|Jas|1|17|0|0" osisRef="Bible:Jas.1.17">Jam.
+i. 17</scripRef>), and who dwells in …<scripRef passage="1Ti 6:16" parsed="|1Tim|6|16|0|0" osisRef="Bible:1Tim.6.16">1 Tim. vi. 16</scripRef>. In the new creation,
+the …<i>light:</i> the blessed
+Spirit captives …<i>Let there be
+light;</i> he willed and appointed it, …<i>there was light,</i> such a copy as exactly …<i>He spoke, and it was done,</i> done really, effectually, …<i>he commanded, and it stood fast:</i> with him it was <i>dictum,
+factum—a word, and a world.</i> The world of God (that is, …<i>in him was light, and he is …</i> <scripRef passage="Joh 1:9,9:5" parsed="|John|1|9|0|0;|John|9|5|0|0" osisRef="Bible:John.1.9 Bible:John.9.5">John i. 9;
+ix. 5.</scripRef>. The divine light which …<i>God commanded the light to …</i> <scripRef passage="2Co 4:6" parsed="|2Cor|4|6|0|0" osisRef="Bible:2Cor.4.6">2 Cor. iv. 6</scripRef>. Darkness would have been
+…<i>come, and given us an understanding,</i> <scripRef passage="1Jo 5:20" parsed="|1John|5|20|0|0" osisRef="Bible:1John.5.20">1 John v. 20</scripRef>. 3. That the light which 
+…<i>God saw the light
+that it was good.</i> It was exactly as he …<i>Truly the light
+is sweet</i> (<scripRef passage="Ec 11:7" parsed="|Eccl|11|7|0|0" osisRef="Bible:Eccl.11.7">Eccl. xi. 7</scripRef>);
+<i>it rejoiceth the heart,</i> <scripRef passage="Pr 15:30" parsed="|Prov|15|30|0|0" osisRef="Bible:Prov.15.30">Prov.
+xv. 30</scripRef>. What God commands he will …<i>divided the light from the darkness,</i> so put them asunder as
+that …<i>what fellowship has light …</i> <scripRef passage="2Co 6:14" parsed="|2Cor|6|14|0|0" osisRef="Bible:2Cor.6.14">2 Cor. vi. 14</scripRef>. And yet he divided time
+…<scripRef passage="Job 7:2" parsed="|Job|7|2|0|0" osisRef="Bible:Job.7.2">Job
+vii. 2</scripRef>. God has thus divided time …<i>He called
+the light day, and …</i> He gave them
+names, as the …<i>the day is
+
+his, the night also is his,</i> <scripRef passage="Ps 74:16" parsed="|Ps|74|16|0|0" osisRef="Bible:Ps.74.16">Ps.
+lxxiv. 16</scripRef>. He is the Lord of time, and …<i>The evening
+and the morning …</i> The darkness of the evening
+…<i>day-star arise in our hearts.</i></p>
+ </div><scripCom type="Commentary" passage="Ge 1:6-8" parsed="|Gen|1|6|1|8" osisRef="Bible:Gen.1.6-Gen.1.8" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">6 And God said, Let there be …<i>were</i> under the firmament from the …<i>were</i>
+above the firmament: and it …</p>
+<p class="indent">We have here an account of …<i>Let there be a firmament,</i> an
+<i>expansion,</i> so the Hebrew word …<i>firmament of heaven</i> (<scripRef passage="Ge 1:14,15" parsed="|Gen|1|14|1|15" osisRef="Bible:Gen.1.14-Gen.1.15"><i>v.</i> 14, 15</scripRef>), and as low as the place
+…<i>firmament of
+heaven,</i> <scripRef passage="Ge 1:20" parsed="|Gen|1|20|0|0" osisRef="Bible:Gen.1.20"><i>v.</i> 20</scripRef>.
+When God had made the …<scripRef passage="Job 26:7,37:18,Ps 104:3,Am 9:6" parsed="|Job|26|7|0|0;|Job|37|18|0|0;|Ps|104|3|0|0;|Amos|9|6|0|0" osisRef="Bible:Job.26.7 Bible:Job.37.18 Bible:Ps.104.3 Bible:Amos.9.6">Job xxvi. 7; xxxvii. 18; Ps. …</scripRef>. 2. The creation of it. Lest …<i>And God made the firmament.</i> What God
+requires of us he …<i>Lord, give what thou …</i> The firmament is said to be <i>the work of God's
+fingers,</i> <scripRef passage="Ps 8:3" parsed="|Ps|8|3|0|0" osisRef="Bible:Ps.8.3">Ps. viii. 3</scripRef>.
+Though the vastness of its …<i>divide the waters from the
+waters,</i> that is, to distinguish …<scripRef passage="De 11:10,11" parsed="|Deut|11|10|11|11" osisRef="Bible:Deut.11.10-Deut.11.11">Deut. xi.
+10, 11</scripRef>, where Canaan is upon this …<i>for the sons of men,</i> <scripRef passage="Mic 5:7" parsed="|Mic|5|7|0|0" osisRef="Bible:Mic.5.7">Mic. v.
+7</scripRef>. God has, in the firmament …<i>watereth the earth,</i> <scripRef passage="Ps 104:13,Ps 65:9,10" parsed="|Ps|104|13|0|0;|Ps|65|9|65|10" osisRef="Bible:Ps.104.13 Bible:Ps.65.9-Ps.65.10">Ps. civ. 13; lxv. 9, 10</scripRef>.
+He has also <i>treasures, or magazines, of …</i> <scripRef passage="Job 38:22,23" parsed="|Job|38|22|38|23" osisRef="Bible:Job.38.22-Job.38.23">Job xxxviii. 22, 23</scripRef>. O what a
+great God is he …<i>He called the firmament heaven.</i> It is the visible heaven,
+…<scripRef passage="Eze 1:26" parsed="|Ezek|1|26|0|0" osisRef="Bible:Ezek.1.26">Ezek. i.
+26</scripRef>), for he has prepared it in …<scripRef passage="Da 4:26" parsed="|Dan|4|26|0|0" osisRef="Bible:Dan.4.26">Dan. iv.
+26</scripRef>. <i>Is not God in the height of heaven?</i> <scripRef passage="Job 22:12" parsed="|Job|22|12|0|0" osisRef="Bible:Job.22.12">Job xxii. 12</scripRef>. Yes, he is, and we
+should …<i>our Father who is in heaven.</i> The height of
+the heavens …</p>
+ </div><scripCom type="Commentary" passage="Ge 1:9-13" parsed="|Gen|1|9|1|13" osisRef="Bible:Gen.1.9-Gen.1.13" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">9 And God said, Let the …<i>land</i>
+appear: and it was so.   10 …<i>land</i>
+Earth; and the gathering …<i>it was</i> good.   11 And God said, Let the
+
+earth bring forth grass, …<i>and</i> the fruit tree yielding …<i>is</i> in itself, upon the earth: …<i>and</i> herb yielding seed after
+his …<i>was</i> in
+itself, after his kind: …<i>it was</i> good.  
+13 And the evening …</p>
+<p class="indent">The third day's work is …</p>
+<p class="indent">I. How the earth was prepared …<scripRef passage="Ge 1:2" parsed="|Gen|1|2|0|0" osisRef="Bible:Gen.1.2"><i>v.</i>
+2</scripRef>) when earth and water were …<i>Let it be so, and it was so;</i> no
+sooner said than done. 1. …<i>seas.</i> Though they are many, in
+…<scripRef passage="Ec 1:7" parsed="|Eccl|1|7|0|0" osisRef="Bible:Eccl.1.7">Eccl. i.
+7</scripRef>. Waters and seas often, in …<scripRef passage="Ps 42:7,69:2,14,15" parsed="|Ps|42|7|0|0;|Ps|69|2|0|0;|Ps|69|14|0|0;|Ps|69|15|0|0" osisRef="Bible:Ps.42.7 Bible:Ps.69.2 Bible:Ps.69.14 Bible:Ps.69.15">Ps. xlii.
+7; lxix. 2, 14, 15</scripRef>. God's own people are not …<scripRef passage="Ps 104:6-9" parsed="|Ps|104|6|104|9" osisRef="Bible:Ps.104.6-Ps.104.9">Ps. civ. 6-9</scripRef>,
+and are there mentioned as …<i>Those that go down
+to the sea in ships</i> ought to acknowledge daily …<i>those that tarry
+at home</i> must own themselves indebted …<scripRef passage="Job 38:10,11" parsed="|Job|38|10|38|11" osisRef="Bible:Job.38.10-Job.38.11">Job xxxviii. 10,
+11</scripRef>. 2. The dry land was made to …<i>earth,</i> and <i>given to the
+children of men.</i> The earth, it seems, was in …<i>hands formed the dry land,</i> <scripRef passage="Ps 95:5,Jon 1:9" parsed="|Ps|95|5|0|0;|Jonah|1|9|0|0" osisRef="Bible:Ps.95.5 Bible:Jonah.1.9">Ps. xcv. 5; Jonah i. 9</scripRef>.</p>
+<p class="indent">II. How the earth was …<scripRef passage="Ge 1:11,12" parsed="|Gen|1|11|1|12" osisRef="Bible:Gen.1.11-Gen.1.12"><i>v.</i> 11, 12</scripRef>. Present provision was now
+…<i>having its
+seed in itself …</i> that, during the continuance …<i>Lord, what is man, that he is …</i>—that such care should be …<i>the fulness
+thereof,</i> and he is the rightful owner …<i>emptiness</i> (<scripRef passage="Ge 1:2" parsed="|Gen|1|2|0|0" osisRef="Bible:Gen.1.2"><i>v.</i>
+2</scripRef>), but now, by a word's …<i>his corn and his wine, his
+…</i> <scripRef passage="Ho 2:9" parsed="|Hos|2|9|0|0" osisRef="Bible:Hos.2.9">Hos. ii.
+9</scripRef>. Though the use of them is …<i>our Father worketh hitherto.</i> The earth still remains …<scripRef passage="De 33:14" parsed="|Deut|33|14|0|0" osisRef="Bible:Deut.33.14">Deut. xxxiii. 14</scripRef>), yet here we find the 
+…
+of fruit, probable
+ripe …<i>hears the
+heavens when they …</i> <scripRef passage="Hos 2:21,22" parsed="|Hos|2|21|2|22" osisRef="Bible:Hos.2.21-Hos.2.22">Hos. ii. 21, 22</scripRef>. And if we have, through
+…<i>fig-tree doth not blossom</i> we may rejoice in
+him.</p>
+</div><scripCom type="Commentary" passage="Ge 1:14-19" parsed="|Gen|1|14|1|19" osisRef="Bible:Gen.1.14-Gen.1.19" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">14 And God said, Let there be …<i>he made</i> the stars also.   17
+And …<i>it
+was</i> good.   19 And the evening …</p>
+<p class="indent">This is the history of the …<i>by the Spirit
+he hath …</i> (<scripRef passage="Job 26:13" parsed="|Job|26|13|0|0" osisRef="Bible:Job.26.13">Job xxvi. 13</scripRef>); and here we have an …</p>
+<p class="indent">I. In general, <scripRef passage="Ge 1:14,15" parsed="|Gen|1|14|1|15" osisRef="Bible:Gen.1.14-Gen.1.15"><i>v.</i> 14, 15</scripRef>, where we have 1. The
+…<i>Let there be lights in the
+…</i> God had said, <i>Let there be light</i>
+(<scripRef passage="Ge 1:3" parsed="|Gen|1|3|0|0" osisRef="Bible:Gen.1.3"><i>v.</i> 3</scripRef>), and there was
+light; but …<i>in the firmament of heaven,</i> that vast expanse
+which …<i>no man,
+when he has lighted a …</i> (<scripRef passage="Lu 8:16" parsed="|Luke|8|16|0|0" osisRef="Bible:Luke.8.16">Luke viii.
+16</scripRef>), and a stately golden …<i>to all that are
+in the house.</i> The firmament itself is …<scripRef passage="Da 12:3" parsed="|Dan|12|3|0|0" osisRef="Bible:Dan.12.3">Dan. xii.
+3</scripRef>), but this was not …<i>under the sun,</i> there
+is <i>a season to every purpose,</i> <scripRef passage="Ec 3:11" parsed="|Eccl|3|11|0|0" osisRef="Bible:Eccl.3.11">Eccl. iii. 1</scripRef>. (2.) They must be for the
+…<scripRef passage="Mt 16:2,3" parsed="|Matt|16|2|16|3" osisRef="Bible:Matt.16.2-Matt.16.3">Matt. xvi. 2, 3</scripRef>. They do also <i>give light
+upon the earth,</i> that we may <i>walk</i> (<scripRef passage="Joh 11:9" parsed="|John|11|9|0|0" osisRef="Bible:John.11.9">John xi. 9</scripRef>), and <i>work</i> (<scripRef passage="Joh 9:4" parsed="|John|9|4|0|0" osisRef="Bible:John.9.4">John ix. 4</scripRef>). according as the duty of
+…<scripRef passage="Ps 8:3,4" parsed="|Ps|8|3|8|4" osisRef="Bible:Ps.8.3-Ps.8.4">Ps. viii. 3, 4</scripRef>. How ungrateful and
+…<scripRef passage="Mt 5:14" parsed="|Matt|5|14|0|0" osisRef="Bible:Matt.5.14">Matt. v.
+14</scripRef>. We burn our Master's …</p>
+<p class="indent">II. In particular, <scripRef passage="Ge 1:16-18" parsed="|Gen|1|16|1|18" osisRef="Bible:Gen.1.16-Gen.1.18"><i>v.</i> 16-18</scripRef>.</p>
+<p class="indent">1. Observe, The lights of …
+<scripRef passage="Ps 19:1-6" parsed="|Ps|19|1|19|6" osisRef="Bible:Ps.19.1-Ps.19.6">Ps. xix. 1-6</scripRef> how to give unto God
+the …<i>Whosoever will be great among …</i> <scripRef passage="Mt 20:26" parsed="|Matt|20|26|0|0" osisRef="Bible:Matt.20.26">Matt. xx.
+26</scripRef>. (3.) <i>He made the stars also,</i> which are here
+spoken of as …<i>rule</i> (<scripRef passage="Ge 1:16,18" parsed="|Gen|1|16|0|0;|Gen|1|18|0|0" osisRef="Bible:Gen.1.16 Bible:Gen.1.18"><i>v.</i> 16, 18</scripRef>); not that they have a
+…<i>the
+night;</i> but in <scripRef passage="Ps 136:9" parsed="|Ps|136|9|0|0" osisRef="Bible:Ps.136.9">Ps. cxxxvi.
+9</scripRef> the stars are mentioned as …<i>The moon and stars to rule by night.</i> No more is meant than
+that they <i>give light,</i> <scripRef passage="Jer 31:35" parsed="|Jer|31|35|0|0" osisRef="Bible:Jer.31.35">Jer.
+xxxi. 35</scripRef>. The best and most …</p>
+<p class="indent">2. Learn from all this, (1.) …<scripRef passage="De 4:19" parsed="|Deut|4|19|0|0" osisRef="Bible:Deut.4.19">Deut. iv.
+19</scripRef>. (2.) The duty and wisdom of …</p>
+ </div><scripCom type="Commentary" passage="Ge 1:20-23" parsed="|Gen|1|20|1|23" osisRef="Bible:Gen.1.20-Gen.1.23" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">20 And God said, Let the …<i>that</i>
+may fly above the earth in …<i>it
+was</i> good.   22 And God blessed …</p>
+<p class="indent">Each day, hitherto, has …<scripRef passage="Ge 1:20,21" parsed="|Gen|1|20|1|21" osisRef="Bible:Gen.1.20-Gen.1.21"><i>v.</i>
+20, 21</scripRef>. God commanded them to be …<i>Let the waters bring forth abundantly;</i> not as if the waters
+had any …<i>God created great whales,</i>
+&amp;c. Insects, which …<scripRef passage="Job 41:1" parsed="|Job|41|1|0|0" osisRef="Bible:Job.41.1">Job xli. :1</scripRef>. The curious
+formation of …<scripRef passage="Ps 104:25" parsed="|Ps|104|25|0|0" osisRef="Bible:Ps.104.25">Ps. civ. 25</scripRef>,
+&amp;c. 2. The blessing of …
+for the propagation of the
+…<i>God blessed them, saying, Be …</i> <scripRef passage="Ge 1:22" parsed="|Gen|1|22|0|0" osisRef="Bible:Gen.1.22"><i>v.</i> 22</scripRef>.
+God will bless his own …<i>what he
+does shall be for a perpetuity,</i> <scripRef passage="Ec 3:14" parsed="|Eccl|3|14|0|0" osisRef="Bible:Eccl.3.14">Eccl. iii. 14</scripRef>. The power of God's …<scripRef passage="Job 12:7,9" parsed="|Job|12|7|0|0;|Job|12|9|0|0" osisRef="Bible:Job.12.7 Bible:Job.12.9">Job xii. 7,
+9</scripRef>. It is a pity that fishing …</p>
+ </div><scripCom type="Commentary" passage="Ge 1:24-25" parsed="|Gen|1|24|1|25" osisRef="Bible:Gen.1.24-Gen.1.25" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">24 And God said, Let the …<i>it was</i> good.</p>
+<p class="indent">We have here the first part …<i>The Lord gave the word;</i> he said,
+<i>Let the earth bring forth,</i> not as if the earth had any …</p>
+ </div><scripCom type="Commentary" passage="Ge 1:26-28" parsed="|Gen|1|26|1|28" osisRef="Bible:Gen.1.26-Gen.1.28" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">26 And God said, Let us make …<i>own</i> image, in the
+image of God …</p>
+<p class="indent">We have here the second part …</p>
+<p class="indent">I. That man was made last of …<i>Where wast
+thou,</i> or any of thy kind, <i>when I laid the foundations …</i> <scripRef passage="Job 38:4" parsed="|Job|38|4|0|0" osisRef="Bible:Job.38.4">Job xxxviii. 4</scripRef>.
+Yet it was both an honour …</p>
+<p class="indent">II. That man's creation was a …<i>Let us make man,</i> for whose sake the rest of
+…<i>delights were with the sons of
+men,</i> <scripRef passage="Pr 8:31" parsed="|Prov|8|31|0|0" osisRef="Bible:Prov.8.31">Prov. viii. 31</scripRef>. It
+should seem as if this …<i>Let us make man.</i>" Man
+was to be a creature …
+hitherto made. Flesh and …<i>Let us make man.</i> The three persons of
+the …<i>Let us make man.</i></p>
+<p class="indent">III. That man was made in …<i>image</i> and <i>likeness</i>
+denote the likest image, the …<i>express</i> image of God's person, as …<i>The spirit of man is the …</i> The soul of
+man, considered …<i>Let us make man in our image, …</i> As
+he has the government of …<scripRef passage="Eph 4:24,Col 3:10" parsed="|Eph|4|24|0|0;|Col|3|10|0|0" osisRef="Bible:Eph.4.24 Bible:Col.3.10">Eph. iv. 24; Col. iii. 10</scripRef>.
+He was upright, <scripRef passage="Ec 7:29" parsed="|Eccl|7|29|0|0" osisRef="Bible:Eccl.7.29">Eccl. vii.
+29</scripRef>. He had an habitual …<scripRef passage="Jam 3:9" parsed="|Jas|3|9|0|0" osisRef="Bible:Jas.3.9">Jam. iii.
+9</scripRef>), nor do ill one to another (<scripRef passage="Ge 9:6" parsed="|Gen|9|6|0|0" osisRef="Bible:Gen.9.6">Gen. ix. 6</scripRef>), and a good reason why we …</p>
+<p class="indent">IV. That man was made male …<i>Let us make man,</i> and immediately it follows, <i>So God
+created man;</i> he performed what he …<scripRef passage="Ge 2:21-23" parsed="|Gen|2|21|2|23" osisRef="Bible:Gen.2.21-Gen.2.23"><i>ch.</i>
+ii</scripRef>. It should seem that of the …<i>did not he make one?</i>
+(<scripRef passage="Mal 2:15" parsed="|Mal|2|15|0|0" osisRef="Bible:Mal.2.15">Mal. ii. 15</scripRef>), though he
+had the residue …<scripRef passage="Mt 19:4,5" parsed="|Matt|19|4|19|5" osisRef="Bible:Matt.19.4-Matt.19.5">Matt. xix. 4,
+5</scripRef>. Our first father, Adam, was …<scripRef passage="Lu 20:34-36" parsed="|Luke|20|34|20|36" osisRef="Bible:Luke.20.34-Luke.20.36">Luke xx. 34-36</scripRef>); but man was made so, that
+…<i>Be fruitful, and multiply, …</i> Here he
+gave them, 1. A …<i>Replenish the earth;</i> it
+is this that is bestowed …
+They were made <i>to dwell upon the face of all …</i> <scripRef passage="Ac 17:26" parsed="|Acts|17|26|0|0" osisRef="Bible:Acts.17.26">Acts xvii. 26</scripRef>.
+This is the place in which …<scripRef passage="Ps 145:10" parsed="|Ps|145|10|0|0" osisRef="Bible:Ps.145.10">Ps. cxlv. 10</scripRef>); and, lastly, to be a
+…<i>for God blessed him,</i> <scripRef passage="1Ch 26:5" parsed="|1Chr|26|5|0|0" osisRef="Bible:1Chr.26.5">1 Chron.
+xxvi. 5</scripRef>. It is owing to this …<i>one generation passeth away …</i></p>
+<p class="indent">V. That God gave to man, when …<i>over the fish of
+the sea and …</i> Though man provides for
+…<i>over every living
+thing that …</i> which are more under his …<scripRef passage="1Co 3:22" parsed="|1Cor|3|22|0|0" osisRef="Bible:1Cor.3.22">1 Cor.
+iii. 22</scripRef>.</p>
+ </div><scripCom type="Commentary" passage="Ge 1:29-30" parsed="|Gen|1|29|1|30" osisRef="Bible:Gen.1.29-Gen.1.30" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">29 And God said, Behold, I …<i>is</i> upon the face of all the …<i>is</i> the fruit of a tree 
+…<i>there is</i> life, <i>I have
+given</i> every green herb for meat: …</p>
+<p class="indent">We have here the third part …<scripRef passage="Ps 136:25" parsed="|Ps|136|25|0|0" osisRef="Bible:Ps.136.25">Ps.
+cxxxvi. 25</scripRef>. He that made man and beast …<scripRef passage="Ps 36:6" parsed="|Ps|36|6|0|0" osisRef="Bible:Ps.36.6">Ps. xxxvi. 6</scripRef>.
+Here is,</p>
+<p class="indent">I. Food provided for man, <scripRef passage="Ge 1:29" parsed="|Gen|1|29|0|0" osisRef="Bible:Gen.1.29"><i>v.</i> 29</scripRef>. Herbs and fruits must be
+…<scripRef passage="Ge 9:3" parsed="|Gen|9|3|0|0" osisRef="Bible:Gen.9.3"><i>ch.</i> ix. 3</scripRef>. And
+before the earth was …<scripRef passage="Joh 6:49" parsed="|John|6|49|0|0" osisRef="Bible:John.6.49">John vi. 49</scripRef>); it was to them but as food …<scripRef passage="Ps 104:14" parsed="|Ps|104|14|0|0" osisRef="Bible:Ps.104.14">Ps. civ. 14</scripRef>.
+There is meat that endures …<scripRef passage="Ps 78:18" parsed="|Ps|78|18|0|0" osisRef="Bible:Ps.78.18">Ps. lxxviii. 18</scripRef>;
+see <scripRef passage="Da 1:15" parsed="|Dan|1|15|0|0" osisRef="Bible:Dan.1.15">Dan. i. 15</scripRef>.</p>
+<p class="indent">II. Food provided for the beasts, <scripRef passage="Ge 1:30" parsed="|Gen|1|30|0|0" osisRef="Bible:Gen.1.30"><i>v.</i> 30</scripRef>. <i>Doth God take care
+for oxen?</i> Yes, certainly, he provides …<scripRef passage="Mt 6:26" parsed="|Matt|6|26|0|0" osisRef="Bible:Matt.6.26">Matt. vi. 26</scripRef>. He that feeds
+his birds …</p>
+ </div><scripCom type="Commentary" passage="Ge 1:31" parsed="|Gen|1|31|0|0" osisRef="Bible:Gen.1.31" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">31 And God saw every thing …<i>it was</i> very good. And the evening …</p>
+<p class="indent">We have here the approbation …</p>
+
+<p class="indent">I. The review God took of his work: He
+<i>saw every thing that he had made.</i> So he does still; all the
+…<scripRef passage="Ps 139:1-16" parsed="|Ps|139|1|139|16" osisRef="Bible:Ps.139.1-Ps.139.16">Ps. cxxxix.
+1-16</scripRef>. Omniscience cannot be …<i>Known unto God are all his works,</i> <scripRef passage="Ac 15:18" parsed="|Acts|15|18|0|0" osisRef="Bible:Acts.15.18">Acts xv. 18</scripRef>. But this was the Eternal …<scripRef passage="Jer 2:23" parsed="|Jer|2|23|0|0" osisRef="Bible:Jer.2.23">Jer. ii. 23</scripRef>), and think of it, <scripRef passage="Ps 119:59" parsed="|Ps|119|59|0|0" osisRef="Bible:Ps.119.59">Ps. cxix. 59</scripRef>. When we have finished
+a …</p>
+<p class="indent">II. The complacency God took …<i>Grace, grace, unto it,</i> <scripRef passage="Zec 4:7" parsed="|Zech|4|7|0|0" osisRef="Bible:Zech.4.7">Zech. iv. 7</scripRef>. Therefore judge nothing
+…</p>
+<p class="indent">III. The time when this work …<i>The evening and the morning …</i> so that in
+six days God made …<i>Let there be
+light, and there …</i> could have said, "Let there …<i>in a moment, in the
+twinkling …</i> as at the resurrection, <scripRef passage="1Co 15:52" parsed="|1Cor|15|52|0|0" osisRef="Bible:1Cor.15.52">1 Cor. xv. 52</scripRef>. But he did it in six days,
+…<i>worship him that
+made the …</i>
+according to the tenor of …<scripRef passage="Re 14:6,7" parsed="|Rev|14|6|14|7" osisRef="Bible:Rev.14.6-Rev.14.7">Rev. xiv.
+6, 7</scripRef>. All his works, in all …<i>bless thou the Lord, O my
+soul!</i></p>
+</div></div2>
+<div2 title="Chapter II" n="iii">
+
+<h2>G E N E S I S</h2>
+<h3>CHAP. II.</h3> 
+<p class="intro">This chapter is an appendix …<scripRef passage="Ge 2:1-3" parsed="|Gen|2|1|2|3" osisRef="Bible:Gen.2.1-Gen.2.3">ver.
+1-3</scripRef>). II. A more particular …<scripRef passage="Ge 2:1-7" parsed="|Gen|2|1|2|7" osisRef="Bible:Gen.2.1-Gen.2.7">ver. 1-7</scripRef>). III. A description of the …<scripRef passage="Ge 2:8-17" parsed="|Gen|2|8|2|17" osisRef="Bible:Gen.2.8-Gen.2.17">ver.
+8-17</scripRef>). IV. The creation of the …<scripRef passage="Ge 2:18-25" parsed="|Gen|2|18|2|25" osisRef="Bible:Gen.2.18-Gen.2.25">ver. 18</scripRef>, &amp;c.).</p>
+ <scripCom type="Commentary" passage="Ge 2" parsed="|Gen|2|0|0|0" osisRef="Bible:Gen.2" />
+<scripCom type="Commentary" passage="Ge 2:1-3" parsed="|Gen|2|1|2|3" osisRef="Bible:Gen.2.1-Gen.2.3" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">1 Thus the heavens and the …</p>
+<p class="indent">We have here, I. The …<scripRef passage="Ge 2:1,2" parsed="|Gen|2|1|2|2" osisRef="Bible:Gen.2.1-Gen.2.2"><i>v.</i> 1, 2</scripRef>. Here
+observe, 1. The …<i>hosts</i> or <i>armies</i> of them, which denotes them …<scripRef passage="Da 4:35" parsed="|Dan|4|35|0|0" osisRef="Bible:Dan.4.35">Dan. iv. 35</scripRef>. 2.
+The heavens and the …
+nothing can be added to it …<scripRef passage="Ec 3:14" parsed="|Eccl|3|14|0|0" osisRef="Bible:Eccl.3.14">Eccl. iii. 14</scripRef>. God that
+began to build …<scripRef passage="Joh 5:17" parsed="|John|5|17|0|0" osisRef="Bible:John.5.17">John v. 17</scripRef>),
+preserving and governing …</p>
+<p class="indent">II. The commencement of the …<scripRef passage="Ge 2:3" parsed="|Gen|2|3|0|0" osisRef="Bible:Gen.2.3"><i>v.</i> 3</scripRef>. He rested on that day, and …<scripRef passage="Jer 6:16" parsed="|Jer|6|16|0|0" osisRef="Bible:Jer.6.16">Jer. vi. 16</scripRef>. Sabbaths
+are as ancient as …</p>
+ </div><scripCom type="Commentary" passage="Ge 2:4-7" parsed="|Gen|2|4|2|7" osisRef="Bible:Gen.2.4-Gen.2.7" /><div class="Commentary">
+<h4>The Creation. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">4 These <i>are</i> the generations of the
+…<span class="smallcaps">Lord</span> God made the earth and the
+…<span class="smallcaps">Lord</span> God had not caused it to …<i>there was</i> not a man to till the …<span class="smallcaps">Lord</span> God formed man <i>of</i> the dust of the
+ground, and …</p>
+<p class="indent">In these verses, I. Here is a …<i>Jehovah</i>—the LORD, in capital …<i>Jehovah.</i> All along, in the first …<i>Elohim—a God of power;</i> but now <i>Jehovah Elohim—a God of
+…</i> a finishing God. As we find …<scripRef passage="Ex 6:3" parsed="|Exod|6|3|0|0" osisRef="Bible:Exod.6.3">Exod. vi. 3</scripRef>), so now we have
+him known …<i>Jehovah</i> is that great and …</p>
+<p class="indent">II. Further notice taken of …<scripRef passage="Ge 2:5,6" parsed="|Gen|2|5|2|6" osisRef="Bible:Gen.2.5-Gen.2.6"><i>v.</i> 5,
+6</scripRef>. Here observe, 1. The earth …<i>the Lord God caused it to rain.</i> If rain be wanted, it is 
+…<i>causeth it to rain upon one …</i>
+<scripRef passage="Am 4:7" parsed="|Amos|4|7|0|0" osisRef="Bible:Amos.4.7">Amos iv. 7</scripRef>. 3. Though God,
+ordinarily, …
+own
+planting. Though as yet …<i>watered the whole face of
+the ground.</i> Thus he chose to fulfil his …<i>that the excellency of the …</i>
+Divine grace descends like a …<scripRef passage="De 32:2" parsed="|Deut|32|2|0|0" osisRef="Bible:Deut.32.2">Deut. xxxii.
+2</scripRef>.</p>
+<p class="indent">III. A more particular …<scripRef passage="Ge 2:7" parsed="|Gen|2|7|0|0" osisRef="Bible:Gen.2.7"><i>v.</i> 7</scripRef>.
+Man is a little world, …<i>fearfully and wonderfully made,</i>
+<scripRef passage="Ps 139:14" parsed="|Ps|139|14|0|0" osisRef="Bible:Ps.139.14">Ps. cxxxix. 14</scripRef>. Elihu, in
+the patriarchal …<scripRef passage="Job 33:6" parsed="|Job|33|6|0|0" osisRef="Bible:Job.33.6">Job xxxiii. 6</scripRef>), <i>I also am formed
+out of the clay,</i> and (<scripRef passage="Job 33:4" parsed="|Job|33|4|0|0" osisRef="Bible:Job.33.4"><i>v.</i>
+4</scripRef>), <i>The breath of the Almighty …</i> and (<scripRef passage="Job 32:8" parsed="|Job|32|8|0|0" osisRef="Bible:Job.32.8"><i>ch.</i> xxxii.
+8</scripRef>), <i>There is a spirit in man.</i> Observe then,</p>
+<p class="indent">1. The mean origin, and yet …<i>of the dust of the ground,</i> a very unlikely thing to
+…<scripRef passage="Ge 2:6" parsed="|Gen|2|6|0|0" osisRef="Bible:Gen.2.6"><i>v.</i> 6</scripRef>. He
+was not made of …<b><i>choikos</i></b>—<i>dusty,</i> <scripRef passage="1Co 15:47" parsed="|1Cor|15|47|0|0" osisRef="Bible:1Cor.15.47">1 Cor. xv. 47</scripRef>. And we also are of the …<i>the
+earth</i> (<scripRef passage="Ps 139:15" parsed="|Ps|139|15|0|0" osisRef="Bible:Ps.139.15">Ps. cxxxix.
+15</scripRef>), and the earth, in which we …<i>mother's womb,</i> <scripRef passage="Job 1:21" parsed="|Job|1|21|0|0" osisRef="Bible:Job.1.21">Job
+i. 21</scripRef>. Our foundation is in the earth, <scripRef passage="Job 4:19" parsed="|Job|4|19|0|0" osisRef="Bible:Job.4.19">Job iv. 19</scripRef>. Our fabric is earthly,
+and …<scripRef passage="Job 10:9" parsed="|Job|10|9|0|0" osisRef="Bible:Job.10.9">Job x. 9</scripRef>. Our food is out of the
+earth, <scripRef passage="Job 28:5" parsed="|Job|28|5|0|0" osisRef="Bible:Job.28.5">Job xxviii. 5</scripRef>. Our
+familiarity is with the earth, <scripRef passage="Job 17:14" parsed="|Job|17|14|0|0" osisRef="Bible:Job.17.14">Job
+xvii. 14</scripRef>. Our fathers are in the …<i>created</i> and <i>made;</i> but of man
+that he was <i>formed,</i> which denotes a gradual …<scripRef passage="Isa 64:8" parsed="|Isa|64|8|0|0" osisRef="Bible:Isa.64.8">Isa. lxiv.
+8</scripRef>. The body of man is …<scripRef passage="Ps 139:15,16" parsed="|Ps|139|15|139|16" osisRef="Bible:Ps.139.15-Ps.139.16">Ps. cxxxix. 15, 16</scripRef>. <i>Materiam
+superabat opus—The …</i> Let us
+present our bodies to …<scripRef passage="Ro 12:1" parsed="|Rom|12|1|0|0" osisRef="Bible:Rom.12.1">Rom. xii. 1</scripRef>), as living temples (<scripRef passage="1Co 6:19" parsed="|1Cor|6|19|0|0" osisRef="Bible:1Cor.6.19">1 Cor. vi. 19</scripRef>), and then these vile
+bodies …<scripRef passage="Php 3:21" parsed="|Phil|3|21|0|0" osisRef="Bible:Phil.3.21">Phil. iii. 21</scripRef>.</p>
+<p class="indent">2. The high origin and the …<scripRef passage="Ec 12:7" parsed="|Eccl|12|7|0|0" osisRef="Bible:Eccl.12.7">Eccl. xii. 7</scripRef>), as afterwards he gave the
+…<i>urim</i> of his own framing to be put …<scripRef passage="Pr 15:32" parsed="|Prov|15|32|0|0" osisRef="Bible:Prov.15.32">Prov. xv.
+32</scripRef>. When our Lord Jesus …<i>breathed on his disciples,
+…</i> he intimated that it was he
+…</p>
+ </div><scripCom type="Commentary" passage="Ge 2:8-15" parsed="|Gen|2|8|2|15" osisRef="Bible:Gen.2.8-Gen.2.15" /><div class="Commentary">
+<h4>The Garden of Eden. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">8 And the <span class="smallcaps">Lord</span>
+God planted a garden …<span class="smallcaps">Lord</span> God to grow every tree that …<i>is</i> Pison: that <i>is</i> it which
+compasseth the …<i>there is</i> gold;
+  12 And the gold of that land <i>is</i> good; there <i>is</i>
+bdellium and the onyx stone. …<i>is</i> Gihon: the same <i>is</i> it that compasseth the
+whole …<i>is</i> Hiddekel: that <i>is</i> it which goeth toward the …<i>is</i> Euphrates.   15 And
+the <span class="smallcaps">Lord</span> God took the man, and put
+…</p>
+<p class="indent">Man consisting of body and …</p>
+<p class="indent">I. A description of the …<scripRef passage="1Co 3:1" parsed="|1Cor|3|1|0|0" osisRef="Bible:1Cor.3.1">1 Cor. iii. 1</scripRef>. Therefore he does not
+so …<scripRef passage="Heb 9:23" parsed="|Heb|9|23|0|0" osisRef="Bible:Heb.9.23">Heb. ix. 23</scripRef>.
+Observe,</p>
+<p class="indent">1. The place appointed for …</p>
+<p class="indent">2. The contrivance and …<i>had</i> planted it—upon
+the third …<scripRef passage="Isa 50:11" parsed="|Isa|50|11|0|0" osisRef="Bible:Isa.50.11">Isa. l.
+11</scripRef>. The whole earth was now a …</p>
+<p class="indent">3. The situation of this …<i>Eden,</i> which signifies
+<i>delight</i> and <i>pleasure.</i> The place is here …</p>
+<p class="indent">4. The trees with which this …
+and would have them easy; …<i>serve him with joyfulness and …</i> in the abundance of the good …<i>tree of life in
+the midst of …</i> which was not so much a …<scripRef passage="Re 2:7,22:2" parsed="|Rev|2|7|0|0;|Rev|22|2|0|0" osisRef="Bible:Rev.2.7 Bible:Rev.22.2">Rev. ii. 7; xxii. 2</scripRef>), and the
+<i>bread of life,</i> <scripRef passage="Joh 6:48,53" parsed="|John|6|48|0|0;|John|6|53|0|0" osisRef="Bible:John.6.48 Bible:John.6.53">John vi. 48,
+53</scripRef>. [2.] There was <i>the tree of the knowledge of …</i> so called, not because it …<i>First,</i> Because there was an 
+…<i>Secondly,</i>
+Because, in the event, it …<i>Believe and be
+saved,</i> but also, <i>Believe not and be damned</i> (<scripRef passage="Mk 16:16" parsed="|Mark|16|16|0|0" osisRef="Bible:Mark.16.16">Mark xvi. 16</scripRef>), so the covenant of
+…<i>good and evil, the
+blessing …</i> <scripRef passage="De 30:19" parsed="|Deut|30|19|0|0" osisRef="Bible:Deut.30.19">Deut. xxx.
+19</scripRef>. These two trees were as two …</p>
+<p class="indent">5. The rivers with which this …<scripRef passage="Ge 2:10-14" parsed="|Gen|2|10|2|14" osisRef="Bible:Gen.2.10-Gen.2.14"><i>v.</i> 10-14</scripRef>.
+These four rivers (or one …<i>well watered every
+where, as …</i> <scripRef passage="Ge 13:10" parsed="|Gen|13|10|0|0" osisRef="Bible:Gen.13.10"><i>ch.</i> xiii. 10</scripRef>. Observe, That which God
+…<scripRef passage="Ps 1:3" parsed="|Ps|1|3|0|0" osisRef="Bible:Ps.1.3">Ps.
+i. 3</scripRef>. In the heavenly paradise …<scripRef passage="Rev 22:1" parsed="|Rev|22|1|0|0" osisRef="Bible:Rev.22.1">Rev.
+xxii. 1</scripRef>), a river that <i>makes glad the city of our
+God,</i> <scripRef passage="Ps 46:4" parsed="|Ps|46|4|0|0" osisRef="Bible:Ps.46.4">Ps. xlvi. 4</scripRef>.
+Hiddekel and Euphrates are …<i>wept, when
+they remembered Sion</i> (<scripRef passage="Ps 137:1" parsed="|Ps|137|1|0|0" osisRef="Bible:Ps.137.1">Ps. cxxxvii.
+1</scripRef>); but methinks they had much …<scripRef passage="Ge 2:12" parsed="|Gen|2|12|0|0" osisRef="Bible:Gen.2.12"><i>v.</i> 12</scripRef>),
+<i>The gold of that land is good,</i> and <i>there is bdellium and
+the onyx-stone:</i> surely this is mentioned …</p>
+<p class="indent">II. The placing of man in …<scripRef passage="Ge 2:15" parsed="|Gen|2|15|0|0" osisRef="Bible:Gen.2.15"><i>v.</i> 15</scripRef>, where
+observe,</p>
+<p class="indent">1. How God put him in …<i>The Lord God took the man, …</i> so <scripRef passage="Ge 2:8,15" parsed="|Gen|2|8|0|0;|Gen|2|15|0|0" osisRef="Bible:Gen.2.8 Bible:Gen.2.15"><i>v.</i> 8,
+15</scripRef>. Note here, (1.) Man was made <i>out</i> of paradise;
+for, after God …<scripRef passage="Ps 47:4" parsed="|Ps|47|4|0|0" osisRef="Bible:Ps.47.4">Ps.
+xlvii. 4</scripRef>.</p>
+<p class="indent">2. How God appointed him …
+being has given us …<scripRef passage="2Th 3:10,Pr 27:23" parsed="|2Thess|3|10|0|0;|Prov|27|23|0|0" osisRef="Bible:2Thess.3.10 Bible:Prov.27.23">2 Thess. iii. 10; Prov.
+xxvii. 23</scripRef>.</p>
+<p class="indent">III. The command which God …</p>
+</div><scripCom type="Commentary" passage="Ge 2:16-17" parsed="|Gen|2|16|2|17" osisRef="Bible:Gen.2.16-Gen.2.17" /><div class="Commentary">
+<h4>The Tree of Knowledge
+Prohibited. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">16 And the <span class="smallcaps">Lord</span>
+God commanded the man, …</p>
+<p class="indent">Observe here, I. God's …<scripRef passage="Ps 148:6,Ps 104:9" parsed="|Ps|148|6|0|0;|Ps|104|9|0|0" osisRef="Bible:Ps.148.6 Bible:Ps.104.9">Ps. cxlviii.
+6; civ. 9</scripRef>. The brute-creatures have …</p>
+<p class="indent">II. The particular act of …</p>
+<p class="indent">1. A confirmation of his …<i>Of every tree in the garden …</i> This was not only an …<scripRef passage="1Co 9:7,10" parsed="|1Cor|9|7|0|0;|1Cor|9|10|0|0" osisRef="Bible:1Cor.9.7 Bible:1Cor.9.10">1 Cor. ix. 7, 10</scripRef>), but it was, withal, an
+…<i>in the midst of the garden</i>
+(<scripRef passage="Ge 2:9" parsed="|Gen|2|9|0|0" osisRef="Bible:Gen.2.9"><i>v.</i> 9</scripRef>), as the heart
+and soul of …<scripRef passage="Ge 3:22" parsed="|Gen|3|22|0|0" osisRef="Bible:Gen.3.22"><i>ch.</i>
+iii. 22</scripRef>), of which it is there said …<i>lived for ever,</i> that is, never died, nor …</p>
+<p class="indent">2. A trial of his obedience, …<i>But of the</i> other tree
+which stood very …<i>in the midst of the garden</i>), and which was called the
+<i>tree of knowledge, in the day …</i>" as if he had said, "Know, …</p>
+<p class="indent">(1.) Adam is threatened with …<i>Dying thou shalt die,</i> denoting a sure and
+dreadful …<i>eating thou shalt eat,</i> denotes a free and full …
+much more do we now. [2.] …<i>Thou
+shalt die,</i> that is, "Thou shalt be …<i>In the day thou eatest, thou shalt die,</i> that is, "Thou shalt
+become …<i>surely;</i> it is a settled rule, <i>the
+soul that sinneth, it shall die.</i>"</p>
+<p class="indent">(2.) Adam is tried with a …<i>of the tree of knowledge.</i> Now it was
+very proper to …</p>
+<p class="indent">Thus easy, thus happy, was …<i>became as the beasts that perish.</i></p>
+</div><scripCom type="Commentary" passage="Ge 2:18-20" parsed="|Gen|2|18|2|20" osisRef="Bible:Gen.2.18-Gen.2.20" /><div class="Commentary">
+<h4>Adam's Dominion. (<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">18 And the <span class="smallcaps">Lord</span>
+God said, <i>It is</i> not good that the man should …<span class="smallcaps">Lord</span> God formed every beast of
+…<i>them</i> unto
+Adam to see what he …<i>was</i> the name thereof.   20
+And …</p>
+<p class="indent">Here we have, I. An instance …<scripRef passage="Ge 2:18" parsed="|Gen|2|18|0|0" osisRef="Bible:Gen.2.18"><i>v.</i> 18</scripRef>. Though God had
+let him know …<scripRef passage="Ge 2:16,17" parsed="|Gen|2|16|2|17" osisRef="Bible:Gen.2.16-Gen.2.17"><i>v.</i> 16, 17</scripRef>), yet
+here he lets him know …</p>
+<p class="indent">1. How God graciously pitied …<i>It is not good that man, this …</i> Though
+there was an upper …<i>alone.</i> Now he that made
+him knew …<scripRef passage="Ec 4:9,10" parsed="|Eccl|4|9|4|10" osisRef="Bible:Eccl.4.9-Eccl.4.10">Eccl. iv.
+9</scripRef>, &amp;c.), that <i>two are better than one,</i> and
+<i>woe to him that is alone.</i> If there were but one man in …</p>
+<p class="indent">2. How God graciously …<i>I will make a help-meet for him;</i> a
+help <i>like</i> him (so some read it), one …<i>near</i> him (so others), one to
+…<i>before</i>
+him (so others), one that he …<i>the eye cannot say to the …</i>
+<scripRef passage="1Co 12:21" parsed="|1Cor|12|21|0|0" osisRef="Bible:1Cor.12.21">1 Cor. xii. 21</scripRef>. We must
+therefore be glad …
+supply them all, <scripRef passage="Php 4:19" parsed="|Phil|4|19|0|0" osisRef="Bible:Phil.4.19">Phil. iv.
+19</scripRef>. In him alone our help is, …<scripRef passage="1Co 7:33,34" parsed="|1Cor|7|33|7|34" osisRef="Bible:1Cor.7.33-1Cor.7.34">1 Cor. vii. 33,
+34</scripRef>. (4.) Family-society, if it …<i>was not alone, for the Father …</i>
+Those that are most …</p>
+<p class="indent">II. An instance of the …<scripRef passage="Ge 2:19,20" parsed="|Gen|2|19|2|20" osisRef="Bible:Gen.2.19-Gen.2.20"><i>v.</i> 19, 20</scripRef>): <i>Every beast of the
+field and …</i> either by
+the ministry of …<i>taught more than
+the beasts …</i> <scripRef passage="Job 35:11" parsed="|Job|35|11|0|0" osisRef="Bible:Job.35.11">Job xxxv. 11</scripRef>.
+And, 2. A proof of his …<scripRef passage="Da 1:7" parsed="|Dan|1|7|0|0" osisRef="Bible:Dan.1.7">Dan. i. 7</scripRef>), and of
+subjection to …<i>calleth the stars by their names,</i> to show
+that he is the …</p>
+<p class="indent">III. An instance of the …<i>But</i> (among them
+all) <i>for Adam there was not found …</i> Some
+make these to be the …</p>
+ </div><scripCom type="Commentary" passage="Ge 2:21-25" parsed="|Gen|2|21|2|25" osisRef="Bible:Gen.2.21-Gen.2.25" /><div class="Commentary">
+<h4>The Formation of Eve; …<span class="smallcaps">b. c.</span> 4004.)</h4>
+<p class="passage">21 And the <span class="smallcaps">Lord</span>
+God caused a deep sleep to …<span class="smallcaps">Lord</span> God had taken from man, made …<i>is</i> now bone of my bones, and …<scripRef passage="Man. 24" parsed="|PrMan|1|24|0|0" osisRef="Bible:PrMan.1.24">Man.   24</scripRef> Therefore
+shall a man leave …</p>
+<p class="indent">Here we have, I. The making …<scripRef passage="Ge 1:27" parsed="|Gen|1|27|0|0" osisRef="Bible:Gen.1.27"><i>ch.</i> i.
+27</scripRef>), that God made man male and …<scripRef passage="1Ti 2:13" parsed="|1Tim|2|13|0|0" osisRef="Bible:1Tim.2.13">1 Tim. ii. 13</scripRef>),
+and she was made of the …<scripRef passage="1Co 11:8,9" parsed="|1Cor|11|8|11|9" osisRef="Bible:1Cor.11.8-1Cor.11.9">1 Cor. xi. 8, 9</scripRef>), all which are urged there
+…<scripRef passage="1Co 11:7" parsed="|1Cor|11|7|0|0" osisRef="Bible:1Cor.11.7">1 Cor.
+xi. 7</scripRef>. If man is the head, she is …<i>directed
+
+the Spirit of the Lord, or …</i> <scripRef passage="Isa 40:13" parsed="|Isa|40|13|0|0" osisRef="Bible:Isa.40.13">Isa. xl.
+13</scripRef>. He had been made sensible …<i>God caused a sleep to fall on
+Adam,</i> and made it a deep sleep, …<i>made of a rib out of
+the side of Adam;</i> not made out of his head to …<scripRef passage="Eph 5:25,26" parsed="|Eph|5|25|5|26" osisRef="Bible:Eph.5.25-Eph.5.26">Eph. v. 25, 26</scripRef>.</p>
+<p class="indent">II. The marriage of the woman …<i>both,</i> and now, by his
+ordinance, made them <i>one.</i> This was a marriage made in
+…<i>her</i> Father, brought the woman to …<i>his</i> Father, Adam received her (<scripRef passage="Ge 2:23" parsed="|Gen|2|23|0|0" osisRef="Bible:Gen.2.23"><i>v.</i> 23</scripRef>): "<i>This is now bone of
+my bone.</i> Now I have what I wanted, …<i>She shall be called
+woman, Isha,</i> a <i>she-man,</i> differing from man in sex …</p>
+<p class="indent">III. The institution of the …<scripRef passage="Ge 2:24" parsed="|Gen|2|24|0|0" osisRef="Bible:Gen.2.24"><i>v.</i> 24</scripRef>. The sabbath and marriage …<scripRef passage="Mt 19:4,5" parsed="|Matt|19|4|19|5" osisRef="Bible:Matt.19.4-Matt.19.5">Matt. xix. 4, 5</scripRef>) that it was God himself 
+…<scripRef passage="Ge 2:23" parsed="|Gen|2|23|0|0" osisRef="Bible:Gen.2.23"><i>v.</i> 23</scripRef>),
+is uncertain. It should …<scripRef passage="Ps 45:10,11" parsed="|Ps|45|10|45|11" osisRef="Bible:Ps.45.10-Ps.45.11">Ps. xlv. 10, 11</scripRef>. 2. See how necessary it
+is …<scripRef passage="Mal 2:15" parsed="|Mal|2|15|0|0" osisRef="Bible:Mal.2.15">Mal. ii. 15</scripRef>) nor to be broken or cut off …<scripRef passage="Eph 5:28" parsed="|Eph|5|28|0|0" osisRef="Bible:Eph.5.28">Eph. v. 28</scripRef>. These two are one flesh; …</p>
+<p class="indent">IV. An evidence of the purity …
+were
+created, <scripRef passage="Ge 2:25" parsed="|Gen|2|25|0|0" osisRef="Bible:Gen.2.25"><i>v.</i> 25</scripRef>. They
+were both naked. They …<i>They knew not what shame was,</i> so
+the Chaldee reads it. …</p>
+</div></div2>
+</div1>
+</ThML.body></ThML>

@@ -61,17 +61,19 @@ impl Package {
             .filter_map(|(name, entry)| Some((Format::from_name(name)?, entry.path.as_str())))
             .filter(|(format, _)| format.readable())
             .collect();
-        // The best one logoxide reads (the enum's order)
+        // The best one logoxide reads (the enum's order). A book's text isn't verses: its ThML is
+        // searched for references, as an EPUB is (`references::book_files`)
         formats.sort();
+        let kind = (manifest.package.as_ref())
+            .map(|p| p.kind)
+            .unwrap_or_default();
+        if kind == manifest::PackageKind::Book {
+            formats.clear();
+        }
         let Some(&(format, path)) = formats.first() else {
             let enabled_formats = manifest.formats(&enabled);
             // A Bible is read as verses; a book or a collection can have none, and so can a
             // recording that reads another package's text ([media] text)
-            let kind = manifest
-                .package
-                .as_ref()
-                .map(|p| p.kind)
-                .unwrap_or_default();
             let recording = (manifest.formats.is_empty())
                 && (manifest.media.as_ref()).is_some_and(crate::media::Media::names_its_text);
             if kind == manifest::PackageKind::Bible && !recording {

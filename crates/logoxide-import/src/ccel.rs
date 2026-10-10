@@ -1,8 +1,13 @@
 /*!
-CCEL (the Christian Classics Ethereal Library): its page of Bibles ([`catalog`]) and a Bible's
-ThML ([`import`]), the whole Bible in one file ([`url`]), described by its own head (title,
-language, rights, version: [`thml_head`]), with its rights in `COPYRIGHT.txt`. Its list gives no
-versions: an update is found by downloading
+CCEL (the Christian Classics Ethereal Library): its page of Bibles ([`catalog`]), its genre
+indexes ([`genre_catalog`]: commentaries, Bibles, and any other genre's books), and a work's ThML
+([`import`]), the whole work in one file ([`url`]), described by its own head (title, language,
+rights, version, and whether it's a Bible, a commentary, or a book: [`thml_head`]), with its
+rights in `COPYRIGHT.txt`. Its lists give no versions: an update is found by downloading.
+
+A Bible is imported as `ccel:<id>` (`ccel:kjv`, its file `ccel/bible/kjv.xml`); any other work as
+`ccel:<author>/<work>` (`ccel:henry/mhc1`, `ccel/henry/mhc1.xml`), which needn't be in a catalog
+([`named_catalog`]): its head says what it is
 */
 
 use logoxide::{
@@ -15,9 +20,71 @@ use logoxide::{
 
 use crate::{Made, external, finish, import_id, package_id};
 
-/// Where CCEL serves a Bible's ThML (`kjv`, as its catalog lists it)
+/// Where CCEL serves a work's ThML: a Bible's by its id (`kjv`), another work's by its author and
+/// name (`henry/mhc1`), as its import names it
 pub fn url(id: &str) -> String {
-    format!("https://ccel.org/ccel/bible/{id}.xml")
+    match id.contains('/') {
+        true => format!("https://ccel.org/ccel/{id}.xml"),
+        false => format!("https://ccel.org/ccel/bible/{id}.xml"),
+    }
+}
+
+/// A work's page on CCEL, from its import id (as [`url`])
+fn homepage(id: &str) -> String {
+    match id.contains('/') {
+        true => format!("https://ccel.org/ccel/{id}"),
+        false => format!("https://ccel.org/ccel/bible/{id}"),
+    }
+}
+
+/// Whether a name is one CCEL's paths use for an author or a work (`henry`, `mhc1`,
+/// `daily_light`)
+fn is_path_name(name: &str) -> bool {
+    !name.is_empty()
+        && (name.bytes())
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b"_-.".contains(&b))
+        && !name.starts_with('.')
+}
+
+/**
+The entry for a work's import: `id` is a Bible's (`kjv`, CCEL's `bible` author left out) or
+`<author>/<work>`; the package's id is `ccel-<id>` with `/` as `-` (`ccel-henry-mhc1`), prefixed
+because CCEL's ids (`kjv`, `web`) are other catalogs' too, and the first of an id wins when
+catalogs merge. Its language is `und` and its license unknown until its file's head says
+([`import`])
+*/
+fn entry(id: &str, title: String, kind: PackageKind, description: Option<String>) -> CatalogEntry {
+    let work = id.rsplit('/').next().unwrap_or(id);
+    let downloads = vec![Download {
+        name: String::from("thml"),
+        urls: vec![url(id)],
+    }];
+    CatalogEntry {
+        id: format!("ccel-{}", package_id(&id.replace('/', "-"))),
+        name: title,
+        abbreviation: work.to_uppercase(),
+        aliases: vec![],
+        language: String::from("und"),
+        language_name: None,
+        script: None,
+        description,
+        license: None,
+        rights: Default::default(),
+        copyright: None,
+        version: None,
+        kind,
+        direction: Direction::Ltr,
+        source: external("ccel", id, false, downloads),
+        path: None,
+        releases: vec![],
+        keywords: vec![],
+        categories: vec![],
+        about_books: vec![],
+        work: None,
+        edition: None,
+        edition_year: None,
+        keys: None,
+    }
 }
 
 /**
@@ -45,50 +112,11 @@ pub fn catalog(text: &str) -> Result<Catalog> {
         else {
             continue;
         };
-        let title = (heading.split_once('>'))
-            .and_then(|(_, rest)| rest.split_once("<a"))
-            .map(|(_, rest)| rest)
-            .and_then(|rest| rest.split_once('>'))
-            .and_then(|(_, rest)| rest.split_once("</a>"))
-            .map(|(title, _)| decode_html_entities(title))
-            .map(|t| t.split_whitespace().collect::<Vec<_>>().join(" "))
-            .filter(|t| !t.is_empty())
-            .unwrap_or_else(|| work.to_string());
+        let title = link_text(heading).unwrap_or_else(|| work.to_string());
         if (entries.iter()).any(|e| e.source.import_id() == Some(work)) {
             continue;
         }
-        let downloads = vec![Download {
-            name: String::from("thml"),
-            urls: vec![url(work)],
-        }];
-        entries.push(CatalogEntry {
-            // Prefixed: CCEL's ids (`kjv`, `web`) are other catalogs' too, and the first of
-            // an id wins when catalogs merge
-            id: format!("ccel-{}", package_id(work)),
-            name: title,
-            abbreviation: work.to_uppercase(),
-            aliases: vec![],
-            language: String::from("und"),
-            language_name: None,
-            script: None,
-            description: None,
-            license: None,
-            rights: Default::default(),
-            copyright: None,
-            version: None,
-            kind: PackageKind::Bible,
-            direction: Direction::Ltr,
-            source: external("ccel", work, false, downloads),
-            path: None,
-            releases: vec![],
-            keywords: vec![],
-            categories: vec![],
-            about_books: vec![],
-            work: None,
-            edition: None,
-            edition_year: None,
-            keys: None,
-        });
+        entries.push(entry(work, title, PackageKind::Bible, None));
     }
     if entries.is_empty() {
         return Err(LogoxideError::Catalog(String::from(
@@ -100,6 +128,115 @@ pub fn catalog(text: &str) -> Result<Catalog> {
     Ok(Catalog {
         name: String::from("CCEL"),
         entries,
+        warnings: vec![],
+    })
+}
+
+/// The text of the first link in `html` (`<a href="…">Title</a>`), its entities decoded and its
+/// whitespace collapsed
+fn link_text(html: &str) -> Option<String> {
+    let (_, rest) = html.split_once("<a")?;
+    let (_, rest) = rest.split_once('>')?;
+    let (title, _) = rest.split_once("</a>")?;
+    let title = decode_html_entities(title);
+    let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+    (!title.is_empty()).then_some(title)
+}
+
+/// The kind of package a CCEL genre's works are (`gen-COM` commentaries, `gen-BIB` Bibles), by
+/// its code; every other genre's are books
+pub fn genre_kind(genre: &str) -> PackageKind {
+    match genre.to_ascii_uppercase().as_str() {
+        "GEN-COM" => PackageKind::Commentary,
+        "GEN-BIB" => PackageKind::Bible,
+        _ => PackageKind::Book,
+    }
+}
+
+/// The genre a CCEL genre index's URL names (`gen-COM` of `https://ccel.org/index/genre/gen-COM`)
+pub fn genre_of(location: &str) -> Option<&str> {
+    let path = location.split(['?', '#']).next().unwrap_or(location);
+    let lower = path.to_ascii_lowercase();
+    let at = lower.find("ccel.org/index/genre/")? + "ccel.org/index/genre/".len();
+    let genre = path.get(at..)?.trim_end_matches('/');
+    (!genre.is_empty() && !genre.contains('/')).then_some(genre)
+}
+
+/**
+A CCEL genre index (`https://ccel.org/index/genre/gen-COM`, "All Works in Genre
+'Commentaries'"): each `<p class="List2"><a href="/ccel/<author>/<work>.html">Title</a>` a
+`ccel:<author>/<work>` import (a Bible's, `/ccel/bible/<id>.html`, is `ccel:<id>`, as
+[`catalog`] lists it) of the kind the genre's works are ([`genre_kind`]); the author's name, when
+the page gives it, is its description. Links of other shapes (a work's folder, a page of its
+own) are passed over
+*/
+pub fn genre_catalog(text: &str, genre: &str) -> Result<Catalog> {
+    let kind = genre_kind(genre);
+    let mut entries: Vec<CatalogEntry> = vec![];
+    for item in text.split("<p class=\"List2\">").skip(1) {
+        let item = item.split_once("</p>").map_or(item, |(item, _)| item);
+        let Some(href) = (item.split_once("href=\""))
+            .and_then(|(_, rest)| rest.split_once('"'))
+            .map(|(href, _)| href)
+        else {
+            continue;
+        };
+        let Some(path) = (href.strip_prefix("https://ccel.org").or(Some(href)))
+            .and_then(|h| h.strip_prefix("/ccel/"))
+            .and_then(|h| h.strip_suffix(".html"))
+        else {
+            continue;
+        };
+        let Some((author, work)) = path.split_once('/') else {
+            continue;
+        };
+        if !is_path_name(author) || !is_path_name(work) {
+            continue;
+        }
+        let id = match author {
+            "bible" => work.to_string(),
+            _ => format!("{author}/{work}"),
+        };
+        if (entries.iter()).any(|e| e.source.import_id() == Some(id.as_str())) {
+            continue;
+        }
+        let title = link_text(item).unwrap_or_else(|| work.to_string());
+        let author =
+            (item.split_once("class=\"authorName\"")).and_then(|(_, rest)| link_text(rest));
+        entries.push(entry(&id, title, kind, author));
+    }
+    if entries.is_empty() {
+        return Err(LogoxideError::Catalog(format!(
+            "CCEL's genre {genre} lists no works (has its page changed?)"
+        )));
+    }
+    entries.sort_by(|a, b| a.id.cmp(&b.id));
+    logoxide::catalog::known_works(&mut entries);
+    Ok(Catalog {
+        name: format!("CCEL {genre}"),
+        entries,
+        warnings: vec![],
+    })
+}
+
+/**
+A catalog of the one work a `ccel:<author>/<work>` import names (`ccel:henry/mhc1`), for one no
+catalog lists: CCEL serves every work's ThML the same way, so the name says where it is. It's a
+book until its file's head says otherwise ([`import`]); `None` for any other name
+*/
+pub fn named_catalog(import: &str) -> Option<Catalog> {
+    let id = import.strip_prefix("ccel:")?;
+    let (author, work) = id.split_once('/')?;
+    if !is_path_name(author) || !is_path_name(work) {
+        return None;
+    }
+    let entry = match author {
+        "bible" => entry(work, work.to_string(), PackageKind::Bible, None),
+        _ => entry(id, work.to_string(), PackageKind::Book, None),
+    };
+    Some(Catalog {
+        name: String::from("CCEL"),
+        entries: vec![entry],
         warnings: vec![],
     })
 }
@@ -155,6 +292,21 @@ pub struct ThmlHead {
     pub date: Option<String>,
     /// `<description>`, its lines joined
     pub description: Option<String>,
+    /// `DC.Type`: what the work is (`Text.Bible`, `Text.Commentary`, `Text.Monograph`)
+    pub dc_type: Option<String>,
+}
+
+impl ThmlHead {
+    /// The kind of package its `DC.Type` says it is: a Bible, a commentary, or (any other type) a
+    /// book; none when the head doesn't say
+    pub fn kind(&self) -> Option<PackageKind> {
+        let dc_type = self.dc_type.as_deref()?.to_ascii_lowercase();
+        Some(match dc_type.as_str() {
+            "text.bible" => PackageKind::Bible,
+            "text.commentary" => PackageKind::Commentary,
+            _ => PackageKind::Book,
+        })
+    }
 }
 
 /// The head of a ThML file (only the part before `</ThML.head>` is read)
@@ -175,6 +327,7 @@ pub fn thml_head(xml: &str) -> ThmlHead {
         version: text("version", false),
         date: text("DC.Date", false),
         description: inner_text(head, "description"),
+        dc_type: text("DC.Type", false),
     }
 }
 
@@ -199,12 +352,14 @@ fn inner_text(xml: &str, name: &str) -> Option<String> {
 }
 
 /**
-A Bible CCEL publishes, from its ThML (the bytes at [`url`]), as a package in `dest`:
-`logoxide.toml`, `thml/<id>.xml`, and `COPYRIGHT.txt` (its rights, the license file). The file's
-head names it and gives its language and rights (CCEL's list doesn't), and the upstream version:
-the edition's own (`1.0`), else its date (`2002-11-30`). Public domain is `LicenseRef-PublicDomain`;
-anything else is `LicenseRef-CCEL`, with the statement in the license file. A page in place of
-the file (CCEL answers with one for works it restricts) is an error
+A work CCEL publishes, from its ThML (the bytes at [`url`]), as a package in `dest`:
+`logoxide.toml`, `thml/<work>.xml`, and `COPYRIGHT.txt` (its rights, the license file). The file's
+head names it and gives its language and rights (CCEL's list doesn't), its kind (`DC.Type`: a
+Bible, a commentary, else a book; else the entry's), and the upstream version: the edition's own
+(`1.0`), else its date (`2002-11-30`). Public domain is `LicenseRef-PublicDomain`; anything else
+is `LicenseRef-CCEL`, with the statement in the license file. A page in place of the file (CCEL
+answers with one for works it restricts) is an error, and so is a Bible or commentary with no
+verse markers (CCEL's scans, "Images Only", have none)
 */
 pub fn import(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> {
     let id = import_id(entry, "ccel", "CCEL")?;
@@ -218,6 +373,9 @@ pub fn import(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()
     }
     let head = thml_head(&text);
     let mut entry = entry.clone();
+    if let Some(kind) = head.kind() {
+        entry.kind = kind;
+    }
     if let Some(title) = head.title
         && title != entry.name
     {
@@ -246,7 +404,8 @@ pub fn import(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()
     }));
     entry.version = head.version.or(head.date).or(entry.version);
     let staged = MemoryStorage::new();
-    staged.write(&format!("thml/{id}.xml"), xml)?;
+    let work = id.rsplit('/').next().unwrap_or(id);
+    staged.write(&format!("thml/{work}.xml"), xml)?;
     let rights = head
         .rights
         .as_deref()
@@ -260,7 +419,7 @@ pub fn import(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()
         format: "thml",
         license_file: Some(String::from("COPYRIGHT.txt")),
         publisher: "CCEL",
-        homepage: format!("https://ccel.org/ccel/bible/{id}"),
+        homepage: homepage(id),
         versification: None,
         keys: None,
     };
@@ -372,6 +531,133 @@ mod tests {
         assert_eq!(
             decode_html_entities("A & B &unknown; C"),
             "A & B &unknown; C"
+        );
+    }
+
+    /// CCEL's genre indexes, saved 2026-10-10 (`tests/fixtures/ccel/`)
+    const GEN_COM: &str = include_str!("../tests/fixtures/ccel/gen-COM.html");
+    const GEN_BIB: &str = include_str!("../tests/fixtures/ccel/gen-BIB.html");
+    /// Matthew Henry's Genesis 1–2, cut short (logoxide-text's fixture)
+    const HENRY: &str = include_str!("../../logoxide-text/tests/fixtures/ccel/mhc1-gen1-2.xml");
+
+    #[test]
+    fn genre_indexes() {
+        let location = "https://ccel.org/index/genre/gen-COM";
+        let catalog = crate::catalog::parse_text(location, GEN_COM).unwrap();
+        assert_eq!(catalog.name, "CCEL gen-COM");
+        // 213 links; a work's folder (`hebrewot/home.html`) and one with no `.html` aren't
+        // imports
+        assert!(catalog.entries.len() > 200, "{}", catalog.entries.len());
+        assert!(
+            catalog
+                .entries
+                .iter()
+                .all(|e| e.kind == PackageKind::Commentary)
+        );
+        let henry = catalog.find_import("ccel:henry/mhc1").unwrap();
+        assert_eq!(henry.id, "ccel-henry-mhc1");
+        assert_eq!(henry.abbreviation, "MHC1");
+        assert_eq!(henry.description.as_deref(), Some("Matthew Henry"));
+        assert_eq!(
+            henry.source.downloads()[0].urls,
+            ["https://ccel.org/ccel/henry/mhc1.xml"]
+        );
+        let barnes = catalog.find_import("ccel:barnes/ntnotes").unwrap();
+        assert_eq!(barnes.name, "Barnes' New Testament Notes");
+        assert!(catalog.find_import("ccel:brenton/lxx").is_none());
+        assert!(catalog.find_import("ccel:anonymous/hebrewot").is_none());
+        // A Bible keeps its import name in the genre of Bibles
+        let catalog =
+            crate::catalog::parse_text("https://ccel.org/index/genre/gen-BIB", GEN_BIB).unwrap();
+        let kjv = catalog.find_import("ccel:kjv").unwrap();
+        assert_eq!(
+            (kjv.id.as_str(), kjv.kind),
+            ("ccel-kjv", PackageKind::Bible)
+        );
+        assert_eq!(
+            kjv.source.downloads()[0].urls,
+            ["https://ccel.org/ccel/bible/kjv.xml"]
+        );
+        assert_eq!(genre_kind("gen-THE"), PackageKind::Book);
+    }
+
+    #[test]
+    fn imports_a_commentary_by_name() {
+        let catalog = named_catalog("ccel:henry/mhc1").unwrap();
+        let entry = catalog.find_import("ccel:henry/mhc1").unwrap();
+        assert_eq!(entry.kind, PackageKind::Book);
+        assert!(named_catalog("ccel:kjv").is_none());
+        assert!(named_catalog("ccel:../x").is_none());
+        let dest = MemoryStorage::new();
+        crate::build(entry, &[("thml".into(), HENRY.as_bytes().to_vec())], &dest).unwrap();
+        assert_eq!(
+            dest.walk("").unwrap(),
+            ["COPYRIGHT.txt", "logoxide.toml", "thml/mhc1.xml"]
+        );
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        let info = package.info();
+        // Its head says it's a commentary
+        assert_eq!(info.kind, PackageKind::Commentary);
+        assert_eq!(info.id, "ccel-henry-mhc1");
+        assert_eq!(
+            info.homepage.as_deref(),
+            Some("https://ccel.org/ccel/henry/mhc1")
+        );
+        let genesis = logoxide_text::bible_data()
+            .books()
+            .search_usfm("GEN")
+            .unwrap();
+        assert_eq!(package.books(), [genesis]);
+        let passage = (logoxide_text::bible_data().books())
+            .parse_osis("Gen.1.1")
+            .unwrap();
+        let notes = package.source().notes(&passage).unwrap();
+        assert_eq!(
+            notes.iter().map(|n| (n.verse, n.last)).collect::<Vec<_>>(),
+            [(1, 2)]
+        );
+        // A scan (no verse markers) isn't a commentary
+        let scan = HENRY.replace("scripCom", "span");
+        let error = import(entry, scan.as_bytes(), &MemoryStorage::new()).unwrap_err();
+        assert!(error.to_string().contains("no books"), "{error}");
+    }
+
+    #[test]
+    fn imports_a_book() {
+        let catalog = named_catalog("ccel:calvin/institutes").unwrap();
+        let entry = catalog.find_import("ccel:calvin/institutes").unwrap();
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ThML><ThML.head><electronicEdInfo><DC>
+<DC.Title>The Institutes of the Christian Religion</DC.Title>
+<DC.Type>Text.Monograph</DC.Type><DC.Language scheme="ISO639-3">eng</DC.Language>
+<DC.Rights>Public Domain</DC.Rights></DC></electronicEdInfo></ThML.head>
+<ThML.body><div1 title="Book First"><div2 title="Chapter 1.">
+<p>Without vision the people perish (<scripRef passage="Prov. 29:18" parsed="|Prov|29|18|0|0">Prov. 29:18</scripRef>).</p>
+</div2></div1></ThML.body></ThML>"#;
+        let dest = MemoryStorage::new();
+        crate::build(entry, &[("thml".into(), xml.as_bytes().to_vec())], &dest).unwrap();
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        assert_eq!(package.info().kind, PackageKind::Book);
+        assert_eq!(
+            package.info().name,
+            "The Institutes of the Christian Religion"
+        );
+        // Not read as verses: its references are found in it, as an EPUB's are
+        assert!(package.books().is_empty() && package.text_format().is_none());
+        assert_eq!(
+            logoxide::references::book_files(&package).unwrap(),
+            ["thml/institutes.xml"]
+        );
+        let found = logoxide::references::find(&package).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            (found[0].passage.as_str(), found[0].chapter.as_deref()),
+            ("Prov.29.18", Some("Chapter 1."))
+        );
+        let titles = logoxide::titles::titles(&package).unwrap();
+        assert_eq!(
+            titles[0].title.as_deref(),
+            Some("The Institutes of the Christian Religion")
         );
     }
 }

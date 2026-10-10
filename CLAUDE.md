@@ -112,8 +112,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `lx import --update` (`apply_import`)
   - `package.rs`: opening a package picks the best readable format its enabled features turn on
     (`Format::text_format`, opened by logoxide-text's `source::open` under `read`); a package
-    that isn't a Bible (a book, a collection) may have none and opens with `NoText` (no books,
-    so no verses in its summary). `checksum()` hashes every file but `.git`
+    that isn't a Bible (a collection) may have none and opens with `NoText` (no books, so no
+    verses in its summary), and a book (`kind = "book"`) always does, so its ThML isn't read as
+    verses. `checksum()` hashes every file but `.git`
   - `cache.rs`: verse counts, parsed books, and an EPUB package's references (postcard; the
     counts and references also per logoxide version) per `<id>/<version>-<checksum>-<format>`
     (a package read as USX and then USFM shares nothing). The books are logoxide-text's
@@ -295,8 +296,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `diff_entries` (an entry removed is major, reworded or added minor: `Diff::entries_removed`,
     `entries_changed`, `entries_added`, which `release::describe` names) runs in `diff_summaries`,
     and `files_changed` only counts when neither side has verses or entries
-  - `references.rs`: the Bible references in a package's EPUBs, found by logoxide-text's
-    `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly too). `find`
+  - `references.rs`: the Bible references in a package's books (`book_files`: its EPUBs, as
+    `epub_files` gives them, and a book's ThML files; the cache and titles use it), found by
+    logoxide-text's `citations` (topos-formats' `search_epub_reader`, pure Rust, so WebAssembly
+    too; ThML through logoxide-markup and topos's matcher). `find`
     (`read`) reads the books: each reference's OSIS passage, file, CFI, chapter, UTF-16 range,
     line, column, spine item, and paragraph (about 0.1 s a book natively, 0.25 s in
     WebAssembly). Only `cited` is published
@@ -311,9 +314,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     releases before summaries), check the version, write, commit, tag `v{version}`. A package in
     a folder of its repository (`GitCli::package_in`) has its own tags, `<folder>/v{version}`,
     and its commits take only its folder (nothing new: the current commit is tagged)
-  - `titles.rs` (`read`): each file's title (a Bible book's or an EPUB's): `[titles]` in the
-    manifest, else the file's own as logoxide-text's `titles` reads it (`\toc2`, `\h`, `\toc1`;
-    `dc:title`), else the book's English name (a file of many books: the package's name).
+  - `titles.rs` (`read`): each file's title (a Bible book's, an EPUB's, a book's ThML): `[titles]`
+    in the manifest, else the file's own as logoxide-text's `titles` reads it (`\toc2`, `\h`,
+    `\toc1`; `dc:title`; `DC.Title`, `thml_title`), else the book's English name (a file of many books: the package's name).
     Summaries list them (`titles`); a changed title is a minor
     change (`Diff::retitled`, the owner's choice); `lx check` and `lx release` refuse an untitled file. Hosts name
     what they show by it (`BookFile.title`, `LogoxidePackage.titles()`)
@@ -352,7 +355,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   feature (an import is checked by reading it), logoxide-text, and sword-modules, which the
   core no longer does. `catalog::parse(location, bytes)` (and `parse_text`) reads any
   publisher's list by its form (`.csv` eBible.org's, `.json` fetch.bible's, `ccel.org/ccel/`
-  CCEL's, `.tar.gz` a SWORD repository's; else the core's `Catalog::parse`), each entry an
+  CCEL's page of Bibles, `ccel.org/index/genre/gen-XXX` a CCEL genre index, `.tar.gz` a SWORD
+  repository's; else the core's `Catalog::parse`), each entry an
   `External` source made by `external(prefix, id, tracks_versions, downloads)`;
   `is_publishers`, `publisher_name`. A module per publisher, each with `catalog` and `import`:
   `ebible` (`translations.csv`'s downloadable, redistributable rows; `<id>_usfm.zip` into
@@ -360,11 +364,18 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   or the public domain; its upstream version eBible.org's update date), `fetch` (`manifest.json`,
   `https://v1.fetch.bible/manifest.json`, not `/bibles/manifest.json`, an older form; each
   book's USX, a download named by its lowercase code (`book_url`; other paths answer with
-  fetch.bible's site, refused) into `usx/` + `COPYRIGHT.txt`), `ccel` (each `<h2>` link's work
-  and title; a Bible's ThML (`url`; restricted works answer with a page, refused) into
-  `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>` (`thml_head`; upstream
-  version `<version>`, else `DC.Date`; its script, and so its direction, judged from its
-  letters), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
+  fetch.bible's site, refused) into `usx/` + `COPYRIGHT.txt`), `ccel` (`catalog`: each `<h2>` link's Bible
+  and title, `ccel:<id>`; `genre_catalog(text, genre)`: a genre index's `<p class="List2">`
+  links `/ccel/<author>/<work>.html`, `ccel:<author>/<work>` (a Bible's still `ccel:<id>`), ids
+  `ccel-<author>-<work>`, the kind by `genre_kind` (`gen-COM` commentaries, `gen-BIB` Bibles,
+  else books), the author's name the description, other links passed over; `gen-COM` isn't a
+  default catalog, the owner's call; `named_catalog(import)`: the one work a
+  `ccel:<author>/<work>` names, which lx uses when no catalog lists it, a book until its head
+  says; a work's ThML (`url`; restricted works answer with a page, refused) into
+  `thml/<work>.xml`, named, dated, licensed, and kinded by its `<ThML.head>` (`thml_head`;
+  `DC.Type` `Text.Bible`/`Text.Commentary`/else a book, `ThmlHead::kind`, wins over the entry's;
+  upstream version `<version>`, else `DC.Date`; its script, and so its direction, judged from
+  its letters; a commentary that's a scan, no markers, fails as a Bible with no books does), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
   `crosswire`, `crosswire-beta`, `ebible`, …; others by host, `repository_name`;
   `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS, ThML, or GBF and its
   dictionaries (RawLD, RawLD4, zLD, in any markup; listed as `kind = "lexicon"`) that aren't
@@ -382,13 +393,25 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   (`dictionary_keys`); stored keys in normal form, `00025` → `G25` (`import_key`); a TEI entry's
   first `<orth>` as its headword; `@LINK` aliases as `link` entries), `Made.keys` writes the
   manifest's `keys`, and `finish` refuses one with no entries as it refuses a Bible with no
-  books; the repository root is read back from the entry's first download URL; the
+  books (a book, `kind = "book"`, needs neither: CCEL's books, `DC.Type` `Text.Monograph`, are
+  ThML whose references are found); the repository root is read back from the entry's first download URL; the
   conf's `Versification` is kept (`sword::versification`: SWORD's names as SWORD spells them,
   `KJV` when absent; other imports say `own`); the conf gives version, license
   (`sword::license`) and rights (`sword::rights`: permission given to CrossWire or only in
   SWORD's format is `redistributable = false`, `derivatives = "none"`; "free non-commercial
   distribution" is redistributable without derivatives, since the statement grants nothing
   more, which keeps `license::assess`'s `Converted` concern), language, and `COPYRIGHT.txt`).
+  `door43` (`CATALOG`, the catalog API's `search?subject=Bible&stage=prod`, recognized by
+  `is_catalog`, `door43.org/api/v1/catalog`; its JSON `{"ok", "data": [{owner, name, title,
+  language, language_title, language_direction, subject, branch_or_tag_name, release.tag_name,
+  tarbar_url, …}]}` read loosely, as remembered, since the API never answered; `subject`
+  "Bible" only; `door43:<owner>/<repo>`, ids `door43-<owner>-<repo>`, the version the release's
+  tag, `tracks_versions`; the download `archive` at `archive_url(repo, tag)`, then
+  `tarbar_url`; the archive unpacked by the core's `archive::unpack` into a `MemoryStorage`,
+  `manifest.yaml` (serde_yaml 0.9.34, deprecated but frozen) required, its `dublin_core` for
+  the title, description, language and direction, license (`rights`, `CC BY-SA 4.0` as SPDX), and
+  upstream version (`version`, else the tag); every `.usfm` into `usfm/`, `LICENSE.md` the
+  license file when present; versification `own`).
   `license.rs`: `license_from_text`, `says_public_domain` (refuses negations). A vault uses any
   import as a path package in `imports/<id>/`. Versions (the owner's D1): a new import is
   `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's version as it gives it
@@ -415,7 +438,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   over usfm-onion, whose USX drops the space between adjacent `\w` words; both gave the KJV's
   31,102 verses). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
   book; it's scanned for the books its verse markers name, cut into books, and its last parse
-  kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers.
+  kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) and `<scripCom parsed=…/>` (CCEL's commentaries) become verse markers; a chapter's own (`|Gen|1|0|0|0`) is verse 0 (chapter introductions are notes on it), and a `div1`–`div6` whose first marker is in another chapter ends the verse before it (an End milestone naming nothing), or starts that chapter's verse 0 when its first marker is one (`mark_verses`).
   GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM
   code, English name, or GBF's numbers 1–39 and 64–90), `<SC…>`/`<SV…>` become chapter and verse
   markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is
@@ -454,7 +477,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
   label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
   templates, `width` to `wrap` at), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
-  `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats. `versification::system(name)`:
+  `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats, and a ThML book's (`is_thml`: `.xml`, `.thml`): parsed by logoxide-markup, its text nodes joined with `\n` as topos's XML search does (the head left out), searched by `BibleMatcher::search`, each `Citation` with no CFI, spine 0, UTF-16 offsets and line and column in that text, and the innermost titled `divN`'s title as its chapter. `versification::system(name)`:
   SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
   chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's
   `FileMetadata` (`epub_metadata`, `opf_metadata`, `elements`); `archive::unzip` (limits);
@@ -541,7 +564,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   commentary's notes and a dictionary's or cross-reference package's entries, reading each),
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
-  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
@@ -652,8 +675,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   its `Files`, so WebAssembly too. topos never depends on logoxide. sword-modules is a
   clean-room crate: read its `CLAUDE.md` and `CLEANROOM.md` before changing it (interface into
   `docs/spec/api.md` first; never read libsword's source)
-- Door43 isn't imported yet: git.door43.org wasn't reachable from the owner's machine
-  (October 2026). The plan is in topos's `doc/logoxide.md` (step 7)
+- Door43 is imported (`door43:<owner>/<repo>`), but written without the service answering:
+  git.door43.org wasn't reachable from the owner's machine (October 2026), so the catalog API's
+  JSON fixture is written from memory (`crates/logoxide-import/tests/fixtures/door43/README.md`);
+  check it live when it answers. Its catalog isn't a default one
 - Licenses are shown, never enforced. No default registry (the owner can't host mirrors)
 - One package for apps: logoxide-ffi includes topos's API
 - Summaries with verse hashes are published for every package (not only Bibles); the parsed cache

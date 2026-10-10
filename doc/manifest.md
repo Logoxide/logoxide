@@ -138,7 +138,7 @@ its `id` (a fork, added with `package = "kjv"`, is its original's work).
 | `lexicon` | A dictionary: Strong's numbers or headwords and their entries (the `dictionary` format, [entries.md](entries.md)) |
 | `cross-references` | Links between passages (the `xref` format, [entries.md](entries.md)) |
 | `versification-map` | How one versification's verses map to another's (a `vrs` format) |
-| `book` | Any other book, kept as files (an EPUB); its Bible references are found in it |
+| `book` | Any other book, kept as files (an EPUB, or ThML like CCEL's books); its Bible references are found in it. A book's formats are never read as verses, even one that could be (`thml`) |
 | `collection` | Other packages, as its dependencies, and no text of its own |
 
 Only `bible` requires a format logoxide reads as verses. Other kinds may have none; they are
@@ -206,6 +206,14 @@ A verse's marker may name a range of verses: a bridge (`n="4-5"`, `osisID="John.
 or in OSIS a range into the next chapter (`osisID="John.3.36-John.4.2"`; in ThML
 `parsed="|John|3|36|4|2"`), one verse from its first to its last: what a SWORD module links to one
 entry (a commentary's note on both chapters' verses).
+
+ThML has no verse elements: its verses are empty `<scripture parsed="|Gen|1|2|0|0"/>` markers
+(CCEL's Bibles) or `<scripCom parsed="|Gen|1|1|1|2"/>` (CCEL's commentaries), each running to the
+next. A chapter's own marker (`parsed="|Gen|1|0|0|0"`) is its verse 0: what a commentary says of
+the whole chapter is a note on verse 0. A division (`div1` to `div6`) whose first marker is in
+another chapter ends the verse before it, so an introduction isn't read as the last note of the
+chapter before; when that first marker is the chapter's verse 0, the chapter starts at the
+division's start, so an introduction written before the marker is part of verse 0's note.
 
 A file a book is named by its book's USFM code (`JHN.usx`, `43-JHNeng-kjv.usfm`), else by the code
 it gives (`\id JHN`, `<book code="JHN">`); a whole file's books are the ones its verses name.
@@ -432,7 +440,7 @@ version = "2026-10-08"
 | Key | Type | Required | Meaning |
 |---|---|---|---|
 | `url` | string | no | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books). Every import writes it; a package made by hand from a source with no URL says where in `note` |
-| `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `sword:crosswire/KJV`) |
+| `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `ccel:henry/mhc1`, `sword:crosswire/KJV`, `door43:Door43-Catalog/hi_irv`) |
 | `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year) |
 | `note` | string | no | Where the text came from, in words, when `url` and `import` can't name it (`Digital Bible Library text release bundle 317e03834065a236, revision 1`) |
 | `converted` | boolean | no | The import rewrote the publisher's markup, its words unchanged (a SWORD module's entries made into OSIS or ThML files). Not a derivative to logoxide, but `lx publish` says so when the license allows no derivatives. Default `false` |

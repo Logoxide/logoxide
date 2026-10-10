@@ -156,7 +156,7 @@ fn references(
     dir: &str,
     checksum: &str,
 ) -> Result<Vec<FoundReference>> {
-    if crate::references::epub_files(package)?.is_empty() {
+    if crate::references::book_files(package)?.is_empty() {
         return Ok(vec![]);
     }
     let engine = env!("CARGO_PKG_VERSION");

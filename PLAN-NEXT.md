@@ -180,9 +180,12 @@ Any order, as they're reachable; each in `logoxide-import`.
 2. **Door43** (N5): when git.door43.org answers; `door43:<owner>/<repo>`, the catalog API's
    Bibles (`subject=Bible`, `stage=prod`), a release's `archive/<tag>.tar.gz` into `usfm/`,
    `manifest.yaml`'s `dublin_core` for title, language, license, and version.
+   **Done on fixtures** (2026-10-10, `phase-l23`): `logoxide_import::door43` as designed below
+   (item 7 of the status); never tried live, since git.door43.org still didn't answer.
 3. **CCEL's commentaries and books**: ThML, often a work a file; a commentary's sections tied
    to verses (`<scripRef>`/`parsed` markers) read by phase I.2's `notes`; books as ThML
    packages (`kind = "book"`), with the references topos finds in them cited as EPUBs' are.
+   **Done** (2026-10-10, `phase-l23`), as item 8 of the status designed it; checked live.
 4. **Links that follow rewording** (step 9): a link's text fragment found again when a verse's
    words changed a little (`passage::text` plus a diff of words; the hash says it changed, the
    words say where). Lowest priority.
@@ -291,50 +294,30 @@ checkpoint before writing code; the designs below are theirs, so the next agent 
    `BookTextStyle`. Then J.2 (lx on it, `lx read`, `lx compare`) and J.4 (exports, docs,
    topos's layer table, `check-versions.sh`).
 6. **K MCP**, after J, as written above.
-7. **L.2 Door43** (still unreachable: on 2026-10-10 and 2026-10-11 the catalog API, swagger,
-   and archive URLs all time out; `api.door43.org` doesn't resolve). Write it on fixtures:
-   `door43.rs` (prefix `door43`, `door43:<owner>/<repo>`, `tracks_versions: true`, archive
-   `https://git.door43.org/<owner>/<repo>/archive/<tag>.tar.gz` through the core's
-   `archive::unpack` into a `MemoryStorage`, `.usfm` files into `usfm/`, `LICENSE.md` as the
-   license file when present, upstream version `dublin_core.version` else the tag),
-   `serde_yaml 0.9.34` (deprecated but frozen; the only YAML crate in the offline registry),
-   `PREFIXES` → 5, `build`, `publisher_name`, `catalog::parse_text` on a location containing
-   `door43.org/api/v1/catalog`. The DCS catalog JSON shape is undocumented anywhere reachable
-   (v5 `{"ok":true,"data":[{owner, name, full_name, title, language, language_title,
-   language_direction, subject, branch_or_tag_name, release.tag_name, tarbar_url,
-   metadata_url, ingredients[]}]}` from memory): write the fixture from that and say so. The
-   `manifest.yaml` shape is confirmed (`crates/logoxide-import/tests/fixtures/door43/`).
-8. **L.3 CCEL** (researched live, fixtures saved under
-   `crates/logoxide-import/tests/fixtures/ccel/`, see its README). CCEL has stable genre
-   indexes: `https://ccel.org/index/genre/gen-COM` (213 commentaries, one page) and `gen-BIB`
-   (42 Bibles), each entry `<p class="List2"><a href="/ccel/<author>/<work>.html">…`.
-   Plan: `catalog::parse_text` recognizes `ccel.org/index/genre/gen-XXX` → `ccel::genre_catalog
-   (text, kind)` (`gen-COM` commentary, `gen-BIB` Bible, else book); import names
-   `ccel:<author>/<work>`, ids `ccel-<author>-<work>`, ThML at
-   `https://ccel.org/ccel/<author>/<work>.xml` (confirmed for henry/mhc1, barnes/1cor,
-   calvin/calcom01, calvin/institutes, anonymous/jasher; brenton/lxx answers HTML, refused
-   already); pass over links of other shapes; add `DC.Type` to `ThmlHead` (`Text.Commentary`,
-   `Text.Bible`, `Text.Monograph`) so an import by name picks its kind. Whether `gen-COM`
-   joins `DEFAULT_CATALOGS` is the owner's call (not taken). **The ThML reader lacks what
-   commentaries need**: they mark sections with empty `<scripCom type="Commentary"
-   passage="Ge 1:1-2" parsed="|Gen|1|1|1|2" osisRef="Bible:Gen.1.1-Gen.1.2"/>` milestones
-   (never `<scripture parsed=…/>`; chapter-level ones `parsed="|Gen|1|0|0|0"`; Henry's sits
-   after the chapter introduction, Calvin's before), inside `<div1 title="Genesis"
-   id="Gen"><div2 title="Chapter I">`. Change `crates/logoxide-text/src/source/thml.rs`: scan
-   `scripCom` as well as `scripture`; treat an empty `scripCom` like an empty `scripture`; a
-   verse-0 marker becomes the chapter marker plus a verse marker `n="0"` (so chapter
-   introductions are notes on verse 0); before a `div1`–`div6` whose first marker is in another
-   chapter, insert a verse End milestone (no id; `split_books`/`without_lettered` ignore it) so
-   a chapter's introduction doesn't land in the previous chapter's last note; this changes
-   SWORD ThML commentary hashes at chapter ends (no users, overwrite OK). Scans ("Images
-   Only", e.g. barnes/1cor) have no markers and rightly fail "no books". **Books** (`kind =
-   "book"` ThML): `citations::find` is EPUB-only; parse ThML with logoxide-markup, join text
-   nodes with `\n` as topos's XML search does, run `BibleMatcher::search`, fill `Citation` with
-   empty `cfi`, spine 0, offsets from that text, `chapter` from the enclosing `divN` title;
-   two core changes: `references::epub_files` must also hand a book package's ThML files to
-   `citations::find`, and `Package::open` must open a `Book` kind with `NoText` (today it opens
-   the best readable format and a book's ThML would be read as verse text); `finish` in
-   logoxide-import must not require books for `PackageKind::Book`.
+7. **L.2 Door43**: done on fixtures (2026-10-10, `phase-l23`). `logoxide_import::door43`:
+   `CATALOG` (`…/api/v1/catalog/search?subject=Bible&stage=prod`, recognized by `is_catalog`;
+   not a default catalog), `catalog` (the remembered v5 JSON read loosely, `subject` "Bible"
+   only, ids `door43-<owner>-<repo>`, version the release tag, `tracks_versions`), `import`
+   (the archive through `archive::unpack`, `manifest.yaml` by serde_yaml 0.9.34, `.usfm` into
+   `usfm/`, `LICENSE.md`, `dublin_core` for title, language, direction, license, version, else
+   the tag); `PREFIXES` 5, `build`, `publisher_name`. The catalog fixture is written from memory
+   (its README says so): **check it live** when git.door43.org answers (still 000 on
+   2026-10-10), and whether `Aligned Bible` subjects (unfoldingWord's ULT) should be listed too.
+8. **L.3 CCEL**: done (2026-10-10, `phase-l23`, three commits). ThML reads `scripCom`
+   milestones as verse markers, a chapter's own marker as verse 0, and a `divN` whose first
+   marker is another chapter's ends the verse before (or starts that chapter's verse 0 there, so
+   Henry's introductions, written before the marker, are verse 0's note; the design's choice
+   extended, since otherwise they'd be in no note); CCEL's KJV hashes unchanged, SWORD ThML
+   modules read the same counts. `ccel::genre_catalog` (`ccel.org/index/genre/gen-XXX`),
+   `ccel:<author>/<work>` (`named_catalog` when no catalog lists it; lx uses it in `import`
+   and `import --update`), `ThmlHead::dc_type`/`kind` picking the kind. Books: `Package::open`
+   gives a `Book` `NoText`; `references::book_files` (EPUBs and a book's ThML) feeds the
+   citations, the cache, and titles (`titles::thml_title`); `citations::find` reads ThML;
+   `finish` lets a book have neither books nor entries. Live: `ccel:henry/mhc1` 5 books, 858
+   notes; `ccel:calvin/calcom01` 382 notes; `ccel:calvin/institutes` 3,491 references, released
+   and verified. Left: a chapter's verse-0 note is unreachable from lx (topos parses neither
+   `Genesis 2:0` nor counts verse 0 in `Genesis 2`, its convention); `gen-COM` in
+   `DEFAULT_CATALOGS` is the owner's call.
 9. The owner's: G.1 (push the topos tag), G.2, G.5 (publishing, only when asked).
 
 Then the pieces of M left: none beyond item 4.

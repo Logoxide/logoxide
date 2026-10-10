@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Packages from other publishers' downloads: eBible.org, fetch.bible, CCEL, and SWORD repositories (Bibles, commentaries, and dictionaries), as logoxide catalogs and imports"
+description = "Packages from other publishers' downloads: eBible.org, fetch.bible, CCEL, Door43, and SWORD repositories (Bibles, commentaries, dictionaries, and books), as logoxide catalogs and imports"
 homepage.workspace = true
 readme = "README.md"
 keywords = ["bible", "usfm", "usx", "sword", "import"]
@@ -25,6 +25,10 @@ toml_edit = "0.23"
 # A SWORD repository's `mods.d.tar.gz`
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
+serde.workspace = true
+# A Door43 resource container's `manifest.yaml` (deprecated upstream, but frozen and complete
+# for reading)
+serde_yaml = "0.9.34"
 
 [dev-dependencies]
 # Building the downloads the tests read
