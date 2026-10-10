@@ -174,7 +174,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             let Ok(package) = library.open(other, project.dir()) else {
                 continue;
             };
-            let (theirs, their_aliases) = project.names(other.dependency_name(), package.info());
+            let (theirs, their_aliases) = project.names(other, package.info());
             let clash = (std::iter::once(&theirs).chain(&their_aliases))
                 .find(|n| ours.iter().any(|o| o.eq_ignore_ascii_case(n)));
             if let Some(clash) = clash {
@@ -197,7 +197,28 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         project.dir().join(MANIFEST).display(),
         logoxide::lock::LOCKFILE
     );
+    warn_of_clashes(&project, &library);
     Ok(())
+}
+
+/**
+Warns of names two of the project's Bibles answer to (a package the manifest asks for at one
+version and a collection at another): references naming one can't say which
+*/
+pub(crate) fn warn_of_clashes(project: &Project, library: &logoxide::Library) {
+    match project.name_clashes(library) {
+        Ok(clashes) => {
+            for clash in clashes {
+                eprintln!(
+                    "warning: `{}` names {}: references to it can't say which (give one an \
+                     `abbreviation` in {MANIFEST})",
+                    clash.name,
+                    clash.packages.join(" and ")
+                );
+            }
+        }
+        Err(e) => eprintln!("warning: {e}"),
+    }
 }
 
 /// What a package being added is called: its id, abbreviation, and aliases
@@ -334,6 +355,7 @@ pub(crate) fn install(cli: &Cli, update: Update) -> logoxide::Result<()> {
         lock.packages.len(),
         project.dir().join(logoxide::lock::LOCKFILE).display()
     );
+    warn_of_clashes(&project, &library);
     Ok(())
 }
 
@@ -408,7 +430,7 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
                 dependency: !lock.roots().any(|r| std::ptr::eq(r, locked)),
                 enabled: used,
                 installed: library.is_installed(locked, project.dir()),
-                abbreviation: info.map(|i| project.names(locked.dependency_name(), i).0),
+                abbreviation: info.map(|i| project.names(locked, i).0),
                 title: info.map(|i| i.name.clone()),
                 license: info.and_then(|i| i.license.clone()),
                 git: locked.git.clone(),
@@ -457,7 +479,7 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
         };
         let about = library.open(locked, project.dir()).ok().map(|p| {
             let info = p.info();
-            let (abbreviation, _) = project.names(locked.dependency_name(), info);
+            let (abbreviation, _) = project.names(locked, info);
             format!(
                 "{} ({}), {}",
                 abbreviation,
@@ -525,7 +547,7 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
     let dir = library.package_dir(&locked, project.dir());
     let package = library.open(&locked, project.dir())?;
     let i = package.info().clone();
-    let (abbreviation, aliases) = project.names(id, &i);
+    let (abbreviation, aliases) = project.names(&locked, &i);
     let storage = FsStorage::new(&dir);
     let files = storage.walk("")?;
     let size: u64 = (files.iter())

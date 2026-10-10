@@ -5,9 +5,9 @@ use std::collections::HashMap;
 
 use crate::{
     BookStyle, BookTextOptions, Dependency, FetchRequest, ImportDownload, InspectStep, InstallStep,
-    Logoxide, LogoxideError, LogoxideInstaller, LogoxideProject, MappedVerse, OffsetUnit,
-    PackageFeatures, PackageFile, PackageKind, PackageLocation, Topos, ToposTranslations,
-    UpdateMode, VerseTiming,
+    Logoxide, LogoxideError, LogoxideInstaller, LogoxideProject, MappedVerse, NameClash,
+    NamedBible, OffsetUnit, PackageFeatures, PackageFile, PackageKind, PackageLocation, Topos,
+    ToposTranslations, UpdateMode, VerseTiming,
 };
 
 const USX: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -292,6 +292,31 @@ path = "bibles/mine"
     assert_eq!(packages[0].checksum.as_deref(), Some("sha256:00"));
 
     assert!(packages.iter().all(|p| p.dependency_of.is_none()));
+
+    // Two Bibles answering to one name are said
+    let named = |label: &str, abbreviation: &str, aliases: &[&str]| NamedBible {
+        label: label.into(),
+        abbreviation: abbreviation.into(),
+        aliases: aliases.iter().map(|a| a.to_string()).collect(),
+    };
+    let clashes = project.name_clashes(vec![
+        named("kjv 2.0.0", "KJV", &["AV"]),
+        named("kjv 1.0.0", "KJV", &["av", "AV1611"]),
+        named("bsb 1.2.0", "BSB", &[]),
+    ]);
+    assert_eq!(
+        clashes,
+        [
+            NameClash {
+                name: "KJV".into(),
+                packages: vec!["kjv 2.0.0".into(), "kjv 1.0.0".into()]
+            },
+            NameClash {
+                name: "AV".into(),
+                packages: vec!["kjv 2.0.0".into(), "kjv 1.0.0".into()]
+            },
+        ]
+    );
 
     let no_lock = Logoxide::new()
         .parse_project(Some(manifest.into()), None)

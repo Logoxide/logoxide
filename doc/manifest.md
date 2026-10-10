@@ -177,7 +177,7 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 | `features` | array of strings | Its features to turn on |
 | `default-features` | boolean | Whether its `default` feature is on. Default `true` |
 | `package` | string | The package's id, when the dependency is named something else (forks side by side) |
-| `abbreviation` | string | What references name it by here, in place of its own |
+| `abbreviation` | string | What references name it by here, in place of its own. Only this copy takes it: the same package at another version, brought in by a collection, keeps its own. Two Bibles answering to one name are warned of |
 | `aliases` | array of strings | Its aliases here, in place of its own |
 | `enabled` | boolean | `false` turns it off without removing it: it stays locked and installed, but nothing reads it. Default `true` |
 

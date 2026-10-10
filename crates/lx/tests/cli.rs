@@ -372,3 +372,45 @@ fn update_names_only_what_is_there() {
     world.ok(&["update", "tb"]);
     world.ok(&["update"]);
 }
+
+#[test]
+fn two_bibles_with_one_name_are_warned_of() {
+    let world = World::new("clash");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    released(&repo, "tb", "2.0.0");
+    // A collection of tb 1, beside the manifest's own tb 2
+    let shelf = world.path("shelf");
+    std::fs::create_dir_all(&shelf).unwrap();
+    std::fs::write(
+        shelf.join("logoxide.toml"),
+        format!(
+            "[package]\nid = \"shelf\"\nname = \"Shelf\"\nabbreviation = \"SH\"\nversion = \"1.0.0\"\nkind = \"collection\"\nlanguage = \"en\"\n\n[dependencies]\ntb = {{ git = \"{}\", version = \"1\" }}\n",
+            repo.display()
+        ),
+    )
+    .unwrap();
+    tagged(&shelf, "v1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+    world.ok(&["add", "--git", &shelf.display().to_string()]);
+    let out = world.lx(&["install"]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        warned.contains("warning: `TB` names tb 1.0.0 and tb 2.0.0"),
+        "{warned}"
+    );
+    // Its own abbreviation for the manifest's copy, and the warning goes
+    world.ok(&["remove", "tb"]);
+    let added = world.lx(&[
+        "add",
+        "--git",
+        &repo.display().to_string(),
+        "--abbreviation",
+        "TB2",
+    ]);
+    assert!(added.status.success());
+    let out = world.lx(&["install"]);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("warning"));
+}

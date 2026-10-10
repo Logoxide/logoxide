@@ -153,7 +153,10 @@ before changing the design.
     registry; a local one can (`folder_tag_version` reads a `folder`'s tags)
   - `project.rs`: a folder with `logoxide.toml` (edited with toml_edit, keeping comments; or
     `from_text` and `manifest_text` for hosts that do the reading and writing) and its
-    lock; `translations()` gives topos the Bibles it asks for
+    lock; `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
+    `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
+    Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
+    and `lx add` warn of
   - `summary.rs`: `logoxide.summary.toml` (verse counts in book order, sizes, element counts
     without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book,
     chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
@@ -265,7 +268,8 @@ before changing the design.
   (`MappedPassage`: text, OSIS, verses, missing). `LogoxideProject.packages()` lists each package
   the manifest asks for followed by what it brings in (`LockedEntry.dependencyOf`), so hosts see
   a collection's packages; `LockedEntry.enabled` is false for one turned off (`setEnabled`) and
-  what it brings in; `isEnabled`, `enabledDependencies`, `disabledDependencies`, and
+  what it brings in; `nameClashes` (Bibles answering to one name, from `NamedBible`s); `isEnabled`,
+  `enabledDependencies`, `disabledDependencies`, and
   `Logoxide.packageInfo` (a package's details from its `logoxide.toml` alone, to name one that's off). `LogoxideInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
   that answers, are registries' catalogs and archives, with their mirrors; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;

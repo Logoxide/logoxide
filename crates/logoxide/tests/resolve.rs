@@ -449,6 +449,33 @@ fn each_asker_keeps_its_own_version() {
         .install(&world.library("other"), &fetcher, Update::Nothing)
         .unwrap();
     assert_eq!(other.lock().unwrap(), &lock);
+
+    // Both are Bibles answering to TB: said, not hidden
+    let clashes = project.name_clashes(&library).unwrap();
+    assert_eq!(clashes.len(), 1);
+    assert_eq!(clashes[0].name, "TB");
+    let mut packages = clashes[0].packages.clone();
+    packages.sort();
+    assert_eq!(packages, ["tb 1.0.0", "tb 2.0.0"]);
+
+    // The manifest's abbreviation is the manifest's copy's alone: the collection's keeps TB
+    let mut renamed = git_dep(&bible, Some(">=1"));
+    renamed.abbreviation = Some("TB2".into());
+    project.add("tb", &renamed).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert!(project.name_clashes(&library).unwrap().is_empty());
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("TB2"), Some("TB2"));
+    assert_eq!(translations.get("TB"), Some("TB"));
+    let lock = project.lock().unwrap();
+    let collections = lock
+        .packages
+        .iter()
+        .find(|p| p.version.major == 1 && p.id == "tb");
+    let package = library.open(collections.unwrap(), project.dir()).unwrap();
+    assert_eq!(project.names(collections.unwrap(), package.info()).0, "TB");
 }
 
 #[test]
