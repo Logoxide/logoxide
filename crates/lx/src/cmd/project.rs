@@ -10,7 +10,7 @@ use logoxide::{
 
 use crate::{
     cli::{AddArgs, Cli, Format},
-    cmd::catalog::{load_registry, registry_url},
+    cmd::catalog::{load_registry, registry_url, warn_other_registries},
     config, print_json,
 };
 
@@ -235,6 +235,7 @@ fn archive_entry(
     })?;
     match &entry.source {
         logoxide::catalog::CatalogSource::Registry { catalog } => {
+            warn_other_registries(project, &loaded, &location, &entry.id);
             Ok(Some((catalog.clone(), entry.clone())))
         }
         _ if catalog.is_some() => Err(logoxide::LogoxideError::Catalog(format!(

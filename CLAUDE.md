@@ -102,8 +102,11 @@ before changing the design.
     `dorean-local:<id>` or `dorean-local:<path in the folder>` names a package (`Catalog::find`,
     `split_registry_name`); a shared id needs the path. A `catalog.toml` may say `format = 1`
     (`CATALOG_FORMAT`; a higher one asks for a newer lx); a remote catalog can't list a local
-    path or `file://` URL; `Catalog::shadowed` gives ids more than one catalog lists (lx search
-    warns). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
+    path or `file://` URL; an entry whose id isn't one (`check_id`) is passed over, said in
+    `Catalog::warnings` (lx prints them as it loads a catalog; `LogoxideCatalog.warnings()`);
+    `Catalog::shadowed` gives ids more than one catalog lists (lx search and lx import warn,
+    `warn_shadowed`; lx add through a registry warns when another registry lists the id,
+    `warn_other_registries`). `registry_build.rs`: folder registries (`folder_catalog`, `build_catalog`,
     `newest_release`, read with `git show`)
   - `import.rs`: packages from other publishers' downloads: `ebible` turns `<id>_usfm.zip` into
     `logoxide.toml` + `usfm/` + `copr.htm` (the license file), versioned by eBible.org's update

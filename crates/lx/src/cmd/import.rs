@@ -11,7 +11,7 @@ use logoxide::{
 use crate::{
     cli::{Cli, Format},
     cmd::{
-        catalog::{load_catalog, load_catalogs},
+        catalog::{load_catalog, load_catalogs, warn_shadowed},
         package::DiffReport,
     },
     config,
@@ -44,13 +44,15 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     {
         catalogs.push(load_catalog(&url, project.dir())?);
     }
-    let entry = (catalogs.iter())
-        .find_map(|c| c.find_import(source))
+    let (used, entry) = (catalogs.iter())
+        .find_map(|c| Some((c, c.find_import(source)?)))
         .ok_or_else(|| {
             logoxide::LogoxideError::Import(format!(
                 "{source}: in none of this project's catalogs (lx catalog list)"
             ))
         })?;
+    // Another catalog listing this id would have its own package under the same name
+    warn_shadowed(&catalogs, &entry.id, &used.name);
     let relative = format!("imports/{}", entry.id);
     let dir = project.dir().join(&relative);
     if dir.exists() {

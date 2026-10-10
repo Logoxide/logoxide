@@ -33,10 +33,60 @@ pub(crate) fn load_catalogs(
     Ok(catalogs)
 }
 
+/// Warns when more than one of `catalogs` lists `id` ([`logoxide::catalog::Catalog::shadowed`]),
+/// naming `used`, the one whose entry is taken
+pub(crate) fn warn_shadowed(catalogs: &[logoxide::catalog::Catalog], id: &str, used: &str) {
+    let shadowed = logoxide::catalog::Catalog::shadowed(catalogs);
+    if let Some((_, names)) = shadowed.iter().find(|(shadowed, _)| shadowed == id) {
+        errln!(
+            "warning: `{id}` is in {}; {used}'s is used",
+            names.join(", ")
+        );
+    }
+}
+
+/**
+Warns when another of the project's registries also lists `id`, which `registry` (the catalog at
+`location` a package is being added from, one of the project's or `--registry`'s) gives: two
+sources answer to that id, and only the one named is used
+*/
+pub(crate) fn warn_other_registries(
+    project: &logoxide::Project,
+    registry: &logoxide::catalog::Catalog,
+    location: &str,
+    id: &str,
+) {
+    let registries = config().registries(project.manifest());
+    let mut used = registry.clone();
+    if !registries.contains_key(&used.name) {
+        used.name = location.to_string();
+    }
+    let name = used.name.clone();
+    let mut catalogs = vec![used];
+    for (other, at) in registries {
+        if other != name
+            && let Ok(other) = load_registry(&other, &at, project.dir(), false)
+        {
+            catalogs.push(other);
+        }
+    }
+    warn_shadowed(&catalogs, id, &name);
+}
+
+/// A catalog, warning of the entries it passed over
 pub(crate) fn load_catalog(
     location: &str,
     base: &Path,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
+    let catalog = read_catalog(location, base)?;
+    for warning in &catalog.warnings {
+        errln!("warning: {warning}");
+    }
+    Ok(catalog)
+}
+
+/// A catalog, without its warnings printed
+fn read_catalog(location: &str, base: &Path) -> logoxide::Result<logoxide::catalog::Catalog> {
     let bytes = if location.starts_with("https://") || location.starts_with("http://") {
         if logoxide::git::is_insecure(location) {
             errln!("warning: {location} is plain HTTP: its packages' hashes can't be trusted");
@@ -67,6 +117,7 @@ pub(crate) fn registry_url(project: &logoxide::Project, text: &str) -> logoxide:
             "{registry} has no package `{name}` (lx search --registry {registry})"
         ))
     })?;
+    warn_other_registries(project, &catalog, &registries[registry], &entry.id);
     match &entry.source {
         logoxide::catalog::CatalogSource::Git { url } => Ok(url.clone()),
         logoxide::catalog::CatalogSource::Registry { .. } => Err(logoxide::LogoxideError::Catalog(
@@ -109,10 +160,15 @@ pub(crate) fn load_registry(
     let folder = registry_path(location, base);
     if is_url || !folder.is_dir() {
         let mut catalog = match is_url {
-            true => load_catalog(location, base)?,
+            true => read_catalog(location, base)?,
             // By its whole path, so a dependency names it from anywhere
-            false => load_catalog(&canonical(&folder)?.display().to_string(), Path::new(""))?,
+            false => read_catalog(&canonical(&folder)?.display().to_string(), Path::new(""))?,
         };
+        if warn {
+            for warning in &catalog.warnings {
+                errln!("warning: {warning}");
+            }
+        }
         catalog.name = name.to_string();
         return Ok(catalog);
     }
@@ -350,6 +406,7 @@ pub(crate) fn search(
     let mut all = logoxide::catalog::Catalog {
         name: String::new(),
         entries: registries.into_iter().flat_map(|c| c.entries).collect(),
+        warnings: vec![],
     };
     let mut shadowed = vec![];
     if !catalogs.is_empty() {

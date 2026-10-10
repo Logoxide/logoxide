@@ -61,7 +61,7 @@ size = 1834201
 
 | Key | Type | Required | Meaning |
 |---|---|---|---|
-| `id` | string | yes | The package's id (`[package] id`) |
+| `id` | string | yes | The package's id (`[package] id`): lowercase ASCII letters, digits, `-`, and `_` |
 | `name` | string | yes | Its name |
 | `abbreviation` | string | yes | What references name it by |
 | `language` | string | yes | BCP 47 |
@@ -78,9 +78,13 @@ size = 1834201
 | `path` | string | no | Its path in the folder the catalog was built from (`books/romans`), which names it there as its id does |
 | `commit` | string | no | Written by `lx catalog build` (the commit of the newest release); informational |
 
-An entry must have `git` or at least one `release`. Unknown keys in an entry are ignored. When
-catalogs are searched together, the first entry with a given id wins, so catalogs with
-overlapping ids should prefix them (logoxide's importers use `ebible-`, `ccel-`, `sword-`).
+An entry must have `git` or at least one `release`. Unknown keys in an entry are ignored. An
+entry whose `id` isn't one (`../kjv`, `KJV`, empty) is passed over with a warning, and the rest
+of the catalog read: an id names a folder in the library. When catalogs are searched together,
+the first entry with a given id wins, so catalogs with overlapping ids should prefix them
+(logoxide's importers use `ebible-`, `ccel-`, `sword-`); `lx search` and `lx import` warn when an
+id is listed by more than one of the project's catalogs, and `lx add` when another of its
+registries lists the id it adds.
 
 The fields describe the package as its newest release's `logoxide.toml` does (`lx catalog entry
 <git URL>` writes one), but a catalog is only a pointer: what is installed is what the
