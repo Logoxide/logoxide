@@ -38,6 +38,10 @@ unicode-normalization = "0.1"
 language-tags = "0.3"
 spdx = "0.13.6"
 
+[target.'cfg(unix)'.dependencies]
+# The host's name for the library's roots (roots.rs)
+libc = "0.2"
+
 [dev-dependencies]
 logoxide-text.workspace = true
 # Building the EPUBs the tests read

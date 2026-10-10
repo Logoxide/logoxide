@@ -202,6 +202,12 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     writes each file atomically and removes what the version no longer has last). `Library::lock`
     is the library's lock (`lx clean` holds it; `stale_staging(age)` lists staging folders an
     install left, which `lx clean --remove` deletes only under the lock and only after a day)
+  - `roots.rs`: `<library>/roots/<hash of host and canonical path>.toml` (`Root`: `path`, `host`,
+    `updated`, `packages` as `<id> <key>`), written on every install (`Library::record_root`), so
+    `lx clean` keeps the union of every root's packages (`Library::roots`; a vault elsewhere, or on
+    another machine sharing the library, keeps its own); `Root::is_gone` (this host, its manifest
+    gone) is reported, `lx clean --prune-roots` removes it; one that can't be read stops a clean.
+    `doc/lock.md` has the format
   - `locking.rs`: exclusive advisory locks (`std::fs::File::try_lock`, polled up to
     `LOCK_TIMEOUT`, 5 s, else `Busy` naming the holder, which the lock file records) on the
     library (install, repair, clean) and a project (manifest and lock writes); lock files in
@@ -424,7 +430,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`

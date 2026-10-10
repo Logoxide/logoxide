@@ -8,6 +8,7 @@ The library: installed package versions, side by side, as plain files.
   packages/<id>/<version>/        each version, without .git, so it syncs well
   packages/<id>/<version>+g<commit>/   from a branch or a revision rather than its release
   packages/<id>/.<key>.staging-<pid>-<n>-<random>/   a version being written (renamed into place when whole)
+  roots/<hash>.toml               each project that installed from here and what it locks, so `lx clean` keeps them (roots.rs)
 <cache>/                          per device, never synced: LOGOXIDE_CACHE, else config.toml's `cache`, else $XDG_CACHE_HOME/logoxide
   books/                          parsed books and verse counts (see cache.rs)
   git/                            scratch space while fetching
@@ -23,7 +24,7 @@ use std::{
 use crate::{
     cache::Cache,
     error::{LogoxideError, Result},
-    lock::LockedPackage,
+    lock::{LockedPackage, Lockfile},
     manifest::MANIFEST,
     package::{Features, Package},
     resolve::Packages,
@@ -145,6 +146,22 @@ impl Library {
     /// Scratch space for fetching
     pub fn git_dir(&self) -> PathBuf {
         self.cache.join("git")
+    }
+
+    /// Where the projects that use this library are recorded ([`crate::roots`])
+    pub fn roots_dir(&self) -> PathBuf {
+        self.root.join(crate::roots::ROOTS_DIR)
+    }
+
+    /// Records a project as one that uses this library, with what its lock holds here, so
+    /// [`Self::roots`] keeps them from a clean run elsewhere (written on every install)
+    pub fn record_root(&self, project: &Path, lock: &Lockfile) -> Result<()> {
+        crate::roots::write_root(&self.roots_dir(), &crate::roots::Root::of(project, lock))
+    }
+
+    /// Every project recorded as using this library
+    pub fn roots(&self) -> Result<Vec<crate::roots::Root>> {
+        crate::roots::read_roots(&self.roots_dir())
     }
 
     /// The library's lock ([`crate::locking`]), held while versions are installed or removed

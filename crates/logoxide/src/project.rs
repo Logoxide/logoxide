@@ -558,6 +558,8 @@ impl Project {
         };
         let lock = resolver.resolve(&self.manifest)?;
         self.save_lock(&lock)?;
+        // This project uses the library: what it locks is kept by `lx clean` run from elsewhere
+        library.record_root(&self.dir, &lock)?;
         Ok(self.lock.insert(lock))
     }
 

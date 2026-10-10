@@ -107,3 +107,31 @@ never share a folder.
 - A git tag's version must equal the `version` in its `logoxide.toml`.
 - A git or registry package can't have `path` dependencies.
 - Dependencies with `enabled = false` stay locked and installed; nothing reads them.
+
+## The library's roots
+
+Every project that installs from a library is recorded there, in `roots/<hash>.toml` (the hash
+is of the host's name and the project's canonical path, so one path on two machines sharing the
+library is two roots), with the packages its lock holds in the library:
+
+```toml
+# Written by lx: a project that uses this library, so `lx clean` keeps its packages
+path = "/home/me/notes"
+host = "laptop"
+updated = "2026-10-10T14:03:11Z"
+packages = ["kjv 1.0.3+gdfdf94a0", "bsb 1.0.3+g9f86d081"]
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `path` | string | The project's folder, as that host names it |
+| `host` | string | The machine it's on |
+| `updated` | string | When it was written (RFC 3339, UTC) |
+| `packages` | array of strings | What its lock holds in the library: each `<id> <key>`, path packages left out |
+
+`lx clean` keeps the union of every root's packages, so cleaning from one vault never removes
+what another locked. A root whose project is gone from this host (its `logoxide.toml` is no
+longer there) is reported and its versions still kept, until `lx clean --prune-roots` removes
+the root; a root from another host is always kept, since this one can't see whether its project
+is still there. A root that can't be read stops a clean. Readers that don't write roots should
+at least not remove them.

@@ -763,7 +763,12 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
 /// takes it for a dead install's
 const STALE_STAGING: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
-pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Result<()> {
+pub(crate) fn clean(
+    cli: &Cli,
+    remove: bool,
+    keep: &[PathBuf],
+    prune_roots: bool,
+) -> logoxide::Result<()> {
     let library = cli.library();
     // No install may write while versions are judged and removed
     let _lock = library.lock()?;
@@ -789,12 +794,35 @@ pub(crate) fn clean(cli: &Cli, remove: bool, keep: &[PathBuf]) -> logoxide::Resu
     for dir in keep {
         projects.push(Project::open(dir)?);
     }
-    let used: Vec<(String, String)> = (projects.iter())
+    let mut used: Vec<(String, String)> = (projects.iter())
         .filter_map(|p| p.lock())
         .flat_map(|lock| lock.packages.iter())
         .filter(|p| p.path.is_none())
         .map(|p| (p.id.clone(), p.key()))
         .collect();
+    // Every project that installed from this library (its roots) keeps what it locked, so a
+    // vault elsewhere, or on another machine sharing the library, isn't cleaned out from here.
+    // One whose folder is gone from this machine is said, and forgotten only when asked
+    let mut roots = library.roots()?;
+    for root in roots.iter().filter(|r| r.is_gone()) {
+        match (prune_roots, &root.file) {
+            (true, Some(file)) => {
+                std::fs::remove_file(file)
+                    .map_err(|e| logoxide::LogoxideError::io(&file.display().to_string(), e))?;
+                outln!("forgot {}: its project is gone", root.path);
+            }
+            _ => outln!(
+                "{}: its project is gone, but its {} version{} stay (lx clean --prune-roots forgets it)",
+                root.path,
+                root.packages.len(),
+                if root.packages.len() == 1 { "" } else { "s" }
+            ),
+        }
+    }
+    if prune_roots {
+        roots.retain(|r| !r.is_gone());
+    }
+    used.extend(roots.iter().flat_map(|r| r.package_keys()));
     let unused: Vec<(String, String)> = (library.installed().into_iter())
         .filter(|v| !used.contains(v))
         .collect();
