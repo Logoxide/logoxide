@@ -617,12 +617,13 @@ imported
 */
 pub fn upstream(entry: &CatalogEntry) -> Option<Upstream> {
     Some(Upstream {
-        url: upstream_url(entry)?,
+        url: Some(upstream_url(entry)?),
         import: entry.source.import_name(),
         version: entry.version.clone(),
         // A SWORD module's entries are made into OSIS or ThML files; the other publishers'
         // files are kept as they are
         converted: matches!(entry.source, CatalogSource::Sword { .. }),
+        note: None,
     })
 }
 
@@ -977,12 +978,12 @@ mod tests {
         let upstream = info.upstream.as_ref().unwrap();
         assert_eq!(
             (
-                upstream.url.as_str(),
+                upstream.url.as_deref(),
                 upstream.import.as_deref(),
                 upstream.version.as_deref()
             ),
             (
-                "https://ebible.org/Scriptures/eng-asv_usfm.zip",
+                Some("https://ebible.org/Scriptures/eng-asv_usfm.zip"),
                 Some("ebible:eng-asv"),
                 Some("2026-10-08")
             )
@@ -1257,12 +1258,12 @@ mod tests {
         assert!(upstream.converted);
         assert_eq!(
             (
-                upstream.url.as_str(),
+                upstream.url.as_deref(),
                 upstream.import.as_deref(),
                 upstream.version.as_deref()
             ),
             (
-                "https://crosswire.org/ftpmirror/pub/sword/raw/packages/Test.zip",
+                Some("https://crosswire.org/ftpmirror/pub/sword/raw/packages/Test.zip"),
                 Some("sword:crosswire/Test"),
                 Some("1.2")
             )

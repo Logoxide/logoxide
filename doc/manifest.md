@@ -410,9 +410,10 @@ version = "2026-10-08"
 
 | Key | Type | Required | Meaning |
 |---|---|---|---|
-| `url` | string | yes | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books) |
+| `url` | string | no | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books). Every import writes it; a package made by hand from a source with no URL says where in `note` |
 | `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `sword:crosswire/KJV`) |
 | `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year) |
+| `note` | string | no | Where the text came from, in words, when `url` and `import` can't name it (`Digital Bible Library text release bundle 317e03834065a236, revision 1`) |
 | `converted` | boolean | no | The import rewrote the publisher's markup, its words unchanged (a SWORD module's entries made into OSIS or ThML files). Not a derivative to logoxide, but `lx publish` says so when the license allows no derivatives. Default `false` |
 
 An update finds the catalog entry again by `import`, else by `url`. The package's own `version`

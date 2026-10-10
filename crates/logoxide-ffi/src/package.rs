@@ -153,13 +153,16 @@ own `version` is logoxide's, raised by each update
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Upstream {
-    pub url: String,
+    /// The download it was made from; none for a package made by hand from a source without one
+    /// (then `note` says where)
+    pub url: Option<String>,
     pub import: Option<String>,
     pub version: Option<String>,
     /// The import rewrote the publisher's markup (a SWORD module's entries as OSIS files), its
     /// words unchanged: not a derivative to logoxide, but worth saying where the license allows
     /// none
     pub converted: bool,
+    pub note: Option<String>,
 }
 
 impl From<&manifest::Upstream> for Upstream {
@@ -169,6 +172,7 @@ impl From<&manifest::Upstream> for Upstream {
             import: u.import.clone(),
             version: u.version.clone(),
             converted: u.converted,
+            note: u.note.clone(),
         }
     }
 }
@@ -180,6 +184,7 @@ impl From<Upstream> for manifest::Upstream {
             import: u.import,
             version: u.version,
             converted: u.converted,
+            note: u.note,
         }
     }
 }

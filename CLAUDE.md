@@ -177,7 +177,7 @@ before changing the design.
     `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Versions
     (the owner's D1): a new import is `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's
     version as it gives it (`2026-10-08`, `3.1`) goes in `[package.upstream] version`
-    (`manifest::Upstream`: `url`, `import` like `ebible:eng-asv`, `version`), which
+    (`manifest::Upstream`: `url`, `import` like `ebible:eng-asv`, `version`, and `note`, words for a hand-made package's source with no URL, which then has none), which
     `upstream(entry)` writes and catalog entries' `version` holds for imports. Updating:
     `Catalog::find_upstream` matches `import`, then `url`; `compare_import` (current vs. a fresh
     import, compared at the current version: `None` when the declared files match; else the

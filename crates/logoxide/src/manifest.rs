@@ -170,8 +170,11 @@ publisher's, which says nothing about what changed, is kept here as given
 #[serde(rename_all = "kebab-case")]
 pub struct Upstream {
     /// The download it was made from (eBible.org's
-    /// `https://ebible.org/Scriptures/eng-asv_usfm.zip`)
-    pub url: String,
+    /// `https://ebible.org/Scriptures/eng-asv_usfm.zip`); every import writes one, but a package
+    /// made by hand from a source with no URL (a Digital Bible Library bundle) may say so in
+    /// `note` instead
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
     /// What `lx import` takes for it (`ebible:eng-asv`, `sword:crosswire/KJV`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub import: Option<String>,
@@ -184,6 +187,10 @@ pub struct Upstream {
     /// but `lx publish` says so when the license allows none
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub converted: bool,
+    /// Where it came from, in words, for a source `url` and `import` can't name (`Digital Bible
+    /// Library text release bundle 317e03834065a236, revision 1`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 impl Package {

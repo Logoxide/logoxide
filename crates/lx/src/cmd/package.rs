@@ -95,9 +95,12 @@ pub(crate) fn show(
         if let Some(version) = &upstream.version {
             about.push(format!("the publisher's version {version}"));
         }
+        let from = (upstream.url.as_deref())
+            .or(upstream.note.as_deref())
+            .unwrap_or("not said");
         match about.is_empty() {
-            true => outln!("upstream: {}", upstream.url),
-            false => outln!("upstream: {} ({})", upstream.url, about.join(", ")),
+            true => outln!("upstream: {from}"),
+            false => outln!("upstream: {from} ({})", about.join(", ")),
         }
     }
     let enabled: Vec<&str> = manifest

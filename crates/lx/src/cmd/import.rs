@@ -183,7 +183,8 @@ pub(crate) fn import_update(
         if !catalogs
             .iter()
             .any(|c| c.find_upstream(&upstream).is_some())
-            && let Some((root, _)) = upstream.url.split_once("/packages/")
+            && let Some((root, _)) =
+                (upstream.url.as_deref()).and_then(|u| u.split_once("/packages/"))
         {
             match load_catalog(&format!("{root}/mods.d.tar.gz"), project.dir()) {
                 Ok(catalog) => catalogs.push(catalog),
@@ -192,7 +193,9 @@ pub(crate) fn import_update(
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
             if name == Some(dep.as_str()) {
-                let named = upstream.import.as_deref().unwrap_or(&upstream.url);
+                let named = (upstream.import.as_deref())
+                    .or(upstream.url.as_deref())
+                    .unwrap_or("its upstream");
                 return Err(logoxide::LogoxideError::Import(format!(
                     "{dep} ({named}) is in none of this project's catalogs (lx catalog list)"
                 )));

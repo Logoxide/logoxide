@@ -891,9 +891,9 @@ impl Catalog {
         (upstream.import.as_deref())
             .and_then(|name| self.find_import(name.trim()))
             .or_else(|| {
-                (self.entries.iter()).find(|e| {
-                    crate::import::upstream_url(e).as_deref() == Some(upstream.url.trim())
-                })
+                let url = upstream.url.as_deref()?.trim();
+                (self.entries.iter())
+                    .find(|e| crate::import::upstream_url(e).as_deref() == Some(url))
             })
     }
 
