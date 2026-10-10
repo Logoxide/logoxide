@@ -257,7 +257,7 @@ enum Command {
         #[arg(long)]
         book: Option<String>,
         /// Only packages in this category (`--category systematic-theology`)
-        #[arg(long)]
+        #[arg(long, value_parser = category_values())]
         category: Option<String>,
         /// How many to show
         #[arg(long, default_value_t = 20)]
@@ -523,8 +523,8 @@ struct NewArgs {
     /// A word a search should find it by (repeat for more)
     #[arg(long = "keyword")]
     keywords: Vec<String>,
-    /// What it's about, as a lowercase slug (`systematic-theology`; repeat for more)
-    #[arg(long = "category")]
+    /// What it's about (up to 5; repeat for more; keywords say anything narrower)
+    #[arg(long = "category", value_parser = category_values())]
     categories: Vec<String>,
     /// A book of the Bible it's mainly about, by name or USFM code (`--about Romans`; repeat for
     /// more)
@@ -2206,6 +2206,14 @@ fn source_key(entry: &logoxide::catalog::CatalogEntry) -> String {
         logoxide::catalog::CatalogSource::Registry { catalog } => format!("{catalog}#{}", entry.id),
         other => other.import_name().unwrap_or_default(),
     }
+}
+
+/// logoxide's categories, each with what it's for, as `--category` takes them
+fn category_values() -> clap::builder::PossibleValuesParser {
+    (logoxide::manifest::CATEGORIES.iter())
+        .map(|(name, help)| clap::builder::PossibleValue::new(*name).help(*help))
+        .collect::<Vec<_>>()
+        .into()
 }
 
 /// What `lx search` keeps besides what its words match

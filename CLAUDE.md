@@ -11,7 +11,8 @@ before changing the design.
   - `manifest.rs`: `logoxide.toml`. One manifest name for packages and vaults (a vault's has no
     `[package]`), like `Cargo.toml`. "Index" means only a registry. Formats, Cargo-style features,
     and `git`/`path` dependencies; no default registry. Cargo-like metadata: `keywords`,
-    `categories` (slugs), `repository`, `documentation`, `readme` (a declared file), and
+    `categories` (a fixed list, `manifest::CATEGORIES`: 21 subjects, at most 5 a package; the owner
+    chose a fixed list, with keywords for anything narrower), `repository`, `documentation`, `readme` (a declared file), and
     `about-books` (USFM codes of the books it's mainly about: the owner wants these said by the
     author, never derived from the text; `book_code` turns names into codes for `lx new --about`).
     Catalogs carry keywords, categories, and about-books; `Catalog::search` matches them (a word

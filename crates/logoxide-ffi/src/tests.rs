@@ -1095,3 +1095,13 @@ fn versification_maps_map_references() {
         Err(LogoxideError::Versification { .. })
     ));
 }
+
+#[test]
+fn lists_the_categories() {
+    let logoxide = crate::Logoxide::new();
+    let categories = logoxide.categories();
+    assert_eq!(categories.len(), 21);
+    assert_eq!(categories[0].name, "biblical-theology");
+    assert!(categories.iter().any(|c| c.name == "church-history"));
+    assert_eq!(logoxide.max_categories(), 5);
+}

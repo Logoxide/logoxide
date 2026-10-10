@@ -128,6 +128,16 @@ impl From<&manifest::Package> for PackageInfo {
     }
 }
 
+/// One of the categories a package can be in
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Category {
+    /// As `[package] categories` names it (`church-history`)
+    pub name: String,
+    /// What it's for
+    pub description: String,
+}
+
 /// An audio or video file a package lists
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]

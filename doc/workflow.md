@@ -393,7 +393,7 @@ others. An EPUB names no license logoxide can trust, so give one (`--license`). 
 to compare, so `lx release` compares its files: any change is a minor version.
 
 Like `Cargo.toml`, `[package]` can say more to help people find it: `keywords` (words a search
-finds it by), `categories` (lowercase slugs: `systematic-theology`), `repository`,
+finds it by), `categories` (up to 5 of a fixed list: `lx new --help`), `repository`,
 `documentation`, `readme` (a file in the package, which is then part of it), and `about-books`,
 the books of the Bible it's mainly about, as USFM codes. These are its author's to say: logoxide
 never works them out from the text (a book citing Romans often isn't about Romans).
@@ -404,8 +404,8 @@ repeated):
 [package]
 id = "gill-romans"
 kind = "commentary"
-keywords = ["justification", "puritan"]
-categories = ["commentary", "reformed"]
+keywords = ["justification", "puritan", "reformed"]
+categories = ["church-history", "biography"]
 about-books = ["ROM"]
 repository = "https://github.com/someone/gill-romans"
 readme = "README.md"
@@ -413,7 +413,7 @@ readme = "README.md"
 
 Catalogs (`lx catalog build`, `lx catalog entry`) carry `keywords`, `categories`, and
 `about-books`, so a search finds them: `lx search romans` lists what's about Romans,
-`lx search --book romans` lists only that, and `--category reformed` keeps that category's.
+`lx search --book romans` lists only that, and `--category church-history` keeps that category's.
 
 Its release also publishes the passages topos finds it citing, with how often
 (`logoxide.references.bin`, a few KB), so which books cite a passage can be known without

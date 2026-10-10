@@ -165,6 +165,22 @@ impl Logoxide {
         LogoxideProject::parse(manifest, lock)
     }
 
+    /// The categories a package can be in (`[package] categories`, at most
+    /// `max_categories()`), in order, each with what it's for
+    pub fn categories(&self) -> Vec<Category> {
+        (logoxide_core::manifest::CATEGORIES.iter())
+            .map(|(name, description)| Category {
+                name: name.to_string(),
+                description: description.to_string(),
+            })
+            .collect()
+    }
+
+    /// How many categories a package can be in
+    pub fn max_categories(&self) -> u32 {
+        logoxide_core::manifest::MAX_CATEGORIES as u32
+    }
+
     /// A USFM book as USX, for `ToposBook.parse(topos, "usx", ...)` (a reader of book files)
     pub fn usfm_to_usx(&self, usfm: String) -> Result<String, LogoxideError> {
         Ok(logoxide_core::source::usfm_to_usx(&usfm)?)

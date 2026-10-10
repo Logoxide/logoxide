@@ -111,7 +111,8 @@ pub struct Package {
     /// Words a search should find it by, besides its names (`justification`, `puritan`)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keywords: Vec<String>,
-    /// What it's about, as lowercase slugs (`systematic-theology`, `church-history`)
+    /// What it's about: up to [`MAX_CATEGORIES`] of [`CATEGORIES`] (`systematic-theology`,
+    /// `church-history`); `keywords` say anything narrower
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<String>,
     /// The books of the Bible it's mainly about, as their USFM codes (`["ROM", "GAL"]` for a
@@ -396,6 +397,64 @@ impl Manifest {
     }
 }
 
+/**
+The categories a package can be in, and what each is for: subjects (what kind of package it is,
+a commentary or a lexicon, is its `kind`). Traditions, eras, and narrower topics are keywords
+*/
+pub const CATEGORIES: [(&str, &str); 21] = [
+    // The Bible
+    (
+        "biblical-theology",
+        "Themes traced through Scripture (covenant, kingdom)",
+    ),
+    (
+        "introduction",
+        "Old and New Testament introductions and surveys, authorship, canon",
+    ),
+    (
+        "background",
+        "The Bible's history, archaeology, geography, and culture",
+    ),
+    ("hermeneutics", "How to interpret Scripture"),
+    (
+        "biblical-languages",
+        "Greek, Hebrew, and Aramaic grammars and readers",
+    ),
+    // Theology
+    ("systematic-theology", "Doctrine by topic"),
+    (
+        "creeds-and-confessions",
+        "Creeds, confessions, and catechisms",
+    ),
+    ("apologetics", "Defending the faith"),
+    ("ethics", "Christian ethics and moral theology"),
+    // History
+    ("church-history", "The church through the centuries"),
+    ("biography", "Lives, memoirs, and letters"),
+    // The church and its ministry
+    ("preaching", "Homiletics: how to preach"),
+    ("sermons", "Collected sermons"),
+    (
+        "pastoral",
+        "Pastoral ministry, counseling, and church leadership",
+    ),
+    ("worship", "Liturgy, hymns, and prayer books"),
+    ("missions", "Missions and evangelism"),
+    // The Christian life
+    ("spiritual-life", "Discipleship, prayer, and holiness"),
+    ("devotional", "Daily readings and meditations"),
+    ("family", "Marriage, parenting, and the home"),
+    ("children", "Written for children"),
+    // Reference
+    (
+        "reference",
+        "Dictionaries, encyclopedias, atlases, and concordances",
+    ),
+];
+
+/// How many categories a package can be in, so each one means something
+pub const MAX_CATEGORIES: usize = 5;
+
 /// Checks `keywords`, `categories`, and `about-books`
 fn check_metadata(package: &Package) -> Result<()> {
     let err = |message: String| Err(LogoxideError::Manifest(message));
@@ -410,16 +469,19 @@ fn check_metadata(package: &Package) -> Result<()> {
             return err(format!("keyword `{keyword}` is listed twice"));
         }
     }
+    if package.categories.len() > MAX_CATEGORIES {
+        return err(format!(
+            "{} categories: a package can be in at most {MAX_CATEGORIES} (keywords say more)",
+            package.categories.len()
+        ));
+    }
     let mut seen = BTreeSet::new();
     for category in &package.categories {
-        let slug = !category.is_empty()
-            && !category.starts_with('-')
-            && !category.ends_with('-')
-            && (category.bytes())
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
-        if !slug {
+        if !CATEGORIES.iter().any(|(c, _)| c == category) {
+            let all: Vec<&str> = CATEGORIES.iter().map(|(c, _)| *c).collect();
             return err(format!(
-                "category `{category}`: use lowercase letters, digits, and `-` (`church-history`)"
+                "category `{category}` is none of logoxide's ({}); a keyword can say it",
+                all.join(", ")
             ));
         }
         if !seen.insert(category) {
@@ -639,7 +701,7 @@ mod tests {
     fn metadata_like_cargos() {
         let manifest = commentary(
             r#"keywords = ["justification", "Puritan"]
-categories = ["commentary", "church-history"]
+categories = ["church-history", "biography"]
 about-books = ["ROM", "1CO"]
 repository = "https://github.com/someone/gill"
 documentation = "https://example.org/gill"
@@ -648,7 +710,7 @@ readme = "README.md""#,
         .unwrap();
         let info = manifest.package.as_ref().unwrap();
         assert_eq!(info.about_books, ["ROM", "1CO"]);
-        assert_eq!(info.categories, ["commentary", "church-history"]);
+        assert_eq!(info.categories, ["church-history", "biography"]);
         assert_eq!(info.readme.as_deref(), Some("README.md"));
         // Written back the same way
         assert_eq!(
@@ -662,7 +724,12 @@ readme = "README.md""#,
         assert!(error(r#"about-books = ["rom"]"#).contains("`rom` is written `ROM`"));
         assert!(error(r#"about-books = ["XYZ"]"#).contains("no book's USFM code"));
         assert!(error(r#"about-books = ["ROM", "ROM"]"#).contains("listed twice"));
-        assert!(error(r#"categories = ["Church History"]"#).contains("lowercase letters"));
+        assert!(error(r#"categories = ["reformed"]"#).contains("none of logoxide's"));
+        assert!(error(r#"categories = ["Church History"]"#).contains("none of logoxide's"));
+        assert!(error(r#"categories = ["ethics", "ethics"]"#).contains("listed twice"));
+        let six =
+            r#"categories = ["ethics", "sermons", "worship", "missions", "family", "children"]"#;
+        assert!(error(six).contains("at most 5"));
         assert!(error(r#"keywords = [" grace"]"#).contains("without spaces"));
         assert!(error(r#"keywords = ["grace", "Grace"]"#).contains("listed twice"));
     }
