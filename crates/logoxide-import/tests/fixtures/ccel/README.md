@@ -1,7 +1,8 @@
 # CCEL and Door43 research fixtures (saved 2026-10-10, for PLAN-NEXT.md L.2 and L.3)
 
-Fetched live from ccel.org on 2026-10-10 by the phase L agent, for the importer to be written
-(nothing reads these yet):
+Fetched live from ccel.org on 2026-10-10 by the phase L agent. `ccel.rs`'s tests read the genre
+indexes; the commentary tests read logoxide-text's `tests/fixtures/ccel/` (Henry's and Calvin's
+Genesis 1–2 whole, their text cut short, with the `scripCom` milestones the heads below lack):
 
 - `gen-COM.html`: `https://ccel.org/index/genre/gen-COM`, "All Works in Genre 'Commentaries'"
   (213 entries, one page): each `<p class="List2"><a href="/ccel/<author>/<work>.html">Title</a>

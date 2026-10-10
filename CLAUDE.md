@@ -349,7 +349,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   feature (an import is checked by reading it), logoxide-text, and sword-modules, which the
   core no longer does. `catalog::parse(location, bytes)` (and `parse_text`) reads any
   publisher's list by its form (`.csv` eBible.org's, `.json` fetch.bible's, `ccel.org/ccel/`
-  CCEL's, `.tar.gz` a SWORD repository's; else the core's `Catalog::parse`), each entry an
+  CCEL's page of Bibles, `ccel.org/index/genre/gen-XXX` a CCEL genre index, `.tar.gz` a SWORD
+  repository's; else the core's `Catalog::parse`), each entry an
   `External` source made by `external(prefix, id, tracks_versions, downloads)`;
   `is_publishers`, `publisher_name`. A module per publisher, each with `catalog` and `import`:
   `ebible` (`translations.csv`'s downloadable, redistributable rows; `<id>_usfm.zip` into
@@ -357,11 +358,18 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   or the public domain; its upstream version eBible.org's update date), `fetch` (`manifest.json`,
   `https://v1.fetch.bible/manifest.json`, not `/bibles/manifest.json`, an older form; each
   book's USX, a download named by its lowercase code (`book_url`; other paths answer with
-  fetch.bible's site, refused) into `usx/` + `COPYRIGHT.txt`), `ccel` (each `<h2>` link's work
-  and title; a Bible's ThML (`url`; restricted works answer with a page, refused) into
-  `thml/<id>.xml`, named, dated, and licensed by its `<ThML.head>` (`thml_head`; upstream
-  version `<version>`, else `DC.Date`; its script, and so its direction, judged from its
-  letters), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
+  fetch.bible's site, refused) into `usx/` + `COPYRIGHT.txt`), `ccel` (`catalog`: each `<h2>` link's Bible
+  and title, `ccel:<id>`; `genre_catalog(text, genre)`: a genre index's `<p class="List2">`
+  links `/ccel/<author>/<work>.html`, `ccel:<author>/<work>` (a Bible's still `ccel:<id>`), ids
+  `ccel-<author>-<work>`, the kind by `genre_kind` (`gen-COM` commentaries, `gen-BIB` Bibles,
+  else books), the author's name the description, other links passed over; `gen-COM` isn't a
+  default catalog, the owner's call; `named_catalog(import)`: the one work a
+  `ccel:<author>/<work>` names, which lx uses when no catalog lists it, a book until its head
+  says; a work's ThML (`url`; restricted works answer with a page, refused) into
+  `thml/<work>.xml`, named, dated, licensed, and kinded by its `<ThML.head>` (`thml_head`;
+  `DC.Type` `Text.Bible`/`Text.Commentary`/else a book, `ThmlHead::kind`, wins over the entry's;
+  upstream version `<version>`, else `DC.Date`; its script, and so its direction, judged from
+  its letters; a commentary that's a scan, no markers, fails as a Bible with no books does), and `sword` (`REPOSITORIES` names the HTTPS repositories in CrossWire's list,
   `crosswire`, `crosswire-beta`, `ebible`, …; others by host, `repository_name`;
   `catalog_url(name)`; `mods.d.tar.gz`'s Bibles and commentaries in OSIS, ThML, or GBF and its
   dictionaries (RawLD, RawLD4, zLD, in any markup; listed as `kind = "lexicon"`) that aren't
@@ -498,7 +506,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   commentary's notes and a dictionary's or cross-reference package's entries, reading each),
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
-  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`

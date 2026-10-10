@@ -44,6 +44,12 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     {
         catalogs.push(load_catalog(&url, project.dir())?);
     }
+    // A CCEL work by its author and name (`ccel:henry/mhc1`) needs no catalog
+    if !catalogs.iter().any(|c| c.find_import(source).is_some())
+        && let Some(catalog) = logoxide_import::ccel::named_catalog(source)
+    {
+        catalogs.push(catalog);
+    }
     let (used, entry) = (catalogs.iter())
         .find_map(|c| Some((c, c.find_import(source)?)))
         .ok_or_else(|| {
@@ -192,6 +198,15 @@ pub(crate) fn import_update(
                 Ok(catalog) => catalogs.push(catalog),
                 Err(e) => errln!("warning: {dep}: {e}"),
             }
+        }
+        // A CCEL work imported by its name
+        if !catalogs
+            .iter()
+            .any(|c| c.find_upstream(&upstream).is_some())
+            && let Some(catalog) =
+                (upstream.import.as_deref()).and_then(logoxide_import::ccel::named_catalog)
+        {
+            catalogs.push(catalog);
         }
         let Some(entry) = catalogs.iter().find_map(|c| c.find_upstream(&upstream)) else {
             if name == Some(dep.as_str()) {

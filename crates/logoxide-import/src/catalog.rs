@@ -9,6 +9,9 @@ what its import downloads:
 - **CCEL's Bibles** (its page of them, [`logoxide::catalog::CCEL_CATALOG`]): about 50 Bibles it
   publishes as ThML, a file each. The page gives only titles: the language, rights, and version
   are in each file's head, read when it's imported ([`crate::ccel::catalog`])
+- **CCEL's genre indexes** (`https://ccel.org/index/genre/gen-COM`, its 213 commentaries;
+  `gen-BIB`, its Bibles; any other genre's works as books): each work a `ccel:<author>/<work>`
+  import of its ThML ([`crate::ccel::genre_catalog`])
 - **SWORD repositories** (a repository's `mods.d.tar.gz`, every module's conf;
   [`logoxide::catalog::SWORD_CATALOG`] is CrossWire's): the Bibles and commentaries whose markup
   is OSIS, ThML, or GBF, and the dictionaries in any markup logoxide-markup reads, which aren't
@@ -33,15 +36,17 @@ pub fn parse(location: &str, bytes: &[u8]) -> Result<Catalog> {
 }
 
 /// A catalog from a file's text: eBible.org's CSV when `location` ends in `.csv`, fetch.bible's
-/// manifest when it ends in `.json`, CCEL's page when it's on ccel.org, else a `catalog.toml`
-/// ([`Catalog::parse`])
+/// manifest when it ends in `.json`, CCEL's page of Bibles or a genre index of its when it's on
+/// ccel.org, else a `catalog.toml` ([`Catalog::parse`])
 pub fn parse_text(location: &str, text: &str) -> Result<Catalog> {
     let path = location
         .split(['?', '#'])
         .next()
         .unwrap_or(location)
         .to_ascii_lowercase();
-    if path.contains("ccel.org/ccel/") {
+    if let Some(genre) = crate::ccel::genre_of(location) {
+        crate::ccel::genre_catalog(text, genre)
+    } else if path.contains("ccel.org/ccel/") {
         crate::ccel::catalog(text)
     } else if path.ends_with(".csv") {
         crate::ebible::catalog(text)
@@ -61,6 +66,7 @@ pub fn is_publishers(location: &str) -> bool {
         .unwrap_or(location)
         .to_ascii_lowercase();
     path.contains("ccel.org/ccel/")
+        || path.contains("ccel.org/index/genre/")
         || path.ends_with(".csv")
         || path.ends_with(".json")
         || path.ends_with(".tar.gz")
@@ -99,5 +105,7 @@ mod tests {
         assert!(parse("translations.csv", b"").is_err());
         assert!(parse("https://ccel.org/ccel/bible/", b"<html></html>").is_err());
         assert!(parse("mods.d.tar.gz", b"not gzip").is_err());
+        assert!(is_publishers("https://ccel.org/index/genre/gen-COM"));
+        assert!(parse("https://ccel.org/index/genre/gen-COM", b"<html></html>").is_err());
     }
 }
