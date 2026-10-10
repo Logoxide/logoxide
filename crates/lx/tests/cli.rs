@@ -354,3 +354,21 @@ fn revisions_are_whole_commits() {
     let added = world.ok(&["add", "--git", &url, "--rev", &commit]);
     assert!(added.contains("added tb 1.0.0"), "{added}");
 }
+
+#[test]
+fn update_names_only_what_is_there() {
+    let world = World::new("update");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+    let out = world.lx(&["update", "tbb"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        error.contains("nothing here is named tbb (the manifest has tb)"),
+        "{error}"
+    );
+    world.ok(&["update", "tb"]);
+    world.ok(&["update"]);
+}

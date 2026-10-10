@@ -139,6 +139,7 @@ fn relative_join(within: &str, path: &str) -> String {
 impl Resolver<'_> {
     /// The lock file for `manifest`, with every package it names installed
     pub fn resolve(&self, manifest: &Manifest) -> Result<Lockfile> {
+        self.check_update(manifest)?;
         let mut lock = Lockfile::default();
         let mut todo: VecDeque<Want> = VecDeque::new();
         for (name, dependency) in &manifest.dependencies {
@@ -234,6 +235,36 @@ impl Resolver<'_> {
             .sort_by(|a, b| (&a.id, &a.version, &a.rename).cmp(&(&b.id, &b.version, &b.rename)));
         // Indexes changed with the sort; dependencies are named, so they still hold
         Ok(lock)
+    }
+
+    /**
+    Each name to update is one the manifest has, or one a package brings in (as the previous
+    lock file names it): a mistyped name would otherwise update nothing, and say nothing
+    */
+    fn check_update(&self, manifest: &Manifest) -> Result<()> {
+        let Update::Only(names) = &self.update else {
+            return Ok(());
+        };
+        let locked = |name: &String| {
+            (self.previous.into_iter().flat_map(|l| &l.packages))
+                .any(|p| p.id == *name || p.dependency_name() == name)
+        };
+        let unknown: Vec<&str> = (names.iter())
+            .filter(|name| !manifest.dependencies.contains_key(*name) && !locked(name))
+            .map(String::as_str)
+            .collect();
+        if unknown.is_empty() {
+            return Ok(());
+        }
+        let known: Vec<&str> = manifest.dependencies.keys().map(String::as_str).collect();
+        Err(LogoxideError::Resolve(format!(
+            "nothing here is named {} (the manifest has {})",
+            unknown.join(", "),
+            match known.is_empty() {
+                true => String::from("no dependencies"),
+                false => known.join(", "),
+            }
+        )))
     }
 
     /// A locked version that's installed

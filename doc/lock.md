@@ -85,7 +85,9 @@ never share a folder.
 - A locked package is kept while the manifest still allows it (its requirement matches, and it
   comes from the same place), unless the user asks to update it; otherwise the newest allowed
   version is chosen: the newest `v<version>` tag matching `version` for git, or the newest
-  matching unyanked release for a registry ([catalog.md](catalog.md)).
+  matching unyanked release for a registry ([catalog.md](catalog.md)). Updating by name takes
+  only names the manifest has or packages the lock holds (as a package brings them in); any other
+  is refused, rather than updating nothing.
 - What is fetched is checked against the lock: an archive must hash to `sha256`, and the
   package's files to `checksum`. An installed copy whose checksum no longer matches (its files
   were edited) is an error unless the user asks to repair it, which puts back its declared files
