@@ -328,3 +328,29 @@ fn a_failed_add_or_remove_leaves_the_manifest_alone() {
     assert_eq!(world.lx(&["remove", "ob"]).status.code(), Some(1));
     assert_eq!(std::fs::read(&manifest).unwrap(), before);
 }
+
+/// A repository's current commit
+fn head(dir: &Path) -> String {
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn revisions_are_whole_commits() {
+    let world = World::new("rev");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    let commit = head(&repo);
+    let url = repo.display().to_string();
+    let out = world.lx(&["add", "--git", &url, "--rev", &commit[..8]]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("isn't a full commit id"), "{error}");
+    let added = world.ok(&["add", "--git", &url, "--rev", &commit]);
+    assert!(added.contains("added tb 1.0.0"), "{added}");
+}

@@ -22,6 +22,10 @@ fn version_req(text: &str) -> logoxide::Result<semver::VersionReq> {
 pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
+    // Before anything is fetched: a short one is refused, and says what to give
+    if let Some(rev) = &args.rev {
+        logoxide::manifest::check_rev(rev)?;
+    }
     let named = args.repository.as_ref().or(args.git.as_ref());
     // A registry's package published as archives: added with `registry`, not `git`
     let archive = match (&args.registry, named) {

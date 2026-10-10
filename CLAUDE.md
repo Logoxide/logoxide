@@ -34,7 +34,7 @@ before changing the design.
     include a collection's); the `epub` format is kept as files, not read as verses. Keys it
     doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
     older lx reads a newer manifest. `validate` refuses a `git`/`registry`/`tag`/`branch`/`rev`
-    that starts with `-` (git would take it as an option), a `rev` that isn't hex, and names and
+    that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
     package in a folder of its repository (tags `<folder>/v<version>`, `lx add --folder`)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory

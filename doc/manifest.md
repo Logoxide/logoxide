@@ -170,7 +170,7 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 | `path` | string | A folder, relative to this manifest, used in place |
 | `version` | string | A semver requirement (`1`, `^1.2`, `>=1, <3`): the newest release matching it. For git, releases are tags `v<version>` |
 | `tag` | string | For `git` only: this tag |
-| `rev` | string | For `git` only: this commit (4 to 64 hex digits) |
+| `rev` | string | For `git` only: this commit, by its full object id (40 hex digits, or 64 in a SHA-256 repository); a shorter prefix is refused |
 | `branch` | string | For `git` only: this branch's head |
 | `folder` | string | For `git` only: the package's folder in the repository, when it isn't at the top. Its releases are tags `<folder>/v<version>` (others are passed over), and only that folder is installed |
 | `optional` | boolean | Only used when a feature turns it on (`dep:<name>`). Default `false` |

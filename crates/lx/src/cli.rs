@@ -438,6 +438,7 @@ pub(crate) struct AddArgs {
     pub(crate) tag: Option<String>,
     #[arg(long, conflicts_with = "rev")]
     pub(crate) branch: Option<String>,
+    /// A commit, by its full id (40 hex digits, or 64)
     #[arg(long)]
     pub(crate) rev: Option<String>,
     /// The package's folder in the repository, when it isn't at the top (its releases are
