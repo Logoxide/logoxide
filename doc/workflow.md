@@ -57,16 +57,22 @@ commentaries whose markup is OSIS or ThML):
 
 ```sh
 lx search "american standard"
-# ASV (ebible-eng-asv): American Standard Version (1901), English, LicenseRef-PublicDomain
-#     lx import ebible:eng-asv
-# ASV (fetch-eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
-#     lx import fetch:eng_asv
-# ASV (sword-asv): American Standard Version (1901), en, LicenseRef-PublicDomain
-#     lx import sword:crosswire/ASV
+# American Standard Version (work `asv`): 4 editions
+#   ASV (ebible-eng-asv): American Standard Version (1901), English, LicenseRef-PublicDomain
+#       lx import ebible:eng-asv
+#   ASV (fetch-eng_asv): American Standard Version (1901), English, LicenseRef-PublicDomain
+#       lx import fetch:eng_asv
+#   ASV (sword-asv): American Standard Version (1901), en, LicenseRef-PublicDomain
+#       lx import sword:crosswire/ASV
+#   ASV (ccel-asv): American Standard Version of the Holy Bible (1901), und, no license given
+#       lx import ccel:asv
+# ABT (fetch-eng_abt): American Standard Version (1901) Byzantine Text, English, LicenseRef-PublicDomain
+#     lx import fetch:eng_abt
 # …
-# ASV (ccel-asv): American Standard Version of the Holy Bible (1901), und, no license given
-#     lx import ccel:asv
 ```
+
+Each work's editions are gathered under its name (the works logoxide's table knows, and those a
+catalog's packages name with `work`); `--flat` lists them one by one, best first.
 
 CCEL's page of its Bibles gives only their titles (`und` for the language until it's imported:
 each file's head says its language, rights, and version).

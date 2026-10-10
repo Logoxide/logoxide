@@ -37,6 +37,16 @@ before changing the design.
     that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
     package in a folder of its repository (tags `<folder>/v<version>`, `lx add --folder`)
+  - `works.rs`: works and editions (the owner's D9): `[package] work = "kjv"`, `edition`,
+    `edition-year`; `data/works.toml` is logoxide's table (each work's name, aliases, optional
+    Wikidata QID, and the import names checked against the publishers' lists to be it: KJV,
+    ASV, WEB, BSB, Douay-Rheims, LXX, Vulgate so far; no QIDs yet). `of_import`/`of_source`
+    give an import its work (catalog entries and `import::finish`), never guessed from titles.
+    `Catalog::search` matches a work's names; `search_grouped`/`group_by_work` gather editions
+    (`WorkGroup`); `Project::same_works` (a Bible without `work` takes that of another with its
+    package id: forks inherit it) is what lx warns of after add, install, and import;
+    `works::describe` for lx info and show. The FFI's `PackageInfo` and `CatalogEntry` carry
+    `work`, `edition`, `editionYear`; `LogoxideCatalog.searchGrouped`
   - `language.rs`: `language` is checked as well-formed BCP 47 (`language-tags`, its grammar
     only, so eBible.org's `eng` stays), `script` as ISO 15924's form; `Package::text_script` is
     `script`, else the tag's subtag, and `text_direction` is `direction`, else the script's
@@ -299,7 +309,7 @@ before changing the design.
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
-  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
   stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`

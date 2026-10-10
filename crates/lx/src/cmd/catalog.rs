@@ -344,15 +344,24 @@ pub(crate) struct Filters<'a> {
     pub(crate) category: Option<&'a str>,
 }
 
+/// How `lx search` shows what it finds: at most `limit`, as JSON, or as a list not grouped by
+/// work
+#[derive(Clone, Copy)]
+pub(crate) struct Shown {
+    pub(crate) limit: usize,
+    pub(crate) json: bool,
+    pub(crate) flat: bool,
+}
+
 pub(crate) fn search(
     cli: &Cli,
     query: &str,
     catalogs: &[String],
     registry: Option<&str>,
     filters: Filters,
-    limit: usize,
-    json: bool,
+    shown: Shown,
 ) -> logoxide::Result<()> {
+    let Shown { limit, json, flat } = shown;
     // The books packages must be about, with the genres and names topos's config gives
     let books = match filters.books.is_empty() {
         true => None,
@@ -458,6 +467,9 @@ pub(crate) fn search(
                     "keywords": e.keywords,
                     "categories": e.categories,
                     "aboutBooks": e.about_books,
+                    "work": e.work,
+                    "edition": e.edition,
+                    "editionYear": e.edition_year,
                     "install": install,
                 })
             })
@@ -465,7 +477,7 @@ pub(crate) fn search(
         println!("{}", serde_json::Value::Array(entries));
         return Ok(());
     }
-    for entry in found.iter().take(limit) {
+    let print = |entry: &logoxide::catalog::CatalogEntry, indent: &str| {
         let language = entry.language_name.as_deref().unwrap_or(&entry.language);
         let source = match (&entry.source, entry.source.import_name()) {
             (_, Some(name)) => format!("lx import {name}"),
@@ -478,17 +490,41 @@ pub(crate) fn search(
             }
             (_, None) => String::new(),
         };
+        let edition = match (&entry.edition, entry.edition_year) {
+            (Some(edition), Some(year)) => format!(" [{edition}, {year}]"),
+            (Some(edition), None) => format!(" [{edition}]"),
+            (None, Some(year)) => format!(" [{year}]"),
+            (None, None) => String::new(),
+        };
         outln!(
-            "{} ({}): {}, {language}, {}",
+            "{indent}{} ({}): {}{edition}, {language}, {}",
             entry.abbreviation,
             entry.id,
             entry.name,
             entry.license.as_deref().unwrap_or("no license given"),
         );
         if !entry.about_books.is_empty() {
-            outln!("    on {}", book_names(&entry.about_books));
+            outln!("{indent}    on {}", book_names(&entry.about_books));
         }
-        outln!("    {source}");
+        outln!("{indent}    {source}");
+    };
+    let listed = found.iter().take(limit).copied();
+    match flat {
+        true => listed.for_each(|entry| print(entry, "")),
+        // Each work's editions together, under its name, where there are two or more
+        false => {
+            for group in logoxide::catalog::group_by_work(listed) {
+                match (group.name(), &group.work, group.entries.len()) {
+                    (Some(name), Some(work), n) if n > 1 => {
+                        outln!("{name} (work `{work}`): {n} editions");
+                        for entry in &group.entries {
+                            print(entry, "  ");
+                        }
+                    }
+                    _ => group.entries.iter().for_each(|entry| print(entry, "")),
+                }
+            }
+        }
     }
     let more = found.len().saturating_sub(limit);
     outln!(

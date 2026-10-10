@@ -114,6 +114,7 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
         entry.name,
         dir.display()
     );
+    crate::cmd::project::warn_of_same_works(&project, &library);
     Ok(())
 }
 

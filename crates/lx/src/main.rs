@@ -36,7 +36,7 @@ mod publish;
 use cli::{CatalogCommand, Cli, Command, Format, MediaCommand, RegistryCommand};
 use cmd::{
     catalog::{
-        Filters, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_remove,
+        Filters, Shown, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_remove,
         package_url, search,
     },
     import::{import, import_update},
@@ -165,6 +165,7 @@ fn main() -> ExitCode {
             books,
             category,
             limit,
+            flat,
             json,
         } => search(
             &cli,
@@ -175,8 +176,11 @@ fn main() -> ExitCode {
                 books: books.filters(),
                 category: category.as_deref(),
             },
-            *limit,
-            *json || cli.format == Format::Json,
+            Shown {
+                limit: *limit,
+                json: *json || cli.format == Format::Json,
+                flat: *flat,
+            },
         ),
         Command::Import {
             source,

@@ -217,6 +217,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         logoxide::lock::LOCKFILE
     );
     warn_of_clashes(&project, &library);
+    warn_of_same_works(&project, &library);
     warn_of_absolute_paths(&lock);
     Ok(())
 }
@@ -282,6 +283,27 @@ pub(crate) fn warn_of_clashes(project: &Project, library: &logoxide::Library) {
                      `abbreviation` in {MANIFEST})",
                     clash.name,
                     clash.packages.join(" and ")
+                );
+            }
+        }
+        Err(e) => errln!("warning: {e}"),
+    }
+}
+
+/**
+Says which of the project's Bibles are one work (two editions of the KJV, two forks of a
+package): not wrong, but perhaps not meant
+*/
+pub(crate) fn warn_of_same_works(project: &Project, library: &logoxide::Library) {
+    match project.same_works(library) {
+        Ok(works) => {
+            for same in works {
+                let name = (logoxide::works::get(&same.work))
+                    .map_or_else(|| same.work.clone(), |w| w.name.clone());
+                errln!(
+                    "warning: {} are all {name} (work `{}`)",
+                    same.packages.join(" and "),
+                    same.work
                 );
             }
         }
@@ -442,6 +464,7 @@ pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Re
         project.dir().join(logoxide::lock::LOCKFILE).display()
     );
     warn_of_clashes(&project, &library);
+    warn_of_same_works(&project, &library);
     Ok(())
 }
 
@@ -597,7 +620,13 @@ struct InfoReport {
     kind: logoxide::manifest::PackageKind,
     language: String,
     license: Option<String>,
+    /// What the license allows, said and derived
+    rights: logoxide::license::Rights,
     license_file: Option<String>,
+    /// The work it's an edition of, and which
+    work: Option<String>,
+    edition: Option<String>,
+    edition_year: Option<i32>,
     git: Option<String>,
     commit: Option<String>,
     path: Option<String>,
@@ -659,7 +688,11 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
             kind: i.kind,
             language: i.language.clone(),
             license: i.license.clone(),
+            rights: i.text_rights(),
             license_file: i.license_file.clone(),
+            work: i.work.clone(),
+            edition: i.edition.clone(),
+            edition_year: i.edition_year,
             git: locked.git.clone(),
             commit: locked.commit.clone(),
             path: locked.path.clone(),
@@ -688,6 +721,13 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
             .or(i.license_file.as_deref())
             .unwrap_or("none given")
     );
+    let rights = i.text_rights();
+    if !rights.is_empty() {
+        outln!("rights: {}", rights.describe());
+    }
+    if let Some(work) = logoxide::works::describe(&i) {
+        outln!("work: {work}");
+    }
     let from = match (&locked.git, &locked.path) {
         (Some(git), _) => format!("{git} at {}", locked.commit.as_deref().unwrap_or("?")),
         (_, Some(path)) => format!("path {path}"),

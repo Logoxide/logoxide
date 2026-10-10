@@ -239,6 +239,10 @@ pub(crate) enum Command {
         /// How many to show
         #[arg(long, default_value_t = 20)]
         limit: usize,
+        /// One list, best first, without gathering each work's editions (every KJV) under its
+        /// name
+        #[arg(long)]
+        flat: bool,
         /// One JSON array, for editors: each package's id, names, language, license, keywords,
         /// categories, books it's about, and the lx arguments that install it (as `--format
         /// json`)

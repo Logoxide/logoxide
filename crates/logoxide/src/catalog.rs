@@ -246,6 +246,12 @@ pub struct CatalogEntry {
     pub keywords: Vec<String>,
     pub categories: Vec<String>,
     pub about_books: Vec<String>,
+    /// The work it's an edition of (`kjv`): a logoxide catalog's `work`, or for an import, the
+    /// work logoxide's table knows its import name to be ([`crate::works`])
+    pub work: Option<String>,
+    /// Which edition (`1769-oxford`), and its year, when a logoxide catalog says
+    pub edition: Option<String>,
+    pub edition_year: Option<i32>,
 }
 
 impl CatalogEntry {
@@ -314,6 +320,12 @@ struct TomlEntry {
     categories: Vec<String>,
     #[serde(default)]
     about_books: Vec<String>,
+    #[serde(default)]
+    work: Option<String>,
+    #[serde(default)]
+    edition: Option<String>,
+    #[serde(default)]
+    edition_year: Option<i32>,
     /// Its path in the folder the catalog was built from (`lx catalog build`), which names it
     /// as its id does
     #[serde(default)]
@@ -518,9 +530,13 @@ impl Catalog {
                 keywords: vec![],
                 categories: vec![],
                 about_books: vec![],
+                work: None,
+                edition: None,
+                edition_year: None,
             });
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
+        known_works(&mut entries);
         Ok(Catalog {
             name: String::from("fetch.bible"),
             entries,
@@ -589,6 +605,9 @@ impl Catalog {
                 keywords: vec![],
                 categories: vec![],
                 about_books: vec![],
+                work: None,
+                edition: None,
+                edition_year: None,
             });
         }
         if entries.is_empty() {
@@ -597,6 +616,7 @@ impl Catalog {
             )));
         }
         entries.sort_by(|a, b| a.id.cmp(&b.id));
+        known_works(&mut entries);
         Ok(Catalog {
             name: String::from("CCEL"),
             entries,
@@ -699,6 +719,9 @@ impl Catalog {
                 keywords: e.keywords,
                 categories: e.categories,
                 about_books: e.about_books,
+                work: e.work,
+                edition: e.edition,
+                edition_year: e.edition_year,
             });
         }
         Ok(Catalog {
@@ -818,8 +841,12 @@ impl Catalog {
                 keywords: vec![],
                 categories: vec![],
                 about_books: vec![],
+                work: None,
+                edition: None,
+                edition_year: None,
             });
         }
+        known_works(&mut entries);
         Ok(Catalog {
             name: String::from("eBible.org"),
             entries,
@@ -827,10 +854,20 @@ impl Catalog {
         })
     }
 
+    /**
+    [`Catalog::search`]'s entries grouped by the work each is an edition of
+    ([`group_by_work`]): `search_grouped("king james")` gives one group of every KJV edition the
+    catalogs list, then the rest
+    */
+    pub fn search_grouped(&self, query: &str) -> Vec<WorkGroup<'_>> {
+        group_by_work(self.search(query))
+    }
+
     /// The entries `query` matches, best first: every word of it must be in the entry's id,
-    /// name, abbreviation, aliases, language, keywords, categories, or description (ignoring
-    /// case), or name a book it's about (`romans`); an exact abbreviation or id comes first, then
-    /// names, languages, keywords, categories, and books, then descriptions
+    /// name, abbreviation, aliases, language, keywords, categories, its work's names, or
+    /// description (ignoring case), or name a book it's about (`romans`); an exact abbreviation
+    /// or id comes first, then names, languages, keywords, categories, and books, then
+    /// descriptions
     pub fn search(&self, query: &str) -> Vec<&CatalogEntry> {
         let words: Vec<(String, Option<String>)> = (query.split_whitespace())
             .map(|word| (fold(word), crate::manifest::book_code(word)))
@@ -897,6 +934,9 @@ impl Catalog {
                     keywords: info.keywords,
                     categories: info.categories,
                     about_books: info.about_books,
+                    work: info.work,
+                    edition: info.edition,
+                    edition_year: info.edition_year,
                 })
             })
             .collect();
@@ -1039,6 +1079,14 @@ impl Catalog {
         if info.text_direction() == Direction::Rtl {
             table.insert("direction", toml_edit::value("rtl"));
         }
+        for (key, value) in [("work", &info.work), ("edition", &info.edition)] {
+            if let Some(value) = value {
+                table.insert(key, toml_edit::value(value));
+            }
+        }
+        if let Some(year) = info.edition_year {
+            table.insert("edition-year", toml_edit::value(i64::from(year)));
+        }
         for (key, list) in [
             ("keywords", &info.keywords),
             ("categories", &info.categories),
@@ -1051,6 +1099,54 @@ impl Catalog {
         }
         table.insert("git", toml_edit::value(git));
         table
+    }
+}
+
+/// Entries of one work ([`group_by_work`]), or one entry of none
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkGroup<'a> {
+    /// The work's id (`kjv`), if its entries name one
+    pub work: Option<String>,
+    pub entries: Vec<&'a CatalogEntry>,
+}
+
+impl WorkGroup<'_> {
+    /// The work's name, from logoxide's table of works (else its id), if the group has a work
+    pub fn name(&self) -> Option<String> {
+        let work = self.work.as_deref()?;
+        Some(crate::works::get(work).map_or_else(|| work.to_string(), |w| w.name.clone()))
+    }
+}
+
+/**
+Entries grouped by the work each is an edition of, in the order of each work's first entry (so a
+ranked list stays ranked), entries in their order within a group; an entry with no work is a
+group of its own
+*/
+pub fn group_by_work<'a>(
+    entries: impl IntoIterator<Item = &'a CatalogEntry>,
+) -> Vec<WorkGroup<'a>> {
+    let mut groups: Vec<WorkGroup<'a>> = vec![];
+    for entry in entries {
+        match (entry.work.as_ref())
+            .and_then(|work| groups.iter_mut().find(|g| g.work.as_ref() == Some(work)))
+        {
+            Some(group) => group.entries.push(entry),
+            None => groups.push(WorkGroup {
+                work: entry.work.clone(),
+                entries: vec![entry],
+            }),
+        }
+    }
+    groups
+}
+
+/// Gives imports the works logoxide's table knows their import names to be
+fn known_works(entries: &mut [CatalogEntry]) {
+    for entry in entries {
+        if entry.work.is_none() {
+            entry.work = crate::works::of_source(&entry.source);
+        }
     }
 }
 
@@ -1201,6 +1297,11 @@ pub(crate) fn sword_entry(
     let copyright = text("ShortCopyright").or_else(|| text("Copyright"));
     // SWORD's `Lang` (`en_US`) as a tag; what isn't one is `und`, the conf's text kept
     let (language, raw) = crate::language::normalize_language(conf.lang().unwrap_or("und"));
+    let source = CatalogSource::Sword {
+        id: format!("{repository_name}/{module}"),
+        repository: repository.to_string(),
+        module: module.clone(),
+    };
     CatalogEntry {
         id,
         name: text("Description").unwrap_or_else(|| module.clone()),
@@ -1226,16 +1327,15 @@ pub(crate) fn sword_entry(
             sword_modules::conf::Direction::RightToLeft => Direction::Rtl,
             _ => Direction::Ltr,
         },
-        source: CatalogSource::Sword {
-            id: format!("{repository_name}/{module}"),
-            repository: repository.to_string(),
-            module,
-        },
         path: None,
         releases: vec![],
         keywords: vec![],
         categories: vec![],
         about_books: vec![],
+        work: crate::works::of_source(&source),
+        edition: None,
+        edition_year: None,
+        source,
     }
 }
 
@@ -1332,12 +1432,16 @@ fn score(entry: &CatalogEntry, words: &[(String, Option<String>)]) -> Option<u32
         return Some(0);
     }
     let exact = [fold(&entry.abbreviation), fold(&entry.id)];
+    // Its work's names (`Authorized Version` finds every edition of the KJV)
+    let work = (entry.work.as_deref()).and_then(crate::works::get);
     let names: Vec<String> = [&entry.name]
         .into_iter()
         .chain(&entry.aliases)
         .chain(&entry.language_name)
         .chain([&entry.language])
         .chain(&entry.keywords)
+        .chain(work.map(|w| &w.name))
+        .chain(work.into_iter().flat_map(|w| &w.aliases))
         .map(|s| fold(s))
         // `church-history` is two words
         .chain(entry.categories.iter().map(|c| fold(&c.replace('-', " "))))
@@ -1468,6 +1572,73 @@ mod tests {
         assert_eq!(
             wlc.description.as_deref(),
             Some("The \"WLC\", with vowels, and a comma, here")
+        );
+    }
+
+    #[test]
+    fn editions_are_grouped_by_work() {
+        let mine = Catalog::parse_toml(
+            r#"
+[[package]]
+id = "asv-1901"
+name = "ASV, the 1901 printing"
+abbreviation = "ASV1901"
+language = "en"
+work = "asv"
+edition = "1901-nelson"
+edition-year = 1901
+git = "https://example.org/asv"
+
+[[package]]
+id = "bsb"
+name = "Berean Standard Bible"
+abbreviation = "BSB"
+language = "en"
+git = "https://example.org/bsb"
+"#,
+        )
+        .unwrap();
+        let all = mine.merge(Catalog::parse("translations.csv", EBIBLE).unwrap());
+        // eBible.org's ASV is the ASV by its import name
+        let asv = all.find_import("ebible:eng-asv").unwrap();
+        assert_eq!(asv.work.as_deref(), Some("asv"));
+        assert_eq!(all.entries[0].edition_year, Some(1901));
+        // Found by its work's name, and gathered under it
+        let groups = all.search_grouped("american standard");
+        assert_eq!(groups.len(), 1, "{groups:?}");
+        assert_eq!(groups[0].work.as_deref(), Some("asv"));
+        assert_eq!(
+            groups[0].name().as_deref(),
+            Some("American Standard Version")
+        );
+        let ids: Vec<&str> = groups[0].entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["asv-1901", "ebible-eng-asv"]);
+        // An entry of no work is a group of its own
+        let groups = all.search_grouped("");
+        assert_eq!(
+            (groups.iter())
+                .map(|g| (g.work.as_deref(), g.entries.len()))
+                .collect::<Vec<_>>(),
+            [(Some("asv"), 2), (None, 1), (None, 1)]
+        );
+        // A catalog writes them back
+        let info = crate::Manifest::parse(
+            "[package]\nid = \"kjv\"\nname = \"KJV\"\nabbreviation = \"KJV\"\nversion = \"1.0.0\"\n\
+             language = \"en\"\nwork = \"kjv\"\nedition = \"1769-oxford\"\nedition-year = 1769\n\
+             [formats]\nusx = { path = \"usx/\" }\n",
+        )
+        .unwrap()
+        .package
+        .unwrap();
+        let text = Catalog::toml_entry(&info, "https://example.org/kjv");
+        let entry = &Catalog::parse_toml(&text).unwrap().entries[0];
+        assert_eq!(
+            (
+                entry.work.as_deref(),
+                entry.edition.as_deref(),
+                entry.edition_year
+            ),
+            (Some("kjv"), Some("1769-oxford"), Some(1769))
         );
     }
 

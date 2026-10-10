@@ -97,6 +97,10 @@ pub struct PackageInfo {
     pub categories: Vec<String>,
     /// The books of the Bible it's mainly about, as USFM codes (`ROM`), as its author says
     pub about_books: Vec<String>,
+    /// The work it's an edition of (`kjv`), and which edition (`1769-oxford`) of what year
+    pub work: Option<String>,
+    pub edition: Option<String>,
+    pub edition_year: Option<i32>,
     /// Where the text was imported from, if anywhere (`[package.upstream]`)
     pub upstream: Option<Upstream>,
     /// `own` (the text's verse markers say), or a named system like `English`
@@ -131,6 +135,9 @@ impl From<&manifest::Package> for PackageInfo {
             keywords: info.keywords.clone(),
             categories: info.categories.clone(),
             about_books: info.about_books.clone(),
+            work: info.work.clone(),
+            edition: info.edition.clone(),
+            edition_year: info.edition_year,
             upstream: info.upstream.as_ref().map(Upstream::from),
             versification: info.versification.clone(),
             maps_to: info.maps_to.clone(),

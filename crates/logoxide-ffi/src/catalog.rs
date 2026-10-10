@@ -127,6 +127,23 @@ pub struct CatalogEntry {
     pub keywords: Vec<String>,
     pub categories: Vec<String>,
     pub about_books: Vec<String>,
+    /// The work it's an edition of (`kjv`): a logoxide catalog's, or the one logoxide's table of
+    /// works knows an import to be
+    pub work: Option<String>,
+    /// Which edition (`1769-oxford`), and its year, when a logoxide catalog says
+    pub edition: Option<String>,
+    pub edition_year: Option<i32>,
+}
+
+/// A work's entries in a search (`LogoxideCatalog.searchGrouped`), or one entry of none
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkGroup {
+    /// The work's id (`kjv`), if its entries name one
+    pub work: Option<String>,
+    /// Its name (`King James Version`), from logoxide's table of works, else its id
+    pub name: Option<String>,
+    pub entries: Vec<CatalogEntry>,
 }
 
 impl From<&CoreEntry> for CatalogEntry {
@@ -184,6 +201,9 @@ impl From<&CoreEntry> for CatalogEntry {
             keywords: e.keywords.clone(),
             categories: e.categories.clone(),
             about_books: e.about_books.clone(),
+            work: e.work.clone(),
+            edition: e.edition.clone(),
+            edition_year: e.edition_year,
         }
     }
 }
@@ -233,6 +253,9 @@ impl From<CatalogEntry> for CoreEntry {
             keywords: e.keywords,
             categories: e.categories,
             about_books: e.about_books,
+            work: e.work,
+            edition: e.edition,
+            edition_year: e.edition_year,
         }
     }
 }
@@ -280,6 +303,24 @@ impl LogoxideCatalog {
             .into_iter()
             .take(limit)
             .map(CatalogEntry::from)
+            .collect()
+    }
+
+    /// `search`'s packages grouped by the work each is an edition of (every KJV together), in
+    /// the order of each work's best; at most `limit` packages (all for 0)
+    pub fn search_grouped(&self, query: String, limit: u32) -> Vec<WorkGroup> {
+        let found = self.catalog.search(&query);
+        let limit = if limit == 0 {
+            found.len()
+        } else {
+            limit as usize
+        };
+        (logoxide_core::catalog::group_by_work(found.into_iter().take(limit)).into_iter())
+            .map(|group| WorkGroup {
+                name: group.name(),
+                work: group.work.clone(),
+                entries: group.entries.into_iter().map(CatalogEntry::from).collect(),
+            })
             .collect()
     }
 

@@ -686,6 +686,36 @@ fn diff_names_joined_and_split_verses() {
 }
 
 #[test]
+fn two_editions_of_one_work_are_said() {
+    let world = World::new("works");
+    for (id, work) in [("kjv1769", "kjv"), ("kjv1611", "kjv")] {
+        let dir = world.path(id);
+        package(&dir, id, "1.0.0");
+        let manifest = std::fs::read_to_string(dir.join("logoxide.toml")).unwrap();
+        let manifest = manifest.replace(
+            "license = \"CC0-1.0\"",
+            &format!("license = \"CC0-1.0\"\nwork = \"{work}\"\nedition = \"{id}\""),
+        );
+        std::fs::write(dir.join("logoxide.toml"), manifest).unwrap();
+    }
+    world.ok(&["init"]);
+    let out = world.lx(&["add", "--path", "../kjv1769"]);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("are all"));
+    let out = world.lx(&["add", "--path", "../kjv1611"]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        stderr.contains("kjv1769 1.0.0") && stderr.contains("are all King James Version"),
+        "{stderr}"
+    );
+    let info = world.ok(&["info", "kjv1611"]);
+    assert!(
+        info.contains("work: King James Version (`kjv`), edition kjv1611"),
+        "{info}"
+    );
+}
+
+#[test]
 fn publishing_what_isnt_redistributable_is_confirmed() {
     let world = World::new("publish-rights");
     let dir = world.path("not-mine");

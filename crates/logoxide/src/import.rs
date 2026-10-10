@@ -879,6 +879,10 @@ fn finish(
         keywords: entry.keywords.clone(),
         categories: entry.categories.clone(),
         about_books: entry.about_books.clone(),
+        // The work logoxide's table knows the import to be, never guessed from its title
+        work: (entry.work.clone()).or_else(|| crate::works::of_source(&entry.source)),
+        edition: entry.edition.clone(),
+        edition_year: entry.edition_year,
         upstream: upstream(entry),
         versification: made.versification.unwrap_or_else(|| String::from("own")),
         maps_to: None,
@@ -985,6 +989,8 @@ mod tests {
         );
         assert_eq!(info.license_file.as_deref(), Some("copr.htm"));
         assert_eq!(info.license.as_deref(), Some("LicenseRef-PublicDomain"));
+        // The work logoxide's table knows ebible:eng-asv to be
+        assert_eq!(info.work.as_deref(), Some("asv"));
         assert_eq!(package.books().len(), 1);
         assert!(ebible(entry, &zip(&[("copr.htm", "")]), &MemoryStorage::new()).is_err());
         // The license is read from copr.htm, as its link gives it; eBible.org's list says it may

@@ -132,6 +132,17 @@ pub struct Package {
     /// not the books a Bible has
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub about_books: Vec<String>,
+    /// The work it's an edition of (`kjv`), by the id logoxide's table of works gives it
+    /// ([`crate::works`]), or another of the same form: packages of one work are editions of
+    /// one text, which searches group
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<String>,
+    /// Which edition of its work it is (`1769-oxford`)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
+    /// The year of that edition (`1769`; before the common era, negative)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition_year: Option<i32>,
     /// Where the text was imported from, if anywhere: the download, the import's name, and the
     /// publisher's version (written by importers, [`crate::import`])
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -618,6 +629,12 @@ impl Manifest {
             }
             if let Some(license) = &package.license {
                 crate::license::check_license(license)?;
+            }
+            if let Some(work) = &package.work {
+                check_id("work", work)?;
+            }
+            if let Some(edition) = &package.edition {
+                check_id("edition", edition)?;
             }
             // A collection is only its dependencies
             match (

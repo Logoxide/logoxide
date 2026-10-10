@@ -53,6 +53,9 @@ pub(crate) fn show(
             .or(info.license_file.as_deref())
             .unwrap_or("none given")
     );
+    if let Some(work) = logoxide::works::describe(info) {
+        outln!("work: {work}");
+    }
     let rights = info.text_rights();
     if !rights.is_empty() {
         outln!("rights: {}", rights.describe());

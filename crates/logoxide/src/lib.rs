@@ -90,6 +90,7 @@ pub mod text;
 pub mod titles;
 pub mod topos_config;
 pub mod versification;
+pub mod works;
 
 use std::sync::LazyLock;
 

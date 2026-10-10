@@ -700,6 +700,13 @@ fn catalogs_and_ebible_imports() {
     let found = all.search("american".into(), 0);
     assert_eq!(found.len(), 1);
     let entry = found[0].clone();
+    // The work logoxide's table knows ebible:eng-asv to be, and its group
+    assert_eq!(entry.work.as_deref(), Some("asv"));
+    let groups = all.search_grouped("american".into(), 0);
+    assert_eq!(
+        (groups.len(), groups[0].name.as_deref()),
+        (1, Some("American Standard Version"))
+    );
     assert_eq!(
         entry.source,
         crate::CatalogSource::Ebible {

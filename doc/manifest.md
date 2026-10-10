@@ -62,6 +62,9 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `keywords` | array of strings | no | Words a search should find it by. Each without surrounding spaces, not empty, and not repeated (compared case-insensitively) |
 | `categories` | array of strings | no | At most 5, each from the [fixed list](#categories), not repeated |
 | `about-books` | array of strings | no | The books of the Bible it is mainly about, as uppercase USFM codes (`["ROM", "GAL"]` for a commentary on Romans and Galatians), not repeated. Said by its author, never worked out from its text; not the books a Bible contains |
+| `work` | string | no | The work it's an edition of (`kjv`), as an id (like `id`'s): see [Works and editions](#works-and-editions) |
+| `edition` | string | no | Which edition of its work it is (`1769-oxford`), as an id |
+| `edition-year` | integer | no | That edition's year (`1769`; negative before the common era) |
 | `upstream` | table | no | Where the text was imported from (written by importers; see [Imports](#imports)) |
 | `versification` | string | no | `own` (the default: the text's own verse markers say) or a named versification (`English`, `KJV`, `Original`, …) |
 | `maps-to` | string | only for a map | For `kind = "versification-map"`: the versification it maps `versification` to. Any other kind must not have it |
@@ -108,6 +111,21 @@ Like the license, rights are shown, never enforced. `lx publish` warns of a pack
 license or one not known to be free (unless `redistributable = true` is said), and when its
 rights say it isn't redistributable, warns loudly and asks first (`--yes` answers);
 see [trust.md](trust.md#licenses).
+
+### Works and editions
+
+A work is a text whatever its editions, formats, and publishers: the King James Version is one
+work, and the 1769 Oxford text, a 1611 facsimile, and the Pure Cambridge Edition are editions of
+it. `work` names it by an id, so packages of one work can be found together (`lx search` gathers
+each work's editions under its name) and a vault using two of them is told so (`lx add`, `lx
+install`, and `lx import` warn: not wrong, but perhaps not meant).
+
+logoxide keeps a table of works (`crates/logoxide/data/works.toml`): each work's id, name,
+aliases (which searches match), its Wikidata item when known, and the import names known to be it
+(`ebible:eng-kjv2006`, `sword:crosswire/KJV`). An import whose name is listed is given that
+`work`; nothing is ever guessed from a title. Other ids may be used for works the table doesn't
+have. A package that doesn't say its work takes the work of another of the project's Bibles with
+its `id` (a fork, added with `package = "kjv"`, is its original's work).
 
 ### Kinds
 
