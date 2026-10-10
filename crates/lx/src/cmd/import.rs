@@ -12,7 +12,7 @@ use crate::{
     cli::{Cli, Format},
     cmd::{
         catalog::{load_catalog, load_catalogs, warn_shadowed},
-        package::DiffReport,
+        package::{DiffReport, print_skipped},
     },
     config,
     net::get,
@@ -78,6 +78,12 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
     if let Err(error) = made {
         let _ = std::fs::remove_dir_all(&staging);
         return Err(error);
+    }
+    // What the download had that isn't read as a Bible's books (front matter, a glossary, books
+    // logoxide doesn't know)
+    let made: Arc<dyn Storage> = Arc::new(FsStorage::new(&dir).no_symlinks());
+    if let Ok(package) = Package::open(made, Features::default()) {
+        print_skipped(package.source().skipped());
     }
     let dependency = DetailedDependency {
         path: Some(relative),

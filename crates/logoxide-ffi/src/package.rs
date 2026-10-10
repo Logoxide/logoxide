@@ -6,6 +6,7 @@ use boltffi::*;
 use logoxide_core::{
     Cache, CachedPackage, Features, MemoryStorage, Package, Storage,
     manifest::{self, Direction, PackageKind as CoreKind},
+    source::SkipReason,
     topos_bible::data::{books::BookId, translations::Translations},
 };
 use topos_bible::{ToposBook, ToposTranslations};
@@ -247,6 +248,22 @@ pub struct TitledFile {
     pub title: Option<String>,
 }
 
+/// A file, or a book in one, that the package's format passed over
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SkippedFile {
+    pub path: String,
+    /// Its book's code or name as the file gives it (`FRT`, `JUB`); empty when it names none
+    pub book: String,
+    /// `peripheral` (front matter, a glossary, …), `unknown` (a book logoxide doesn't know), or
+    /// `no-book`
+    pub reason: String,
+    /// What `lx check` says of it (`usx/FRT.usx: FRT isn't a book of the Bible, passed over`)
+    pub message: String,
+    /// Worth a warning (its verses are left out), not only a note
+    pub warning: bool,
+}
+
 /// A memory storage that remembers what was written to it, so the host can save it
 struct Recording {
     files: MemoryStorage,
@@ -440,6 +457,25 @@ impl LogoxidePackage {
                 title: (titles.iter())
                     .find(|t| t.path == *path)
                     .and_then(|t| t.title.clone()),
+            })
+            .collect()
+    }
+
+    /// The files, or books in them, its format passed over: peripherals, and books logoxide
+    /// doesn't know (whose verses are left out)
+    pub fn skipped(&self) -> Vec<SkippedFile> {
+        let reason = |r: SkipReason| match r {
+            SkipReason::Peripheral => "peripheral",
+            SkipReason::Unknown => "unknown",
+            SkipReason::NoBook => "no-book",
+        };
+        (self.cached.package().source().skipped().iter())
+            .map(|s| SkippedFile {
+                path: s.path.clone(),
+                book: s.book.clone(),
+                reason: reason(s.reason).to_string(),
+                message: s.to_string(),
+                warning: s.is_warning(),
             })
             .collect()
     }

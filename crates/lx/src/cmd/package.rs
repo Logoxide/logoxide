@@ -243,9 +243,22 @@ struct CheckReport {
     /// Each file's title (none when it has none)
     titles: Vec<serde_json::Value>,
     untitled: Vec<String>,
+    /// Files, or books in them, passed over: peripherals, and books logoxide doesn't know
+    skipped: Vec<logoxide::source::Skipped>,
     /// Problems with the timings, and books whose cached counts differ
     problems: Vec<String>,
     ok: bool,
+}
+
+/// What a package's format passed over: peripherals as notes, books logoxide doesn't know (and
+/// files naming none) as warnings
+pub(crate) fn print_skipped(skipped: &[logoxide::source::Skipped]) {
+    for skip in skipped {
+        match skip.is_warning() {
+            true => errln!("warning: {skip}"),
+            false => errln!("note: {skip}"),
+        }
+    }
 }
 
 pub(crate) fn check(
@@ -259,6 +272,10 @@ pub(crate) fn check(
         package.info().version.to_string(),
     );
     let mut problems = vec![];
+    let skipped = package.source().skipped().to_vec();
+    if !json {
+        print_skipped(&skipped);
+    }
     let package_kind = package.info().kind;
     let timings = logoxide::media::check_package_timings(&package)?;
     let titles = logoxide::titles::titles(&package)?;
@@ -330,6 +347,7 @@ pub(crate) fn check(
                 .map(|t| serde_json::json!({ "path": t.path, "title": t.title }))
                 .collect(),
             untitled: untitled.iter().map(|p| p.to_string()).collect(),
+            skipped,
             problems,
             ok,
         })?;
@@ -603,6 +621,7 @@ pub(crate) fn release(
     let library = cli.library();
     let git = cli.fetcher(&library);
     let mut plan = logoxide::release::plan(path, &git)?;
+    print_skipped(&plan.skipped);
     if let Some((old, d)) = &plan.previous {
         outln!(
             "since {old}: {} ({:?} change)",

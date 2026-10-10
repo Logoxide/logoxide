@@ -137,6 +137,13 @@ Format names (case-insensitive) and the files each is made of:
 Other names are allowed and kept, but nothing reads them. Opening a Bible picks, among the formats
 its enabled features turn on, the first readable one in the order above.
 
+A file a book is named by its book's USFM code (`JHN.usx`, `43-JHNeng-kjv.usfm`), else by the code
+it gives (`\id JHN`, `<book code="JHN">`); a whole file's books are the ones its verses name.
+What isn't a book of the Bible is passed over and noted: the peripherals `FRT`, `INT`, `BAK`, `CNC`,
+`GLO`, `TDX`, `NDX`, `OTH`, and `XXA` to `XXG`. A book the reader doesn't know (topos's book data
+lacks it) is passed over with a warning, its verses left out, and so is a file that names no book.
+A book in two files is an error naming both.
+
 ## `[features]`
 
 Cargo's features. Each key is a feature; its value is an array of what it turns on:

@@ -6,7 +6,7 @@ use topos_bible_markup::{
     verses::{usx_chapter_verses, verses},
 };
 
-use super::{Book, Source, book_files};
+use super::{Book, Skipped, Source, book_files};
 use crate::{
     error::{LogoxideError, Result},
     manifest::Format,
@@ -22,16 +22,21 @@ A folder of USFM files, one book each (eBible.org's and fetch.bible's downloads)
 pub struct UsfmSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
+    skipped: Vec<Skipped>,
 }
 
 impl UsfmSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = book_files(storage.as_ref(), dir, &["usfm", "sfm"], |head| {
+        let (files, skipped) = book_files(storage.as_ref(), dir, &["usfm", "sfm"], |head| {
             // `\id JHN ...`
             let rest = &head[head.find("\\id ")? + 4..];
             Some(rest.split_whitespace().next()?.to_string())
         })?;
-        Ok(Self { storage, files })
+        Ok(Self {
+            storage,
+            files,
+            skipped,
+        })
     }
 
     /// A book as USX
@@ -67,6 +72,10 @@ impl Source for UsfmSource {
 
     fn files(&self) -> &BTreeMap<BookId, String> {
         &self.files
+    }
+
+    fn skipped(&self) -> &[Skipped] {
+        &self.skipped
     }
 
     fn book(&self, id: BookId) -> Result<Book> {

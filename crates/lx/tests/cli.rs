@@ -259,6 +259,36 @@ fn check_reads_every_book() {
         (Some(1), Some(2))
     );
     assert_eq!(report["titles"][0]["path"], "usx/JHN.usx");
+    assert_eq!(report["skipped"], serde_json::json!([]));
+
+    // Front matter is noted, a book logoxide doesn't know warned of, and both passed over
+    let usx = |code: &str| format!(r#"<usx version="3.0"><book code="{code}" style="id"/></usx>"#);
+    std::fs::write(world.path("tb/usx/front.usx"), usx("FRT")).unwrap();
+    std::fs::write(world.path("tb/usx/ZZZ.usx"), usx("ZZZ")).unwrap();
+    let out = world.lx(&["check", &dir]);
+    assert!(out.status.success());
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        said.contains("note: usx/front.usx: FRT isn't a book"),
+        "{said}"
+    );
+    assert!(
+        said.contains("warning: usx/ZZZ.usx: ZZZ is a book"),
+        "{said}"
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).contains("1 books, 2 verses"));
+    let report = world.json(&["check", &dir, "--format", "json"]);
+    assert_eq!(report["ok"], true);
+    assert_eq!(report["skipped"][0]["reason"], "unknown");
+    assert_eq!(report["skipped"][1]["reason"], "peripheral");
+
+    // John in two files is an error naming both
+    std::fs::write(world.path("tb/usx/john.usx"), JHN).unwrap();
+    let out = world.lx(&["check", &dir]);
+    assert_eq!(out.status.code(), Some(1));
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("usx/JHN.usx and usx/john.usx"), "{said}");
+    std::fs::remove_file(world.path("tb/usx/john.usx")).unwrap();
 
     // The versification map fixture is read whole
     let map =

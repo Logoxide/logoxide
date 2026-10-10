@@ -4,8 +4,8 @@ use topos_bible::data::books::BookId;
 use topos_bible_markup::{Element, Kind, Markup, Milestone, Node};
 
 use super::{
-    Book, Source,
-    whole::{Parsed, marker_book, osis_book, scan_tags, tag_attr, whole_files},
+    Book, Skipped, Source,
+    whole::{Parsed, marker_book, osis_book_name, scan_tags, tag_attr, whole_files},
 };
 use crate::{
     error::{LogoxideError, Result},
@@ -26,24 +26,26 @@ A folder of ThML files: a whole Bible in one file, as CCEL publishes them, or a 
 pub struct ThmlSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
+    skipped: Vec<Skipped>,
     parsed: Parsed,
 }
 
 impl ThmlSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = whole_files(storage.as_ref(), dir, &["xml", "thml"], |text| {
+        let (files, skipped) = whole_files(storage.as_ref(), dir, &["xml", "thml"], |text| {
             scan_tags(text, "scripture", |tag| {
                 let tag = tag.trim_end();
                 if !tag.ends_with('/') {
                     return None;
                 }
                 let place = tag_place(|name| tag_attr(tag, name))?;
-                osis_book(&place.book)
+                osis_book_name(&place.book).map(str::to_string)
             })
         })?;
         Ok(Self {
             storage,
             files,
+            skipped,
             parsed: Parsed::new(),
         })
     }
@@ -56,6 +58,10 @@ impl Source for ThmlSource {
 
     fn files(&self) -> &BTreeMap<BookId, String> {
         &self.files
+    }
+
+    fn skipped(&self) -> &[Skipped] {
+        &self.skipped
     }
 
     fn book(&self, id: BookId) -> Result<Book> {

@@ -50,7 +50,11 @@ before changing the design.
     through topos-bible-markup (`whole.rs`: a file can hold every book; it's scanned for the
     books its verse markers name, cut into books, and its last parse kept). ThML's empty
     `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers. Preference: USX,
-    USFM, OSIS, ThML
+    USFM, OSIS, ThML. `Source::skipped` says what was passed over (`Skipped`, `SkipReason`):
+    peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know (JUB until it
+    does) and files naming no book warned of (the owner's D4); a book in two files is an error
+    naming both. `lx check` (and its JSON's `skipped`), `lx release`, and `lx import` print them;
+    the FFI has `LogoxidePackage.skipped()`
   - `package.rs`: opening a package picks the best readable format its enabled features turn on;
     a package that isn't a Bible (a book, a collection) may have none and opens with
     `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but

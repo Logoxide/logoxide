@@ -12,21 +12,26 @@ use std::{collections::BTreeMap, sync::Mutex};
 use topos_bible::data::books::BookId;
 use topos_bible_markup::{Element, Kind, Markup, Node, parse, verses::verses};
 
-use super::Book;
+use super::{Book, SkipReason, Skipped};
 use crate::{
     error::{LogoxideError, Result},
     storage::{Storage, join},
 };
 
-/// The files of a format's folder whose extension is one of `extensions`, and the books each has
-/// (the first file with a book keeps it), by `books_in` from the file's text
+/**
+The files of a format's folder whose extension is one of `extensions`, the books each has, by
+`books_in` from the file's text (the books it names that topos knows, and the names of those it
+doesn't), and what was passed over: books topos doesn't know, and files that name none. A book in
+two files is an error naming both
+*/
 pub(crate) fn whole_files(
     storage: &dyn Storage,
     dir: &str,
     extensions: &[&str],
-    books_in: impl Fn(&str) -> Vec<BookId>,
-) -> Result<BTreeMap<BookId, String>> {
-    let mut files = BTreeMap::new();
+    books_in: impl Fn(&str) -> Scanned,
+) -> Result<(BTreeMap<BookId, String>, Vec<Skipped>)> {
+    let mut files: BTreeMap<BookId, String> = BTreeMap::new();
+    let mut skipped = vec![];
     let mut names = storage.list(dir)?;
     names.sort();
     for name in names {
@@ -37,26 +42,49 @@ pub(crate) fn whole_files(
             continue;
         }
         let path = join(dir, &name);
-        let mut books = books_in(&storage.read_string(&path)?);
-        if books.is_empty() {
+        let Scanned { mut books, unknown } = books_in(&storage.read_string(&path)?);
+        if books.is_empty() && unknown.is_empty() {
             // A book a file, its markers naming no book: the file's name says which
             let stem = name
                 .rsplit_once('.')
                 .map_or(name.as_str(), |(stem, _)| stem);
             books.extend(super::code_from_name(stem));
+            if books.is_empty() {
+                skipped.push(Skipped {
+                    path: path.clone(),
+                    book: String::new(),
+                    reason: SkipReason::NoBook,
+                });
+            }
+        }
+        for book in unknown {
+            let reason = match super::is_peripheral(&book) {
+                true => SkipReason::Peripheral,
+                false => SkipReason::Unknown,
+            };
+            let path = path.clone();
+            skipped.push(Skipped { path, book, reason });
         }
         for id in books {
-            files.entry(id).or_insert_with(|| path.clone());
+            if let Some(first) = files.get(&id) {
+                return Err(super::duplicate(id, first, &path));
+            }
+            files.insert(id, path.clone());
         }
     }
-    Ok(files)
+    Ok((files, skipped))
 }
 
-/// The book an OSIS id or reference names (`Gen.1.1`, `Bible:Gen.1.1`, `Gen.1.1.seID.00002`)
-pub(crate) fn osis_book(id: &str) -> Option<BookId> {
+/// The book an OSIS id or reference names (`Gen.1.1`, `Bible:Gen.1.1`, `Gen.1.1.seID.00002`),
+/// as it's written, whether or not topos knows it
+pub(crate) fn osis_book_name(id: &str) -> Option<&str> {
     let id = id.rsplit_once(':').map_or(id, |(_, rest)| rest);
-    let book = id.split(['.', ' ']).next()?;
-    crate::bible_data().books().search_osis(book)
+    id.split(['.', ' ']).next().filter(|book| !book.is_empty())
+}
+
+/// The book an OSIS id or reference names, if topos knows it
+pub(crate) fn osis_book(id: &str) -> Option<BookId> {
+    crate::bible_data().books().search_osis(osis_book_name(id)?)
 }
 
 /// An attribute's value in a tag's text (`<verse osisID="Gen.1.1" n="1"/>`)
@@ -75,14 +103,22 @@ pub(crate) fn tag_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
     None
 }
 
+/// The books a file's tags name: those topos knows, in order, and the names of the others
+#[derive(Debug, Default, PartialEq)]
+pub(crate) struct Scanned {
+    pub(crate) books: Vec<BookId>,
+    pub(crate) unknown: Vec<String>,
+}
+
 /// The books named by each `<{name} ...>` tag in a file, in order, by `book_of` from the tag
+/// (its book's OSIS name)
 pub(crate) fn scan_tags(
     text: &str,
     name: &str,
-    book_of: impl Fn(&str) -> Option<BookId>,
-) -> Vec<BookId> {
+    book_of: impl Fn(&str) -> Option<String>,
+) -> Scanned {
     let open = format!("<{name}");
-    let mut books: Vec<BookId> = vec![];
+    let mut scanned = Scanned::default();
     let mut rest = text;
     while let Some(i) = rest.find(&open) {
         rest = &rest[i + open.len()..];
@@ -91,13 +127,14 @@ pub(crate) fn scan_tags(
             continue;
         }
         let tag = &rest[..rest.find('>').unwrap_or(rest.len())];
-        if let Some(book) = book_of(tag)
-            && !books.contains(&book)
-        {
-            books.push(book);
+        let Some(book) = book_of(tag) else { continue };
+        match crate::bible_data().books().search_osis(&book) {
+            Some(id) if !scanned.books.contains(&id) => scanned.books.push(id),
+            None if !scanned.unknown.contains(&book) => scanned.unknown.push(book),
+            _ => {}
         }
     }
-    books
+    scanned
 }
 
 /// Each book's part of a file's tree

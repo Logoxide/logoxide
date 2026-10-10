@@ -4,8 +4,8 @@ use topos_bible::data::books::BookId;
 use topos_bible_markup::Markup;
 
 use super::{
-    Book, Source,
-    whole::{Parsed, marker_book, osis_book, scan_tags, tag_attr, whole_files},
+    Book, Skipped, Source,
+    whole::{Parsed, marker_book, osis_book_name, scan_tags, tag_attr, whole_files},
 };
 use crate::{
     error::{LogoxideError, Result},
@@ -22,22 +22,25 @@ as CrossWire and eBible.org publish them), or a book a file
 pub struct OsisSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
+    skipped: Vec<Skipped>,
     parsed: Parsed,
 }
 
 impl OsisSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = whole_files(storage.as_ref(), dir, &["xml", "osis"], |text| {
+        let (files, skipped) = whole_files(storage.as_ref(), dir, &["xml", "osis"], |text| {
             scan_tags(text, "verse", |tag| {
                 ["osisID", "sID"]
                     .iter()
                     .find_map(|name| tag_attr(tag, name))
-                    .and_then(osis_book)
+                    .and_then(osis_book_name)
+                    .map(str::to_string)
             })
         })?;
         Ok(Self {
             storage,
             files,
+            skipped,
             parsed: Parsed::new(),
         })
     }
@@ -50,6 +53,10 @@ impl Source for OsisSource {
 
     fn files(&self) -> &BTreeMap<BookId, String> {
         &self.files
+    }
+
+    fn skipped(&self) -> &[Skipped] {
+        &self.skipped
     }
 
     fn book(&self, id: BookId) -> Result<Book> {

@@ -77,6 +77,9 @@ pub struct Plan {
     pub previous: Option<(semver::Version, Diff)>,
     /// The smallest version this may be released as
     pub minimum: Option<semver::Version>,
+    /// Files, or books in them, that the format passed over (peripherals, books topos doesn't
+    /// know): their verses aren't in the summary
+    pub skipped: Vec<crate::source::Skipped>,
 }
 
 impl Plan {
@@ -108,6 +111,7 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
         )));
     }
     let (summary, verses) = summarize(&package)?;
+    let skipped = package.source().skipped().to_vec();
     let tags = git.local_versions(repo)?;
     // The newest release (the version must be newer than it)
     let Some((old_version, tag)) = tags.last().cloned() else {
@@ -116,6 +120,7 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
             verses,
             previous: None,
             minimum: None,
+            skipped,
         });
     };
     // The repository's folder (absolute: git runs in a scratch folder), and the package's in it
@@ -129,6 +134,7 @@ pub fn plan(repo: &Path, git: &GitCli) -> Result<Plan> {
         verses,
         previous: Some((old_version, d)),
         minimum,
+        skipped,
     })
 }
 
