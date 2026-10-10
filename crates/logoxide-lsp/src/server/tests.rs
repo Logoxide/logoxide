@@ -1344,3 +1344,156 @@ fn bibles_from_a_project() {
     assert_eq!(server.bibles().bibles[0].name, "TB");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// A path package for [`project_with`]: its folder, id, and files (path and text)
+type PathPackage<'a> = (&'a str, &'a str, &'a [(&'a str, &'a str)]);
+
+/// A project in a workspace with path packages: each written and added, then installed
+fn project_with(dir: &Path, packages: &[PathPackage]) {
+    let mut project = logoxide::Project::init(dir).unwrap();
+    for (folder, id, files) in packages {
+        for (path, text) in *files {
+            let path = dir.join(folder).join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        }
+        let dependency = logoxide::manifest::DetailedDependency {
+            path: Some((*folder).into()),
+            default_features: true,
+            ..Default::default()
+        };
+        project.add(id, &dependency).unwrap();
+    }
+    project.save_manifest().unwrap();
+    let library = logoxide::Library::new(dir.join("library"), dir.join("cache"));
+    project
+        .install(
+            &library,
+            &logoxide::git::GitCli::default(),
+            logoxide::resolve::Update::Nothing,
+        )
+        .unwrap();
+}
+
+fn hover_text(server: &Server, uri: &Uri, line: u32, character: u32) -> Option<String> {
+    let hover = server.hover(HoverParams {
+        text_document_position_params: at(uri, line, character),
+        work_done_progress_params: WorkDoneProgressParams::default(),
+    })?;
+    let HoverContents::Markup(markup) = hover.contents else {
+        panic!("no markup");
+    };
+    Some(markup.value)
+}
+
+const TB_MANIFEST: &str = "[package]\nid = \"tb\"\nname = \"Test\"\nabbreviation = \"TB\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n\n[formats]\nusfm = { path = \"usfm/\" }\n";
+const TB_JOHN: &str = "\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n\\v 17 For God sent not.\n\\v 18 He that believeth.\n";
+const MHCC_MANIFEST: &str = "[package]\nid = \"mhcc\"\nname = \"A Commentary\"\nabbreviation = \"MHCC\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nkind = \"commentary\"\n\n[formats]\nosis = { path = \"osis/\" }\n";
+const MHCC_JOHN: &str = r#"<osis><osisText osisIDWork="MHCC"><div type="book" osisID="John"><chapter osisID="John.3" sID="John.3"/><verse osisID="John.3.16" sID="John.3.16" n="16"/>God so loved: the <hi type="italic">world</hi>.<verse eID="John.3.16"/><verse osisID="John.3.17 John.3.18" sID="John.3.17" n="17-18"/>Not to condemn.<verse eID="John.3.17"/><chapter eID="John.3"/></div></osisText></osis>"#;
+const STRONGS_MANIFEST: &str = "[package]\nid = \"strongs\"\nname = \"Strong's Greek\"\nabbreviation = \"STR\"\nversion = \"1.0.0\"\nlanguage = \"grc\"\nkind = \"lexicon\"\nkeys = \"strongs-greek\"\n\n[formats]\ndictionary = { path = \"entries/\" }\n";
+const STRONGS_ENTRIES: &str = "<entries keys=\"strongs-greek\" markup=\"tei\">\n<entry key=\"G0025\" headword=\"ἀγαπάω\"><entryFree><orth>ἀγαπάω</orth> to love</entryFree></entry>\n<entry key=\"G26\">love</entry>\n</entries>\n";
+
+/// The `commentaries` setting adds a commentary's notes to hover after the Bible text, each
+/// labeled with its verses; `strongs` shows a Strong's dictionary's entry on `G25`
+#[test]
+fn commentaries_and_strongs_in_hover() {
+    let (mut server, uri, dir) = workspace(
+        "See John 3:16-17 here\nand G0025 or G26, H430, G9999",
+        "commentaries",
+    );
+    project_with(
+        &dir,
+        &[
+            (
+                "Bibles/TB",
+                "tb",
+                &[
+                    ("logoxide.toml", TB_MANIFEST),
+                    ("usfm/43JHNTB.usfm", TB_JOHN),
+                ],
+            ),
+            (
+                "Commentaries/MHCC",
+                "mhcc",
+                &[
+                    ("logoxide.toml", MHCC_MANIFEST),
+                    ("osis/John.xml", MHCC_JOHN),
+                ],
+            ),
+            (
+                "Dictionaries/STR",
+                "strongs",
+                &[
+                    ("logoxide.toml", STRONGS_MANIFEST),
+                    ("entries/greek.xml", STRONGS_ENTRIES),
+                ],
+            ),
+        ],
+    );
+
+    // Off by default: the Bible's text alone, and nothing on a Strong's number
+    server.configure(json!({ "no-config": true })).unwrap();
+    let names: Vec<String> = server.bibles().bibles.into_iter().map(|b| b.name).collect();
+    assert_eq!(names, ["TB"]);
+    let hover = hover_text(&server, &uri, 0, 6).unwrap();
+    assert!(!hover.contains("MHCC"), "{hover}");
+    assert_eq!(hover_text(&server, &uri, 1, 6), None);
+
+    // On: each note after the text, labeled with the verses it covers
+    server
+        .configure(json!({ "no-config": true, "commentaries": true, "hover": "text" }))
+        .unwrap();
+    let hover = hover_text(&server, &uri, 0, 6).unwrap();
+    let text = hover.find("For God so loved the world.").unwrap();
+    let first = hover.find("*MHCC* (John 3:16)\n```logoxide").unwrap();
+    let second = hover.find("*MHCC* (John 3:17-18)\n```logoxide").unwrap();
+    assert!(text < first && first < second, "{hover}");
+    assert!(hover.contains("God so loved: the world."), "{hover}");
+    assert!(hover.contains("Not to condemn."), "{hover}");
+    // The same by id; one the project lacks is an error
+    server
+        .configure(json!({ "no-config": true, "commentaries": ["mhcc"] }))
+        .unwrap();
+    assert!(
+        hover_text(&server, &uri, 0, 6)
+            .unwrap()
+            .contains("Not to condemn.")
+    );
+    let error = server
+        .configure(json!({ "no-config": true, "commentaries": "tb" }))
+        .unwrap_err();
+    assert!(error.contains("`tb` isn't a commentary"), "{error}");
+    // A passage it has no notes on shows none
+    server.did_open(DidOpenTextDocumentParams {
+        text_document: TextDocumentItem::new(
+            Uri::from_str("file:///other.md").unwrap(),
+            "markdown".into(),
+            1,
+            "Romans 8:28".into(),
+        ),
+    });
+    server
+        .configure(json!({ "no-config": true, "commentaries": true }))
+        .unwrap();
+    let other = Uri::from_str("file:///other.md").unwrap();
+    let hover = hover_text(&server, &other, 0, 2).unwrap();
+    assert!(!hover.contains("MHCC"), "{hover}");
+
+    // Strong's numbers: the entry, under the number in normal form and its headword
+    server
+        .configure(json!({ "no-config": true, "strongs": true }))
+        .unwrap();
+    let hover = hover_text(&server, &uri, 1, 6).unwrap();
+    assert!(
+        hover.starts_with("**G25** ἀγαπάω\n\n```logoxide"),
+        "{hover}"
+    );
+    assert!(hover.contains("to love"), "{hover}");
+    let hover = hover_text(&server, &uri, 1, 15).unwrap();
+    assert!(hover.starts_with("**G26**\n\n"), "{hover}");
+    assert!(hover.contains("love"), "{hover}");
+    // A Hebrew number with only a Greek dictionary, and one it lacks, show nothing
+    assert_eq!(hover_text(&server, &uri, 1, 20), None);
+    assert_eq!(hover_text(&server, &uri, 1, 26), None);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -33,6 +33,7 @@ use crate::{
 };
 
 mod bible;
+mod dictionary;
 mod server;
 mod settings;
 mod workspace;
