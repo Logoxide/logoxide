@@ -1,9 +1,9 @@
 [package]
 name = "logoxide-ffi"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+version = "0.1.0"
+edition = "2024"
+license = "CC0-1.0"
+repository = "https://github.com/Logoxide/logoxide"
 description = "Bindings for TypeScript/WASM, Python, Swift, and Kotlin (via BoltFFI): logoxide's packages with topos's API"
 publish = false
 
@@ -17,15 +17,27 @@ crate-type = ["staticlib", "cdylib"]
 logoxide_core = { package = "logoxide", path = "../logoxide" }
 boltffi = "0.31.0"
 semver = "1"
-# topos's whole API, re-exported (its library is named topos_bible, like its packages)
+# topos's whole API, re-exported (its library is named topos_bible, like its packages). BoltFFI only
+# exports the items of path dependencies, so this needs a topos checkout beside logoxide
+# (CI checks out the tag matching topos-bible's version)
 topos-ffi = { path = "../../../topos/crates/topos-ffi" }
 
 [dev-dependencies]
 zip = { version = "2", default-features = false, features = ["deflate"] }
 flate2 = "1"
 tar = { version = "0.4", default-features = false }
-sword-modules.workspace = true
+sword-modules = { version = "0.1.0", default-features = false, features = ["zip", "bzip2", "xz"] }
 
 [features]
 # Indexing PDFs (`Topos.indexPdf`; builds MuPDF, so native only: Python, not WebAssembly)
 pdf = ["topos-ffi/pdf"]
+
+# Its own workspace (the main one builds from crates.io alone). The core and topos-ffi must share
+# one topos-bible, so topos's crates come from the same checkout as topos-ffi
+[workspace]
+
+[patch.crates-io]
+topos-bible = { path = "../../../topos/crates/topos-lib" }
+topos-bible-markup = { path = "../../../topos/crates/topos-markup" }
+topos-bible-index = { path = "../../../topos/crates/topos-index" }
+topos-bible-formats = { path = "../../../topos/crates/topos-formats" }

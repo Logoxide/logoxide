@@ -42,7 +42,7 @@ output = "dist/android"
 min_sdk = 24
 
 [targets.android.kotlin]
-package = "io.github.mastertemple.logoxide"
+package = "io.github.logoxide"
 desktop_loader = "bundled"
 api_style = "top_level"
 error_style = "throwing"
@@ -87,7 +87,7 @@ runtime_version = "^0.31.0"
 [targets.wasm.npm]
 package_name = "logoxide"
 license = "CC0-1.0"
-repository = "https://github.com/MasterTemple/logoxide"
+repository = "https://github.com/Logoxide/logoxide"
 
 [targets.java.jvm]
 enabled = false

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  # The topos tag the bindings build against (logoxide-ffi needs a checkout: BoltFFI only exports
+  # path dependencies' items). Keep it at the topos-bible version the workspace depends on.
+  TOPOS_REF: v0.6.0
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --check
+      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets
+
+  bindings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: logoxide
+      - uses: actions/checkout@v5
+        with:
+          repository: MasterTemple/topos-bible
+          ref: ${{ env.TOPOS_REF }}
+          path: topos
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: logoxide/crates/logoxide-ffi
+      - working-directory: logoxide/crates/logoxide-ffi
+        run: |
+          cargo fmt --check
+          cargo test
+          cargo clippy --all-targets

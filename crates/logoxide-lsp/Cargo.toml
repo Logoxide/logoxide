@@ -5,14 +5,17 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "A language server for Bible references and text: completion, hover, symbols, diagnostics, and passages from logoxide packages"
-publish = false
+homepage.workspace = true
+readme = "README.md"
+keywords = ["bible", "lsp", "language-server", "verse", "reference"]
+categories = ["development-tools", "text-editors", "text-processing"]
 
 [[bin]]
 name = "logoxide-lsp"
 path = "src/main.rs"
 
 [dependencies]
-logoxide = { path = "../logoxide" }
+logoxide.workspace = true
 ignore = "0.4.23"
 lsp-server = "0.10.0"
 lsp-types = "0.97.0"

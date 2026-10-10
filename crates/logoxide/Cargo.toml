@@ -5,7 +5,10 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Bibles, commentaries, lexicons, books, and media as versioned packages: read from USX, USFM, and more, cached, and shared"
-publish = false
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["bible", "package-manager", "usx", "usfm", "sword"]
+categories = ["text-processing", "parser-implementations"]
 
 [dependencies]
 topos-bible.workspace = true

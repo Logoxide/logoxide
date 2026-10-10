@@ -109,9 +109,20 @@ lx check path/to/kjv --cache ~/.cache/logoxide   # read every book (through the 
 lx show path/to/kjv -F usx --no-default-features
 ```
 
+## Install
+
+```sh
+cargo install logoxide-cli    # lx
+cargo install logoxide-lsp    # the language server
+npm install logoxide          # or: pip install logoxide (the bindings, with topos's API)
+```
+
 ## Development
 
-topos is a path dependency (`../topos`) until topos 0.6 is released. `cargo test`,
-`cargo clippy --all-targets -- -D warnings`, `cargo fmt`.
+`cargo test`, `cargo clippy --all-targets -- -D warnings`, `cargo fmt`. The bindings
+(`crates/logoxide-ffi`) are a workspace of their own that builds against a topos checkout beside
+this one (`../topos`): BoltFFI only exports the items of path dependencies, and they re-export
+topos's API. Releases: `cargo publish --workspace` for the crates; pushing a `v*` tag publishes the
+npm and PyPI packages (`.github/workflows/release.yml`).
 
 License: CC0-1.0

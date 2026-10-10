@@ -1,14 +1,22 @@
 [package]
-name = "lx"
+# `lx` on crates.io is taken: the package is logoxide-cli, the binary lx
+name = "logoxide-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "logoxide's command line: Bibles, commentaries, lexicons, books, and media as versioned packages"
-publish = false
+description = "lx, logoxide's command line: Bibles, commentaries, lexicons, books, and media as versioned packages"
+homepage.workspace = true
+readme = "../../README.md"
+keywords = ["bible", "package-manager", "cli", "usx", "sword"]
+categories = ["command-line-utilities", "text-processing"]
+
+[[bin]]
+name = "lx"
+path = "src/main.rs"
 
 [dependencies]
-logoxide = { path = "../logoxide" }
+logoxide.workspace = true
 topos-bible.workspace = true
 clap = { version = "4", features = ["derive"] }
 semver = "1"

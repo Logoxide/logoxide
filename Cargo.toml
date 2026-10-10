@@ -1,21 +1,26 @@
 [workspace]
-members = ["crates/logoxide", "crates/lx", "crates/logoxide-lsp", "crates/logoxide-ffi"]
+members = ["crates/logoxide", "crates/lx", "crates/logoxide-lsp"]
+# The bindings build against a topos checkout (BoltFFI only exports path dependencies' items), so
+# they are a workspace of their own and the rest builds from crates.io alone
+exclude = ["crates/logoxide-ffi"]
 resolver = "3"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "CC0-1.0"
-repository = "https://github.com/MasterTemple/logoxide"
+repository = "https://github.com/Logoxide/logoxide"
+homepage = "https://github.com/Logoxide/logoxide"
 
 [workspace.dependencies]
-# Verse references and Bible markup: local checkouts until topos 0.6 is released
-topos-bible = { path = "../topos/crates/topos-lib" }
-topos-bible-markup = { path = "../topos/crates/topos-markup", features = ["serde"] }
-topos-bible-index = { path = "../topos/crates/topos-index", default-features = false, features = ["files"] }
+logoxide = { path = "crates/logoxide", version = "0.1.0" }
+# Verse references and Bible markup
+topos-bible = "0.6.0"
+topos-bible-markup = { version = "0.6.0", features = ["serde"] }
+topos-bible-index = { version = "0.6.0", default-features = false, features = ["files"] }
 # Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
-topos-bible-formats = { path = "../topos/crates/topos-formats", default-features = false, features = ["epub"] }
-# SWORD modules (read from memory, so WebAssembly too): a local checkout, like topos
-sword-modules = { path = "../sword-modules", default-features = false, features = ["zip", "bzip2", "xz"] }
+topos-bible-formats = { version = "0.6.0", default-features = false, features = ["epub"] }
+# SWORD modules (read from memory, so WebAssembly too)
+sword-modules = { version = "0.1.0", default-features = false, features = ["zip", "bzip2", "xz"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }

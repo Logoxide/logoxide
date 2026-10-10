@@ -172,7 +172,7 @@ tokens) is the same as without it.
 
 ## Neovim
 
-The [logoxide.nvim](https://github.com/MasterTemple/logoxide.nvim) plugin sets up the
+The [logoxide.nvim](https://github.com/Logoxide/logoxide.nvim) plugin sets up the
 server, builds it, opens whole books as read-only buffers colored by `markup`, opens the code
 actions' results in Telescope (or the quickfix list), and adds search commands and pickers.
 

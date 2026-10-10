@@ -166,7 +166,7 @@ before changing the design.
   `logoxide-file://` documents whose text `logoxide/fileText` gives (`workspace.rs`: `BookSearch`,
   `book_text`); logoxide.nvim opens them read-only. Its tests read topos's `crates/topos-lib/tests/cases/complete.txt` from
   `../topos`. The Neovim plugin (`~/Development/nvim-plugins/logoxide.nvim`) runs it
-- `crates/lx`: `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
+- `crates/lx` (package `logoxide-cli`, binary `lx`): `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
@@ -218,9 +218,14 @@ before changing the design.
 
 ## Decisions
 
-- Its own repository; depends on topos (`../topos`, path dependencies until topos 0.6) and
-  sword-modules (`../sword-modules`, without its installer: modules are read from memory through
-  its `Files`, so WebAssembly too). topos never depends on logoxide. sword-modules is a
+- Its own repository (github.com/Logoxide/logoxide); depends on topos 0.6 and sword-modules 0.1
+  from crates.io (until they're published, `~/Development/.cargo/config.toml`, outside every repository, patches in
+  `../topos` and `../sword-modules`). The CLI's package is `logoxide-cli` (`lx` on crates.io is
+  taken), its binary `lx`. `crates/logoxide-ffi` is excluded from the workspace: a workspace of its
+  own whose `topos-ffi` and topos crates are paths into `../topos` (BoltFFI only exports path
+  dependencies' items; one topos-bible for both), so CI checks out topos at `TOPOS_REF`.
+  sword-modules is used without its installer: modules are read from memory through
+  its `Files`, so WebAssembly too. topos never depends on logoxide. sword-modules is a
   clean-room crate: read its `CLAUDE.md` and `CLEANROOM.md` before changing it (interface into
   `docs/spec/api.md` first; never read libsword's source)
 - Door43 isn't imported yet: git.door43.org wasn't reachable from the owner's machine

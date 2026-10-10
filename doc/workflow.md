@@ -573,7 +573,5 @@ lx import ./mhc.thml --kind commentary    # a file someone already has (not yet)
 - **Nothing is hosted**: logoxide, the KJV and BSB packages, and a catalog of them are local
   repositories, so the examples above use `github:someone/...` where today only
   `file://` URLs exist.
-- **Installing lx** needs a topos checkout next to logoxide (`cargo install --path crates/lx`)
-  until topos 0.6 is released.
 - `lx update` doesn't yet say when a newer major version exists; Door43 imports and an audio
   player are later steps (`doc/logoxide.md` in topos).
