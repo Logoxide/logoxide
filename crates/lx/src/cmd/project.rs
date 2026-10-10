@@ -350,7 +350,9 @@ fn archive_entry(
             None => return Ok(None),
         },
     };
-    let loaded = load_registry(registry, &location, project.dir(), true)?;
+    // Downloaded again, so a release published since it was kept is found
+    let freshness = logoxide_app::catalog_cache::Freshness::Refresh;
+    let loaded = load_registry(registry, &location, project.dir(), true, freshness)?;
     let entry = loaded.find(name)?.ok_or_else(|| {
         logoxide::LogoxideError::Catalog(format!("{location} has no package `{name}`"))
     })?;

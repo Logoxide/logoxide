@@ -149,7 +149,10 @@ lx show --git https://example.org/bsb      # a release's summary, without its te
 The library is `LOGOXIDE_HOME` (else `$XDG_DATA_HOME/logoxide`), or `--library DIR`: any folder,
 including inside a vault's `.obsidian/` so it syncs. The cache is per device: `LOGOXIDE_CACHE`,
 else `$XDG_CACHE_HOME/logoxide`. `~/.config/logoxide/config.toml` can set both, and catalogs and
-registries for every project. Fetching git packages runs the `git` command; where it isn't
+registries for every project. Catalogs downloaded over HTTP are kept in the cache for
+`catalog-max-age` (7 days by default; `"12h"`, `"30m"`, or seconds; 0 keeps none): `lx search
+--refresh` or `lx catalog refresh` downloads them again, `lx search --offline` uses only what's
+kept. Fetching git packages runs the `git` command; where it isn't
 installed, lx reads repositories over HTTPS instead (their refs, and archives of commits).
 
 ## A package

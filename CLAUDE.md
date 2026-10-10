@@ -34,7 +34,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     which `Project::bibles` leaves out) without a parser; `Package::source()` (`read`) is
     logoxide-text's `Source`
   - `config.rs`: logoxide's own `~/.config/logoxide/config.toml` (or `LOGOXIDE_CONFIG`):
-    `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`, machine-wide (flags and env win over
+    `library`, `cache`, `catalogs`, `[registries]`, `git-timeout`, `git-list-timeout`,
+    `catalog-max-age` (seconds or `"90s"`/`"30m"`/`"12h"`/`"7d"`/`"2w"`, `parse_duration`;
+    `CATALOG_MAX_AGE` 7 days; 0 keeps none; `Config::catalog_max_age`), machine-wide (flags and env win over
     library/cache; a project's catalogs come first and its registry names win). lx reads it once
     at start (a bad file is an error), logoxide-lsp for its library. The owner chose no `[topos]`
     table: topos's settings stay in topos's config, and no `lx refs`/`lx topos` command
@@ -542,7 +544,18 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   repository needs git), `fetcher(git, http, notes)` picks by `git::git_available`.
   `catalogs.rs`: `load_catalogs`, `load_catalog` (a URL, else a path; `warnings` in the catalog),
   `load_registry` (a folder's repositories or a catalog; the folder's warnings join the
-  catalog's), `registry_url`, `shadowed` and `other_registries` (the warnings' words).
+  catalog's), `registry_url`, `shadowed` and `other_registries` (the warnings' words), each
+  taking a `CatalogFetch` (`http`, an optional `CatalogCache`, a `Freshness`; `uncached` for the
+  FFI). `catalog_cache.rs`: catalogs at `http(s)://` URLs kept as downloaded in
+  `<cache>/catalogs/<sha256 of the URL, 32 hex>.catalog` (a `logoxide-catalog 1 <fetched secs>
+  <url>` line, then the bytes; only what parsed; `write_atomic`), used while younger than
+  `catalog-max-age` (`Fresh`), never (`Refresh`), or at any age with nothing downloaded
+  (`Offline`); when a download or its parse fails a kept copy of any age is used and its
+  `warnings` say how old (`age_words`); paths and registry folders are read each time.
+  `refresh_catalog` (no fallback) and `refresh(http, cache, config, project, only)` (the
+  project's and config's URL catalogs and URL registries, or those named by URL or registry
+  name: `Refreshed`). `find_entry` refreshes when no kept copy lists the import; `plan_updates`
+  always refreshes.
   `import.rs`: `check_source`, `find_entry` (the project's catalogs, a CrossWire-listed SWORD
   repository's too), `files` (each download from the first URL that has it, then `build`),
   `run` (staged, renamed into place, added, installed, else rolled back: `Imported` with
@@ -558,7 +571,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   through `Project::versifications`, `own` read as written: `Compared { reference, passages,
   text, missing, mapped, versification }`); errors are `Resolve`. `lib.rs`: `Logoxide { config,
   library, http, fetcher, reader }` (`new`, `default_native` under `ureq`; `project`,
-  `catalogs`, `registry`, `install`, `import`, `plan_updates`, `clean`, `read`, `compare`)
+  `catalogs`, `registry`, `install`, `import`, `plan_updates`, `clean`, `read`, `compare`;
+  `catalog_cache` from the library's cache and `catalog-max-age`, `catalog_fetch(freshness)`,
+  `refresh_catalogs`; the MCP server's catalogs come through it, so they're kept too)
 - `crates/lx` (package `logoxide-cli`, binary `lx`): `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
@@ -572,9 +587,13 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   commentary's notes and a dictionary's or cross-reference package's entries, reading each),
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
-  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not;
+  `--refresh` downloads URL catalogs again, `--offline` only what's kept), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
-  stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|entry|build` (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
+  stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|refresh|entry|build` (`refresh [<URL or registry>…]`: the URL
+  catalogs and registries downloaded again and kept, each said refreshed or failed, JSON too;
+  `add`, `lx add` through a registry, and `--registry` read theirs afresh; completion uses kept
+  copies of URL registries offline) (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
   released package in a folder, at any depth), `yank <id> <version> --from … [--undo]`
   (`publish.rs`: a folder registry, or GitHub releases through `gh`, the catalog being release
   `index`'s file and each archive a release `<id>-v<version>`), `add --registry <catalog> <id>`,
@@ -597,7 +616,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   else over HTTPS (`NetFetcher`); `Cli::git` is the `git` command for release, diff, and
   publish. The
   project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
-  own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, search,
+  own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, catalog refresh, search,
   import --update, read, compare, show --references, --notes, --entry, --keys, and --xref;
   others refuse it). `lx publish` prints
   `license::assess`'s concerns, and for a package whose rights say it isn't redistributable

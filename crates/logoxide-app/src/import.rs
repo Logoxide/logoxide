@@ -25,7 +25,8 @@ use logoxide_import::ImportUpdate;
 
 use crate::{
     Warn,
-    catalogs::{load_catalog, load_catalogs, shadowed},
+    catalog_cache::Freshness,
+    catalogs::{CatalogFetch, load_catalog, load_catalogs, shadowed},
     http::Http,
 };
 
@@ -47,24 +48,50 @@ pub fn check_source(source: &str) -> Result<()> {
 The entry `source` (`ebible:eng-kjv2006`, `sword:crosswire/KJV`) names in the project's catalogs,
 the first that lists it; a SWORD repository CrossWire lists (`sword:crosswire-beta/…`) is read
 even if the project doesn't search it. Warned of: what the catalogs passed over, and another
-catalog listing the same id (whose package would have the same name)
+catalog listing the same id (whose package would have the same name). When none of the copies
+`fetch`'s cache keeps lists it, they're downloaded again (it may be newer than they are)
 */
 pub fn find_entry(
-    http: &dyn Http,
+    fetch: CatalogFetch,
     config: &Config,
     project: &Project,
     source: &str,
     warn: Warn,
 ) -> Result<CatalogEntry> {
     check_source(source)?;
+    let not_found = || {
+        LogoxideError::Import(format!(
+            "{source}: in none of this project's catalogs (lx catalog list)"
+        ))
+    };
+    if fetch.cache.is_some() && fetch.freshness == Freshness::Fresh {
+        let mut said = vec![];
+        if let Some(entry) = find_in(fetch, config, project, source, &mut |w| said.push(w))? {
+            said.into_iter().for_each(&mut *warn);
+            return Ok(entry);
+        }
+        let fetch = fetch.with(Freshness::Refresh);
+        return find_in(fetch, config, project, source, warn)?.ok_or_else(not_found);
+    }
+    find_in(fetch, config, project, source, warn)?.ok_or_else(not_found)
+}
+
+/// [`find_entry`] in the catalogs as `fetch` has them; none when none lists it
+fn find_in(
+    fetch: CatalogFetch,
+    config: &Config,
+    project: &Project,
+    source: &str,
+    warn: Warn,
+) -> Result<Option<CatalogEntry>> {
     let locations = config.catalogs(project.manifest());
-    let mut catalogs = load_catalogs(http, &locations, project.dir(), warn)?;
+    let mut catalogs = load_catalogs(fetch, &locations, project.dir(), warn)?;
     if !catalogs.iter().any(|c| c.find_import(source).is_some())
         && let Some(url) = (source.strip_prefix("sword:"))
             .and_then(|rest| rest.split_once('/'))
             .and_then(|(repository, _)| logoxide_import::sword::catalog_url(repository))
     {
-        let catalog = load_catalog(http, &url, project.dir())?;
+        let catalog = load_catalog(fetch, &url, project.dir())?;
         catalog.warnings.iter().cloned().for_each(&mut *warn);
         catalogs.push(catalog);
     }
@@ -74,17 +101,14 @@ pub fn find_entry(
     {
         catalogs.push(catalog);
     }
-    let (used, entry) = (catalogs.iter())
-        .find_map(|c| Some((c, c.find_import(source)?)))
-        .ok_or_else(|| {
-            LogoxideError::Import(format!(
-                "{source}: in none of this project's catalogs (lx catalog list)"
-            ))
-        })?;
+    let Some((used, entry)) = (catalogs.iter()).find_map(|c| Some((c, c.find_import(source)?)))
+    else {
+        return Ok(None);
+    };
     if let Some(warning) = shadowed(&catalogs, &entry.id, &used.name) {
         warn(warning);
     }
-    Ok(entry.clone())
+    Ok(Some(entry.clone()))
 }
 
 /// An import made and added
@@ -237,10 +261,11 @@ download and compared with the one the project has, by `reader`. An entry whose 
 its updates (eBible.org's dates, SWORD's `Version`) is only downloaded when the catalog lists a
 newer version. One that fails is [`Outcome::Failed`], and the rest go on. Warned of: what the
 catalogs passed over, and a SWORD repository's catalog that couldn't be read (`<dependency>:
-<error>`). Nothing is changed: [`apply_update`] replaces one
+<error>`). The catalogs are downloaded again, whatever `fetch`'s cache keeps, so no update is
+missed for an old copy. Nothing is changed: [`apply_update`] replaces one
 */
 pub fn plan_updates(
-    http: &dyn Http,
+    fetch: CatalogFetch,
     config: &Config,
     project: &Project,
     reader: &dyn TextReader,
@@ -248,7 +273,9 @@ pub fn plan_updates(
     warn: Warn,
 ) -> Result<Vec<UpdatePlan>> {
     let locations = config.catalogs(project.manifest());
-    let mut catalogs = load_catalogs(http, &locations, project.dir(), warn)?;
+    let fetch = fetch.with(Freshness::Refresh);
+    let http = fetch.http;
+    let mut catalogs = load_catalogs(fetch, &locations, project.dir(), warn)?;
     let paths: Vec<(String, String)> = (project.manifest().dependencies.iter())
         .filter_map(|(dep, d)| match d {
             Dependency::Detailed(d) => Some((dep.clone(), d.path.clone()?)),
@@ -273,7 +300,7 @@ pub fn plan_updates(
             && let Some((root, _)) =
                 (upstream.url.as_deref()).and_then(|u| u.split_once("/packages/"))
         {
-            match load_catalog(http, &format!("{root}/mods.d.tar.gz"), project.dir()) {
+            match load_catalog(fetch, &format!("{root}/mods.d.tar.gz"), project.dir()) {
                 Ok(catalog) => {
                     catalog.warnings.iter().cloned().for_each(&mut *warn);
                     catalogs.push(catalog);

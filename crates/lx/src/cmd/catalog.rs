@@ -3,6 +3,7 @@
 use std::path::{Path, PathBuf};
 
 use logoxide::{MemoryStorage, Storage, manifest::MANIFEST};
+use logoxide_app::catalog_cache::Freshness;
 
 use crate::{
     app, book_names,
@@ -10,12 +11,15 @@ use crate::{
     config, print_json, warn,
 };
 
-/// Each catalog that can be read, in order; one that can't is a warning, unless none can be
+/// Each catalog that can be read, in order, those at URLs from the cache as `freshness` allows;
+/// one that can't be read is a warning, unless none can be
 pub(crate) fn load_catalogs(
     locations: &[String],
     base: &Path,
+    freshness: Freshness,
 ) -> logoxide::Result<Vec<logoxide::catalog::Catalog>> {
-    logoxide_app::catalogs::load_catalogs(app().http(), locations, base, &mut warn())
+    let fetch = app().catalog_fetch(freshness);
+    logoxide_app::catalogs::load_catalogs(fetch, locations, base, &mut warn())
 }
 
 /**
@@ -29,9 +33,9 @@ pub(crate) fn warn_other_registries(
     location: &str,
     id: &str,
 ) {
-    let (http, config) = (app().http(), config());
+    let fetch = app().catalog_fetch(Freshness::Fresh);
     let other =
-        logoxide_app::catalogs::other_registries(http, config, project, registry, location, id);
+        logoxide_app::catalogs::other_registries(fetch, config(), project, registry, location, id);
     if let Some(warning) = other {
         errln!("warning: {warning}");
     }
@@ -41,8 +45,10 @@ pub(crate) fn warn_other_registries(
 pub(crate) fn load_catalog(
     location: &str,
     base: &Path,
+    freshness: Freshness,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
-    let catalog = logoxide_app::catalogs::load_catalog(app().http(), location, base)?;
+    let fetch = app().catalog_fetch(freshness);
+    let catalog = logoxide_app::catalogs::load_catalog(fetch, location, base)?;
     for warning in &catalog.warnings {
         errln!("warning: {warning}");
     }
@@ -51,10 +57,12 @@ pub(crate) fn load_catalog(
 
 /**
 A package's git URL from what's typed: a name through one of the project's registries
-(`dorean-local:books/romans`), `github:owner/repo`, or a URL
+(`dorean-local:books/romans`), `github:owner/repo`, or a URL. A registry at a URL is downloaded
+again, so what was published since it was kept is found
 */
 pub(crate) fn registry_url(project: &logoxide::Project, text: &str) -> logoxide::Result<String> {
-    logoxide_app::catalogs::registry_url(app().http(), config(), project, text, &mut warn())
+    let fetch = app().catalog_fetch(Freshness::Refresh);
+    logoxide_app::catalogs::registry_url(fetch, config(), project, text, &mut warn())
 }
 
 /// [`registry_url`] in the project `cli` names (`lx show --git dorean-local:kjv`)
@@ -67,16 +75,18 @@ pub(crate) fn package_url(cli: &Cli, text: &str) -> logoxide::Result<String> {
 
 /**
 A registry's packages: a folder's repositories (every git repository with a `logoxide.toml`, at any
-depth, named by its path there), else a catalog at that URL or path; what it passed over is
-warned of when `warn`
+depth, named by its path there), else a catalog at that URL or path (from the cache as
+`freshness` allows); what it passed over is warned of when `warn`
 */
 pub(crate) fn load_registry(
     name: &str,
     location: &str,
     base: &Path,
     warn: bool,
+    freshness: Freshness,
 ) -> logoxide::Result<logoxide::catalog::Catalog> {
-    let catalog = logoxide_app::catalogs::load_registry(app().http(), name, location, base)?;
+    let fetch = app().catalog_fetch(freshness);
+    let catalog = logoxide_app::catalogs::load_registry(fetch, name, location, base)?;
     if warn {
         for warning in &catalog.warnings {
             errln!("warning: {warning}");
@@ -179,11 +189,68 @@ pub(crate) fn catalog_list(cli: &Cli) -> logoxide::Result<()> {
     Ok(())
 }
 
+/// `lx catalog refresh`: the project's catalogs and registries at URLs (or those named)
+/// downloaded again and kept, each said refreshed or failed
+pub(crate) fn catalog_refresh(cli: &Cli, only: &[String]) -> logoxide::Result<()> {
+    let project = cli.project(&cli.library())?;
+    let app = app();
+    let json = cli.format == Format::Json;
+    if app.catalog_cache().is_none() && !json {
+        errln!("warning: catalog-max-age is 0 in logoxide's config.toml: nothing is kept");
+    }
+    let refreshed = app.refresh_catalogs(&project, only)?;
+    let mut failed = 0;
+    let mut report = vec![];
+    for one in &refreshed {
+        let named = match &one.registry {
+            Some(name) => format!("{name} ({})", one.url),
+            None => one.url.clone(),
+        };
+        match &one.outcome {
+            Ok(catalog) => {
+                if !json {
+                    let count = catalog.entries.len();
+                    let plural = if count == 1 { "" } else { "s" };
+                    outln!("Refreshed {named}: {count} package{plural}");
+                    for warning in &catalog.warnings {
+                        errln!("warning: {warning}");
+                    }
+                }
+            }
+            Err(e) => {
+                failed += 1;
+                if !json {
+                    errln!("Failed {named}: {e}");
+                }
+            }
+        }
+        report.push(serde_json::json!({
+            "url": one.url,
+            "registry": one.registry,
+            "refreshed": one.outcome.is_ok(),
+            "packages": one.outcome.as_ref().ok().map(|c| c.entries.len()),
+            "error": one.outcome.as_ref().err().map(|e| e.to_string()),
+        }));
+    }
+    if json {
+        print_json(&serde_json::Value::Array(report))?;
+    } else if refreshed.is_empty() {
+        outln!("No catalog or registry here is downloaded: nothing to refresh");
+    }
+    match failed {
+        0 => Ok(()),
+        n => Err(logoxide::LogoxideError::Catalog(format!(
+            "{n} of {} couldn't be refreshed",
+            refreshed.len()
+        ))),
+    }
+}
+
 pub(crate) fn catalog_add(cli: &Cli, location: &str, name: Option<&str>) -> logoxide::Result<()> {
     let mut project = cli.project(&cli.library())?;
     if let Some(name) = name {
         logoxide::catalog::check_registry_name(name)?;
-        let catalog = load_registry(name, location, project.dir(), true)?;
+        let catalog = load_registry(name, location, project.dir(), true, Freshness::Refresh)?;
         if !project.add_registry(name, location)? {
             outln!("{name} is already {location}");
             return Ok(());
@@ -202,7 +269,7 @@ pub(crate) fn catalog_add(cli: &Cli, location: &str, name: Option<&str>) -> logo
         }
         return Ok(());
     }
-    let catalog = load_catalog(location, project.dir())?;
+    let catalog = load_catalog(location, project.dir(), Freshness::Refresh)?;
     if !project.add_catalog(location)? {
         outln!("{location} is already searched");
         return Ok(());
@@ -255,6 +322,16 @@ pub(crate) struct Shown {
     pub(crate) flat: bool,
 }
 
+/// `lx search`'s catalogs at URLs: from the cache while they're young enough, downloaded again
+/// (`--refresh`), or only from the cache (`--offline`)
+pub(crate) fn search_freshness(refresh: bool, offline: bool) -> Freshness {
+    match (refresh, offline) {
+        (true, _) => Freshness::Refresh,
+        (_, true) => Freshness::Offline,
+        _ => Freshness::Fresh,
+    }
+}
+
 pub(crate) fn search(
     cli: &Cli,
     query: &str,
@@ -262,6 +339,7 @@ pub(crate) fn search(
     registry: Option<&str>,
     filters: Filters,
     shown: Shown,
+    freshness: Freshness,
 ) -> logoxide::Result<()> {
     let Shown { limit, json, flat } = shown;
     // The books packages must be about, with the genres and names topos's config gives
@@ -289,7 +367,7 @@ pub(crate) fn search(
                 if registry.is_some_and(|r| r != name) {
                     continue;
                 }
-                match load_registry(name, location, project.dir(), true) {
+                match load_registry(name, location, project.dir(), true, freshness) {
                     Ok(catalog) => registries.push(catalog),
                     Err(e) => errln!("warning: {name}: {e}"),
                 }
@@ -319,7 +397,7 @@ pub(crate) fn search(
     };
     let mut shadowed = vec![];
     if !catalogs.is_empty() {
-        let loaded = load_catalogs(&catalogs, &base)?;
+        let loaded = load_catalogs(&catalogs, &base, freshness)?;
         shadowed = logoxide::catalog::Catalog::shadowed(&loaded);
         all = (loaded.into_iter()).fold(all, |all, c| all.merge(c));
     }

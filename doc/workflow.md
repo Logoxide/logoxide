@@ -18,7 +18,7 @@ COMP_WORDBREAKS=${COMP_WORDBREAKS//:/}
 ```
 
 (zsh: `source <(COMPLETE=zsh lx)`; fish: `COMPLETE=fish lx | source`.) Registries on the web
-aren't downloaded to complete.
+aren't downloaded to complete (what `lx search` kept of them is used).
 
 ## This machine's config
 
@@ -32,6 +32,9 @@ cache = "~/.cache/logoxide"          # LOGOXIDE_CACHE and --cache-dir win over i
 catalogs = ["https://example.org/catalog.toml"]   # every project searches it, after its own
 git-timeout = 600                    # seconds git may take to fetch before it's stopped
 git-list-timeout = 60                # seconds listing a repository's tags may take
+catalog-max-age = "7d"               # how long a downloaded catalog is used before it's
+                                     # downloaded again ("90s", "30m", "12h", "7d", "2w", or
+                                     # seconds; 0 keeps none)
 
 [registries]                         # every project can name these (its own name wins)
 dorean-local = "~/Documents/logoxide-dorean-repos"
@@ -70,6 +73,14 @@ lx search "american standard"
 #     lx import fetch:eng_abt
 # …
 ```
+
+Catalogs and registries downloaded over HTTP are kept in the cache (`<cache>/catalogs/`) and used
+until they're `catalog-max-age` old (7 days unless the config says), so a second search downloads
+nothing. `lx search --refresh` downloads them again, `lx search --offline` uses only what's kept,
+and `lx catalog refresh [<URL or registry>…]` downloads them again without searching. When a
+download fails, the copy kept is used, whatever its age, and lx says how old it is. Catalogs and
+registries on this machine are read each time; `lx import --update` always downloads its
+catalogs again, so no update is missed.
 
 Each work's editions are gathered under its name (the works logoxide's table knows, and those a
 catalog's packages name with `work`); `--flat` lists them one by one, best first.

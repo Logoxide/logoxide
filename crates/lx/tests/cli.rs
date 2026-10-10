@@ -88,7 +88,10 @@ impl World {
             .env("XDG_CONFIG_HOME", self.path("home/.config"))
             .env("XDG_DATA_HOME", self.path("home/.local/share"))
             .env("XDG_CACHE_HOME", self.path("home/.cache"))
-            .env("XDG_RUNTIME_DIR", self.path("runtime"));
+            .env("XDG_RUNTIME_DIR", self.path("runtime"))
+            // The catalogs served here are reached directly
+            .env("NO_PROXY", "127.0.0.1")
+            .env("no_proxy", "127.0.0.1");
         command.output().unwrap()
     }
 
@@ -1235,4 +1238,161 @@ fn a_passage_is_compared_in_each_bibles_numbering() {
     assert_eq!(compared[1]["mapped"], true);
     assert_eq!(compared[1]["missing"], "John 3:17");
     assert_eq!(compared[0]["missing"], "");
+}
+
+/// A catalog served over HTTP on this machine: each request counted, answered with the body (a
+/// 404 when there's none)
+struct Served {
+    url: String,
+    body: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    asked: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+impl Served {
+    fn new(body: &str) -> Served {
+        use std::io::{BufRead, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://127.0.0.1:{}/catalog.toml",
+            listener.local_addr().unwrap().port()
+        );
+        let body = std::sync::Arc::new(std::sync::Mutex::new(Some(body.to_string())));
+        let asked = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (serving, counting) = (body.clone(), asked.clone());
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut reader = std::io::BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).is_ok_and(|n| n > 0) && line != "\r\n" {
+                    line.clear();
+                }
+                counting.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let answer = match serving.lock().unwrap().clone() {
+                    Some(body) => format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    ),
+                    None => String::from(
+                        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    ),
+                };
+                let _ = stream.write_all(answer.as_bytes());
+            }
+        });
+        Served { url, body, asked }
+    }
+
+    fn asked(&self) -> usize {
+        self.asked.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn set(&self, body: Option<&str>) {
+        *self.body.lock().unwrap() = body.map(str::to_string);
+    }
+}
+
+fn served_catalog(id: &str) -> String {
+    format!(
+        "[[package]]\nid = \"{id}\"\nname = \"Package {id}\"\nabbreviation = \"{}\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\ngit = \"https://example.org/{id}\"\n",
+        id.to_uppercase()
+    )
+}
+
+#[test]
+fn search_keeps_catalogs_downloaded_until_theyre_old() {
+    let world = World::new("catalog-cache");
+    let served = Served::new(&served_catalog("served"));
+    std::fs::create_dir_all(world.path("vault")).unwrap();
+    std::fs::write(
+        world.path("vault/logoxide.toml"),
+        format!(
+            "[settings]\ndefault-catalogs = false\ncatalogs = [\"{}\", \"local.toml\"]\n",
+            served.url
+        ),
+    )
+    .unwrap();
+    std::fs::write(world.path("vault/local.toml"), served_catalog("local")).unwrap();
+    let ids = |found: &serde_json::Value| -> Vec<String> {
+        (found.as_array().unwrap().iter())
+            .map(|e| e["id"].as_str().unwrap().to_string())
+            .collect()
+    };
+    // Downloaded once, then kept
+    let found = world.json(&["search", "served", "--json"]);
+    assert_eq!(ids(&found), ["served"]);
+    assert_eq!(served.asked(), 1);
+    world.json(&["search", "served", "--json"]);
+    assert_eq!(served.asked(), 1);
+    // --offline downloads nothing; --refresh downloads it again
+    served.set(Some(&served_catalog("newer")));
+    let mut offline = ids(&world.json(&["search", "--offline", "--json"]));
+    offline.sort();
+    assert_eq!(offline, ["local", "served"]);
+    assert_eq!(served.asked(), 1);
+    assert_eq!(
+        ids(&world.json(&["search", "newer", "--refresh", "--json"])),
+        ["newer"]
+    );
+    assert_eq!(served.asked(), 2);
+    // lx catalog refresh: the catalogs at URLs, each said
+    served.set(Some(&served_catalog("newest")));
+    let out = world.ok(&["catalog", "refresh"]);
+    assert!(
+        out.contains(&format!("Refreshed {}: 1 package", served.url)),
+        "{out}"
+    );
+    assert!(!out.contains("local.toml"), "{out}");
+    assert_eq!(served.asked(), 3);
+    assert_eq!(
+        ids(&world.json(&["search", "newest", "--json"])),
+        ["newest"]
+    );
+    assert_eq!(served.asked(), 3);
+    // When downloading fails, the kept copy is used and said to be
+    served.set(None);
+    let out = world.lx(&["search", "newest", "--refresh"]);
+    assert!(out.status.success());
+    let said = String::from_utf8_lossy(&out.stderr);
+    assert!(said.contains("the copy downloaded"), "{said}");
+    assert!(String::from_utf8_lossy(&out.stdout).contains("newest"));
+    let report = world.lx(&["catalog", "refresh", &served.url, "--format", "json"]);
+    assert!(!report.status.success());
+    let report: serde_json::Value = serde_json::from_slice(&report.stdout).unwrap();
+    assert_eq!(report[0]["url"], served.url.as_str());
+    assert_eq!(report[0]["refreshed"], false);
+    assert!(
+        world
+            .lx(&["catalog", "refresh", "nothing-here"])
+            .status
+            .code()
+            != Some(0)
+    );
+    // catalog-max-age = 0 keeps nothing: every search downloads
+    served.set(Some(&served_catalog("served")));
+    std::fs::write(world.path("config.toml"), "catalog-max-age = 0\n").unwrap();
+    let asked = served.asked();
+    world.json(&["search", "served", "--json"]);
+    world.json(&["search", "served", "--json"]);
+    assert_eq!(served.asked(), asked + 2);
+    std::fs::write(world.path("config.toml"), "catalog-max-age = \"soon\"\n").unwrap();
+    assert!(!world.lx(&["search", "served"]).status.success());
+}
+
+#[test]
+fn catalog_refresh_with_nothing_downloaded() {
+    let world = World::new("catalog-refresh-local");
+    std::fs::create_dir_all(world.path("vault")).unwrap();
+    std::fs::write(
+        world.path("vault/logoxide.toml"),
+        "[settings]\ndefault-catalogs = false\ncatalogs = [\"local.toml\"]\n",
+    )
+    .unwrap();
+    std::fs::write(world.path("vault/local.toml"), served_catalog("local")).unwrap();
+    let out = world.ok(&["catalog", "refresh"]);
+    assert!(out.contains("nothing to refresh"), "{out}");
+    assert_eq!(
+        world.json(&["catalog", "refresh", "--format", "json"]),
+        serde_json::json!([])
+    );
 }

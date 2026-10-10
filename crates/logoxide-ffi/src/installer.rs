@@ -498,7 +498,9 @@ impl LogoxideInstaller {
         let loaded = self.round(|round| {
             let http = HostHttp { round };
             let mut warn = |w: String| warnings.push(w);
-            logoxide_app::catalogs::load_catalogs(&http, &urls, project.project.dir(), &mut warn)
+            // Downloaded each time: the host keeps what it fetches as it likes
+            let fetch = logoxide_app::catalogs::CatalogFetch::uncached(&http);
+            logoxide_app::catalogs::load_catalogs(fetch, &urls, project.project.dir(), &mut warn)
         })?;
         let catalogs = match loaded {
             Ok(catalogs) => catalogs,

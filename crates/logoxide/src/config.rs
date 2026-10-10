@@ -11,6 +11,9 @@ catalogs = ["https://example.org/catalog.toml"]   # searched in every project, a
 
 git-timeout = 600                    # seconds a git fetch may take (10 minutes)
 git-list-timeout = 60                # seconds listing a repository's tags may take
+catalog-max-age = "7d"               # how long a downloaded catalog is used before it's
+                                     # downloaded again: seconds, or "90s", "30m", "12h", "7d",
+                                     # "2w"; 0 keeps none
 
 [registries]                         # every project's, besides its own (its own name wins)
 dorean-local = "~/Documents/logoxide-dorean-repos"
@@ -53,6 +56,59 @@ pub struct Config {
     /// Seconds listing a repository's tags may take ([`crate::git::LIST_TIMEOUT`])
     #[serde(default)]
     pub git_list_timeout: Option<u64>,
+    /// Seconds a catalog downloaded over HTTP is used from the cache before it's downloaded
+    /// again ([`CATALOG_MAX_AGE`] when not given; 0 keeps none). Written as seconds or as a
+    /// duration (`"12h"`, [`parse_duration`])
+    #[serde(default, deserialize_with = "max_age")]
+    pub catalog_max_age: Option<u64>,
+}
+
+/// How long a downloaded catalog is used before it's downloaded again, unless the config says
+pub const CATALOG_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(7 * 24 * 60 * 60);
+
+/**
+Seconds from a duration's text: a whole number of seconds, else one followed by `s`, `m`, `h`,
+`d`, or `w` (`"90s"`, `"30m"`, `"12h"`, `"7d"`, `"2w"`)
+*/
+pub fn parse_duration(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let split = text
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    let number: u64 = number.parse().ok()?;
+    let unit = match unit.trim() {
+        "" | "s" => 1,
+        "m" => 60,
+        "h" => 60 * 60,
+        "d" => 24 * 60 * 60,
+        "w" => 7 * 24 * 60 * 60,
+        _ => return None,
+    };
+    number.checked_mul(unit)
+}
+
+/// `catalog-max-age`: seconds, or a duration's text
+fn max_age<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> std::result::Result<Option<u64>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Written {
+        Seconds(u64),
+        Text(String),
+    }
+    match Written::deserialize(deserializer) {
+        Ok(Written::Seconds(seconds)) => Ok(Some(seconds)),
+        Ok(Written::Text(text)) => parse_duration(&text).map(Some).ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "`{text}` isn't a duration (seconds, or like \"90s\", \"30m\", \"12h\", \"7d\", \"2w\")"
+            ))
+        }),
+        Err(_) => Err(serde::de::Error::custom(
+            "catalog-max-age is seconds, or a duration like \"7d\"",
+        )),
+    }
 }
 
 /// `~/` as the home folder; a relative path beside `base`; a URL as it is
@@ -157,6 +213,11 @@ impl Config {
         }
     }
 
+    /// How long a downloaded catalog is used before it's downloaded again; zero keeps none
+    pub fn catalog_max_age(&self) -> std::time::Duration {
+        (self.catalog_max_age).map_or(CATALOG_MAX_AGE, std::time::Duration::from_secs)
+    }
+
     /// A project's registries and this config's (the project's own name wins)
     pub fn registries(&self, manifest: &Manifest) -> BTreeMap<String, String> {
         let mut all = self.registries.clone();
@@ -211,6 +272,39 @@ dorean-local = "../repos"
         assert_eq!(library.root(), Path::new("/flag"));
         assert!(Config::parse("libary = \"x\"", Path::new("/")).is_err());
         assert!(Config::parse("[registries]\ngithub = \"x\"", Path::new("/")).is_err());
+    }
+
+    #[test]
+    fn reads_a_catalogs_max_age() {
+        let age = |text: &str| Config::parse(text, Path::new("/")).map(|c| c.catalog_max_age());
+        let secs = std::time::Duration::from_secs;
+        assert_eq!(age("").unwrap(), CATALOG_MAX_AGE);
+        assert_eq!(CATALOG_MAX_AGE, secs(7 * 86400));
+        assert_eq!(age("catalog-max-age = 90").unwrap(), secs(90));
+        assert_eq!(age("catalog-max-age = 0").unwrap(), secs(0));
+        assert_eq!(age("catalog-max-age = \"0\"").unwrap(), secs(0));
+        assert_eq!(age("catalog-max-age = \"90s\"").unwrap(), secs(90));
+        assert_eq!(age("catalog-max-age = \"30m\"").unwrap(), secs(1800));
+        assert_eq!(age("catalog-max-age = \"12h\"").unwrap(), secs(43200));
+        assert_eq!(age("catalog-max-age = \"7d\"").unwrap(), secs(604800));
+        assert_eq!(age("catalog-max-age = \"2w\"").unwrap(), secs(1209600));
+        for bad in [
+            "\"7 days\"",
+            "\"d\"",
+            "\"-1d\"",
+            "-5",
+            "1.5",
+            "true",
+            "\"\"",
+        ] {
+            let error = age(&format!("catalog-max-age = {bad}")).unwrap_err();
+            assert!(
+                error.to_string().contains("catalog-max-age")
+                    || error.to_string().contains("duration"),
+                "{bad}: {error}"
+            );
+        }
+        assert_eq!(parse_duration("99999999999999999999d"), None);
     }
 
     #[test]

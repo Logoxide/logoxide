@@ -286,6 +286,13 @@ pub(crate) enum Command {
         /// name
         #[arg(long)]
         flat: bool,
+        /// Download the catalogs at URLs again, however recently they were kept
+        /// (`catalog-max-age` in logoxide's config.toml, 7 days by default)
+        #[arg(long, conflicts_with = "offline")]
+        refresh: bool,
+        /// Download nothing: catalogs at URLs only as they were last kept, of any age
+        #[arg(long)]
+        offline: bool,
         /// One JSON array, for editors: each package's id, names, language, license, keywords,
         /// categories, books it's about, and the lx arguments that install it (as `--format
         /// json`)
@@ -482,6 +489,14 @@ pub(crate) enum CatalogCommand {
     Remove {
         #[arg(add = ArgValueCompleter::new(complete::searched))]
         location: String,
+    },
+    /// Downloads the catalogs and registries at URLs again (the project's and config.toml's,
+    /// and the default catalogs), keeping them for `lx search` until they're `catalog-max-age`
+    /// old (7 days by default). Catalogs and registries on this machine are read each time
+    Refresh {
+        /// Only these: catalog URLs or registry names (lx catalog list)
+        #[arg(add = ArgValueCompleter::new(complete::searched))]
+        catalogs: Vec<String>,
     },
     /// A catalog.toml entry for a package's repository (its newest release's logoxide.toml)
     Entry {

@@ -12,6 +12,11 @@ lists as catalogs (eBible.org's `translations.csv`, fetch.bible's `manifest.json
 its Bibles and its genre indexes, Door43's catalog API, a SWORD repository's `mods.d.tar.gz`); their entries are imported into packages rather
 than installed. They aren't described here.
 
+A catalog at an `http://` or `https://` URL may be kept by a reader and used again until it's old
+(lx keeps each, as downloaded, for its config's `catalog-max-age`, 7 days by default), so a change
+published to one may not be seen at once; `lx catalog refresh` downloads them again. A catalog
+read from a path is read each time.
+
 ## The file
 
 TOML 1.0, UTF-8. A catalog's location decides how it is read: a name ending in `.csv` is

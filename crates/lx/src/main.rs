@@ -35,8 +35,8 @@ mod publish;
 use cli::{CatalogCommand, Cli, Command, Format, MediaCommand, RegistryCommand};
 use cmd::{
     catalog::{
-        Filters, Shown, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_remove,
-        package_url, search,
+        Filters, Shown, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_refresh,
+        catalog_remove, package_url, search, search_freshness,
     },
     import::{import, import_update},
     map::map,
@@ -248,6 +248,8 @@ fn main() -> ExitCode {
             limit,
             flat,
             json,
+            refresh,
+            offline,
         } => search(
             &cli,
             &query.join(" "),
@@ -262,6 +264,7 @@ fn main() -> ExitCode {
                 json: *json || cli.format == Format::Json,
                 flat: *flat,
             },
+            search_freshness(*refresh, *offline),
         ),
         Command::Import {
             source,
@@ -274,6 +277,7 @@ fn main() -> ExitCode {
             catalog_entry(&cli, &logoxide::git::expand_url(git))
         }
         Command::Catalog(CatalogCommand::List) => catalog_list(&cli),
+        Command::Catalog(CatalogCommand::Refresh { catalogs }) => catalog_refresh(&cli, catalogs),
         Command::Registry(RegistryCommand::Init {
             host,
             name,
@@ -370,6 +374,7 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
                 | Command::Verify(_)
                 | Command::Search { .. }
                 | Command::Catalog(CatalogCommand::List)
+                | Command::Catalog(CatalogCommand::Refresh { .. })
                 | Command::Import { update: true, .. }
                 | Command::Read { .. }
                 | Command::Compare { .. }
@@ -379,7 +384,7 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
         Format::Json if json => Ok(()),
         Format::Tsv if references => Ok(()),
         Format::Json => Err(logoxide::LogoxideError::Manifest(String::from(
-            "--format json: only for list, info, check, diff, verify, search, catalog list, import --update, read, compare, and show --references, --notes, --entry, --keys, or --xref",
+            "--format json: only for list, info, check, diff, verify, search, catalog list, catalog refresh, import --update, read, compare, and show --references, --notes, --entry, --keys, or --xref",
         ))),
         Format::Tsv => Err(logoxide::LogoxideError::Manifest(String::from(
             "--format tsv: only for show --references",

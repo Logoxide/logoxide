@@ -21,6 +21,7 @@ use logoxide::{
     resolve::{Frozen, Update},
 };
 
+pub mod catalog_cache;
 pub mod catalogs;
 pub mod clean;
 pub mod fetch;
@@ -98,6 +99,8 @@ pub struct Logoxide {
     http: Arc<dyn http::Http>,
     fetcher: Box<dyn Fetcher>,
     reader: Box<dyn TextReader>,
+    /// Catalogs downloaded over HTTP, kept for the config's `catalog-max-age` (none at zero)
+    catalog_cache: Option<catalog_cache::CatalogCache>,
 }
 
 impl Logoxide {
@@ -108,7 +111,10 @@ impl Logoxide {
         fetcher: Box<dyn Fetcher>,
         reader: Box<dyn TextReader>,
     ) -> Logoxide {
+        let catalog_cache =
+            catalog_cache::CatalogCache::in_cache(library.cache_dir(), config.catalog_max_age());
         Logoxide {
+            catalog_cache,
             config,
             library,
             http,
@@ -158,6 +164,16 @@ impl Logoxide {
         self.http.clone()
     }
 
+    /// Where downloaded catalogs are kept (`<cache>/catalogs`), unless `catalog-max-age` is 0
+    pub fn catalog_cache(&self) -> Option<&catalog_cache::CatalogCache> {
+        self.catalog_cache.as_ref()
+    }
+
+    /// Catalogs had through this one's downloads and cache, as `freshness` allows
+    pub fn catalog_fetch(&self, freshness: catalog_cache::Freshness) -> catalogs::CatalogFetch<'_> {
+        catalogs::CatalogFetch::new(self.http(), self.catalog_cache(), freshness)
+    }
+
     pub fn fetcher(&self) -> &dyn Fetcher {
         self.fetcher.as_ref()
     }
@@ -171,14 +187,27 @@ impl Logoxide {
         Project::open(dir.unwrap_or_else(|| self.library.root().to_path_buf()))
     }
 
-    /// The project's catalogs (its own, then the config's, then the defaults), in order
+    /// The project's catalogs (its own, then the config's, then the defaults), in order; those
+    /// at URLs from the cache while they're young enough
     pub fn catalogs(
         &self,
         project: &Project,
         warn: Warn,
     ) -> Result<Vec<logoxide::catalog::Catalog>> {
         let locations = self.config.catalogs(project.manifest());
-        catalogs::load_catalogs(self.http(), &locations, project.dir(), warn)
+        let fetch = self.catalog_fetch(catalog_cache::Freshness::Fresh);
+        catalogs::load_catalogs(fetch, &locations, project.dir(), warn)
+    }
+
+    /// The project's catalogs and registries at URLs downloaded again and kept (all, or those
+    /// `only` names; [`catalogs::refresh`])
+    pub fn refresh_catalogs(
+        &self,
+        project: &Project,
+        only: &[String],
+    ) -> Result<Vec<catalogs::Refreshed>> {
+        let cache = self.catalog_cache();
+        catalogs::refresh(self.http(), cache, &self.config, project, only)
     }
 
     /// A registry of the project's (or the config's) by name
@@ -187,7 +216,8 @@ impl Logoxide {
         let location = registries.get(name).ok_or_else(|| {
             logoxide::LogoxideError::Catalog(format!("no registry `{name}` (lx catalog list)"))
         })?;
-        catalogs::load_registry(self.http(), name, location, project.dir())
+        let fetch = self.catalog_fetch(catalog_cache::Freshness::Fresh);
+        catalogs::load_registry(fetch, name, location, project.dir())
     }
 
     /// Installs what's locked, moving what `update` allows, within what `frozen` allows; the
@@ -213,12 +243,13 @@ impl Logoxide {
         source: &str,
         warn: Warn,
     ) -> Result<import::Imported> {
-        let entry = import::find_entry(self.http(), &self.config, project, source, warn)?;
+        let fetch = self.catalog_fetch(catalog_cache::Freshness::Fresh);
+        let entry = import::find_entry(fetch, &self.config, project, source, warn)?;
         import::run(project, &self.library, &entry, self.http(), self.fetcher())
     }
 
-    /// What updating the project's imports (or the one `name` names) would do
-    /// ([`import::plan_updates`])
+    /// What updating the project's imports (or the one `name` names) would do, the catalogs
+    /// downloaded again ([`import::plan_updates`])
     pub fn plan_updates(
         &self,
         project: &Project,
@@ -226,7 +257,8 @@ impl Logoxide {
         warn: Warn,
     ) -> Result<Vec<import::UpdatePlan>> {
         let reader = self.reader();
-        import::plan_updates(self.http(), &self.config, project, reader, name, warn)
+        let fetch = self.catalog_fetch(catalog_cache::Freshness::Refresh);
+        import::plan_updates(fetch, &self.config, project, reader, name, warn)
     }
 
     /// The library cleaned of what none of `projects` locks and no root keeps
