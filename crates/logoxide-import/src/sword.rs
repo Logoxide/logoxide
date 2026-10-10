@@ -1181,6 +1181,37 @@ mod tests {
         );
     }
 
+    /// MHCC's John 3 as CrossWire's module stores it: a chapter introduction, one entry linked
+    /// over 3:1-8 (whose text runs on through 3:21, its "Verses 9-21" heading lost when the
+    /// module was made), nothing at 3:9-21, and one entry over 3:22-36. SWORD itself (mod2imp)
+    /// gives no entry at 3:9, so the import has none either: the verses keep the linking the
+    /// module has, and the introduction stays one
+    #[test]
+    fn a_commentarys_unlinked_verses_have_no_notes() {
+        let intro = r#"<chapter n="3" osisID="John.3" sID="John.3"/> <div eID="gen1" type="x-p"/>"#;
+        let first =
+            "<hi type=\"bold\">Verses 1-8</hi> Nicodemus came by night. God so loved the world.";
+        let last = "<hi type=\"bold\">Verses 22-36</hi> John's testimony.";
+        let mut verses = vec![("John", 3, 0, intro)];
+        verses.extend((1..=8).map(|v| ("John", 3, v, first)));
+        verses.extend((22..=36).map(|v| ("John", 3, v, last)));
+        let dest = MemoryStorage::new();
+        let zip = sword_zip(SWORD_CONF, &verses);
+        crate::build(&sword_test_entry(), &[("zip".into(), zip)], &dest).unwrap();
+        let john = String::from_utf8(dest.read("osis/John.xml").unwrap()).unwrap();
+        assert!(
+            john.contains("Nicodemus") && john.contains("testimony"),
+            "{john}"
+        );
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        let id = logoxide::bible_data().books().search_usfm("JHN").unwrap();
+        let book = package.source().book(id).unwrap();
+        let spans: Vec<_> = (book.spans.iter())
+            .map(|s| (s.chapter, s.verse, s.last))
+            .collect();
+        assert_eq!(spans, [(3, 1, 8), (3, 22, 36)]);
+    }
+
     #[test]
     fn a_module_crosswire_may_distribute_isnt_redistributable() {
         let conf = SWORD_CONF.replace(
