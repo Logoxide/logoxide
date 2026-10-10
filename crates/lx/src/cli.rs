@@ -72,6 +72,9 @@ impl Cli {
         for key in keys {
             errln!("warning: {MANIFEST}: unknown key `{key}`");
         }
+        for warning in project.manifest().warnings() {
+            errln!("warning: {MANIFEST}: {warning}");
+        }
         Ok(project)
     }
 

@@ -64,7 +64,7 @@ size = 1834201
 | `id` | string | yes | The package's id (`[package] id`): lowercase ASCII letters, digits, `-`, and `_` |
 | `name` | string | yes | Its name |
 | `abbreviation` | string | yes | What references name it by |
-| `language` | string | yes | BCP 47 |
+| `language` | string | yes | BCP 47, canonical as in the manifest (`en`, not `eng`). Searches match a language by any of its codes: `eng` finds `en`, and `en` an entry that says `eng` |
 | `aliases` | array of strings | no | |
 | `language-name` | string | no | The language's name (`English`) |
 | `script` | string | no | ISO 15924 (`Latn`, `Hebr`). Absent, the language tag's script subtag, if any |

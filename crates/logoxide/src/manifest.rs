@@ -756,6 +756,16 @@ impl Manifest {
     }
 
     /**
+    What's allowed but should change, for a caller to warn of: a `language` that isn't canonical
+    BCP 47 (`eng`, which is `en`: [`crate::language::canonical`]), saying what it should be
+    */
+    pub fn warnings(&self) -> Vec<String> {
+        (self.package.iter())
+            .filter_map(|p| crate::language::canonical_warning(&p.language))
+            .collect()
+    }
+
+    /**
     The keys in a manifest's text that logoxide doesn't know, as dotted paths
     (`package.funding`, `dependencies.kjv.mirror`), so a caller can warn of them as Cargo does.
     They're no error: a newer logoxide may write keys an older one doesn't read
@@ -1062,6 +1072,23 @@ readme = "README.md""#,
         let error = |language: &str, lines: &str| with(language, lines).unwrap_err().to_string();
         assert!(error("en_US", "").contains("isn't a BCP 47 tag"));
         assert!(error("en", "script = \"latin\"").contains("ISO 15924"));
+        // A tag that isn't canonical is read, and warned of
+        let warnings = |language: &str| {
+            Manifest::parse(&format!(
+                "[package]\nid = \"x\"\nname = \"X\"\nabbreviation = \"X\"\nversion = \"1.0.0\"\n\
+                 language = \"{language}\"\n[formats]\nusx = {{ path = \"usx/\" }}\n"
+            ))
+            .map(|m| m.warnings())
+        };
+        assert_eq!(
+            warnings("eng-latn").unwrap(),
+            [
+                "language `eng-latn` isn't canonical BCP 47: use `en-Latn` (the shortest ISO 639 \
+              code, in its case)"
+            ]
+        );
+        assert!(warnings("en-Latn").unwrap().is_empty());
+        assert!(warnings("grc").unwrap().is_empty());
     }
 
     #[test]

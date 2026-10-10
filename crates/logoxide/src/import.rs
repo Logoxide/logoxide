@@ -174,7 +174,7 @@ pub fn ccel_url(id: &str) -> String {
 pub struct ThmlHead {
     /// `DC.Title` (the first, which isn't a short form)
     pub title: Option<String>,
-    /// `DC.Language`, as ISO 639-3 (`eng`)
+    /// `DC.Language`, as ISO 639-3 (`eng`; the package says `en`)
     pub language: Option<String>,
     /// `DC.Rights`: `Public Domain`, or a copyright statement
     pub rights: Option<String>,
@@ -1089,7 +1089,7 @@ mod tests {
         assert_eq!(info.aliases, ["Holy Bible: Hebrew & Old Testament"]);
         assert_eq!(
             (info.language.as_str(), info.version.to_string()),
-            ("heb", "1.0.0".to_string())
+            ("he", "1.0.0".to_string())
         );
         let upstream = info.upstream.as_ref().unwrap();
         assert_eq!(
