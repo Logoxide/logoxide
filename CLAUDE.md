@@ -180,8 +180,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
     and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
     sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
-    `[settings] catalogs`, then those four (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
-    CCEL, CrossWire; the URLs are the core's, what a manifest means by a default) unless
+    `[settings] catalogs`, then those five (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
+    CCEL's Bibles and its commentaries' genre index, CrossWire; the URLs are the core's, what a manifest means by a default) unless
     `default-catalogs = false`. `Catalog::find_import` finds `ebible:<id>` (or
     `sword:crosswire/KJV`) in a catalog, `find_upstream` an imported package's entry by its
     `[package.upstream]` `import`, then `url`; `known_works` gives imports the works
@@ -368,8 +368,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   and title, `ccel:<id>`; `genre_catalog(text, genre)`: a genre index's `<p class="List2">`
   links `/ccel/<author>/<work>.html`, `ccel:<author>/<work>` (a Bible's still `ccel:<id>`), ids
   `ccel-<author>-<work>`, the kind by `genre_kind` (`gen-COM` commentaries, `gen-BIB` Bibles,
-  else books), the author's name the description, other links passed over; `gen-COM` isn't a
-  default catalog, the owner's call; `named_catalog(import)`: the one work a
+  else books), the author's name the description, other links passed over; `gen-COM` is a
+  default catalog (the owner's, 2026-10-10); `named_catalog(import)`: the one work a
   `ccel:<author>/<work>` names, which lx uses when no catalog lists it, a book until its head
   says; a work's ThML (`url`; restricted works answer with a page, refused) into
   `thml/<work>.xml`, named, dated, licensed, and kinded by its `<ThML.head>` (`thml_head`;

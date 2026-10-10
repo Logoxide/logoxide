@@ -1334,7 +1334,8 @@ compare = ["mine"]
     #[test]
     fn a_vaults_catalogs_come_before_the_defaults() {
         use crate::catalog::{
-            CCEL_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG, SWORD_CATALOG,
+            CCEL_CATALOG, CCEL_COMMENTARIES_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG,
+            FETCH_BIBLE_CATALOG, SWORD_CATALOG,
         };
         let catalogs = |settings: &str| {
             Manifest::parse(&format!("[dependencies]\n[settings]\n{settings}"))
@@ -1349,6 +1350,7 @@ compare = ["mine"]
                 EBIBLE_CATALOG,
                 FETCH_BIBLE_CATALOG,
                 CCEL_CATALOG,
+                CCEL_COMMENTARIES_CATALOG,
                 SWORD_CATALOG
             ]
         );
@@ -1361,6 +1363,7 @@ compare = ["mine"]
                 "mine.toml",
                 EBIBLE_CATALOG,
                 CCEL_CATALOG,
+                CCEL_COMMENTARIES_CATALOG,
                 SWORD_CATALOG
             ]
         );

@@ -296,7 +296,7 @@ A vault's choices (also allowed in a package, where they mean nothing to its use
 | `default` | string | The Bible references use when they name none |
 | `compare` | array of strings | Bibles shown after the named one |
 | `catalogs` | array of strings | Catalogs to search (URLs or paths), before the default ones |
-| `default-catalogs` | boolean | Whether the four default catalogs (eBible.org, fetch.bible, CCEL, CrossWire) are searched after these. Default `true` |
+| `default-catalogs` | boolean | Whether the five default catalogs (eBible.org, fetch.bible, CCEL's Bibles and commentaries, CrossWire) are searched after these. Default `true` |
 | `registries` | table of strings | Registries by name: `dorean-local = "~/logoxide-packages"` lets `dorean-local:kjv` name a package. Each is a catalog's URL or path, or a folder of package repositories |
 
 Registry names are `a`-`z`, `0`-`9`, `-`, and `_`, and can't be `github`, `gitlab`, `codeberg`,

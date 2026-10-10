@@ -316,8 +316,8 @@ checkpoint before writing code; the designs below are theirs, so the next agent 
    `finish` lets a book have neither books nor entries. Live: `ccel:henry/mhc1` 5 books, 858
    notes; `ccel:calvin/calcom01` 382 notes; `ccel:calvin/institutes` 3,491 references, released
    and verified. Left: a chapter's verse-0 note is unreachable from lx (topos parses neither
-   `Genesis 2:0` nor counts verse 0 in `Genesis 2`, its convention); `gen-COM` in
-   `DEFAULT_CATALOGS` is the owner's call.
+   `Genesis 2:0` nor counts verse 0 in `Genesis 2`, its convention). `gen-COM` joined
+   `DEFAULT_CATALOGS` (the owner said yes, 2026-10-10).
 9. The owner's: G.1 (push the topos tag), G.2, G.5 (publishing, only when asked).
 
 Then the pieces of M left: none beyond item 4.

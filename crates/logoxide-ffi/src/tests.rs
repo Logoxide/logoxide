@@ -766,7 +766,7 @@ fn catalogs_and_ebible_imports() {
     assert_eq!(project.catalogs()[0], logoxide.ebible_catalog_url());
     assert_eq!(project.catalogs(), logoxide.default_catalog_urls());
     assert!(logoxide.is_insecure_url("http://ftp.xiphos.org/".into()));
-    assert_eq!(project.catalogs().len(), 4);
+    assert_eq!(project.catalogs().len(), 5);
     let mine = project.add_catalog("catalog.toml".into()).unwrap();
     assert_eq!(mine.catalogs()[0], "catalog.toml");
     assert!(
@@ -776,7 +776,7 @@ fn catalogs_and_ebible_imports() {
     let ebible = logoxide.ebible_catalog_url();
     assert!(mine.is_default_catalog(ebible.clone()));
     let fewer = mine.remove_catalog(ebible.clone()).unwrap();
-    assert_eq!(fewer.catalogs().len(), 4);
+    assert_eq!(fewer.catalogs().len(), 5);
     assert!(!fewer.catalogs().contains(&ebible));
 }
 

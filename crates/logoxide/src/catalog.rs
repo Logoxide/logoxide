@@ -54,14 +54,18 @@ pub const FETCH_BIBLE_CATALOG: &str = "https://v1.fetch.bible/manifest.json";
 /// CCEL's page of the Bibles it publishes (HTML: it has no other list)
 pub const CCEL_CATALOG: &str = "https://ccel.org/ccel/bible/";
 
+/// CCEL's index of its commentaries (its genre `COM`)
+pub const CCEL_COMMENTARIES_CATALOG: &str = "https://ccel.org/index/genre/gen-COM";
+
 /// CrossWire's main SWORD repository's list of modules (every module's conf)
 pub const SWORD_CATALOG: &str = "https://crosswire.org/ftpmirror/pub/sword/raw/mods.d.tar.gz";
 
 /// The catalogs searched when a vault names none
-pub const DEFAULT_CATALOGS: [&str; 4] = [
+pub const DEFAULT_CATALOGS: [&str; 5] = [
     EBIBLE_CATALOG,
     FETCH_BIBLE_CATALOG,
     CCEL_CATALOG,
+    CCEL_COMMENTARIES_CATALOG,
     SWORD_CATALOG,
 ];
 

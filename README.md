@@ -66,8 +66,8 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
   `lx verify`, and `lx show --git URL` (a release's summary, without downloading its text)
 - Catalogs and imports: `lx search` finds packages by name, abbreviation, language, keyword,
   category, or the books they're about, in your own catalogs (`catalog.toml`, anyone can host
-  one) and four publishers' lists searched by default: eBible.org's and fetch.bible's (about 2,900
-  translations), CCEL's Bibles (ThML), and CrossWire's SWORD repository (OSIS, ThML, and GBF
+  one) and five publishers' lists searched by default: eBible.org's and fetch.bible's (about 2,900
+  translations), CCEL's Bibles and commentaries (ThML), and CrossWire's SWORD repository (OSIS, ThML, and GBF
   Bibles and commentaries, and its dictionaries, Strong's among them). `lx import ebible:<id>`,
   `fetch:<id>`, `ccel:<id>`, or
   `sword:<repository>/<module>` makes a download into a package in `imports/<id>/`, and

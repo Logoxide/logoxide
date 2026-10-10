@@ -857,7 +857,8 @@ impl Project {
 mod tests {
     use super::*;
     use crate::catalog::{
-        CCEL_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG, FETCH_BIBLE_CATALOG, SWORD_CATALOG,
+        CCEL_CATALOG, CCEL_COMMENTARIES_CATALOG, DEFAULT_CATALOGS, EBIBLE_CATALOG,
+        FETCH_BIBLE_CATALOG, SWORD_CATALOG,
     };
 
     #[test]
@@ -1007,6 +1008,7 @@ path = "gill"
                 EBIBLE_CATALOG,
                 FETCH_BIBLE_CATALOG,
                 CCEL_CATALOG,
+                CCEL_COMMENTARIES_CATALOG,
                 SWORD_CATALOG
             ]
         );
@@ -1019,6 +1021,7 @@ path = "gill"
                 "https://example.org/catalog.toml",
                 FETCH_BIBLE_CATALOG,
                 CCEL_CATALOG,
+                CCEL_COMMENTARIES_CATALOG,
                 SWORD_CATALOG
             ]
         );

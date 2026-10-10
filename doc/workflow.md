@@ -50,9 +50,9 @@ cd ~/Notes
 lx init                                   # logoxide.toml here, without [package]
 ```
 
-Find a translation. The project's own catalogs are searched first, then four publishers' own
+Find a translation. The project's own catalogs are searched first, then five publishers' own
 lists of their downloads: eBible.org's and fetch.bible's (about 2,900 translations), CCEL's
-Bibles (about 50, as ThML), and CrossWire's SWORD repository (about 250 Bibles and 40
+Bibles (about 50, as ThML) and commentaries (about 200), and CrossWire's SWORD repository (about 250 Bibles and 40
 commentaries whose markup is OSIS or ThML):
 
 ```sh
@@ -109,9 +109,9 @@ fetch.bible's, `ccel:` for CCEL's, `sword:<repository>/<module>` for a SWORD rep
 by its `mods.d.tar.gz` (`lx catalog add https://example.org/sword/mods.d.tar.gz`). A CCEL work
 other than a Bible is `ccel:<author>/<work>`, as its address names it (`ccel.org/ccel/henry/mhc1`),
 and needs no catalog: its file's head says whether it's a Bible, a commentary, or a book
-(`DC.Type`). CCEL's genre indexes list them for `lx search`
-(`lx catalog add https://ccel.org/index/genre/gen-COM`, its 213 commentaries; not searched by
-default).
+(`DC.Type`). CCEL's genre indexes list them for `lx search`: its commentaries'
+(`https://ccel.org/index/genre/gen-COM`) is searched by default, any other is added
+(`lx catalog add https://ccel.org/index/genre/gen-BIB`).
 
 ```sh
 lx import ccel:kjv              # CCEL's ThML, a whole Bible in one file, with the Apocrypha
