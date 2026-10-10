@@ -553,9 +553,12 @@ PSA 51:1-19 = PSA 51:3-21      # ranges within a chapter, verse by verse
 MAL 4:1-6 = MAL 3:19-24
 ```
 
-`lx check` reads every line (known books, no verse on two lines of one side unless each names it
-alone), the summary counts the verses mapped, and any change to the lines is at least a minor
-release. Once a project has one (`lx add`, or a Bible's own dependency), references map between
+`lx check` reads every line (no verse on two lines of one side unless each names it alone), the
+summary counts the verses mapped, and any change to the lines is at least a minor release. A whole
+`.vrs` file's other lines count too: verse counts (`MAL 1:14 2:17 3:18 4:6`), against which a
+mapped verse that doesn't exist is warned of, and verses left out (`-PSA 9:21`), which have no
+counterpart either way. A part of a verse (`ESG 1:1a`) maps as the whole verse, and lines naming
+books logoxide doesn't know are passed over with a warning. Once a project has one (`lx add`, or a Bible's own dependency), references map between
 its Bibles, by name, abbreviation, or alias, or between versifications by name, both ways and
 through several maps:
 

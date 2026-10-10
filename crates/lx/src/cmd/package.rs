@@ -243,9 +243,33 @@ struct CheckReport {
     /// Each file's title (none when it has none)
     titles: Vec<serde_json::Value>,
     untitled: Vec<String>,
+    /// Files, or books in them, passed over: peripherals, and books logoxide doesn't know
+    skipped: Vec<logoxide::source::Skipped>,
     /// Problems with the timings, and books whose cached counts differ
     problems: Vec<String>,
     ok: bool,
+}
+
+/// What a package's format passed over: peripherals as notes, books logoxide doesn't know (and
+/// files naming none) as warnings
+pub(crate) fn print_skipped(skipped: &[logoxide::source::Skipped]) {
+    for skip in skipped {
+        match skip.is_warning() {
+            true => errln!("warning: {skip}"),
+            false => errln!("note: {skip}"),
+        }
+    }
+}
+
+/// What's said of a versification map that it can still be used with: verses past its counts,
+/// and lines naming books logoxide doesn't know (passed over)
+fn map_warnings(map: &logoxide::versification::VersificationMap) -> Vec<String> {
+    let mut warnings = map.problems();
+    warnings
+        .extend((map.passed_over().iter()).map(|(at, code)| {
+            format!("{at}: {code} is a book logoxide doesn't know, passed over")
+        }));
+    warnings
 }
 
 pub(crate) fn check(
@@ -259,6 +283,10 @@ pub(crate) fn check(
         package.info().version.to_string(),
     );
     let mut problems = vec![];
+    let skipped = package.source().skipped().to_vec();
+    if !json {
+        print_skipped(&skipped);
+    }
     let package_kind = package.info().kind;
     let timings = logoxide::media::check_package_timings(&package)?;
     let titles = logoxide::titles::titles(&package)?;
@@ -324,12 +352,15 @@ pub(crate) fn check(
                     "to": map.to,
                     "lines": map.mappings().len(),
                     "verses": map.len(),
+                    "excluded": map.excluded().len(),
+                    "warnings": map_warnings(map),
                 })
             }),
             titles: (titles.iter())
                 .map(|t| serde_json::json!({ "path": t.path, "title": t.title }))
                 .collect(),
             untitled: untitled.iter().map(|p| p.to_string()).collect(),
+            skipped,
             problems,
             ok,
         })?;
@@ -341,6 +372,9 @@ pub(crate) fn check(
     }
     match (package_kind, map) {
         (_, Some(map)) => {
+            for warning in map_warnings(&map) {
+                errln!("warning: {warning}");
+            }
             outln!(
                 "a versification map from {} to {}: {} lines, {} verses mapped",
                 map.from,
@@ -603,6 +637,7 @@ pub(crate) fn release(
     let library = cli.library();
     let git = cli.fetcher(&library);
     let mut plan = logoxide::release::plan(path, &git)?;
+    print_skipped(&plan.skipped);
     if let Some((old, d)) = &plan.previous {
         outln!(
             "since {old}: {} ({:?} change)",

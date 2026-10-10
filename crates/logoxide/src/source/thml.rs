@@ -4,8 +4,8 @@ use topos_bible::data::books::BookId;
 use topos_bible_markup::{Element, Kind, Markup, Milestone, Node};
 
 use super::{
-    Book, Source,
-    whole::{Parsed, marker_book, osis_book, scan_tags, tag_attr, whole_files},
+    Book, Skipped, Source,
+    whole::{Parsed, marker_book, scan_tags, tag_attr, whole_files},
 };
 use crate::{
     error::{LogoxideError, Result},
@@ -26,24 +26,36 @@ A folder of ThML files: a whole Bible in one file, as CCEL publishes them, or a 
 pub struct ThmlSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
+    skipped: Vec<Skipped>,
     parsed: Parsed,
 }
 
 impl ThmlSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = whole_files(storage.as_ref(), dir, &["xml", "thml"], |text| {
+        let (files, skipped) = whole_files(storage.as_ref(), dir, &["xml", "thml"], |text| {
             scan_tags(text, "scripture", |tag| {
                 let tag = tag.trim_end();
                 if !tag.ends_with('/') {
                     return None;
                 }
-                let place = tag_place(|name| tag_attr(tag, name))?;
-                osis_book(&place.book)
+                match tag_place(|name| tag_attr(tag, name)) {
+                    Some(place) => {
+                        Some(format!("{}.{}.{}", place.book, place.chapter, place.verse))
+                    }
+                    // A lettered chapter (`|Esth|A|1|0|0`) isn't a place, but is said
+                    None => {
+                        let parsed = tag_attr(tag, "parsed")?.trim_matches('|');
+                        let mut parts = parsed.split('|');
+                        let (book, chapter) = (parts.next()?, parts.next()?);
+                        Some(format!("{book}.{chapter}"))
+                    }
+                }
             })
         })?;
         Ok(Self {
             storage,
             files,
+            skipped,
             parsed: Parsed::new(),
         })
     }
@@ -56,6 +68,10 @@ impl Source for ThmlSource {
 
     fn files(&self) -> &BTreeMap<BookId, String> {
         &self.files
+    }
+
+    fn skipped(&self) -> &[Skipped] {
+        &self.skipped
     }
 
     fn book(&self, id: BookId) -> Result<Book> {
@@ -136,6 +152,20 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
         let place = (name == "scripture" && e.children.is_empty())
             .then(|| tag_place(|n| e.attr(n)))
             .flatten();
+        // A lettered chapter's marker (`|Esth|A|1|0|0`): a verse marker, so its verses are left
+        // out with it (`without_lettered`), not run into the verse before
+        let lettered = (name == "scripture" && e.children.is_empty() && place.is_none())
+            .then(|| e.attr("parsed"))
+            .flatten()
+            .map(|parsed| parsed.trim_matches('|').replace('|', "."))
+            .filter(|reference| super::whole::lettered_chapter(reference));
+        if let Some(reference) = lettered {
+            e.kind = Kind::Verse;
+            e.milestone = Some(Milestone::Start);
+            e.attrs.push((String::from("osisID"), reference));
+            out.push(Node::Element(e));
+            continue;
+        }
         let Some(place) = place else {
             e.children = mark_verses(std::mem::take(&mut e.children), chapter);
             out.push(Node::Element(e));

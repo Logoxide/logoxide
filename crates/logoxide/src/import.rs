@@ -93,6 +93,7 @@ pub fn ebible(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
         publisher: "eBible.org",
         homepage: format!("https://ebible.org/{id}/"),
         upstream: ebible_zip_url(id),
+        versification: None,
     };
     finish(entry, made, staged, dest)
 }
@@ -147,6 +148,7 @@ pub fn fetch_bible(
         publisher: "fetch.bible",
         homepage: String::from("https://fetch.bible/"),
         upstream: fetch_bible_url(id),
+        versification: None,
     };
     finish(entry, made, staged, dest)
 }
@@ -281,6 +283,7 @@ pub fn ccel(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()> 
         publisher: "CCEL",
         homepage: format!("https://ccel.org/ccel/bible/{id}"),
         upstream: ccel_url(id),
+        versification: None,
     };
     finish(&entry, made, staged, dest)
 }
@@ -435,8 +438,24 @@ pub fn sword(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()>
         homepage: (conf.get("TextSource").filter(|t| t.contains("://")))
             .map_or_else(|| repository.clone(), String::from),
         upstream: sword_zip_urls(repository, module).swap_remove(0),
+        versification: Some(sword_versification(conf.get("Versification"))),
     };
     finish(&entry, made, staged, dest)
+}
+
+/**
+A SWORD module's versification, by SWORD's name for it (`KJV`, `KJVA`, `NRSV`, `NRSVA`, `MT`,
+`Leningrad`, `Synodal`, `SynodalProt`, `Vulg`, `LXX`, `Orthodox`, `German`, `Luther`, `Catholic`,
+`Catholic2`, `Segond`, `Calvin`, `DarbyFr`), from its conf's `Versification` (none means `KJV`,
+as SWORD reads it). A name SWORD knows is written as SWORD spells it, whatever the conf's case;
+another is kept as the conf gives it
+*/
+pub fn sword_versification(conf: Option<&str>) -> String {
+    match conf.map(str::trim).filter(|v| !v.is_empty()) {
+        None => sword_modules::Versification::kjv().name().to_string(),
+        Some(name) => sword_modules::Versification::get(name)
+            .map_or_else(|| name.to_string(), |v| v.name().to_string()),
+    }
 }
 
 /**
@@ -795,6 +814,8 @@ struct Made {
     publisher: &'static str,
     homepage: String,
     upstream: String,
+    /// The versification the publisher names (SWORD's conf), else the package's `own`
+    versification: Option<String>,
 }
 
 /// Writes the package's `logoxide.toml`, checks it opens with books, and copies it into `dest`
@@ -829,7 +850,7 @@ fn finish(
         categories: entry.categories.clone(),
         about_books: entry.about_books.clone(),
         upstream: Some(made.upstream),
-        versification: String::from("own"),
+        versification: made.versification.unwrap_or_else(|| String::from("own")),
         maps_to: None,
         include: vec![],
     };
@@ -1143,6 +1164,8 @@ mod tests {
             (info.version.to_string(), info.license.as_deref()),
             ("1.2.0".to_string(), Some("CC-BY-SA-4.0"))
         );
+        // No Versification in the conf: SWORD's default
+        assert_eq!(info.versification, "KJV");
         let john = crate::bible_data().books().search_usfm("JHN").unwrap();
         assert_eq!(package.source().chapter_verses(john).unwrap(), [1, 0, 18]);
         let book = package.source().book(john).unwrap();
@@ -1173,6 +1196,45 @@ mod tests {
                 &MemoryStorage::new()
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn sword_versifications_keep_swords_names() {
+        assert_eq!(sword_versification(None), "KJV");
+        assert_eq!(sword_versification(Some(" ")), "KJV");
+        assert_eq!(sword_versification(Some("synodal")), "Synodal");
+        assert_eq!(sword_versification(Some("NRSVA")), "NRSVA");
+        assert_eq!(sword_versification(Some("vulg")), "Vulg");
+        // One SWORD doesn't know is kept as given
+        assert_eq!(sword_versification(Some("Custom")), "Custom");
+        // The names doc/manifest.md lists
+        let mut names: Vec<&str> = (sword_modules::Versification::all().iter())
+            .map(|v| v.name())
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            [
+                "Calvin",
+                "Catholic",
+                "Catholic2",
+                "DarbyFr",
+                "German",
+                "KJV",
+                "KJVA",
+                "LXX",
+                "Leningrad",
+                "Luther",
+                "MT",
+                "NRSV",
+                "NRSVA",
+                "Orthodox",
+                "Segond",
+                "Synodal",
+                "SynodalProt",
+                "Vulg"
+            ]
         );
     }
 

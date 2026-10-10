@@ -67,6 +67,17 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 A package (other than a collection) must have a non-empty `[formats]`. A collection must have
 none. A versification map must give both `versification` (not `own`) and `maps-to`.
 
+Versification names are matched ignoring case. A Bible imported from a SWORD module keeps the
+module's own (its conf's `Versification`, `KJV` when it gives none), spelled as SWORD spells it:
+`KJV`, `KJVA`, `NRSV`, `NRSVA`, `MT`, `Leningrad`, `Synodal`, `SynodalProt`, `Vulg`, `LXX`,
+`Orthodox`, `German`, `Luther`, `Catholic`, `Catholic2`, `Segond`, `Calvin`, `DarbyFr`. A map
+between one of them and another versification names it the same way. Other imports keep `own`.
+
+Esther's lettered chapters (A to F, the Greek additions some Bibles number apart) aren't in the
+format: chapters are numbers. No import makes them (SWORD numbers chapters by its versification,
+and eBible.org and fetch.bible give Greek Esther, `ESG`, numbered chapters). In OSIS and ThML, a
+verse marker with a lettered chapter (`Esth.A.1`, `|Esth|A|1|`) is passed over with a warning.
+
 ### Kinds
 
 | `kind` | What it is |
@@ -136,6 +147,13 @@ Format names (case-insensitive) and the files each is made of:
 
 Other names are allowed and kept, but nothing reads them. Opening a Bible picks, among the formats
 its enabled features turn on, the first readable one in the order above.
+
+A file a book is named by its book's USFM code (`JHN.usx`, `43-JHNeng-kjv.usfm`), else by the code
+it gives (`\id JHN`, `<book code="JHN">`); a whole file's books are the ones its verses name.
+What isn't a book of the Bible is passed over and noted: the peripherals `FRT`, `INT`, `BAK`, `CNC`,
+`GLO`, `TDX`, `NDX`, `OTH`, and `XXA` to `XXG`. A book the reader doesn't know (topos's book data
+lacks it) is passed over with a warning, its verses left out, and so is a file that names no book.
+A book in two files is an error naming both.
 
 ## `[features]`
 

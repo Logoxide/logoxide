@@ -6,7 +6,7 @@ use topos_bible_markup::{
     verses::{usx_chapter_verses, verses},
 };
 
-use super::{Book, Source, book_files};
+use super::{Book, Skipped, Source, book_files};
 use crate::{
     error::{LogoxideError, Result},
     manifest::Format,
@@ -18,16 +18,21 @@ use crate::{
 pub struct UsxSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
+    skipped: Vec<Skipped>,
 }
 
 impl UsxSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let files = book_files(storage.as_ref(), dir, &["usx"], |head| {
+        let (files, skipped) = book_files(storage.as_ref(), dir, &["usx"], |head| {
             // `<book code="JHN" ...>`
             let rest = &head[head.find("<book")?..];
             Some(rest.split("code=\"").nth(1)?.split('"').next()?.to_string())
         })?;
-        Ok(Self { storage, files })
+        Ok(Self {
+            storage,
+            files,
+            skipped,
+        })
     }
 }
 
@@ -38,6 +43,10 @@ impl Source for UsxSource {
 
     fn files(&self) -> &BTreeMap<BookId, String> {
         &self.files
+    }
+
+    fn skipped(&self) -> &[Skipped] {
+        &self.skipped
     }
 
     fn book(&self, id: BookId) -> Result<Book> {

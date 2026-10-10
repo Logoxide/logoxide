@@ -58,6 +58,89 @@ pub trait Source: Send + Sync {
     fn books(&self) -> Vec<BookId> {
         self.files().keys().copied().collect()
     }
+
+    /// The files, or books in a file, passed over, and why (peripherals, books topos doesn't
+    /// know)
+    fn skipped(&self) -> &[Skipped] {
+        &[]
+    }
+}
+
+/// Why a file or a book in one was passed over
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SkipReason {
+    /// Front or back matter, a glossary, an index, and the like ([`PERIPHERALS`]): not a book of
+    /// the Bible, so not read as one
+    Peripheral,
+    /// A book topos doesn't know (yet): warned of, since its verses are left out
+    Unknown,
+    /// A file with the format's extension that names no book, by its name or its text
+    NoBook,
+    /// Verses in a lettered chapter (Esther's Greek additions, `Esth.A.1`), which the format
+    /// hasn't: chapters are numbers
+    LetteredChapter,
+}
+
+/// A file, or a book in one, that a source passed over
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Skipped {
+    pub path: String,
+    /// The book's code or name as the file gives it (`FRT`, `JUB`, OSIS's `1En`); empty for
+    /// [`SkipReason::NoBook`]
+    pub book: String,
+    pub reason: SkipReason,
+}
+
+impl Skipped {
+    /// Whether it's worth a warning (a book whose verses are left out, or a file naming none),
+    /// not only a note
+    pub fn is_warning(&self) -> bool {
+        self.reason != SkipReason::Peripheral
+    }
+}
+
+impl std::fmt::Display for Skipped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (path, book) = (&self.path, &self.book);
+        match self.reason {
+            SkipReason::Peripheral => {
+                write!(f, "{path}: {book} isn't a book of the Bible, passed over")
+            }
+            SkipReason::Unknown => {
+                write!(
+                    f,
+                    "{path}: {book} is a book logoxide doesn't know, passed over"
+                )
+            }
+            SkipReason::NoBook => write!(f, "{path}: names no book, passed over"),
+            SkipReason::LetteredChapter => write!(
+                f,
+                "{path}: {book} has lettered chapters (A to F), which logoxide doesn't read, passed over"
+            ),
+        }
+    }
+}
+
+/// Paratext's codes for books that aren't books of the Bible: front and back matter,
+/// introductions, concordance, glossary, indexes, other matter, and the extra books `XXA` to
+/// `XXG`
+pub const PERIPHERALS: [&str; 15] = [
+    "FRT", "INT", "BAK", "CNC", "GLO", "TDX", "NDX", "OTH", "XXA", "XXB", "XXC", "XXD", "XXE",
+    "XXF", "XXG",
+];
+
+/// Whether a USFM code names a peripheral ([`PERIPHERALS`])
+pub fn is_peripheral(code: &str) -> bool {
+    PERIPHERALS.iter().any(|p| p.eq_ignore_ascii_case(code))
+}
+
+/// A book found in a second file: an error naming both
+pub(crate) fn duplicate(id: BookId, first: &str, second: &str) -> crate::error::LogoxideError {
+    crate::error::LogoxideError::Book {
+        book: id.0.to_string(),
+        message: format!("in two files, {first} and {second}: keep one"),
+    }
 }
 
 /**
@@ -117,16 +200,21 @@ pub(crate) fn code_from_name(stem: &str) -> Option<BookId> {
         })
 }
 
-/// Each book's file in a folder: files with one of the format's `extensions`, named for their
-/// book, else by the code `code_in` finds at the start of the file
+/// Each book's file in a folder, and the files passed over: files with one of the format's
+/// `extensions`, named for their book, else by the code `code_in` finds at the start of the
+/// file. Peripherals and books topos doesn't know are passed over; a book in two files is an
+/// error naming both
 pub(crate) fn book_files(
     storage: &dyn crate::storage::Storage,
     dir: &str,
     extensions: &[&str],
     code_in: impl Fn(&str) -> Option<String>,
-) -> Result<BTreeMap<BookId, String>> {
-    let mut files = BTreeMap::new();
-    for name in storage.list(dir)? {
+) -> Result<(BTreeMap<BookId, String>, Vec<Skipped>)> {
+    let mut files: BTreeMap<BookId, String> = BTreeMap::new();
+    let mut skipped = vec![];
+    let mut names = storage.list(dir)?;
+    names.sort();
+    for name in names {
         let Some(stem) = name
             .rsplit_once('.')
             .filter(|(_, ext)| extensions.iter().any(|e| ext.eq_ignore_ascii_case(e)))
@@ -135,16 +223,188 @@ pub(crate) fn book_files(
             continue;
         };
         let path = crate::storage::join(dir, &name);
-        let id = code_from_name(stem).or_else(|| {
+        // Else the code the file gives (`\id FRT`), which may be one topos doesn't know
+        let found = code_from_name(stem).ok_or_else(|| {
             let head = storage.read(&path).ok()?;
             let head = String::from_utf8_lossy(&head[..head.len().min(4096)]).into_owned();
-            crate::bible_data()
-                .books()
-                .search_usfm(&code_in(&head)?.to_ascii_uppercase())
+            Some(code_in(&head)?.trim().to_ascii_uppercase())
         });
-        if let Some(id) = id {
-            files.entry(id).or_insert(path);
+        let found = found.or_else(|code| {
+            let id = code
+                .as_deref()
+                .and_then(|c| crate::bible_data().books().search_usfm(c));
+            id.ok_or(code)
+        });
+        match found {
+            Ok(id) => {
+                if let Some(first) = files.get(&id) {
+                    return Err(duplicate(id, first, &path));
+                }
+                files.insert(id, path);
+            }
+            Err(code) => {
+                let reason = match code.as_deref() {
+                    Some(c) if is_peripheral(c) => SkipReason::Peripheral,
+                    Some(_) => SkipReason::Unknown,
+                    None => SkipReason::NoBook,
+                };
+                let book = code.unwrap_or_default();
+                skipped.push(Skipped { path, book, reason });
+            }
         }
     }
-    Ok(files)
+    Ok((files, skipped))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::MemoryStorage;
+    use std::sync::Arc;
+
+    fn usfm(code: &str) -> String {
+        format!("\\id {code}\n\\c 1\n\\p\n\\v 1 In the beginning.\n")
+    }
+
+    #[test]
+    fn peripherals_and_unknown_books_are_passed_over() {
+        let storage = MemoryStorage::with([
+            ("usfm/01-GENeng.usfm", usfm("GEN")),
+            ("usfm/00-FRTeng.usfm", usfm("FRT")),
+            ("usfm/GLO.usfm", usfm("GLO")),
+            ("usfm/XXB.usfm", usfm("XXB")),
+            ("usfm/zzz.usfm", usfm("ZZZ")),
+            ("usfm/notes.usfm", String::from("no id here")),
+        ]);
+        let source = UsfmSource::open(Arc::new(storage), "usfm").expect("opens");
+        let genesis = crate::bible_data().books().search_usfm("GEN");
+        assert_eq!(source.books(), genesis.into_iter().collect::<Vec<_>>());
+        let skipped: Vec<(&str, &str, SkipReason)> = (source.skipped().iter())
+            .map(|s| (s.path.as_str(), s.book.as_str(), s.reason))
+            .collect();
+        assert_eq!(
+            skipped,
+            [
+                ("usfm/00-FRTeng.usfm", "FRT", SkipReason::Peripheral),
+                ("usfm/GLO.usfm", "GLO", SkipReason::Peripheral),
+                ("usfm/XXB.usfm", "XXB", SkipReason::Peripheral),
+                ("usfm/notes.usfm", "", SkipReason::NoBook),
+                ("usfm/zzz.usfm", "ZZZ", SkipReason::Unknown),
+            ]
+        );
+        assert!(!source.skipped()[0].is_warning());
+        assert!(source.skipped()[4].is_warning());
+        assert_eq!(
+            source.skipped()[4].to_string(),
+            "usfm/zzz.usfm: ZZZ is a book logoxide doesn't know, passed over"
+        );
+    }
+
+    /// Jubilees: topos doesn't know `JUB` yet, so it's passed over with a warning; once it does,
+    /// it's read as a book. Either way the rest is read
+    #[test]
+    fn a_book_topos_may_not_know() {
+        let storage = MemoryStorage::with([
+            ("usfm/GEN.usfm", usfm("GEN")),
+            ("usfm/JUB.usfm", usfm("JUB")),
+        ]);
+        let source = UsfmSource::open(Arc::new(storage), "usfm").expect("opens");
+        match crate::bible_data().books().search_usfm("JUB") {
+            Some(jub) => {
+                assert!(source.books().contains(&jub));
+                assert!(source.skipped().is_empty());
+            }
+            None => {
+                assert_eq!(source.books().len(), 1);
+                let skip = &source.skipped()[0];
+                assert_eq!(
+                    (skip.book.as_str(), skip.reason),
+                    ("JUB", SkipReason::Unknown)
+                );
+                assert_eq!(skip.path, "usfm/JUB.usfm");
+            }
+        }
+    }
+
+    #[test]
+    fn a_book_in_two_files_is_an_error() {
+        let storage = MemoryStorage::with([
+            ("usfm/GEN.usfm", usfm("GEN")),
+            ("usfm/01-GENeng-kjv.usfm", usfm("GEN")),
+        ]);
+        let error = UsfmSource::open(Arc::new(storage), "usfm")
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(error.contains("usfm/01-GENeng-kjv.usfm"), "{error}");
+        assert!(error.contains("usfm/GEN.usfm"), "{error}");
+        let storage = MemoryStorage::with([
+            ("usx/JHN.usx", "<usx><book code=\"JHN\"/></usx>"),
+            ("usx/other.usx", "<usx><book code=\"JHN\"/></usx>"),
+        ]);
+        assert!(UsxSource::open(Arc::new(storage), "usx").is_err());
+    }
+
+    /// Esther's lettered chapters (the Greek additions some Bibles number A to F) aren't read
+    #[test]
+    fn lettered_chapters_are_passed_over() {
+        let osis = r#"<osis><osisText><div type="book" osisID="Esth"><chapter osisID="Esth.1"><verse osisID="Esth.1.1">In the days of Ahasuerus</verse><verse osisID="Esth.1.2">that</verse></chapter><chapter osisID="Esth.A"><verse osisID="Esth.A.1">In the second year</verse></chapter></div></osisText></osis>"#;
+        let storage = MemoryStorage::with([("osis/esth.xml", osis)]);
+        let source = OsisSource::open(Arc::new(storage), "osis").expect("opens");
+        let esther = crate::bible_data()
+            .books()
+            .search_usfm("EST")
+            .expect("Esther");
+        assert_eq!(source.books(), [esther]);
+        let skip = &source.skipped()[0];
+        assert_eq!(
+            (skip.path.as_str(), skip.book.as_str(), skip.reason),
+            ("osis/esth.xml", "Esth", SkipReason::LetteredChapter)
+        );
+        assert!(skip.is_warning());
+        let book = source.book(esther).expect("reads");
+        let numbered: Vec<(u8, u8)> = (book.spans.iter()).map(|s| (s.chapter, s.verse)).collect();
+        assert_eq!(numbered, [(1, 1), (1, 2)]);
+        // In ThML, CCEL's markers
+        let thml = r#"<ThML><ThML.body><div1><scripture parsed="|Esth|1|1|0|0"/>In the days <scripture parsed="|Esth|A|1|0|0"/>In the second year</div1></ThML.body></ThML>"#;
+        let storage = MemoryStorage::with([("thml/esth.xml", thml)]);
+        let source = ThmlSource::open(Arc::new(storage), "thml").expect("opens");
+        assert_eq!(source.skipped()[0].reason, SkipReason::LetteredChapter);
+        let package = osis::tests::package("thml", &[("esth.xml", thml)]);
+        assert_eq!(
+            osis::tests::verse_texts(&package, esther),
+            [(1, 1, String::from("In the days"))]
+        );
+    }
+
+    #[test]
+    fn whole_files_pass_over_books_topos_does_not_know() {
+        let osis = |books: &[&str]| {
+            let verses: String = (books.iter())
+                .map(|b| format!("<verse osisID=\"{b}.1.1\">x</verse>"))
+                .collect();
+            format!("<osis><osisText>{verses}</osisText></osis>")
+        };
+        let storage = MemoryStorage::with([
+            ("osis/a.xml", osis(&["Gen", "Zzz"])),
+            ("osis/b.xml", osis(&["Exod"])),
+        ]);
+        let source = OsisSource::open(Arc::new(storage), "osis").expect("opens");
+        assert_eq!(source.books().len(), 2);
+        let skip = &source.skipped()[0];
+        assert_eq!(
+            (skip.path.as_str(), skip.book.as_str(), skip.reason),
+            ("osis/a.xml", "Zzz", SkipReason::Unknown)
+        );
+        // Genesis in both files
+        let storage = MemoryStorage::with([
+            ("osis/a.xml", osis(&["Gen"])),
+            ("osis/b.xml", osis(&["Gen", "Exod"])),
+        ]);
+        let error = OsisSource::open(Arc::new(storage), "osis")
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(error.contains("osis/a.xml and osis/b.xml"), "{error}");
+    }
 }
