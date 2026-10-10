@@ -396,22 +396,42 @@ pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash
     d
 }
 
-/// What changed from `old` to `new`
+/**
+What changed from `old` to `new`. A verse whose text is gone from its number has moved when that
+text is now at a number that held other text before: identical verses (Psalm 107's refrain, or
+empty verses) reworded or removed aren't moves to their twins, and empty text never moves
+*/
 pub fn diff(old: &[VerseHash], new: &[VerseHash]) -> Diff {
     let new_by_key: HashMap<_, _> = new.iter().map(|v| (v.key(), v)).collect();
     let old_by_key: HashMap<_, _> = old.iter().map(|v| (v.key(), v)).collect();
-    let new_by_hash: HashMap<_, _> = new.iter().map(|v| (v.hash, v)).collect();
+    let mut new_by_hash: HashMap<_, Vec<_>> = HashMap::new();
+    for v in new {
+        new_by_hash.entry(v.hash).or_default().push(v);
+    }
+    let empty = hash8("");
+    // Where a verse's text went: a number that didn't hold that text before
+    let moved_to = |v: &VerseHash| {
+        if v.hash == empty {
+            return None;
+        }
+        (new_by_hash.get(&v.hash)?.iter())
+            .find(|to| {
+                to.key() != v.key()
+                    && (old_by_key.get(&to.key())).is_none_or(|before| before.hash != v.hash)
+            })
+            .copied()
+    };
     let mut diff = Diff::default();
     for v in old {
         match new_by_key.get(&v.key()) {
-            None => match new_by_hash.get(&v.hash) {
-                Some(to) => diff.moved.push((*v, **to)),
+            None => match moved_to(v) {
+                Some(to) => diff.moved.push((*v, *to)),
                 None => diff.removed.push(*v),
             },
-            Some(n) if n.hash != v.hash => match new_by_hash.get(&v.hash) {
+            Some(n) if n.hash != v.hash => match moved_to(v) {
                 // Its text is now at another number, and something else is here
-                Some(to) if to.key() != v.key() => diff.moved.push((*v, **to)),
-                _ => diff.changed.push(**n),
+                Some(to) => diff.moved.push((*v, *to)),
+                None => diff.changed.push(**n),
             },
             Some(n) if n.last != v.last => diff.bridged.push(**n),
             Some(_) => {}
@@ -442,13 +462,18 @@ impl Diff {
 }
 
 /// How `new` differs from `old` as a version number; `None` if it isn't newer. Before 1.0, like
-/// Cargo, the minor counts as major (and the patch as minor)
+/// Cargo, the minor counts as major (and the patch as minor), and before 0.1 any new number
+/// counts as major (Cargo takes 0.0.1 and 0.0.2 to be incompatible)
 pub fn version_change(old: &semver::Version, new: &semver::Version) -> Option<Change> {
     if new <= old {
         return None;
     }
+    let renumbered = (new.major, new.minor, new.patch) != (old.major, old.minor, old.patch);
     Some(
-        if new.major != old.major || (old.major == 0 && new.minor != old.minor) {
+        if new.major != old.major
+            || (old.major == 0 && new.minor != old.minor)
+            || (old.major == 0 && old.minor == 0 && renumbered)
+        {
             Change::Major
         } else if old.major == 0 || new.minor != old.minor {
             // Before 1.0, a patch is the smallest change there is, so it covers wording too
@@ -459,15 +484,16 @@ pub fn version_change(old: &semver::Version, new: &semver::Version) -> Option<Ch
     )
 }
 
-/// The smallest version after `old` for a change
+/// The smallest version after `old` for a change (before 0.1, the next patch for any change)
 pub fn next_version(old: &semver::Version, change: Change) -> semver::Version {
     let v = |major, minor, patch| semver::Version::new(major, minor, patch);
-    match (change, old.major) {
-        (Change::Major, 0) => v(0, old.minor + 1, 0),
-        (Change::Major, _) => v(old.major + 1, 0, 0),
-        (Change::Minor, 0) => v(0, old.minor, old.patch + 1),
-        (Change::Minor, _) => v(old.major, old.minor + 1, 0),
-        (Change::Patch, _) => v(old.major, old.minor, old.patch + 1),
+    match (change, old.major, old.minor) {
+        (_, 0, 0) => v(0, 0, old.patch + 1),
+        (Change::Major, 0, _) => v(0, old.minor + 1, 0),
+        (Change::Major, _, _) => v(old.major + 1, 0, 0),
+        (Change::Minor, 0, _) => v(0, old.minor, old.patch + 1),
+        (Change::Minor, _, _) => v(old.major, old.minor + 1, 0),
+        (Change::Patch, _, _) => v(old.major, old.minor, old.patch + 1),
     }
 }
 
@@ -537,6 +563,60 @@ mod tests {
         assert_eq!(bytes.len(), 4 + 3 * 12);
         assert_eq!(decode_verses(&bytes).unwrap(), old);
         assert!(decode_verses(b"nope").is_err());
+    }
+
+    #[test]
+    fn identical_verses_reworded_are_not_moves() {
+        // Psalm 107:8, 15, 21, and 31 are the same words
+        let refrain = "Oh that men would praise the LORD";
+        let psalm = |eight: &str| {
+            [
+                verse(107, 8, eight),
+                verse(107, 9, "b"),
+                verse(107, 15, refrain),
+                verse(107, 21, refrain),
+                verse(107, 31, refrain),
+            ]
+        };
+        let old = psalm(refrain);
+        let d = diff(&old, &psalm("Oh that men would praise the LORD!"));
+        assert_eq!((d.change(), d.changed.len()), (Change::Minor, 1));
+        assert!(d.moved.is_empty());
+        // One of them removed: removed, not moved to its twin
+        let d = diff(&old, &old[1..]);
+        assert_eq!((d.removed.len(), d.moved.len()), (1, 0));
+        // Empty verses share a hash: filling one in is wording, not a move
+        let empty = [verse(3, 1, ""), verse(3, 2, ""), verse(3, 3, "c")];
+        let filled = [verse(3, 1, "a"), verse(3, 2, ""), verse(3, 3, "c")];
+        let d = diff(&empty, &filled);
+        assert_eq!((d.change(), d.moved.len()), (Change::Minor, 0));
+        // The refrain at a number that held other words has moved there
+        let mut moved = psalm("x");
+        moved[1] = verse(107, 9, refrain);
+        let d = diff(&old, &moved);
+        assert_eq!((d.change(), d.moved.len()), (Change::Major, 1));
+        assert_eq!(d.moved[0].1.reference(), "JHN 107:9");
+    }
+
+    #[test]
+    fn before_0_1_every_change_is_major() {
+        let v = |s: &str| semver::Version::parse(s).unwrap();
+        assert_eq!(
+            version_change(&v("0.0.1"), &v("0.0.2")),
+            Some(Change::Major)
+        );
+        assert_eq!(
+            version_change(&v("0.0.1"), &v("0.1.0")),
+            Some(Change::Major)
+        );
+        assert_eq!(version_change(&v("0.0.2"), &v("0.0.1")), None);
+        // Each change's next version is a patch, and enough for it
+        for change in [Change::Patch, Change::Minor, Change::Major] {
+            let old = v("0.0.3");
+            let next = next_version(&old, change);
+            assert_eq!(next, v("0.0.4"));
+            assert!(version_change(&old, &next) >= Some(change));
+        }
     }
 
     #[test]

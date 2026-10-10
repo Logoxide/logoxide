@@ -5,7 +5,8 @@ source again. A cache is per device and never synced: it can always be built aga
 ```text
 <cache>/<id>/<version>-<checksum>/
   manifest.postcard     the verse counts of every book, and what the cache was built from
-  books/<CODE>.postcard each book's tree and verse spans, written when first read
+  books/<CODE>.postcard each book's tree and verse spans, written when first read, after a
+                        line naming the cache format and logoxide version (others are read again)
   references.postcard   the Bible references in its EPUBs, written when first found
 ```
 
@@ -58,6 +59,18 @@ struct CachedReferences {
 
 pub struct Cache {
     storage: Arc<dyn Storage>,
+}
+
+/**
+What a parsed book's file starts with: the cache format and the logoxide that wrote it. Postcard
+isn't self-describing, so a book written by another logoxide (whose topos-bible-markup may lay
+its trees out otherwise) could decode into the wrong tree; one without this header is parsed again
+*/
+fn book_header() -> String {
+    format!(
+        "logoxide-book {CACHE_FORMAT} {}\n",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 /// A package version's folder in the cache
@@ -192,13 +205,17 @@ impl CachedPackage {
             .cloned()
             .unwrap_or_else(|| id.0.to_string());
         let path = format!("{}/books/{code}.postcard", self.dir);
-        let cached = (self.storage.read(&path).ok())
-            .and_then(|bytes| postcard::from_bytes::<Book>(&bytes).ok());
+        let header = book_header();
+        let cached = (self.storage.read(&path).ok()).and_then(|bytes| {
+            let body = bytes.strip_prefix(header.as_bytes())?;
+            postcard::from_bytes::<Book>(body).ok()
+        });
         let book = match cached {
             Some(book) => book,
             None => {
                 let book = self.package.source().book(id)?;
-                if let Ok(bytes) = postcard::to_stdvec(&book) {
+                if let Ok(body) = postcard::to_stdvec(&book) {
+                    let bytes = [header.as_bytes(), &body].concat();
                     let _ = self.storage.write(&path, &bytes);
                 }
                 book
@@ -253,5 +270,60 @@ impl CachedPackage {
             translations.set_chapter_verses(&name, *book, ChapterVerses::new(counts.clone()));
         }
         translations
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Features, MemoryStorage};
+
+    const MANIFEST: &str = r#"
+[package]
+id = "test"
+name = "A Test Bible"
+abbreviation = "TB"
+version = "1.0.0"
+language = "en"
+
+[formats]
+usfm = { path = "usfm/" }
+"#;
+
+    #[test]
+    fn books_from_another_logoxide_are_parsed_again() {
+        let files: Arc<dyn Storage> = Arc::new(MemoryStorage::with([
+            ("logoxide.toml", MANIFEST),
+            (
+                "usfm/JHN.usfm",
+                "\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n",
+            ),
+        ]));
+        let john = BookId(43);
+        let open = || Package::open(files.clone(), Features::default()).unwrap();
+        let cache_storage = Arc::new(MemoryStorage::new());
+        let book = (Cache::new(cache_storage.clone()).open(open()))
+            .unwrap()
+            .book(john)
+            .unwrap();
+        let path = (cache_storage.walk("").unwrap().into_iter())
+            .find(|f| f.ends_with("/books/JHN.postcard"))
+            .unwrap();
+        let written = cache_storage.read(&path).unwrap();
+        assert!(written.starts_with(book_header().as_bytes()));
+        // A file without the header (an older logoxide's, perhaps laid out otherwise) isn't
+        // trusted: the book is parsed again and written over it
+        let stale = Book {
+            id: book.id,
+            nodes: book.nodes.clone(),
+            spans: vec![],
+        };
+        (cache_storage.write(&path, &postcard::to_stdvec(&stale).unwrap())).unwrap();
+        let again = (Cache::new(cache_storage.clone()).open(open()))
+            .unwrap()
+            .book(john)
+            .unwrap();
+        assert_eq!(*again, *book);
+        assert_eq!(cache_storage.read(&path).unwrap(), written);
     }
 }
