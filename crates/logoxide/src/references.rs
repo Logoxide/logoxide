@@ -10,7 +10,7 @@ The Bible references in a package's books, found by topos in each EPUB its enabl
   them again
 
 `logoxide.references.bin`: `LXR1`, then deflate over postcard of each cited passage (its OSIS
-reference and count) in Bible order. `LXR1` names this layout for good: a change is `BXR2`.
+reference and count) in Bible order. `LXR1` names this layout for good: a change is `LXR2`.
 */
 
 use std::io::{Read, Write};
@@ -29,6 +29,10 @@ use crate::{
 pub const REFERENCES: &str = "logoxide.references.bin";
 
 const MAGIC: &[u8; 4] = b"LXR1";
+
+/// The most a references file may inflate to (64 MiB; 937 references are 2.6 KB deflated), so a
+/// small file can't fill memory
+pub const MAX_REFERENCES_BYTES: u64 = 64 << 20;
 
 /// A reference found in a book
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -164,8 +168,14 @@ pub fn decode(bytes: &[u8]) -> Result<Vec<Cited>> {
         .ok_or_else(|| bad(String::from("not a LXR1 references file")))?;
     let mut inflated = vec![];
     flate2::read::DeflateDecoder::new(body)
+        .take(MAX_REFERENCES_BYTES + 1)
         .read_to_end(&mut inflated)
         .map_err(|e| bad(e.to_string()))?;
+    if inflated.len() as u64 > MAX_REFERENCES_BYTES {
+        return Err(bad(format!(
+            "inflates past {MAX_REFERENCES_BYTES} bytes, more than any book cites"
+        )));
+    }
     postcard::from_bytes(&inflated).map_err(|e| bad(e.to_string()))
 }
 
@@ -216,7 +226,19 @@ mod tests {
         let bytes = encode(&cited).unwrap();
         assert!(bytes.starts_with(b"LXR1"));
         assert_eq!(decode(&bytes).unwrap(), cited);
-        assert!(decode(b"BXR9").is_err());
+        assert!(decode(b"LXR9").is_err());
         assert!(decode(b"LXR1 not deflate").is_err());
+        // A bomb: a little deflate that inflates past the limit
+        let mut bomb = MAGIC.to_vec();
+        let mut deflate =
+            flate2::write::DeflateEncoder::new(&mut bomb, flate2::Compression::fast());
+        let zeros = vec![0u8; 1 << 20];
+        for _ in 0..=(MAX_REFERENCES_BYTES >> 20) {
+            deflate.write_all(&zeros).unwrap();
+        }
+        deflate.finish().unwrap();
+        assert!(bomb.len() < 1 << 20);
+        let error = decode(&bomb).unwrap_err().to_string();
+        assert!(error.contains("inflates past"), "{error}");
     }
 }

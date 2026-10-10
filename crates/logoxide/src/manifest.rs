@@ -41,7 +41,6 @@ use crate::error::{LogoxideError, Result};
 pub const MANIFEST: &str = "logoxide.toml";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct Manifest {
     /// What this package is; a vault's manifest has none
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,7 +67,7 @@ pub struct Manifest {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
 pub struct Package {
     /// What dependencies call it: lowercase letters, digits, `-`, and `_`
     pub id: String,
@@ -175,7 +174,6 @@ impl Direction {
 
 /// Where a format's files are, and the feature that turns it on (always on without one)
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct FormatEntry {
     pub path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -253,7 +251,7 @@ pub enum Dependency {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
 pub struct DetailedDependency {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git: Option<String>,
@@ -272,6 +270,11 @@ pub struct DetailedDependency {
     pub rev: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub branch: Option<String>,
+    /// The package's folder in its repository (`romans`), for a repository of many packages:
+    /// its releases are tagged `romans/v1.0.0` (as `lx release` tags them), and only that
+    /// folder's files are the package
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder: Option<String>,
     /// Only used when a feature turns it on (`dep:name`)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub optional: bool,
@@ -306,6 +309,7 @@ impl Default for DetailedDependency {
             tag: None,
             rev: None,
             branch: None,
+            folder: None,
             optional: false,
             features: vec![],
             default_features: true,
@@ -339,7 +343,7 @@ fn yes() -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
 pub struct Settings {
     /// The Bible references use when they name none
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -552,11 +556,7 @@ impl Manifest {
     pub fn validate(&self) -> Result<()> {
         let err = |message: String| Err(LogoxideError::Manifest(message));
         if let Some(package) = &self.package {
-            let ok = !package.id.is_empty()
-                && package.id.bytes().all(|b| {
-                    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_'
-                });
-            if !ok {
+            if !is_valid_id(&package.id) {
                 return err(format!(
                     "package id `{}`: use lowercase letters, digits, `-`, and `_`",
                     package.id
@@ -644,10 +644,183 @@ impl Manifest {
                     "dependency `{name}`: at most one of `tag`, `rev`, and `branch`, with `git`"
                 ));
             }
+            check_dependency(name, d)?;
+        }
+        if let Some(media) = &self.media {
+            for file in &media.files {
+                crate::media::check_sha256(&file.sha256)?;
+            }
         }
         Ok(())
     }
 
+    /**
+    The keys in a manifest's text that logoxide doesn't know, as dotted paths
+    (`package.funding`, `dependencies.kjv.mirror`), so a caller can warn of them as Cargo does.
+    They're no error: a newer logoxide may write keys an older one doesn't read
+    */
+    pub fn unknown_keys(text: &str) -> Result<Vec<String>> {
+        let table: toml::Table =
+            toml::from_str(text).map_err(|e| LogoxideError::Manifest(e.to_string()))?;
+        let mut unknown = vec![];
+        let check = |at: &str, value: &toml::Value, fields: &[&str], unknown: &mut Vec<String>| {
+            if let Some(table) = value.as_table() {
+                for key in table.keys() {
+                    if !fields.contains(&key.as_str()) {
+                        unknown.push(format!("{at}.{key}"));
+                    }
+                }
+            }
+        };
+        for (key, value) in &table {
+            match key.as_str() {
+                "package" => check(key, value, fields_of::<Package>(), &mut unknown),
+                "formats" | "dependencies" => {
+                    let fields = match key.as_str() {
+                        "formats" => fields_of::<FormatEntry>(),
+                        _ => fields_of::<DetailedDependency>(),
+                    };
+                    for (name, entry) in value.as_table().into_iter().flatten() {
+                        check(&format!("{key}.{name}"), entry, fields, &mut unknown);
+                    }
+                }
+                "settings" => check(key, value, fields_of::<Settings>(), &mut unknown),
+                "media" => {
+                    check(key, value, fields_of::<crate::media::Media>(), &mut unknown);
+                    let files = value.get("files").and_then(toml::Value::as_array);
+                    for file in files.into_iter().flatten() {
+                        let fields = fields_of::<crate::media::MediaFile>();
+                        check("media.files", file, fields, &mut unknown);
+                    }
+                }
+                _ if fields_of::<Manifest>().contains(&key.as_str()) => {}
+                _ => unknown.push(key.clone()),
+            }
+        }
+        unknown.sort();
+        unknown.dedup();
+        Ok(unknown)
+    }
+}
+
+/// Whether `id` can be a package's id (or a dependency's name): lowercase letters, digits, `-`,
+/// and `_`. Ids name folders in the library, so nothing else is allowed
+pub fn is_valid_id(id: &str) -> bool {
+    !id.is_empty()
+        && (id.bytes())
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+}
+
+/// [`is_valid_id`] as an error naming what the id is of
+pub fn check_id(what: &str, id: &str) -> Result<()> {
+    match is_valid_id(id) {
+        true => Ok(()),
+        false => Err(LogoxideError::Manifest(format!(
+            "{what} `{id}`: use lowercase letters, digits, `-`, and `_`"
+        ))),
+    }
+}
+
+/**
+Checks what a dependency gives git and the library: its name and `package` are ids, and nothing
+it hands git could be read as an option (`--upload-pack=…`), so a manifest from anywhere can't run
+commands. A revision is a commit's hex; a folder is a plain relative path
+*/
+fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
+    let err = |message: String| Err(LogoxideError::Manifest(message));
+    check_id("dependency", name)?;
+    if let Some(package) = &d.package {
+        check_id(&format!("dependency `{name}`: package"), package)?;
+    }
+    for (key, value) in [
+        ("git", &d.git),
+        ("registry", &d.registry),
+        ("tag", &d.tag),
+        ("branch", &d.branch),
+        ("rev", &d.rev),
+    ] {
+        if let Some(value) = value
+            && (value.starts_with('-') || value.trim().is_empty() || value.contains('\0'))
+        {
+            return err(format!(
+                "dependency `{name}`: `{key} = \"{value}\"` isn't one"
+            ));
+        }
+    }
+    if let Some(rev) = &d.rev
+        && !((4..=64).contains(&rev.len()) && rev.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        return err(format!(
+            "dependency `{name}`: rev `{rev}` isn't a commit (4 to 64 hex digits); name a branch \
+             with `branch`, a tag with `tag`"
+        ));
+    }
+    if let Some(folder) = &d.folder {
+        let plain = |part: &str| {
+            !part.is_empty()
+                && part != "."
+                && part != ".."
+                && !part.starts_with('-')
+                && !part.contains([':', '\\', '\0', '*', '?', '[', '~', '^'])
+        };
+        if !folder.trim_matches('/').split('/').all(plain) {
+            return err(format!(
+                "dependency `{name}`: folder `{folder}` isn't a folder in the repository"
+            ));
+        }
+        if d.git.is_none() {
+            return err(format!(
+                "dependency `{name}`: `folder` names a folder of a `git` repository"
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The field names serde reads for a struct: its `deserialize_struct` hands them to the
+/// deserializer, which this one keeps (and fails, having nothing to give)
+fn fields_of<T: serde::de::DeserializeOwned>() -> &'static [&'static str] {
+    use serde::de::Visitor;
+    #[derive(Debug)]
+    struct Fields(&'static [&'static str]);
+    impl std::fmt::Display for Fields {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "fields")
+        }
+    }
+    impl std::error::Error for Fields {}
+    impl serde::de::Error for Fields {
+        fn custom<M: std::fmt::Display>(_: M) -> Self {
+            Fields(&[])
+        }
+    }
+    struct Capture;
+    impl<'de> serde::Deserializer<'de> for Capture {
+        type Error = Fields;
+        fn deserialize_any<V: Visitor<'de>>(self, _: V) -> std::result::Result<V::Value, Fields> {
+            Err(Fields(&[]))
+        }
+        fn deserialize_struct<V: Visitor<'de>>(
+            self,
+            _: &'static str,
+            fields: &'static [&'static str],
+            _: V,
+        ) -> std::result::Result<V::Value, Fields> {
+            Err(Fields(fields))
+        }
+        serde::forward_to_deserialize_any! {
+            bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes byte_buf
+            option unit unit_struct newtype_struct seq tuple tuple_struct map enum identifier
+            ignored_any
+        }
+    }
+    match T::deserialize(Capture) {
+        Err(Fields(fields)) => fields,
+        Ok(_) => &[],
+    }
+}
+
+impl Manifest {
     /// What `features` (plus `default`, unless left out) turn on, following each feature
     pub fn enable(&self, features: &[&str], default: bool) -> Result<Enabled> {
         let mut enabled = Enabled::default();
@@ -902,6 +1075,91 @@ compare = ["mine"]
         );
         let typo = BSB.replace("abbreviation", "abbrev");
         assert!(Manifest::parse(&typo).is_err());
+        // Nothing that git reads as an option, and revisions are commits
+        for (dependency, message) in [
+            ("x = { git = \"--upload-pack=touch /tmp/x\" }", "isn't one"),
+            (
+                "x = { git = \"https://e.org/x\", tag = \"-x\" }",
+                "isn't one",
+            ),
+            (
+                "x = { git = \"https://e.org/x\", branch = \"--x\" }",
+                "isn't one",
+            ),
+            (
+                "x = { git = \"https://e.org/x\", rev = \"--x\" }",
+                "isn't one",
+            ),
+            (
+                "x = { git = \"https://e.org/x\", rev = \"main\" }",
+                "isn't a commit",
+            ),
+            (
+                "x = { git = \"https://e.org/x\", rev = \"abc\" }",
+                "isn't a commit",
+            ),
+            ("x = { registry = \"-r\" }", "isn't one"),
+            ("\"../x\" = { git = \"https://e.org/x\" }", "lowercase"),
+            (
+                "x = { git = \"https://e.org/x\", package = \"../x\" }",
+                "lowercase",
+            ),
+            (
+                "x = { git = \"https://e.org/x\", folder = \"../x\" }",
+                "isn't a folder",
+            ),
+            (
+                "x = { path = \"x\", folder = \"x\" }",
+                "of a `git` repository",
+            ),
+        ] {
+            let error = bad(dependency);
+            assert!(error.contains(message), "{dependency}: {error}");
+        }
+        let fine = format!("{BSB}\nx = {{ git = \"https://e.org/x\", rev = \"3f9c2a1b\" }}\n");
+        assert!(Manifest::parse(&fine).is_ok());
+        let folder = format!("{BSB}\nx = {{ git = \"https://e.org/x\", folder = \"books/x\" }}\n");
+        let folder = Manifest::parse(&folder).unwrap();
+        let Dependency::Detailed(x) = &folder.dependencies["x"] else {
+            panic!("detailed")
+        };
+        assert_eq!(x.folder.as_deref(), Some("books/x"));
+    }
+
+    #[test]
+    fn unknown_keys_are_named_not_refused() {
+        // A newer lx's keys: read, and named so a caller can warn
+        let newer = BSB
+            .replace(
+                "license = \"LicenseRef-PublicDomain\"",
+                "license = \"LicenseRef-PublicDomain\"\nfunding = \"https://e.org\"",
+            )
+            .replace(
+                "tag = \"v1.0.0\" }",
+                "tag = \"v1.0.0\", mirror = \"https://m.org\" }",
+            )
+            .replace(
+                "usx = { path = \"usx/\", feature = \"usx\" }",
+                "usx = { path = \"usx/\", feature = \"usx\", encoding = \"utf-8\" }",
+            )
+            + "\n[settings]\ndefault = \"bsb\"\ntheme = \"dark\"\n\n[media]\nplayer = \"x\"\n\n[[media.files]]\npath = \"a.mp3\"\nurl = \"u\"\nsize = 0\nsha256 = \"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\nlength = 3\n\n[plugins]\nx = 1\n";
+        let manifest = Manifest::parse(&newer).unwrap();
+        assert_eq!(manifest.package.unwrap().id, "bsb");
+        assert_eq!(
+            Manifest::unknown_keys(&newer).unwrap(),
+            [
+                "dependencies.tsk.mirror",
+                "formats.usx.encoding",
+                "media.files.length",
+                "media.player",
+                "package.funding",
+                "plugins",
+                "settings.theme"
+            ]
+        );
+        assert!(Manifest::unknown_keys(BSB).unwrap().is_empty());
+        // Values still have to make sense
+        assert!(Manifest::parse(&BSB.replace("version = \"1.2.0\"", "version = 3")).is_err());
         let id = BSB.replace("id = \"bsb\"", "id = \"BSB 2\"");
         assert!(
             Manifest::parse(&id)

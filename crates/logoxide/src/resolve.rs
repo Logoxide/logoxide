@@ -82,6 +82,9 @@ struct Want {
     within: String,
     /// Named by a git package (which can't have path dependencies)
     from_git: bool,
+    /// Named by a package fetched from another machine (a remote repository or registry), which
+    /// may name only what's on other machines: nothing on this one
+    from_remote: bool,
     /// The index (in the lock file) of the package that named it, if not the manifest
     parent: Option<usize>,
 }
@@ -89,6 +92,32 @@ struct Want {
 /// A tag's version: `v1.2.0` or `1.2.0`
 pub fn tag_version(tag: &str) -> Option<semver::Version> {
     tag.strip_prefix('v').unwrap_or(tag).parse().ok()
+}
+
+/**
+The version of a tag of the package in `folder` of its repository (`romans/v1.2.0`, as
+`lx release` tags a package in a folder), or of a package at the repository's root (`v1.2.0`)
+when there's no folder. Another folder's tags are no version of it
+*/
+pub fn folder_tag_version(tag: &str, folder: Option<&str>) -> Option<semver::Version> {
+    let own = match folder
+        .map(|f| f.trim_matches('/'))
+        .filter(|f| !f.is_empty())
+    {
+        Some(folder) => tag.strip_prefix(folder)?.strip_prefix('/')?,
+        None => tag,
+    };
+    if own.contains('/') {
+        return None;
+    }
+    tag_version(own)
+}
+
+/// Whether a locked package came from another machine (not a path, a local repository, or a
+/// file): what it names may come only from other machines too
+fn is_remote(locked: &LockedPackage) -> bool {
+    let remote = |url: &Option<String>| url.as_deref().is_some_and(|u| !crate::git::is_local(u));
+    remote(&locked.git) || remote(&locked.registry) || remote(&locked.archive)
 }
 
 fn relative_join(within: &str, path: &str) -> String {
@@ -126,6 +155,7 @@ impl Resolver<'_> {
                 dependency,
                 within: String::new(),
                 from_git: false,
+                from_remote: false,
                 parent: None,
             });
         }
@@ -200,6 +230,7 @@ impl Resolver<'_> {
                     dependency,
                     within: within.clone(),
                     from_git: locked.git.is_some() || locked.registry.is_some(),
+                    from_remote: want.from_remote || is_remote(&locked),
                     parent: Some(index),
                 });
             }
@@ -221,6 +252,29 @@ impl Resolver<'_> {
 
     fn resolve_one(&self, want: &Want) -> Result<LockedPackage> {
         let d = &want.dependency;
+        // Its name and id name folders: checked before they're used (a manifest built in code
+        // isn't parsed)
+        crate::manifest::check_id("dependency", &want.name)?;
+        if let Some(package) = &d.package {
+            crate::manifest::check_id(&format!("dependency `{}`: package", want.name), package)?;
+        }
+        if want.from_remote {
+            // A package from elsewhere can't reach into this machine: a folder, a local
+            // repository, or a file
+            let local = match &d.path {
+                Some(path) => Some(path),
+                None => [&d.git, &d.registry]
+                    .into_iter()
+                    .flatten()
+                    .find(|url| crate::git::is_local(&crate::git::expand_url(url))),
+            };
+            if let Some(local) = local {
+                return Err(LogoxideError::Resolve(format!(
+                    "`{}`: a package from another machine names `{local}`, on this one",
+                    want.name
+                )));
+            }
+        }
         let mut features: Vec<String> = d.features.clone();
         features.sort();
         features.dedup();
@@ -253,6 +307,7 @@ impl Resolver<'_> {
                 branch: None,
                 rev: None,
                 commit: None,
+                folder: None,
                 path: Some(relative),
                 registry: None,
                 archive: None,
@@ -303,6 +358,8 @@ impl Resolver<'_> {
                     };
                     p.id == d.package_id(&want.name)
                         && p.git.as_deref() == Some(url.as_str())
+                        && p.folder.as_deref().map(|f| f.trim_matches('/'))
+                            == d.folder.as_deref().map(|f| f.trim_matches('/'))
                         && p.commit.is_some()
                         && same
                 })
@@ -342,7 +399,7 @@ impl Resolver<'_> {
         let tags = self.fetcher.tags(url)?;
         let newest = tags
             .iter()
-            .filter_map(|(tag, _)| Some((tag_version(tag)?, tag)))
+            .filter_map(|(tag, _)| Some((folder_tag_version(tag, d.folder.as_deref())?, tag)))
             .filter(|(version, _)| match &d.version {
                 Some(req) => req.matches(version),
                 // Without a requirement, the newest release (not a pre-release)
@@ -351,9 +408,10 @@ impl Resolver<'_> {
             .max_by(|a, b| a.0.cmp(&b.0));
         match (newest, &d.version) {
             (Some((_, tag)), _) => Ok((GitRef::Tag(tag.clone()), Some(tag.clone()))),
-            (None, Some(req)) => Err(LogoxideError::Resolve(format!(
-                "`{name}`: no tag of {url} matches {req}"
-            ))),
+            (None, Some(req)) => Err(LogoxideError::Resolve(match &d.folder {
+                Some(folder) => format!("`{name}`: no tag of {url} for {folder}/ matches {req}"),
+                None => format!("`{name}`: no tag of {url} matches {req}"),
+            })),
             (None, None) => Ok((GitRef::Head, None)),
         }
     }
@@ -388,6 +446,13 @@ impl Resolver<'_> {
         }
         let fetched = MemoryStorage::new();
         let commit = self.fetcher.fetch(url, reference, &fetched)?;
+        // A package in a folder of its repository is that folder's files
+        let fetched = match d.folder.as_deref().map(|f| f.trim_matches('/')) {
+            Some(folder) if !folder.is_empty() => {
+                crate::release::within(&fetched, &format!("{folder}/"))?
+            }
+            _ => fetched,
+        };
         // The package's own files: what its manifest declares
         let storage = crate::package::only_declared(&fetched)?;
         // Opened only to read what it is; no format needs to be enabled for that
@@ -400,7 +465,7 @@ impl Resolver<'_> {
         })?;
         self.check_id(name, d, &info.id)?;
         if let GitRef::Tag(tag) = reference
-            && let Some(version) = tag_version(tag)
+            && let Some(version) = folder_tag_version(tag, d.folder.as_deref())
             && version != info.version
         {
             return Err(LogoxideError::Resolve(format!(
@@ -433,6 +498,7 @@ impl Resolver<'_> {
             },
             rev: None,
             commit: Some(commit),
+            folder: d.folder.as_ref().map(|f| f.trim_matches('/').to_string()),
             path: None,
             registry: None,
             archive: None,
@@ -479,6 +545,7 @@ impl Resolver<'_> {
     fn registry_release(&self, want: &Want, registry: &str) -> Result<LockedPackage> {
         let d = &want.dependency;
         let id = d.package_id(&want.name);
+        crate::manifest::check_id("package", id)?;
         let kept = self
             .previous
             .filter(|_| !self.update.allows(&want.name))
@@ -500,6 +567,18 @@ impl Resolver<'_> {
                 let entry = catalog.find(id)?.ok_or_else(|| {
                     LogoxideError::Resolve(format!("`{}`: {registry} has no `{id}`", want.name))
                 })?;
+                // A remote catalog's archives are remote too (as reading it checks)
+                let local = (entry.releases.iter())
+                    .flat_map(|r| std::iter::once(&r.url).chain(&r.mirrors))
+                    .find(|url| crate::git::is_local(url));
+                if !crate::git::is_local(registry)
+                    && let Some(local) = local
+                {
+                    return Err(LogoxideError::Resolve(format!(
+                        "`{}`: {registry} lists `{local}`, on this machine",
+                        want.name
+                    )));
+                }
                 let release = entry.release(d.version.as_ref()).ok_or_else(|| {
                     let wanted = (d.version.as_ref()).map_or(String::from("a release"), |r| {
                         format!("a release matching {r}")
@@ -520,6 +599,7 @@ impl Resolver<'_> {
                     branch: None,
                     rev: None,
                     commit: None,
+                    folder: None,
                     path: None,
                     registry: Some(registry.to_string()),
                     archive: Some(release.url.clone()),

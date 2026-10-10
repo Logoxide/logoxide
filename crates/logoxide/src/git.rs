@@ -39,6 +39,35 @@ pub fn expand_url(url: &str) -> String {
     short.unwrap_or_else(|| url.to_string())
 }
 
+/**
+Whether a repository or file is on this machine: a path or a `file://` URL. A URL with a scheme
+(`https://`, `ssh://`) and an scp-like `user@host:path` are elsewhere; a short name
+(`github:owner/repo`) is expanded first ([`expand_url`])
+*/
+pub fn is_local(url: &str) -> bool {
+    let url = expand_url(url.trim());
+    if url.to_ascii_lowercase().starts_with("file:") {
+        return true;
+    }
+    if url.contains("://") {
+        return false;
+    }
+    // `host:path` (scp-like: no `/` before the colon) is elsewhere, but `C:/…` is a Windows drive
+    match url.split_once(':') {
+        Some((host, _)) => host.contains('/') || host.contains('\\') || host.len() == 1,
+        None => true,
+    }
+}
+
+/// Whether a URL is fetched without encryption (`http://`, `git://`, `ftp://`), so what it
+/// gives could have been changed on the way: worth a warning
+pub fn is_insecure(url: &str) -> bool {
+    let lower = url.trim().to_ascii_lowercase();
+    ["http://", "git://", "ftp://"]
+        .iter()
+        .any(|s| lower.starts_with(s))
+}
+
 /// A local file named by a path or a `file://` URL (anything else isn't local: an error)
 pub fn read_local(url: &str) -> Result<Vec<u8>> {
     if url.contains("://") && !url.starts_with("file://") {
@@ -133,9 +162,20 @@ pub struct GitCli {
     pub scratch: Option<PathBuf>,
 }
 
+/**
+Runs git. Its `ext::` transport (which runs a command a URL names) is off, and transports git
+leaves to the user's choice (`fd::`, a helper's) are refused, since URLs come from manifests
+anyone writes. Local repositories stay allowed (git counts them among those): the resolver keeps
+packages from elsewhere from naming them ([`is_local`])
+*/
 fn git(args: &[&str], dir: Option<&Path>, url: &str) -> Result<String> {
     let mut command = Command::new("git");
-    command.args(args).env("GIT_TERMINAL_PROMPT", "0");
+    command
+        .args(["-c", "protocol.ext.allow=never"])
+        .args(["-c", "protocol.file.allow=always"])
+        .args(args)
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_PROTOCOL_FROM_USER", "0");
     if let Some(dir) = dir {
         command.current_dir(dir);
     }
@@ -163,6 +203,58 @@ impl GitCli {
     }
 }
 
+/**
+Refuses what git could read as an option (`--upload-pack=…` runs a command) or that isn't what it
+says: a URL or reference starting with `-`, and a revision that isn't hex. Manifests are checked
+when read ([`crate::manifest::Manifest::validate`]); this is for whatever else reaches git. Each is
+also put after `--`, where git reads no options
+*/
+fn check_args(url: &str, reference: &GitRef) -> Result<()> {
+    let refuse = |what: &str| {
+        Err(LogoxideError::Fetch {
+            url: url.to_string(),
+            message: format!("{what} isn't one git should be given"),
+        })
+    };
+    if url.starts_with('-') || url.trim().is_empty() || url.contains('\0') {
+        return refuse("this URL");
+    }
+    let named = match reference {
+        GitRef::Tag(name) | GitRef::Branch(name) => name,
+        GitRef::Rev(rev) => {
+            if rev.is_empty() || !rev.bytes().all(|b| b.is_ascii_hexdigit()) {
+                return refuse(&format!("revision `{rev}`"));
+            }
+            rev
+        }
+        GitRef::Head => return Ok(()),
+    };
+    if named.starts_with('-') || named.is_empty() || named.contains(['\0', ' ', ':']) {
+        return refuse(&format!("`{named}`"));
+    }
+    Ok(())
+}
+
+/// A path's file in `dir`, if it's a plain file there: each folder on the way is a folder and
+/// the file a file, none of them a link (whose target may be anywhere)
+fn plain_file(dir: &Path, path: &str) -> Option<PathBuf> {
+    let mut at = dir.to_path_buf();
+    for part in path.split('/') {
+        if part.is_empty() || part == "." || part == ".." || part.contains('\\') {
+            return None;
+        }
+        at.push(part);
+        let meta = std::fs::symlink_metadata(&at).ok()?;
+        if meta.file_type().is_symlink() {
+            return None;
+        }
+    }
+    std::fs::symlink_metadata(&at)
+        .ok()
+        .filter(|m| m.file_type().is_file())
+        .map(|_| at)
+}
+
 fn wanted(reference: &GitRef) -> String {
     match reference {
         GitRef::Tag(tag) => format!("refs/tags/{tag}"),
@@ -186,9 +278,10 @@ impl Fetcher for GitCli {
         let io = |e: std::io::Error| LogoxideError::io(&work.display().to_string(), e);
         std::fs::create_dir_all(&work).map_err(io)?;
         let result = (|| {
+            check_args(url, reference)?;
             let w = Some(work.as_path());
             git(&["init", "-q"], w, url)?;
-            git(&["remote", "add", "origin", url], w, url)?;
+            git(&["remote", "add", "--", "origin", url], w, url)?;
             git(&["config", "remote.origin.promisor", "true"], w, url)?;
             git(
                 &["config", "remote.origin.partialclonefilter", "blob:none"],
@@ -202,6 +295,7 @@ impl Fetcher for GitCli {
                     "--depth",
                     "1",
                     "--filter=blob:none",
+                    "--",
                     "origin",
                     &wanted(reference),
                 ],
@@ -215,8 +309,8 @@ impl Fetcher for GitCli {
             git(&["checkout", "-q", "FETCH_HEAD"], w, url)?;
             let commit = git(&["rev-parse", "HEAD"], w, url)?.trim().to_string();
             for path in paths {
-                let from = work.join(path);
-                if from.is_file() {
+                // Only a file in the work folder: never through a link, which may lead anywhere
+                if let Some(from) = plain_file(&work, path) {
                     let bytes = std::fs::read(&from).map_err(|e| LogoxideError::io(path, e))?;
                     dest.write(path, &bytes)?;
                 }
@@ -228,7 +322,8 @@ impl Fetcher for GitCli {
     }
 
     fn tags(&self, url: &str) -> Result<Vec<(String, String)>> {
-        let out = git(&["ls-remote", "--tags", url], None, url)?;
+        check_args(url, &GitRef::Head)?;
+        let out = git(&["ls-remote", "--tags", "--", url], None, url)?;
         let mut tags: Vec<(String, String)> = vec![];
         for line in out.lines() {
             let Some((commit, name)) = line.split_once('\t') else {
@@ -255,15 +350,10 @@ impl Fetcher for GitCli {
         let io = |e: std::io::Error| LogoxideError::io(&work.display().to_string(), e);
         std::fs::create_dir_all(&work).map_err(io)?;
         let result = (|| {
+            check_args(url, reference)?;
             git(&["init", "-q"], Some(&work), url)?;
-            let wanted = match reference {
-                GitRef::Tag(tag) => format!("refs/tags/{tag}"),
-                GitRef::Branch(branch) => format!("refs/heads/{branch}"),
-                GitRef::Rev(rev) => rev.clone(),
-                GitRef::Head => String::from("HEAD"),
-            };
             git(
-                &["fetch", "-q", "--depth", "1", url, &wanted],
+                &["fetch", "-q", "--depth", "1", "--", url, &wanted(reference)],
                 Some(&work),
                 url,
             )?;
@@ -346,9 +436,12 @@ fn copy_into(from: &Path, prefix: &str, to: &dyn Storage) -> Result<()> {
             continue;
         }
         let (source, path) = (entry.path(), crate::storage::join(prefix, &name));
-        if entry.file_type().map_err(|e| io(&source, e))?.is_dir() {
+        // The entry itself (not what a link leads to): links are left out, so nothing outside
+        // the checkout is read
+        let kind = entry.file_type().map_err(|e| io(&source, e))?;
+        if kind.is_dir() {
             copy_into(&source, &path, to)?;
-        } else {
+        } else if kind.is_file() {
             to.write(&path, &std::fs::read(&source).map_err(|e| io(&source, e))?)?;
         }
     }
@@ -358,6 +451,95 @@ fn copy_into(from: &Path, prefix: &str, to: &dyn Storage) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_and_insecure_urls() {
+        for local in [
+            "/srv/kjv",
+            "../kjv",
+            "kjv",
+            "file:///srv/kjv",
+            "FILE:///srv/kjv",
+            "C:/kjv",
+        ] {
+            assert!(is_local(local), "{local}");
+        }
+        for remote in [
+            "https://github.com/a/kjv",
+            "ssh://git@host/kjv",
+            "git@github.com:a/kjv",
+            "github:a/kjv",
+        ] {
+            assert!(!is_local(remote), "{remote}");
+        }
+        assert!(is_insecure("http://ftp.xiphos.org/pub/xiphos/"));
+        assert!(is_insecure("git://example.org/kjv"));
+        assert!(!is_insecure("https://example.org/kjv"));
+    }
+
+    #[test]
+    fn nothing_reaches_git_as_an_option() {
+        let marker = std::env::temp_dir().join(format!("logoxide-pwned-{}", std::process::id()));
+        let url = format!("--upload-pack=touch {}", marker.display());
+        let cli = GitCli::default();
+        assert!(cli.tags(&url).is_err());
+        assert!(
+            cli.fetch(&url, &GitRef::Head, &MemoryStorage::new())
+                .is_err()
+        );
+        let files = MemoryStorage::new();
+        assert!(
+            cli.fetch_files(&url, &GitRef::Head, &["x"], &files)
+                .is_err()
+        );
+        let bad_rev = GitRef::Rev(String::from("--output=/tmp/x"));
+        assert!(check_args("https://e.org/x", &bad_rev).is_err());
+        assert!(check_args("https://e.org/x", &GitRef::Tag("-x".into())).is_err());
+        assert!(check_args("https://e.org/x", &GitRef::Tag("romans/v1.0.0".into())).is_ok());
+        assert!(!marker.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_lead_nowhere() {
+        let root = std::env::temp_dir().join(format!("logoxide-links-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (repo, outside) = (root.join("repo"), root.join("outside"));
+        std::fs::create_dir_all(&repo).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("secret"), "secret").unwrap();
+        std::fs::write(repo.join("ok.txt"), "ok").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret"), repo.join("evil")).unwrap();
+        std::os::unix::fs::symlink(&outside, repo.join("dir")).unwrap();
+        let run = |args: &[&str]| {
+            let out = Command::new("git")
+                .args(["-c", "user.name=t", "-c", "user.email=t@t"])
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .current_dir(&repo)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}");
+        };
+        run(&["init", "-q"]);
+        run(&["add", "-A"]);
+        run(&["commit", "-q", "-m", "links"]);
+        let url = repo.display().to_string();
+        let cli = GitCli::default();
+        let all = MemoryStorage::new();
+        cli.fetch(&url, &GitRef::Head, &all).unwrap();
+        assert_eq!(all.walk("").unwrap(), ["ok.txt"]);
+        let some = MemoryStorage::new();
+        (cli.fetch_files(
+            &url,
+            &GitRef::Head,
+            &["evil", "dir/secret", "ok.txt"],
+            &some,
+        ))
+        .unwrap();
+        assert_eq!(some.walk("").unwrap(), ["ok.txt"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn expands_short_names() {

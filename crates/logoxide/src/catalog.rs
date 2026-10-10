@@ -96,6 +96,8 @@ pub const SWORD_REPOSITORIES: [(&str, &str); 9] = [
         "lockman",
         "https://crosswire.org/ftpmirror/pub/sword/lockmanraw/",
     ),
+    // Over plain HTTP: ftp.xiphos.org serves no HTTPS (October 2026), so what it gives could be
+    // changed on the way ([`crate::git::is_insecure`] says so, for a warning)
     ("xiphos", "http://ftp.xiphos.org/pub/xiphos/"),
 ];
 
@@ -299,11 +301,20 @@ struct TomlEntry {
 
 #[derive(Clone, Debug, Deserialize)]
 struct TomlCatalog {
+    /// The layout's version ([`CATALOG_FORMAT`]); none is 1
+    #[serde(default)]
+    format: Option<u32>,
     #[serde(default)]
     name: Option<String>,
     #[serde(default, rename = "package")]
     packages: Vec<TomlEntry>,
 }
+
+/**
+The `catalog.toml` layout this logoxide reads and writes (`format = 1`; a catalog without it is 1).
+A catalog of a later format is refused with a request to upgrade, rather than misread
+*/
+pub const CATALOG_FORMAT: u32 = 1;
 
 /// A catalog's packages
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -571,8 +582,27 @@ impl Catalog {
     pub fn parse_toml_at(location: Option<&str>, text: &str) -> Result<Catalog> {
         let catalog: TomlCatalog =
             toml::from_str(text).map_err(|e| LogoxideError::Catalog(e.to_string()))?;
+        let format = catalog.format.unwrap_or(1);
+        if format > CATALOG_FORMAT {
+            return Err(LogoxideError::Catalog(format!(
+                "{}is format {format}, newer than this lx reads ({CATALOG_FORMAT}): upgrade lx",
+                location.map(|l| format!("{l} ")).unwrap_or_default()
+            )));
+        }
+        // A catalog from elsewhere names nothing on this machine: its packages, archives, and
+        // mirrors are elsewhere too (a relative one is beside it)
+        let remote = location.is_some_and(|l| !crate::git::is_local(l));
+        let check = |id: &str, url: &str| match remote && crate::git::is_local(url) {
+            true => Err(LogoxideError::Catalog(format!(
+                "{id}: `{url}` is on this machine, but the catalog isn't"
+            ))),
+            false => Ok(()),
+        };
         let mut entries = vec![];
         for e in catalog.packages {
+            if let Some(git) = &e.git {
+                check(&e.id, git)?;
+            }
             let source = match &e.git {
                 // `github:owner/repo` is listed by its URL
                 Some(git) => CatalogSource::Git {
@@ -600,7 +630,12 @@ impl Catalog {
                         ..r
                     }
                 })
-                .collect();
+                .collect::<Vec<CatalogRelease>>();
+            for release in &releases {
+                for url in std::iter::once(&release.url).chain(&release.mirrors) {
+                    check(&e.id, url)?;
+                }
+            }
             entries.push(CatalogEntry {
                 id: e.id,
                 name: e.name,
@@ -836,6 +871,30 @@ impl Catalog {
         }
     }
 
+    /**
+    The ids more than one of `catalogs` lists, and the names of those that list each, in order:
+    merged ([`Catalog::merge`]), the first one's entry is kept and the others' are hidden, which a
+    caller may warn of
+    */
+    pub fn shadowed(catalogs: &[Catalog]) -> Vec<(String, Vec<String>)> {
+        let mut listed: indexmap::IndexMap<&str, Vec<String>> = indexmap::IndexMap::new();
+        for catalog in catalogs {
+            let mut seen = std::collections::BTreeSet::new();
+            for entry in &catalog.entries {
+                if seen.insert(entry.id.as_str()) {
+                    listed
+                        .entry(entry.id.as_str())
+                        .or_default()
+                        .push(catalog.name.clone());
+                }
+            }
+        }
+        (listed.into_iter())
+            .filter(|(_, names)| names.len() > 1)
+            .map(|(id, names)| (id.to_string(), names))
+            .collect()
+    }
+
     /// This catalog with another's entries after its own (an id listed twice keeps the first)
     pub fn merge(mut self, other: Catalog) -> Catalog {
         for entry in other.entries {
@@ -855,6 +914,7 @@ impl Catalog {
     /// ([`Catalog::entry_table`]), in order
     pub fn toml_document(name: Option<&str>, tables: Vec<toml_edit::Table>) -> String {
         let mut doc = toml_edit::DocumentMut::new();
+        doc.insert("format", toml_edit::value(i64::from(CATALOG_FORMAT)));
         if let Some(name) = name {
             doc.insert("name", toml_edit::value(name));
         }
@@ -1611,5 +1671,78 @@ usx = { path = "usx/" }
             sword_license(Some("Copyrighted; Free non-commercial distribution")),
             "LicenseRef-SWORD"
         );
+    }
+
+    const ENTRY: &str =
+        "[[package]]\nid = \"kjv\"\nname = \"KJV\"\nabbreviation = \"KJV\"\nlanguage = \"en\"\n";
+
+    fn release(url: &str) -> String {
+        format!(
+            "{ENTRY}[[package.release]]\nversion = \"1.0.0\"\nurl = \"{url}\"\nsha256 = \"sha256:00\"\n"
+        )
+    }
+
+    #[test]
+    fn a_remote_catalog_names_nothing_local() {
+        let remote = "https://example.org/r/catalog.toml";
+        for url in ["/etc/passwd", "file:///etc/passwd"] {
+            let error = Catalog::parse(remote, &release(url)).unwrap_err();
+            assert!(error.to_string().contains("on this machine"), "{error}");
+            // A local catalog may
+            assert!(Catalog::parse("/srv/r/catalog.toml", &release(url)).is_ok());
+        }
+        let mirrored = format!(
+            "{}mirrors = [\"/srv/kjv.tar.gz\"]\n",
+            release("kjv-1.0.0.tar.gz")
+        );
+        assert!(Catalog::parse(remote, &mirrored).is_err());
+        let git = format!("{ENTRY}git = \"/srv/kjv\"\n");
+        assert!(Catalog::parse(remote, &git).is_err());
+        // Relative ones are beside it, so remote too
+        let catalog = Catalog::parse(remote, &release("kjv/kjv-1.0.0.tar.gz")).unwrap();
+        assert_eq!(
+            catalog.entries[0].releases[0].url,
+            "https://example.org/r/kjv/kjv-1.0.0.tar.gz"
+        );
+    }
+
+    #[test]
+    fn catalogs_say_their_format() {
+        assert!(Catalog::parse_toml(&format!("format = 1\n{ENTRY}git = \"x\"\n")).is_ok());
+        let error = Catalog::parse_toml(&format!("format = 2\n{ENTRY}git = \"x\"\n")).unwrap_err();
+        assert!(error.to_string().contains("upgrade lx"), "{error}");
+        let written = Catalog::toml_document(Some("mine"), vec![]);
+        assert!(written.starts_with("format = 1\n"), "{written}");
+        assert!(Catalog::parse_toml(&written).is_ok());
+    }
+
+    #[test]
+    fn shadowed_ids_are_found() {
+        let catalog = |name: &str, ids: &[&str]| {
+            let entries: String = (ids.iter())
+                .map(|id| ENTRY.replace("\"kjv\"", &format!("\"{id}\"")) + "git = \"x\"\n")
+                .collect();
+            let mut catalog = Catalog::parse_toml(&entries).unwrap();
+            catalog.name = name.to_string();
+            catalog
+        };
+        let catalogs = [
+            catalog("mine", &["kjv", "bsb"]),
+            catalog("ebible", &["web", "kjv"]),
+            catalog("other", &["kjv", "web", "asv"]),
+        ];
+        let names = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            Catalog::shadowed(&catalogs),
+            [
+                (String::from("kjv"), names(&["mine", "ebible", "other"])),
+                (String::from("web"), names(&["ebible", "other"])),
+            ]
+        );
+        // Merging still keeps the first
+        let merged = (catalogs.iter().cloned()).reduce(Catalog::merge).unwrap();
+        assert_eq!(merged.entries.len(), 4);
+        let ids: Vec<&str> = merged.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["kjv", "bsb", "web", "asv"]);
     }
 }
