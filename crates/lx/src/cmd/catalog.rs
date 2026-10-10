@@ -491,6 +491,9 @@ pub(crate) fn search(
             (_, None) => String::new(),
         };
         let edition = match (&entry.edition, entry.edition_year) {
+            (Some(edition), Some(year)) if edition.contains(&year.to_string()) => {
+                format!(" [{edition}]")
+            }
             (Some(edition), Some(year)) => format!(" [{edition}, {year}]"),
             (Some(edition), None) => format!(" [{edition}]"),
             (None, Some(year)) => format!(" [{year}]"),

@@ -63,6 +63,10 @@ pub fn describe(info: &crate::manifest::Package) -> Option<String> {
     let work = info.work.as_deref()?;
     let name = get(work).map_or(work, |w| w.name.as_str());
     let edition = match (&info.edition, info.edition_year) {
+        // An edition named by its year (`1769`) needn't say it twice
+        (Some(edition), Some(year)) if edition.contains(&year.to_string()) => {
+            format!(", edition {edition}")
+        }
         (Some(edition), Some(year)) => format!(", edition {edition} ({year})"),
         (Some(edition), None) => format!(", edition {edition}"),
         (None, Some(year)) => format!(", edition of {year}"),
