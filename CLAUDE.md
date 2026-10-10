@@ -3,7 +3,8 @@
 Bibles, commentaries, lexicons, books, and media as versioned packages (git repositories with a
 `logoxide.toml`), read from many formats, cached, shared, and (later) installed; `lx` is the CLI. The
 plan and the owner's decisions are in topos's `doc/logoxide.md` (`../topos/doc/logoxide.md`): read it
-before changing the design.
+before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, phases G–M), after
+`PLAN.md` (the 2026-10-09 review) and `PLAN-CRATES.md` (the crate layout, done).
 
 ## Layout
 
