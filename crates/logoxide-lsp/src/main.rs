@@ -1,14 +1,22 @@
 //! `logoxide-lsp` speaks the Language Server Protocol over stdin and stdout.
 
-use std::error::Error;
+use std::{
+    collections::HashMap,
+    error::Error,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
-use lsp_server::{Connection, Message, Notification, Request, Response};
+use lsp_server::{Connection, Message, Notification, Request, RequestId, Response};
 use lsp_types::{
-    DidChangeConfigurationParams, DidChangeTextDocumentParams, DidCloseTextDocumentParams,
-    DidOpenTextDocumentParams, InitializeParams, MessageType, ShowMessageParams, Uri,
+    CancelParams, DidChangeConfigurationParams, DidChangeTextDocumentParams,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, InitializeParams, MessageType,
+    NumberOrString, ShowMessageParams, Uri,
     notification::{
-        DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument, DidOpenTextDocument,
-        Notification as LspNotification, PublishDiagnostics, ShowMessage,
+        Cancel, DidChangeConfiguration, DidChangeTextDocument, DidCloseTextDocument,
+        DidOpenTextDocument, Notification as LspNotification, PublishDiagnostics, ShowMessage,
     },
     request::{
         CodeActionRequest, Completion, DocumentDiagnosticRequest, DocumentSymbolRequest,
@@ -19,7 +27,10 @@ use lsp_types::{
 };
 use topos_bible::matcher::BibleMatcher;
 
-use crate::server::Server;
+use crate::{
+    server::{Search, Server},
+    workspace::Stop,
+};
 
 mod bible;
 mod server;
@@ -115,15 +126,31 @@ fn run(connection: &Connection) -> Result<(), AnyError> {
     if let Err(err) = server.configure(options) {
         warn(connection, err)?;
     }
+    let running = Running::default();
     for message in &connection.receiver {
         match message {
             Message::Request(request) => {
                 if connection.handle_shutdown(&request)? {
+                    running.cancel_all();
                     return Ok(());
                 }
-                connection
-                    .sender
-                    .send(Message::Response(respond(&server, request)))?;
+                let response = match answer(&server, request) {
+                    Answer::Later(id, search) => {
+                        running.spawn(connection, id, search);
+                        continue;
+                    }
+                    Answer::Now(response) => response,
+                    Answer::Here(request) => respond(&server, request),
+                };
+                connection.sender.send(Message::Response(response))?;
+            }
+            Message::Notification(notification) if notification.method == Cancel::METHOD => {
+                if let Ok(params) = serde_json::from_value::<CancelParams>(notification.params) {
+                    running.cancel(&match params.id {
+                        NumberOrString::Number(id) => RequestId::from(id),
+                        NumberOrString::String(id) => RequestId::from(id),
+                    });
+                }
             }
             Message::Notification(notification)
                 if notification.method == DidChangeConfiguration::METHOD =>
@@ -166,6 +193,102 @@ fn run(connection: &Connection) -> Result<(), AnyError> {
     Ok(())
 }
 
+/// How a request is answered
+enum Answer {
+    /// By a workspace search on another thread
+    Later(RequestId, Search),
+    /// Already known (its parameters were wrong, or there is nothing to search for)
+    Now(Response),
+    /// On this thread ([`respond`])
+    Here(Request),
+}
+
+/**
+How to answer a request: workspace searches (go-to-references, the search command) run on another
+thread, since searching every file can take seconds while completion and hover can't wait; other
+requests are answered here
+*/
+fn answer(server: &Server, request: Request) -> Answer {
+    let id = request.id.clone();
+    let invalid = |id, err| {
+        let code = lsp_server::ErrorCode::InvalidParams as i32;
+        Answer::Now(Response::new_err(id, code, err))
+    };
+    match request.method.as_str() {
+        References::METHOD => match params(request).map(|p| server.references_search(p)) {
+            Ok(Some(search)) => Answer::Later(id, search),
+            Ok(None) => Answer::Now(Response::new_ok(id, serde_json::Value::Null)),
+            Err(err) => invalid(id, err),
+        },
+        ExecuteCommand::METHOD => match params(request).and_then(|p| server.command_search(p)) {
+            Ok(search) => Answer::Later(id, search),
+            Err(err) => invalid(id, err),
+        },
+        _ => Answer::Here(request),
+    }
+}
+
+/// The workspace searches running on other threads, by request, each with the flag that cancels
+/// it (`$/cancelRequest`)
+#[derive(Clone, Default)]
+struct Running(Arc<Mutex<HashMap<RequestId, Arc<AtomicBool>>>>);
+
+impl Running {
+    /// Runs a search on its own thread, which answers the request
+    fn spawn(&self, connection: &Connection, id: RequestId, search: Search) {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        if let Ok(mut running) = self.0.lock() {
+            running.insert(id.clone(), cancelled.clone());
+        }
+        let sender = connection.sender.clone();
+        let running = self.clone();
+        std::thread::spawn(move || {
+            let result = search.run(&Stop::when(cancelled.clone()));
+            // Once it's no longer listed, a cancellation can't come in between this check and
+            // the answer
+            if let Ok(mut running) = running.0.lock() {
+                running.remove(&id);
+            }
+            let response = search_response(id, result, cancelled.load(Ordering::Relaxed));
+            // The editor may be gone already
+            let _ = sender.send(Message::Response(response));
+        });
+    }
+
+    fn cancel(&self, id: &RequestId) {
+        if let Ok(running) = self.0.lock()
+            && let Some(cancelled) = running.get(id)
+        {
+            cancelled.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// At shutdown: no search needs to finish
+    fn cancel_all(&self) {
+        if let Ok(running) = self.0.lock() {
+            for cancelled in running.values() {
+                cancelled.store(true, Ordering::Relaxed);
+            }
+        }
+    }
+}
+
+/// A workspace search's answer: its locations, or `RequestCancelled` if it was cancelled
+fn search_response(
+    id: RequestId,
+    result: Result<(Vec<lsp_types::Location>, bool), String>,
+    cancelled: bool,
+) -> Response {
+    match result {
+        _ if cancelled => {
+            let code = lsp_server::ErrorCode::RequestCanceled as i32;
+            Response::new_err(id, code, String::from("cancelled"))
+        }
+        Ok((locations, _)) => Response::new_ok(id, json(locations)),
+        Err(err) => Response::new_err(id, lsp_server::ErrorCode::InvalidParams as i32, err),
+    }
+}
+
 fn respond(server: &Server, request: Request) -> Response {
     let id = request.id.clone();
     let result = match request.method.as_str() {
@@ -174,7 +297,6 @@ fn respond(server: &Server, request: Request) -> Response {
         DocumentSymbolRequest::METHOD => params(request).map(|p| json(server.document_symbols(p))),
         InlayHintRequest::METHOD => params(request).map(|p| json(server.inlay_hints(p))),
         CodeActionRequest::METHOD => params(request).map(|p| json(server.code_actions(p))),
-        References::METHOD => params(request).map(|p| json(server.references(p))),
         GotoDefinition::METHOD | GotoDeclaration::METHOD => {
             params(request).map(|p| json(server.definition(p)))
         }
@@ -188,7 +310,6 @@ fn respond(server: &Server, request: Request) -> Response {
         server::FILE_TEXT_REQUEST => params(request).and_then(|p| server.file_text(p).map(json)),
         server::BIBLES_REQUEST => Ok(json(server.bibles())),
         server::SAME_VERSE_REQUEST => params(request).and_then(|p| server.same_verse(p).map(json)),
-        ExecuteCommand::METHOD => params(request).and_then(|p| server.execute_command(p).map(json)),
         DocumentDiagnosticRequest::METHOD => {
             params(request).map(|p| json(server.pull_diagnostics(p)))
         }
@@ -286,13 +407,82 @@ mod tests {
         assert!(value.starts_with("**Philippians 4:1**\n\n"), "{value}");
         assert!(value.contains("- **OSIS**: `Phil.4.1`"), "{value}");
 
+        // Go to references is answered from another thread; cancelling it once it's answered
+        // does nothing
+        send(request(
+            4,
+            "textDocument/references",
+            json!({ "textDocument": { "uri": uri }, "position": { "line": 0, "character": 6 }, "context": { "includeDeclaration": true } }),
+        ));
+        let Message::Response(references) = client.receiver.recv().unwrap() else {
+            panic!("expected the references response")
+        };
+        assert_eq!(references.id, RequestId::from(4));
+        let result = references.response_result.unwrap();
+        assert_eq!(result[0]["uri"], uri);
+        send(Message::Notification(Notification::new(
+            "$/cancelRequest".into(),
+            json!({ "id": 4 }),
+        )));
+
         send(request(3, "shutdown", json!(null)));
-        client.receiver.recv().unwrap();
+        let Message::Response(shutdown) = client.receiver.recv().unwrap() else {
+            panic!("expected the shutdown response")
+        };
+        assert_eq!(shutdown.id, RequestId::from(3));
         send(Message::Notification(Notification::new(
             "exit".into(),
             json!(null),
         )));
         thread.join().unwrap();
+    }
+
+    /// A cancelled search stops between files and answers `RequestCancelled`
+    #[test]
+    fn cancelled_searches() {
+        use std::sync::{Arc, atomic::Ordering};
+
+        let (client, server) = Connection::memory();
+        let dir = std::env::temp_dir().join(format!("logoxide-lsp-cancel-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..50 {
+            std::fs::write(dir.join(format!("{i}.md")), "Read John 3:16").unwrap();
+        }
+        let mut lsp = super::Server::new(Default::default());
+        lsp.set_roots(vec![dir.clone()]);
+        let running = super::Running::default();
+        // Cancelled before it starts: the flag is the one `$/cancelRequest` sets
+        let search = || {
+            let command = json!({ "command": "logoxide.search", "arguments": [{ "mode": "explicit-overlap", "passage": "John 3:16" }] });
+            lsp.command_search(serde_json::from_value(command).unwrap())
+                .unwrap()
+        };
+        let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        running
+            .0
+            .lock()
+            .unwrap()
+            .insert(RequestId::from(7), cancelled.clone());
+        running.cancel(&RequestId::from(7));
+        assert!(cancelled.load(Ordering::Relaxed));
+        let result = search().run(&super::Stop::when(cancelled.clone()));
+        assert!(!result.as_ref().unwrap().1, "the walk stops");
+        let response = super::search_response(RequestId::from(7), result, true);
+        let error = response.response_result.unwrap_err();
+        assert_eq!(error.code, -32800);
+        // Not cancelled: every file's reference
+        running.spawn(&server, RequestId::from(8), search());
+        let Message::Response(response) = client.receiver.recv().unwrap() else {
+            panic!("expected the search's response")
+        };
+        assert_eq!(response.id, RequestId::from(8));
+        assert_eq!(
+            response.response_result.unwrap().as_array().unwrap().len(),
+            50
+        );
+        // Answered, so no longer running
+        assert!(!running.0.lock().unwrap().contains_key(&RequestId::from(8)));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// Editors that support pull diagnostics ask for them, and get none pushed

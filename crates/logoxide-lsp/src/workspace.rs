@@ -140,6 +140,36 @@ fn book_references(matcher: &BibleMatcher, disk: Option<&files::Cache>, path: &P
     hits.iter().filter_map(book_found).collect()
 }
 
+/// When a workspace search gives up, checked between files: at a deadline (hover's count), or
+/// when its request is cancelled (`$/cancelRequest`)
+#[derive(Clone, Debug, Default)]
+pub struct Stop {
+    pub deadline: Option<Instant>,
+    pub cancelled: Option<Arc<AtomicBool>>,
+}
+
+impl Stop {
+    pub fn at(deadline: Instant) -> Self {
+        Self {
+            deadline: Some(deadline),
+            cancelled: None,
+        }
+    }
+
+    pub fn when(cancelled: Arc<AtomicBool>) -> Self {
+        Self {
+            deadline: None,
+            cancelled: Some(cancelled),
+        }
+    }
+
+    pub fn reached(&self) -> bool {
+        self.deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+            || (self.cancelled.as_ref()).is_some_and(|c| c.load(Ordering::Relaxed))
+    }
+}
+
 /// Larger files are skipped (a book-length text is a few MB)
 const MAX_FILE_SIZE: u64 = 50 * 1024 * 1024;
 
@@ -207,7 +237,8 @@ struct Entry {
 A cache of every workspace file's references, before any filter (searches filter them), so a
 search reads and parses only the files that changed since the last one
 - Files are matched by size and modification time, like the CLI's `--cache`
-- [`Cache::clear`] when the data changes, since that changes what is found
+- A new one when the data changes, since that changes what is found (a search still running with
+  the old data fills the old one)
 */
 #[derive(Default)]
 pub struct Cache {
@@ -215,12 +246,6 @@ pub struct Cache {
 }
 
 impl Cache {
-    pub fn clear(&self) {
-        if let Ok(mut files) = self.files.lock() {
-            files.clear();
-        }
-    }
-
     fn get(&self, path: &Path, size: u64, modified: Option<SystemTime>) -> Option<Arc<Vec<Found>>> {
         let files = self.files.lock().ok()?;
         let entry = files.get(path)?;
@@ -296,7 +321,7 @@ text included), then the files under `roots` that `scope` takes, from the cache 
 Files are walked in parallel
 - With [`Scope::books`], EPUBs and PDFs too, as `logoxide-file://` documents
 - The USX files in `bible` (the Bible's canonical folder) are left out
-- At the `deadline`, it stops walking; the `bool` is whether it searched every file
+- When `stop` is reached, it stops walking; the `bool` is whether it searched every file
 */
 // `Uri` caches its parsed parts, which clippy counts as a mutable key; its text never changes
 #[allow(clippy::mutable_key_type)]
@@ -307,7 +332,7 @@ pub fn references(
     matcher: &BibleMatcher,
     cache: &Cache,
     bibles: &[&Path],
-    deadline: Option<Instant>,
+    stop: &Stop,
 ) -> (Vec<FileReferences>, bool) {
     // Open documents by path: editors may percent-encode their URIs differently
     let open: HashSet<PathBuf> = documents.keys().filter_map(uri_to_path).collect();
@@ -332,7 +357,7 @@ pub fn references(
     let stopped = AtomicBool::new(false);
     builder.build_parallel().run(|| {
         Box::new(|entry| {
-            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            if stop.reached() {
                 stopped.store(true, Ordering::Relaxed);
                 return WalkState::Quit;
             }
