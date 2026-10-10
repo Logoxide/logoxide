@@ -576,6 +576,17 @@ impl LogoxidePackage {
             .collect()
     }
 
+    /// For a recording without a text of its own, the dependency whose text it reads (`[media]
+    /// text`: show its verses with the timings)
+    pub fn media_text(&self) -> Option<String> {
+        (self.cached.package().manifest().media.as_ref()).and_then(|m| m.text.clone())
+    }
+
+    /// The versification a recording is numbered by (`[media] versification`), if it says
+    pub fn media_versification(&self) -> Option<String> {
+        (self.cached.package().manifest().media.as_ref()).and_then(|m| m.versification.clone())
+    }
+
     /// The Bible references in its books (EPUBs), in book order, each with its chapter and CFI;
     /// empty for a package without books. Found by reading them (well under a second a book) the
     /// first time, then kept in the cache (see `cacheWrites`)

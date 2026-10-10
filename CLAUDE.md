@@ -201,7 +201,14 @@ before changing the design.
     `check_package_timings` (verses the text lacks, checked against each chapter's verse numbers,
     so verse 0 is one where the text has it; another book, out of order, overlapping, missing
     files, or unlisted ones anywhere under the folder), which `lx check`, `lx media check`, and
-    `lx release` run. topos's subtitle parser isn't used: it only takes numbered cues
+    `lx release` run. topos's subtitle parser isn't used: it only takes numbered cues. Audio
+    only: `[media] text = "<dependency>"` and/or `versification = "KJV"` (`Media::names_its_text`)
+    let a package have no `[formats]` (it opens with `NoText` even as a Bible, and isn't one of
+    a project's Bibles); `check_package_timings_with(package, text)` checks against the text
+    `Project::media_text` opens (lx check and media check; not installed: warned, verses
+    unchecked), else its own, else the versification's counts from sword-modules' systems
+    (release checks without the dependency). The FFI's `LogoxidePackage.mediaText()`,
+    `mediaVersification()`
   - `library.rs`: installed versions in `packages/<id>/<version>+g<commit>` (so forks at one
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written

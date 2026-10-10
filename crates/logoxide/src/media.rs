@@ -24,6 +24,21 @@ The transcript is the package's text (`[formats]`, read like any other), which t
 recording names the edition it reads as a dependency. Releases are judged by the text, so a new
 hash for the same words is a patch.
 
+**Audio only**: a recording need not carry a text of its own. `[media] text` names the
+dependency whose text it reads, and `versification` the versification it's numbered by (SWORD's
+names, whose verse counts logoxide has: `KJV`, `NRSV`, …); a package with either may have no
+`[formats]`. Its timings are checked against that text, else that versification's counts:
+
+```toml
+[dependencies]
+bsb = { git = "https://example.org/bsb", version = "1" }
+
+[media]
+text = "bsb"
+versification = "KJV"
+timings = "timings/"
+```
+
 **Timings** say where each verse is in a recording, so an audio Bible can play from a verse and
 show the verse being read. Each file has a WebVTT file in the timings folder, at its own path with `.vtt` for its extension
 (`audio/JHN.mp3` → `timings/audio/JHN.vtt`, so `video/JHN.mp4`'s are apart), or wherever its own
@@ -54,6 +69,14 @@ use crate::{
 /// A package's `[media]`
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Media {
+    /// The dependency whose text the recording reads (`bsb`), for a recording with no text of
+    /// its own: its timings are checked against it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// The versification the recording is numbered by (`KJV`), whose verse counts its timings
+    /// are checked against when there's no text to check them by
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub versification: Option<String>,
     /// Where each file's verse timings are (a folder in the package): the file's path there, with
     /// `.vtt` for its extension
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -82,6 +105,14 @@ pub struct MediaFile {
     /// Its timings' path in the package, if not where the timings folder puts them
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timings: Option<String>,
+}
+
+impl Media {
+    /// Whether it says what text it reads apart from the package's own (`text`, or only a
+    /// `versification`), so the package may have no `[formats]`
+    pub fn names_its_text(&self) -> bool {
+        self.text.is_some() || self.versification.is_some()
+    }
 }
 
 impl MediaFile {
@@ -365,21 +396,72 @@ fn book_verses(package: &Package, id: BookId) -> BTreeMap<u16, Vec<u16>> {
 Every listed file's timings checked against the package's text ([`check_timings`]), with a
 problem for a file whose timings aren't where they should be (in the timings folder, or at its
 own `timings`), and for a timings file anywhere under the folder that no listed file has. Empty
-when all is well
+when all is well. For a recording whose `[media] text` names a dependency, see
+[`check_package_timings_with`]: here its verses aren't checked
 */
 pub fn check_package_timings(package: &Package) -> Result<Vec<String>> {
+    check_package_timings_with(package, None)
+}
+
+/**
+[`check_package_timings`], with the package `[media] text` names (`text`, as installed): the
+verses are checked against it. Without one, the package's own text; with none, the counts of
+`[media] versification` (SWORD's systems; another name is a problem); with neither, a problem.
+When `[media] text` names a dependency that isn't given, verses aren't checked (only their order
+and the files)
+*/
+pub fn check_package_timings_with(
+    package: &Package,
+    text: Option<&Package>,
+) -> Result<Vec<String>> {
     let Some(media) = package.manifest().media.as_ref() else {
         return Ok(vec![]);
+    };
+    let mut problems = vec![];
+    let own = !package.source().books().is_empty();
+    let source = match (text, media.text.is_some(), own) {
+        (Some(text), _, _) => Verses::Text(text),
+        (None, true, _) => Verses::Unchecked,
+        (None, false, true) => Verses::Text(package),
+        (None, false, false) => match media.versification.as_deref() {
+            Some(name) => match sword_modules::Versification::get(name) {
+                Some(system) => Verses::Counts(system),
+                None => {
+                    problems.push(format!(
+                        "[media] versification `{name}`: logoxide has no verse counts for it \
+                         (SWORD's systems: KJV, NRSV, …); its timings' verses aren't checked"
+                    ));
+                    Verses::Unchecked
+                }
+            },
+            None => {
+                if !media.files.is_empty() {
+                    problems.push(String::from(
+                        "no text to check timings against: give [formats], or [media] text or \
+                         versification",
+                    ));
+                }
+                Verses::Unchecked
+            }
+        },
     };
     // Each book's verse numbers, read when a timings file first names it
     let books = RefCell::new(BTreeMap::new());
     let verses = |book: &str, chapter: u16| -> Option<Vec<u16>> {
         let id = crate::bible_data().books().search_usfm(book)?;
-        let mut books = books.borrow_mut();
-        let chapters = (books.entry(id)).or_insert_with(|| book_verses(package, id));
-        chapters.get(&chapter).cloned()
+        match &source {
+            Verses::Text(text) => {
+                let mut books = books.borrow_mut();
+                let chapters = (books.entry(id)).or_insert_with(|| book_verses(text, id));
+                chapters.get(&chapter).cloned()
+            }
+            Verses::Counts(system) => {
+                let count = system.verse_count(id, u8::try_from(chapter).ok()?)?;
+                Some((1..=u16::from(count)).collect())
+            }
+            Verses::Unchecked => Some((0..=u16::from(u8::MAX)).collect()),
+        }
     };
-    let mut problems = vec![];
     let mut expected = vec![];
     for file in &media.files {
         let Some(path) = timings_path(media, file) else {
@@ -405,6 +487,16 @@ pub fn check_package_timings(package: &Package) -> Result<Vec<String>> {
         }
     }
     Ok(problems)
+}
+
+/// What a recording's verses are checked against
+enum Verses<'a> {
+    /// A text: its own, or the one `[media] text` names
+    Text(&'a Package),
+    /// A versification's verse counts (`[media] versification`)
+    Counts(&'static sword_modules::Versification),
+    /// Nothing: only the timings' order and files are checked
+    Unchecked,
 }
 
 /// Where a host keeps a media file, by its hash: `media/9f/9f86…` (relative to its cache), so
@@ -568,7 +660,7 @@ book = "JHN"
     fn timings_keep_the_files_folder() {
         let media = Media {
             timings: Some("timings/".into()),
-            files: vec![],
+            ..Media::default()
         };
         let path = |file: &str| timings_path(&media, &MediaFile::of(file, "u", b""));
         assert_eq!(path("JHN.mp3").as_deref(), Some("timings/JHN.vtt"));
@@ -650,6 +742,69 @@ book = "JHN"
         let declared = crate::package::declared_files(package.storage().as_ref()).unwrap();
         assert!(declared.contains(&"subtitles/acts.vtt".to_string()));
         assert!(declared.contains(&"timings/audio/MRK.vtt".to_string()));
+    }
+
+    #[test]
+    fn a_recording_reads_another_text_or_a_versification() {
+        use crate::{package::Features, storage::MemoryStorage};
+        let sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+        let manifest = |media: &str| {
+            format!(
+                "[package]\nid = \"bsb-audio\"\nname = \"BSB audio\"\nabbreviation = \"BSBA\"\n\
+                 version = \"1.0.0\"\nlanguage = \"en\"\n\n[dependencies]\n\
+                 bsb = {{ git = \"https://example.org/bsb\", version = \"1\" }}\n\n\
+                 [media]\n{media}\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"JHN.mp3\"\n\
+                 url = \"u\"\nsize = 0\nsha256 = \"{sha256}\"\nbook = \"JHN\"\n"
+            )
+        };
+        // John 3 has 36 verses in the KJV's numbering
+        let vtt =
+            "WEBVTT\n\nJHN 3:36\n00:00.000 --> 00:04.000\n\nJHN 3:37\n00:04.000 --> 00:08.000\n";
+        let open = |media: &str| {
+            let storage = MemoryStorage::with([
+                (crate::manifest::MANIFEST, manifest(media).as_str()),
+                ("timings/JHN.vtt", vtt),
+            ]);
+            Package::open(std::sync::Arc::new(storage), Features::default()).unwrap()
+        };
+        // No [formats]: its versification's counts
+        let counted = open("versification = \"KJV\"");
+        assert!(counted.source().books().is_empty());
+        assert_eq!(
+            check_package_timings(&counted).unwrap(),
+            ["timings/JHN.vtt: JHN 3:37: the text has no verse 37"]
+        );
+        // The text it reads, when given; without it, verses aren't checked
+        let reading = open("text = \"bsb\"");
+        assert_eq!(
+            check_package_timings(&reading).unwrap(),
+            Vec::<String>::new()
+        );
+        let usx = r#"<usx version="3.0"><book code="JHN" style="id"/><chapter number="3" style="c"/><para style="p"><verse number="36" style="v"/>He that believeth.</para></usx>"#;
+        let bsb = MemoryStorage::with([
+            (
+                crate::manifest::MANIFEST,
+                "[package]\nid = \"bsb\"\nname = \"BSB\"\nabbreviation = \"BSB\"\nversion = \"1.0.0\"\nlanguage = \"en\"\n[formats]\nusx = { path = \"usx/\" }\n",
+            ),
+            ("usx/JHN.usx", usx),
+        ]);
+        let bsb = Package::open(std::sync::Arc::new(bsb), Features::default()).unwrap();
+        assert_eq!(
+            check_package_timings_with(&reading, Some(&bsb)).unwrap(),
+            ["timings/JHN.vtt: JHN 3:37: the text has no verse 37"]
+        );
+        // A versification logoxide has no counts for is said
+        let unknown = open("versification = \"Mine\"");
+        assert!(check_package_timings(&unknown).unwrap()[0].contains("no verse counts"));
+
+        // The manifest: text names a dependency; without one of them, [formats] is needed
+        let error = |media: &str| {
+            crate::Manifest::parse(&manifest(media))
+                .unwrap_err()
+                .to_string()
+        };
+        assert!(error("text = \"kjv\"").contains("names no dependency"));
+        assert!(error("").contains("a package needs [formats]"));
     }
 
     #[test]

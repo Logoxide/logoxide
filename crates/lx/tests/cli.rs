@@ -716,6 +716,48 @@ fn two_editions_of_one_work_are_said() {
 }
 
 #[test]
+fn a_recording_is_checked_against_the_text_it_reads() {
+    let world = World::new("recording");
+    package(&world.path("bsb"), "bsb", "1.0.0");
+    let recording = world.path("bsb-audio");
+    std::fs::create_dir_all(recording.join("timings")).unwrap();
+    let sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    std::fs::write(
+        recording.join("logoxide.toml"),
+        format!(
+            "[package]\nid = \"bsb-audio\"\nname = \"BSB read aloud\"\nabbreviation = \"BSBA\"\n\
+             version = \"1.0.0\"\nlanguage = \"en\"\n\n[dependencies]\nbsb = {{ path = \"../bsb\" }}\n\n\
+             [media]\ntext = \"bsb\"\ntimings = \"timings/\"\n\n[[media.files]]\npath = \"JHN.mp3\"\n\
+             url = \"https://example.org/JHN.mp3\"\nsize = 0\nsha256 = \"{sha256}\"\nbook = \"JHN\"\n"
+        ),
+    )
+    .unwrap();
+    // The text has John 3:16-17, not 18
+    std::fs::write(
+        recording.join("timings/JHN.vtt"),
+        "WEBVTT\n\nJHN 3:16\n00:00.000 --> 00:04.000\n\nJHN 3:18\n00:04.000 --> 00:08.000\n",
+    )
+    .unwrap();
+    let path = recording.to_str().unwrap();
+    // Not installed: said, and its verses go unchecked
+    let out = world.lx(&["media", "check", "--offline", path]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("[media] text `bsb`"), "{stderr}");
+    world.ok(&["--project", path, "install"]);
+    let out = world.lx(&["check", path]);
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!out.status.success(), "{text}");
+    assert!(
+        text.contains("JHN 3:18: the text has no verse 18") && text.contains("a recording of bsb"),
+        "{text}"
+    );
+}
+
+#[test]
 fn publishing_what_isnt_redistributable_is_confirmed() {
     let world = World::new("publish-rights");
     let dir = world.path("not-mine");

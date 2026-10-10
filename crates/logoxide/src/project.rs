@@ -549,7 +549,8 @@ impl Project {
                 todo.extend(inside.rev());
                 continue;
             }
-            if package.info().kind == PackageKind::Bible {
+            // A recording without a text of its own (`[media] text`) has no verses to give
+            if package.info().kind == PackageKind::Bible && package.source().format().is_some() {
                 bibles.push((locked, package));
             }
         }
@@ -597,6 +598,26 @@ impl Project {
             let info = package.info();
             (locked.label(), info.id.clone(), info.work.clone())
         })))
+    }
+
+    /**
+    The text a recording with no text of its own reads (`[media] text`, a dependency of this
+    project's package), as installed: none when it names none. One that isn't locked or
+    installed is an error saying to install it
+    */
+    pub fn media_text(&self, library: &Library) -> Result<Option<crate::Package>> {
+        let Some(name) = (self.manifest.media.as_ref()).and_then(|m| m.text.as_deref()) else {
+            return Ok(None);
+        };
+        let locked = (self.lock.as_ref())
+            .and_then(|lock| lock.get(name))
+            .ok_or_else(|| {
+                LogoxideError::NotFound(format!(
+                    "{name}, the text [media] names, isn't locked (run `lx install` in {})",
+                    self.dir.display()
+                ))
+            })?;
+        library.open(locked, &self.dir).map(Some)
     }
 
     /// The versification maps in use (any package of the lock in use, so a Bible's own

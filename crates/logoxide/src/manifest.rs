@@ -636,12 +636,18 @@ impl Manifest {
             if let Some(edition) = &package.edition {
                 check_id("edition", edition)?;
             }
-            // A collection is only its dependencies
+            // A collection is only its dependencies; a recording may read another's text
+            let recording = (self.media.as_ref()).is_some_and(crate::media::Media::names_its_text);
             match (
                 package.kind == PackageKind::Collection,
                 self.formats.is_empty(),
             ) {
-                (false, true) => return err(String::from("a package needs [formats]")),
+                (false, true) if !recording => {
+                    return err(String::from(
+                        "a package needs [formats] (a recording without a text of its own \
+                         names the one it reads: [media] text, or versification)",
+                    ));
+                }
                 (true, false) => {
                     return err(String::from(
                         "a collection has no [formats]: its packages are its dependencies",
@@ -722,6 +728,21 @@ impl Manifest {
         if let Some(media) = &self.media {
             for file in &media.files {
                 crate::media::check_sha256(&file.sha256)?;
+            }
+            if let Some(text) = &media.text
+                && !self.dependencies.contains_key(text)
+            {
+                return err(format!(
+                    "[media] text `{text}` names no dependency: the recording reads a text \
+                     [dependencies] has"
+                ));
+            }
+            if media
+                .versification
+                .as_deref()
+                .is_some_and(|v| v.trim().is_empty())
+            {
+                return err(String::from("[media] versification is empty"));
             }
         }
         Ok(())

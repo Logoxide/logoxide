@@ -70,8 +70,9 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `maps-to` | string | only for a map | For `kind = "versification-map"`: the versification it maps `versification` to. Any other kind must not have it |
 | `include` | array of strings | no | More files the package is made of, as [patterns](#what-a-package-is-made-of) (`README.md`, `images/**`) |
 
-A package (other than a collection) must have a non-empty `[formats]`. A collection must have
-none. A versification map must give both `versification` (not `own`) and `maps-to`.
+A package (other than a collection) must have a non-empty `[formats]`, unless it's a recording
+that reads another package's text (`[media] text` or `versification`: see [Audio
+only](#audio-only)). A collection must have none. A versification map must give both `versification` (not `own`) and `maps-to`.
 
 Versification names are matched ignoring case. A Bible imported from a SWORD module keeps the
 module's own (its conf's `Versification`, `KJV` when it gives none), spelled as SWORD spells it:
@@ -293,6 +294,8 @@ book = "JHN"
 | Key | Type | Meaning |
 |---|---|---|
 | `timings` | string | A folder in the package holding each file's verse timings |
+| `text` | string | For a recording without a text of its own: the dependency (a key of `[dependencies]`) whose text it reads |
+| `versification` | string | The versification it's numbered by (`KJV`), whose verse counts its timings are checked against when there's no text |
 | `files` | array of tables | Each file |
 | `files.path` | string | Its name in the package (what its timings are named after) |
 | `files.url` | string | Where it is served |
@@ -318,6 +321,36 @@ each verse exists in the package's text (verse 0, a psalm's title, only where th
 one 0; a bridge's every verse), is in the file's `book` if it has one, verses come in the text's
 order without overlapping, every listed file that should have timings has them, and every
 `*.vtt` anywhere under the timings folder belongs to a listed file.
+
+### Audio only
+
+A recording needn't carry a text of its own. `text` names the dependency whose text it reads,
+and `versification` the versification it's numbered by; a package with either may have no
+`[formats]`, and opens with no verses (it isn't one of a project's Bibles, so references never
+name it):
+
+```toml
+[package]
+id = "bsb-audio"
+name = "The Berean Standard Bible, read aloud"
+abbreviation = "BSBA"
+version = "1.0.0"
+language = "en"
+
+[dependencies]
+bsb = { git = "https://example.org/bsb", version = "1" }
+
+[media]
+text = "bsb"
+versification = "KJV"
+timings = "timings/"
+```
+
+Its timings are checked (`lx check`, `lx media check`) against the text `text` names, as
+installed for the package's folder (`lx install` there; when it isn't, that's said and the
+verses go unchecked), else against its own text, else against `versification`'s verse counts
+(those logoxide has: SWORD's systems, `KJV`, `NRSV`, `Synodal`, …; another name is said). `lx
+release` checks only what it can without installing: the files, and the verses' order.
 
 ## `[titles]`
 

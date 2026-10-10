@@ -110,7 +110,7 @@ fn main() -> ExitCode {
         } => release(&cli, path, *set_version, *dry_run),
         Command::Diff { path, from, to } => diff(&cli, path, from, to.as_deref()),
         Command::Verify(args) => verify(args, json),
-        Command::Check { package, cache } => check(package, cache.clone(), json),
+        Command::Check { package, cache } => check(package, cache.clone(), json, &cli.library()),
         Command::New(args) => new(args),
         Command::Init { dir } => logoxide::Project::init(dir)
             .map(|p| outln!("created {}", p.dir().join(MANIFEST).display())),
@@ -235,7 +235,9 @@ fn main() -> ExitCode {
             book,
             package,
         }) => media_add(file, url, book.as_deref(), package),
-        Command::Media(MediaCommand::Check { package, offline }) => media_check(package, *offline),
+        Command::Media(MediaCommand::Check { package, offline }) => {
+            media_check(package, *offline, &cli.library())
+        }
         Command::Map {
             reference,
             from,
