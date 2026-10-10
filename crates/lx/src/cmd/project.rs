@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use logoxide::{
     FsStorage, MemoryStorage, Project, Storage,
     manifest::{DetailedDependency, MANIFEST},
-    resolve::Update,
+    resolve::{Frozen, Update},
 };
 
 use crate::{
@@ -22,6 +22,10 @@ fn version_req(text: &str) -> logoxide::Result<semver::VersionReq> {
 pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
+    // Before anything is fetched: a short one is refused, and says what to give
+    if let Some(rev) = &args.rev {
+        logoxide::manifest::check_rev(rev)?;
+    }
     let named = args.repository.as_ref().or(args.git.as_ref());
     // A registry's package published as archives: added with `registry`, not `git`
     let archive = match (&args.registry, named) {
@@ -37,9 +41,11 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         Some(_) => None,
         None => named.map(|url| registry_url(&project, url)).transpose()?,
     };
+    // A path is kept relative to the manifest, so the project (and its lock) can move
+    let path = (args.path.as_deref()).map(|path| relative_path(project.dir(), path));
     let mut dependency = DetailedDependency {
         git: git.clone(),
-        path: args.path.clone(),
+        path: path.clone(),
         version: args.version.as_deref().map(version_req).transpose()?,
         tag: args.tag.clone(),
         branch: args.branch.clone(),
@@ -50,7 +56,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
         ..DetailedDependency::default()
     };
     // The package's id names the dependency: read it from the package
-    let info: Named = match (archive, &git, &args.path) {
+    let info: Named = match (archive, &git, &path) {
         (Some((catalog, entry)), _, _) => {
             if dependency.version.is_none()
                 && let Some(newest) = entry.release(None)
@@ -103,8 +109,25 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
                     })
                     .filter(|v| v.pre.is_empty())
                     .max();
-                if let Some(newest) = newest {
-                    dependency.version = Some(version_req(&newest.to_string())?);
+                let odd = logoxide::resolve::not_semver_note(
+                    tags.iter().map(|(t, _)| t.as_str()),
+                    args.folder.as_deref(),
+                );
+                match newest {
+                    Some(newest) => {
+                        dependency.version = Some(version_req(&newest.to_string())?);
+                        if !odd.is_empty() {
+                            errln!("warning: {url}: some tags aren't releases{odd}");
+                        }
+                    }
+                    // Without a release, what would be locked is whatever its default branch
+                    // holds now: say so by asking for the branch, or a commit
+                    None => {
+                        return Err(logoxide::LogoxideError::Resolve(format!(
+                            "{url} has no releases (tags like v1.0.0){odd}: give --branch or --rev \
+                             to follow a branch or keep a commit, or --tag"
+                        )));
+                    }
                 }
             }
             info.into()
@@ -170,7 +193,7 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             let Ok(package) = library.open(other, project.dir()) else {
                 continue;
             };
-            let (theirs, their_aliases) = project.names(other.dependency_name(), package.info());
+            let (theirs, their_aliases) = project.names(other, package.info());
             let clash = (std::iter::once(&theirs).chain(&their_aliases))
                 .find(|n| ours.iter().any(|o| o.eq_ignore_ascii_case(n)));
             if let Some(clash) = clash {
@@ -181,17 +204,89 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             }
         }
     }
+    // Installed from the edited manifest before it's written: if installing fails, the file is
+    // as it was
     project.add(&name, &dependency)?;
-    project.save_manifest()?;
     let fetcher = cli.fetcher(&library);
-    let lock = project.install(&library, &fetcher, Update::Only([name.clone()].into()))?;
+    let lock = (project.install(&library, &fetcher, Update::Only([name.clone()].into()))?).clone();
+    project.save_manifest()?;
     let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
     outln!(
         "added {locked} to {}: installed, and locked in {}",
         project.dir().join(MANIFEST).display(),
         logoxide::lock::LOCKFILE
     );
+    warn_of_clashes(&project, &library);
+    warn_of_absolute_paths(&lock);
     Ok(())
+}
+
+/**
+`path` (as given: absolute, or relative to the project's folder, else to the current one)
+relative to the project's folder, when both can be found; else as given
+*/
+fn relative_path(project: &std::path::Path, path: &str) -> String {
+    let given = std::path::Path::new(path);
+    let found = match given.is_absolute() {
+        true => given.to_path_buf(),
+        false => match project.join(given).exists() {
+            true => project.join(given),
+            false => given.to_path_buf(),
+        },
+    };
+    let (Ok(from), Ok(to)) = (project.canonicalize(), found.canonicalize()) else {
+        return path.to_string();
+    };
+    let (from, to): (Vec<_>, Vec<_>) = (from.components().collect(), to.components().collect());
+    let shared = (from.iter().zip(&to)).take_while(|(a, b)| a == b).count();
+    // Nothing in common (another drive): it can only be absolute
+    if shared == 0 {
+        return path.to_string();
+    }
+    let up = std::iter::repeat_n(String::from(".."), from.len() - shared);
+    let down = (to[shared..].iter()).map(|c| c.as_os_str().to_string_lossy().into_owned());
+    let parts: Vec<String> = up.chain(down).collect();
+    match parts.is_empty() {
+        true => String::from("."),
+        false => parts.join("/"),
+    }
+}
+
+/// Warns of path packages named by an absolute path: the lock file names it too, and another
+/// machine won't have it there
+pub(crate) fn warn_of_absolute_paths(lock: &logoxide::Lockfile) {
+    for locked in &lock.packages {
+        if let Some(path) = &locked.path
+            && std::path::Path::new(path).is_absolute()
+        {
+            errln!(
+                "warning: {}: path {path} is absolute, so {} won't work on another machine \
+                 (give it relative to {MANIFEST})",
+                locked.label(),
+                logoxide::lock::LOCKFILE
+            );
+        }
+    }
+}
+
+/**
+Warns of names two of the project's Bibles answer to (a package the manifest asks for at one
+version and a collection at another): references naming one can't say which
+*/
+pub(crate) fn warn_of_clashes(project: &Project, library: &logoxide::Library) {
+    match project.name_clashes(library) {
+        Ok(clashes) => {
+            for clash in clashes {
+                errln!(
+                    "warning: `{}` names {}: references to it can't say which (give one an \
+                     `abbreviation` in {MANIFEST})",
+                    clash.name,
+                    clash.packages.join(" and ")
+                );
+            }
+        }
+        Err(e) => errln!("warning: {e}"),
+    }
 }
 
 /// What a package being added is called: its id, abbreviation, and aliases
@@ -253,8 +348,9 @@ pub(crate) fn remove(cli: &Cli, id: &str) -> logoxide::Result<()> {
             "no dependency `{id}`"
         )));
     }
-    project.save_manifest()?;
+    // Written only once the rest still installs
     project.install(&library, &cli.fetcher(&library), Update::Nothing)?;
+    project.save_manifest()?;
     outln!("removed {id}");
     Ok(())
 }
@@ -307,14 +403,31 @@ pub(crate) fn repair(cli: &Cli) -> logoxide::Result<()> {
     Ok(())
 }
 
-pub(crate) fn install(cli: &Cli, update: Update) -> logoxide::Result<()> {
+/// Installs what's locked, moving what `update` allows, within what `frozen` allows
+pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Result<()> {
     let library = cli.library();
     let mut project = cli.project(&library)?;
-    let before: Vec<String> = project
-        .lock()
-        .map(|l| l.packages.iter().map(|p| p.name()).collect())
-        .unwrap_or_default();
-    let lock = project.install(&library, &cli.fetcher(&library), update)?;
+    let previous = project.lock().cloned();
+    let before: Vec<String> = (previous.iter())
+        .flat_map(|l| l.packages.iter().map(|p| p.name()))
+        .collect();
+    let fetcher = cli.fetcher(&library);
+    let lock = match frozen == Frozen::default() {
+        true => project.install(&library, &fetcher, update)?,
+        false => project.install_frozen(&library, &fetcher, frozen)?,
+    };
+    // A release whose tag now names another commit: what was read before may not be what's
+    // read now
+    for moved in previous.map(|p| lock.moved_since(&p)).unwrap_or_default() {
+        errln!(
+            "warning: {}: {} was moved ({} before, {} now): its text may not be what was locked",
+            moved.label,
+            moved.release,
+            moved.before,
+            moved.after
+        );
+    }
+    warn_of_absolute_paths(lock);
     for package in &lock.packages {
         let note = if before.contains(&package.name()) {
             ""
@@ -328,6 +441,7 @@ pub(crate) fn install(cli: &Cli, update: Update) -> logoxide::Result<()> {
         lock.packages.len(),
         project.dir().join(logoxide::lock::LOCKFILE).display()
     );
+    warn_of_clashes(&project, &library);
     Ok(())
 }
 
@@ -402,7 +516,7 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
                 dependency: !lock.roots().any(|r| std::ptr::eq(r, locked)),
                 enabled: used,
                 installed: library.is_installed(locked, project.dir()),
-                abbreviation: info.map(|i| project.names(locked.dependency_name(), i).0),
+                abbreviation: info.map(|i| project.names(locked, i).0),
                 title: info.map(|i| i.name.clone()),
                 license: info.and_then(|i| i.license.clone()),
                 git: locked.git.clone(),
@@ -451,7 +565,7 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
         };
         let about = library.open(locked, project.dir()).ok().map(|p| {
             let info = p.info();
-            let (abbreviation, _) = project.names(locked.dependency_name(), info);
+            let (abbreviation, _) = project.names(locked, info);
             format!(
                 "{} ({}), {}",
                 abbreviation,
@@ -519,7 +633,7 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
     let dir = library.package_dir(&locked, project.dir());
     let package = library.open(&locked, project.dir())?;
     let i = package.info().clone();
-    let (abbreviation, aliases) = project.names(id, &i);
+    let (abbreviation, aliases) = project.names(&locked, &i);
     let storage = FsStorage::new(&dir);
     let files = storage.walk("")?;
     let size: u64 = (files.iter())

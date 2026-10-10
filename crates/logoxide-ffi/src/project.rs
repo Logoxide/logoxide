@@ -27,6 +27,28 @@ impl PackageLocation {
     }
 }
 
+/// A Bible the host shows, by what references name it: for `LogoxideProject.nameClashes`
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NamedBible {
+    /// How it's shown (`kjv 1.0.0`, or the entry's name)
+    pub label: String,
+    /// Its abbreviation here (`LockedEntry.abbreviation`, else the package's own)
+    pub abbreviation: String,
+    /// Its aliases here (`LockedEntry.aliases`, else the package's own)
+    pub aliases: Vec<String>,
+}
+
+/// Two or more Bibles answering to one name
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NameClash {
+    /// The name, as the first of them spells it
+    pub name: String,
+    /// The label of each Bible answering to it
+    pub packages: Vec<String>,
+}
+
 /// A registry a project names
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -341,6 +363,21 @@ impl LogoxideProject {
             });
         }
         Ok(Self { project })
+    }
+
+    /**
+    The names two or more of these Bibles answer to, ignoring case (a package the manifest asks
+    for at one version and a collection at another, both `KJV`): references naming one can't
+    say which, so hosts should say so
+    */
+    pub fn name_clashes(&self, bibles: Vec<NamedBible>) -> Vec<NameClash> {
+        let bibles = (bibles.into_iter()).map(|b| (b.label, b.abbreviation, b.aliases));
+        (logoxide_core::project::name_clashes(bibles).into_iter())
+            .map(|c| NameClash {
+                name: c.name,
+                packages: c.packages,
+            })
+            .collect()
     }
 
     /// Whether a dependency is on (any name the manifest doesn't have is)

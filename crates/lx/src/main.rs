@@ -3,7 +3,11 @@
 use std::process::ExitCode;
 
 use clap::{CommandFactory, Parser};
-use logoxide::{bible_data, manifest::MANIFEST, resolve::Update};
+use logoxide::{
+    bible_data,
+    manifest::MANIFEST,
+    resolve::{Frozen, Update},
+};
 
 /// `println!` with what isn't safe for a terminal taken out ([`logoxide::text::printable`]): what
 /// lx prints holds catalogs', manifests', and git's text, which could hold escape sequences
@@ -114,14 +118,24 @@ fn main() -> ExitCode {
         Command::Remove { id } => remove(&cli, id),
         Command::Disable { name } => set_enabled(&cli, name, false),
         Command::Enable { name } => set_enabled(&cli, name, true),
-        Command::Install { repair: false } => install(&cli, Update::Nothing),
-        Command::Install { repair: true } => repair(&cli),
+        Command::Install { repair: true, .. } => repair(&cli),
+        Command::Install {
+            locked, offline, ..
+        } => install(
+            &cli,
+            Update::Nothing,
+            Frozen {
+                locked: *locked,
+                offline: *offline,
+            },
+        ),
         Command::Update { ids } => install(
             &cli,
             match ids.is_empty() {
                 true => Update::All,
                 false => Update::Only(ids.iter().cloned().collect()),
             },
+            Frozen::default(),
         ),
         Command::List { enabled, disabled } => list(
             &cli,

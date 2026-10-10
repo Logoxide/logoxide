@@ -220,6 +220,31 @@ fn path_packages_are_used_in_place() {
 }
 
 #[test]
+fn paths_are_kept_relative() {
+    let world = World::new("relative");
+    package(&world.path("local"), "local", "0.1.0");
+    world.ok(&["init"]);
+    // Given absolute, written relative to the manifest
+    let absolute = world.path("local").display().to_string();
+    let added = world.lx(&["add", "--path", &absolute]);
+    assert!(added.status.success());
+    assert!(!String::from_utf8_lossy(&added.stderr).contains("warning"));
+    let manifest = std::fs::read_to_string(world.path("vault/logoxide.toml")).unwrap();
+    assert!(manifest.contains("path = \"../local\""), "{manifest}");
+
+    // One written absolute by hand is warned of: the lock can't be used elsewhere
+    std::fs::write(
+        world.path("vault/logoxide.toml"),
+        format!("[dependencies]\nlocal = {{ path = \"{absolute}\" }}\n"),
+    )
+    .unwrap();
+    let out = world.lx(&["install"]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(warned.contains("is absolute"), "{warned}");
+}
+
+#[test]
 fn check_reads_every_book() {
     let world = World::new("check");
     let dir = world.path("tb");
@@ -325,4 +350,273 @@ fn catalog_ids_are_checked_and_shadowing_is_said() {
         stderr.contains("warning: `tb` is in b, a; b's is used"),
         "{stderr}"
     );
+}
+
+/// Commits what's in a package's folder and tags it (`tag`)
+fn tagged(dir: &Path, tag: &str) {
+    if !dir.join(".git").exists() {
+        git(dir, &["init", "-q", "-b", "main"]);
+    }
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-q", "-m", tag]);
+    git(dir, &["tag", tag]);
+}
+
+/// Adds lines to a package's `logoxide.toml`
+fn append_manifest(dir: &Path, text: &str) {
+    let manifest = std::fs::read_to_string(dir.join("logoxide.toml")).unwrap();
+    std::fs::write(dir.join("logoxide.toml"), format!("{manifest}{text}")).unwrap();
+}
+
+/// The one installed version of a package in a world's library
+fn installed_dir(world: &World, id: &str) -> PathBuf {
+    let mut versions = std::fs::read_dir(world.path(&format!("library/packages/{id}"))).unwrap();
+    versions.next().unwrap().unwrap().path()
+}
+
+#[test]
+fn a_failed_add_or_remove_leaves_the_manifest_alone() {
+    let world = World::new("failed-add");
+    world.ok(&["init"]);
+    let manifest = world.path("vault/logoxide.toml");
+    let before = std::fs::read(&manifest).unwrap();
+
+    // A repository that isn't there
+    let missing = world.path("nothing").display().to_string();
+    assert_eq!(world.lx(&["add", "--git", &missing]).status.code(), Some(1));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+
+    // A package that reads, but whose own dependency can't be fetched: installing fails after
+    // the manifest was edited in memory
+    let repo = world.path("tb");
+    package(&repo, "tb", "1.0.0");
+    append_manifest(
+        &repo,
+        &format!("\n[dependencies]\ngone = {{ git = \"{missing}\" }}\n"),
+    );
+    tagged(&repo, "v1.0.0");
+    let out = world.lx(&["add", "--git", &repo.display().to_string()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+    assert!(!world.path("vault/logoxide.lock").exists());
+
+    // Removing, when what's left no longer installs (an installed copy was edited)
+    let other = world.path("ob");
+    released(&other, "ob", "1.0.0");
+    let kept = world.path("kb");
+    released(&kept, "kb", "1.0.0");
+    world.ok(&["add", "--git", &other.display().to_string()]);
+    world.ok(&["add", "--git", &kept.display().to_string()]);
+    let before = std::fs::read(&manifest).unwrap();
+    std::fs::write(installed_dir(&world, "kb").join("usx/JHN.usx"), "edited").unwrap();
+    assert_eq!(world.lx(&["remove", "ob"]).status.code(), Some(1));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+}
+
+/// A repository's current commit
+fn head(dir: &Path) -> String {
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(dir)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[test]
+fn revisions_are_whole_commits() {
+    let world = World::new("rev");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    let commit = head(&repo);
+    let url = repo.display().to_string();
+    let out = world.lx(&["add", "--git", &url, "--rev", &commit[..8]]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("isn't a full commit id"), "{error}");
+    let added = world.ok(&["add", "--git", &url, "--rev", &commit]);
+    assert!(added.contains("added tb 1.0.0"), "{added}");
+}
+
+#[test]
+fn update_names_only_what_is_there() {
+    let world = World::new("update");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+    let out = world.lx(&["update", "tbb"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        error.contains("nothing here is named tbb (the manifest has tb)"),
+        "{error}"
+    );
+    world.ok(&["update", "tb"]);
+    world.ok(&["update"]);
+}
+
+#[test]
+fn a_gone_commit_and_a_moved_tag_are_said() {
+    let world = World::new("moved");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+
+    // The release is made again, its tag moved, and the old commit dropped from the repository
+    std::fs::write(repo.join("usx/JHN.usx"), JHN.replace("loved", "LOVED")).unwrap();
+    git(
+        &repo,
+        &["commit", "-q", "-a", "--amend", "-m", "1.0.0 again"],
+    );
+    git(&repo, &["tag", "-f", "v1.0.0"]);
+    git(&repo, &["reflog", "expire", "--expire=now", "--all"]);
+    git(&repo, &["gc", "-q", "--prune=now"]);
+
+    // Another device (a new library) can't fetch what's locked, and is told what to do
+    std::fs::remove_dir_all(world.path("library/packages")).unwrap();
+    let out = world.lx(&["install"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("may no longer be on the host"), "{error}");
+    assert!(error.contains("`lx update tb`"), "{error}");
+
+    let out = world.lx(&["update", "tb"]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        warned.contains("warning: tb 1.0.0: v1.0.0 was moved"),
+        "{warned}"
+    );
+    // Once only: the lock now has the new commit
+    assert!(!String::from_utf8_lossy(&world.lx(&["update"]).stderr).contains("moved"));
+}
+
+#[test]
+fn tags_that_are_not_releases() {
+    let world = World::new("tags");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    package(&repo, "tb", "1.0.0");
+    tagged(&repo, "v1.0");
+    let url = repo.display().to_string();
+    // No release: refused, naming the tag that isn't one
+    let out = world.lx(&["add", "--git", &url]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("has no releases"), "{error}");
+    assert!(error.contains("v1.0 names no version"), "{error}");
+    assert!(error.contains("--branch or --rev"), "{error}");
+    // Following a branch is asked for by name
+    let added = world.ok(&["add", "--git", &url, "--branch", "main"]);
+    assert!(added.contains("added tb 1.0.0"), "{added}");
+
+    // A release beside one that isn't: added, and the other warned of
+    world.ok(&["remove", "tb"]);
+    git(&repo, &["tag", "v1.0.0"]);
+    let out = world.lx(&["add", "--git", &url]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(warned.contains("warning:"), "{warned}");
+    assert!(warned.contains("v1.0 names no version"), "{warned}");
+}
+
+#[test]
+fn locked_and_offline_installs() {
+    let world = World::new("frozen");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+    let lock_path = world.path("vault/logoxide.lock");
+    let lock = std::fs::read(&lock_path).unwrap();
+    world.ok(&["install", "--locked"]);
+    world.ok(&["install", "--offline"]);
+    world.ok(&["install", "--locked", "--offline"]);
+    assert_eq!(std::fs::read(&lock_path).unwrap(), lock);
+
+    // The manifest asks for something the lock doesn't have
+    let other = world.path("ob");
+    released(&other, "ob", "1.0.0");
+    let manifest_path = world.path("vault/logoxide.toml");
+    let manifest = std::fs::read_to_string(&manifest_path).unwrap();
+    std::fs::write(
+        &manifest_path,
+        format!("{manifest}ob = {{ git = \"{}\" }}\n", other.display()),
+    )
+    .unwrap();
+    let out = world.lx(&["install", "--locked"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("`ob` isn't locked"), "{error}");
+    assert!(error.contains("--locked"), "{error}");
+    let out = world.lx(&["install", "--offline"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(error.contains("offline nothing is fetched"), "{error}");
+    assert_eq!(std::fs::read(&lock_path).unwrap(), lock);
+    assert!(!world.path("library/packages/ob").exists());
+
+    // Locked, but not installed (another device): offline can't, locked can
+    std::fs::write(&manifest_path, manifest).unwrap();
+    std::fs::remove_dir_all(world.path("library/packages")).unwrap();
+    let out = world.lx(&["install", "--offline"]);
+    assert_eq!(out.status.code(), Some(1));
+    let error = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        error.contains("tb 1.0.0 isn't installed, and offline nothing is fetched"),
+        "{error}"
+    );
+    world.ok(&["install", "--locked"]);
+    world.ok(&["install", "--offline"]);
+    assert_eq!(std::fs::read(&lock_path).unwrap(), lock);
+
+    // Nothing locked yet
+    std::fs::remove_file(&lock_path).unwrap();
+    assert_eq!(world.lx(&["install", "--locked"]).status.code(), Some(1));
+    assert!(!lock_path.exists());
+}
+
+#[test]
+fn two_bibles_with_one_name_are_warned_of() {
+    let world = World::new("clash");
+    world.ok(&["init"]);
+    let repo = world.path("tb");
+    released(&repo, "tb", "1.0.0");
+    released(&repo, "tb", "2.0.0");
+    // A collection of tb 1, beside the manifest's own tb 2
+    let shelf = world.path("shelf");
+    std::fs::create_dir_all(&shelf).unwrap();
+    std::fs::write(
+        shelf.join("logoxide.toml"),
+        format!(
+            "[package]\nid = \"shelf\"\nname = \"Shelf\"\nabbreviation = \"SH\"\nversion = \"1.0.0\"\nkind = \"collection\"\nlanguage = \"en\"\n\n[dependencies]\ntb = {{ git = \"{}\", version = \"1\" }}\n",
+            repo.display()
+        ),
+    )
+    .unwrap();
+    tagged(&shelf, "v1.0.0");
+    world.ok(&["add", "--git", &repo.display().to_string()]);
+    world.ok(&["add", "--git", &shelf.display().to_string()]);
+    let out = world.lx(&["install"]);
+    assert!(out.status.success());
+    let warned = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        warned.contains("warning: `TB` names tb 1.0.0 and tb 2.0.0"),
+        "{warned}"
+    );
+    // Its own abbreviation for the manifest's copy, and the warning goes
+    world.ok(&["remove", "tb"]);
+    let added = world.lx(&[
+        "add",
+        "--git",
+        &repo.display().to_string(),
+        "--abbreviation",
+        "TB2",
+    ]);
+    assert!(added.status.success());
+    let out = world.lx(&["install"]);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains("warning"));
 }

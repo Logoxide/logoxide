@@ -167,17 +167,17 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 |---|---|---|
 | `git` | string | A git repository's URL (never starting with `-`). `github:owner/repo`, `gitlab:owner/repo`, and `codeberg:owner/repo` are short for the hosts' HTTPS URLs |
 | `registry` | string | A registry's catalog (its URL, or a file's path), whose releases are archives ([catalog.md](catalog.md)) |
-| `path` | string | A folder, relative to this manifest, used in place |
-| `version` | string | A semver requirement (`1`, `^1.2`, `>=1, <3`): the newest release matching it. For git, releases are tags `v<version>` |
+| `path` | string | A folder, relative to this manifest, used in place. `lx add --path` writes it relative even when given absolute; an absolute one is warned of, since the lock file names it too and another machine won't have it |
+| `version` | string | A semver requirement (`1`, `^1.2`, `>=1, <3`): the newest release matching it. For git, releases are tags `v<version>` with a whole semver version (`v1.0.0`; `v1.0` is no release, and is named when nothing matches) |
 | `tag` | string | For `git` only: this tag |
-| `rev` | string | For `git` only: this commit (4 to 64 hex digits) |
+| `rev` | string | For `git` only: this commit, by its full object id (40 hex digits, or 64 in a SHA-256 repository); a shorter prefix is refused |
 | `branch` | string | For `git` only: this branch's head |
 | `folder` | string | For `git` only: the package's folder in the repository, when it isn't at the top. Its releases are tags `<folder>/v<version>` (others are passed over), and only that folder is installed |
 | `optional` | boolean | Only used when a feature turns it on (`dep:<name>`). Default `false` |
 | `features` | array of strings | Its features to turn on |
 | `default-features` | boolean | Whether its `default` feature is on. Default `true` |
 | `package` | string | The package's id, when the dependency is named something else (forks side by side) |
-| `abbreviation` | string | What references name it by here, in place of its own |
+| `abbreviation` | string | What references name it by here, in place of its own. Only this copy takes it: the same package at another version, brought in by a collection, keeps its own. Two Bibles answering to one name are warned of |
 | `aliases` | array of strings | Its aliases here, in place of its own |
 | `enabled` | boolean | `false` turns it off without removing it: it stays locked and installed, but nothing reads it. Default `true` |
 

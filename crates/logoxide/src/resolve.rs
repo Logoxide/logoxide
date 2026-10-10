@@ -63,6 +63,19 @@ impl Update {
     }
 }
 
+/**
+How far installing may go beyond the lock file and the library, as Cargo's `--locked` and
+`--offline`: for CI, and for machines without a network
+*/
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Frozen {
+    /// The lock file must come out as it was: a dependency it lacks, or anything that would
+    /// change it, is an error
+    pub locked: bool,
+    /// Nothing is fetched: what isn't installed (or locked) already is an error
+    pub offline: bool,
+}
+
 pub struct Resolver<'a> {
     pub packages: &'a dyn Packages,
     pub fetcher: &'a dyn Fetcher,
@@ -72,6 +85,8 @@ pub struct Resolver<'a> {
     /// Installed versions whose files changed are fetched again and put back, instead of being
     /// an error
     pub repair: bool,
+    /// Whether the lock file may change, and whether anything may be fetched
+    pub frozen: Frozen,
 }
 
 /// A dependency to resolve, and where it was named
@@ -87,6 +102,9 @@ struct Want {
     from_remote: bool,
     /// The index (in the lock file) of the package that named it, if not the manifest
     parent: Option<usize>,
+    /// That package as locked (its id, rename, and name), to find what the previous lock file
+    /// gave it
+    parent_locked: Option<(String, Option<String>, String)>,
 }
 
 /// A tag's version: `v1.2.0` or `1.2.0`
@@ -111,6 +129,49 @@ pub fn folder_tag_version(tag: &str, folder: Option<&str>) -> Option<semver::Ver
         return None;
     }
     tag_version(own)
+}
+
+/**
+Tags that look like releases of the package in `folder` (or at the top) but aren't semver
+(`v1.0`, `2.1`), so no requirement ever matches them: worth saying, since a publisher may think
+they're releases
+*/
+pub fn not_semver_tags<'t>(
+    tags: impl IntoIterator<Item = &'t str>,
+    folder: Option<&str>,
+) -> Vec<&'t str> {
+    let folder = folder
+        .map(|f| f.trim_matches('/'))
+        .filter(|f| !f.is_empty());
+    (tags.into_iter())
+        .filter(|tag| {
+            let own = match folder {
+                Some(folder) => tag.strip_prefix(folder).and_then(|t| t.strip_prefix('/')),
+                None => Some(*tag),
+            };
+            own.filter(|own| !own.contains('/'))
+                .map(|own| own.strip_prefix('v').unwrap_or(own))
+                .is_some_and(|own| own.starts_with(|c: char| c.is_ascii_digit()))
+                && folder_tag_version(tag, folder).is_none()
+        })
+        .collect()
+}
+
+/// What [`not_semver_tags`] finds, said after a message (` (v1.0 names no version: …)`), or
+/// nothing
+pub fn not_semver_note<'t>(
+    tags: impl IntoIterator<Item = &'t str>,
+    folder: Option<&str>,
+) -> String {
+    let odd = not_semver_tags(tags, folder);
+    match odd.len() {
+        0 => String::new(),
+        n => format!(
+            " ({} {} no version: releases are tagged with three numbers, v1.0.0)",
+            odd.join(", "),
+            if n == 1 { "names" } else { "name" }
+        ),
+    }
 }
 
 /// Whether a locked package came from another machine (not a path, a local repository, or a
@@ -139,6 +200,46 @@ fn relative_join(within: &str, path: &str) -> String {
 impl Resolver<'_> {
     /// The lock file for `manifest`, with every package it names installed
     pub fn resolve(&self, manifest: &Manifest) -> Result<Lockfile> {
+        self.check_update(manifest)?;
+        if self.frozen.locked && self.previous.is_none() {
+            return Err(LogoxideError::Resolve(String::from(
+                "there's no logoxide.lock to keep (install without --locked to write one)",
+            )));
+        }
+        let lock = self.resolve_all(manifest)?;
+        if self.frozen.locked && self.previous != Some(&lock) {
+            return Err(LogoxideError::Resolve(String::from(
+                "logoxide.lock would change (the manifest asks for something it doesn't have): \
+                 install without --locked to update it",
+            )));
+        }
+        Ok(lock)
+    }
+
+    /// Nothing may be fetched offline: `what` (of the dependency `name`) needs fetching
+    fn may_fetch(&self, name: &str, what: &str) -> Result<()> {
+        if self.frozen.offline {
+            return Err(LogoxideError::Resolve(format!(
+                "`{name}`: {what} isn't installed, and offline nothing is fetched"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Nothing new may be chosen when the lock file must stay as it is, nor offline (choosing
+    /// reads tags or a catalog)
+    fn may_choose(&self, name: &str) -> Result<()> {
+        let why = match (self.frozen.locked, self.frozen.offline) {
+            (true, _) => "logoxide.lock must stay as it is (--locked)",
+            (_, true) => "offline nothing is fetched to choose a version from",
+            _ => return Ok(()),
+        };
+        Err(LogoxideError::Resolve(format!(
+            "`{name}` isn't locked as the manifest asks for it, and {why}"
+        )))
+    }
+
+    fn resolve_all(&self, manifest: &Manifest) -> Result<Lockfile> {
         let mut lock = Lockfile::default();
         let mut todo: VecDeque<Want> = VecDeque::new();
         for (name, dependency) in &manifest.dependencies {
@@ -157,6 +258,7 @@ impl Resolver<'_> {
                 from_git: false,
                 from_remote: false,
                 parent: None,
+                parent_locked: None,
             });
         }
         while let Some(want) = todo.pop_front() {
@@ -166,17 +268,12 @@ impl Resolver<'_> {
                 locked.rename = Some(want.name.clone());
             }
             let name = locked.name();
-            let (index, changed) = match lock
-                .packages
-                .iter()
-                .position(|p| p.id == locked.id && p.key() == locked.key())
-            {
+            // Two names for one commit (`kjv` and `kjv-two`) are two entries sharing a folder:
+            // each is turned on and off, and named in references, apart
+            let (index, changed) = match lock.packages.iter().position(|p| p.name() == name) {
                 Some(index) => {
                     // Asked for again, maybe with more features: one install with all of them
                     let existing = &mut lock.packages[index];
-                    if existing.rename.is_none() {
-                        existing.rename = locked.rename.clone();
-                    }
                     let before = (existing.features.clone(), existing.default_features);
                     let mut features: BTreeSet<String> =
                         existing.features.iter().cloned().collect();
@@ -232,13 +329,44 @@ impl Resolver<'_> {
                     from_git: locked.git.is_some() || locked.registry.is_some(),
                     from_remote: want.from_remote || is_remote(&locked),
                     parent: Some(index),
+                    parent_locked: Some((locked.id.clone(), locked.rename.clone(), locked.name())),
                 });
             }
         }
         lock.packages
-            .sort_by(|a, b| (&a.id, &a.version).cmp(&(&b.id, &b.version)));
+            .sort_by(|a, b| (&a.id, &a.version, &a.rename).cmp(&(&b.id, &b.version, &b.rename)));
         // Indexes changed with the sort; dependencies are named, so they still hold
         Ok(lock)
+    }
+
+    /**
+    Each name to update is one the manifest has, or one a package brings in (as the previous
+    lock file names it): a mistyped name would otherwise update nothing, and say nothing
+    */
+    fn check_update(&self, manifest: &Manifest) -> Result<()> {
+        let Update::Only(names) = &self.update else {
+            return Ok(());
+        };
+        let locked = |name: &String| {
+            (self.previous.into_iter().flat_map(|l| &l.packages))
+                .any(|p| p.id == *name || p.dependency_name() == name)
+        };
+        let unknown: Vec<&str> = (names.iter())
+            .filter(|name| !manifest.dependencies.contains_key(*name) && !locked(name))
+            .map(String::as_str)
+            .collect();
+        if unknown.is_empty() {
+            return Ok(());
+        }
+        let known: Vec<&str> = manifest.dependencies.keys().map(String::as_str).collect();
+        Err(LogoxideError::Resolve(format!(
+            "nothing here is named {} (the manifest has {})",
+            unknown.join(", "),
+            match known.is_empty() {
+                true => String::from("no dependencies"),
+                false => known.join(", "),
+            }
+        )))
     }
 
     /// A locked version that's installed
@@ -348,37 +476,35 @@ impl Resolver<'_> {
         })?;
         let url = &crate::git::expand_url(url);
         // What the previous lock file has, if the manifest still allows it and it isn't updating
-        let kept = self
-            .previous
-            .filter(|_| !self.update.allows(&want.name))
-            .and_then(|previous| {
-                previous.packages.iter().find(|p| {
-                    // Still what the manifest asks for: the same tag, branch, or revision, or (for a
-                    // version requirement, whose tag was chosen) a version it allows
-                    let same = match (&d.tag, &d.branch, &d.rev) {
-                        (Some(tag), _, _) => p.tag.as_ref() == Some(tag),
-                        (_, Some(branch), _) => p.branch.as_ref() == Some(branch),
-                        (_, _, Some(rev)) => p.rev.as_ref() == Some(rev),
-                        _ => {
-                            p.branch.is_none()
-                                && p.rev.is_none()
-                                && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
-                        }
-                    };
-                    p.id == d.package_id(&want.name)
-                        && p.git.as_deref() == Some(url.as_str())
-                        && p.folder.as_deref().map(|f| f.trim_matches('/'))
-                            == d.folder.as_deref().map(|f| f.trim_matches('/'))
-                        && p.commit.is_some()
-                        && same
-                })
-            });
+        let kept = self.kept(want, |p| {
+            // Still what the manifest asks for: the same tag, branch, or revision, or (for a
+            // version requirement, whose tag was chosen) a version it allows
+            let same = match (&d.tag, &d.branch, &d.rev) {
+                (Some(tag), _, _) => p.tag.as_ref() == Some(tag),
+                (_, Some(branch), _) => p.branch.as_ref() == Some(branch),
+                (_, _, Some(rev)) => p.rev.as_ref() == Some(rev),
+                _ => {
+                    p.branch.is_none()
+                        && p.rev.is_none()
+                        && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+                }
+            };
+            p.id == d.package_id(&want.name)
+                && p.git.as_deref() == Some(url.as_str())
+                && p.folder.as_deref().map(|f| f.trim_matches('/'))
+                    == d.folder.as_deref().map(|f| f.trim_matches('/'))
+                && p.commit.is_some()
+                && same
+        });
         let (reference, tag) = match kept {
             Some(kept) => (
                 GitRef::Rev(kept.commit.clone().unwrap_or_default()),
                 kept.tag.clone(),
             ),
-            None => self.reference(&want.name, url, d)?,
+            None => {
+                self.may_choose(&want.name)?;
+                self.reference(&want.name, url, d)?
+            }
         };
         let mut locked = self.install(&want.name, d, url, &reference, kept)?;
         locked.tag = tag;
@@ -387,6 +513,26 @@ impl Resolver<'_> {
         locked.features = features;
         locked.default_features = d.default_features;
         Ok(locked)
+    }
+
+    /**
+    What the previous lock file has for a dependency, if it's still what's asked for (`fits`)
+    and isn't being updated: first what the same asker locked (the manifest's top-level
+    `dependencies`, or the package that named it), then any entry. A lock can hold one package
+    at two versions (a collection's `kjv` 1, the manifest's 2); each keeps its own
+    */
+    fn kept(&self, want: &Want, fits: impl Fn(&LockedPackage) -> bool) -> Option<&LockedPackage> {
+        let previous = self.previous.filter(|_| !self.update.allows(&want.name))?;
+        let asker: Option<&Vec<String>> = match &want.parent_locked {
+            None => Some(&previous.dependencies),
+            Some((id, rename, name)) => (previous.named(name))
+                .or_else(|| (previous.packages.iter()).find(|p| p.id == *id && p.rename == *rename))
+                .map(|p| &p.dependencies),
+        };
+        let theirs = (asker.into_iter().flatten())
+            .filter_map(|name| previous.named(name))
+            .find(|p| fits(p));
+        theirs.or_else(|| previous.packages.iter().find(|p| fits(p)))
     }
 
     /// The commit a dependency asks for, and the tag it's from (for version requirements)
@@ -417,10 +563,19 @@ impl Resolver<'_> {
             .max_by(|a, b| a.0.cmp(&b.0));
         match (newest, &d.version) {
             (Some((_, tag)), _) => Ok((GitRef::Tag(tag.clone()), Some(tag.clone()))),
-            (None, Some(req)) => Err(LogoxideError::Resolve(match &d.folder {
-                Some(folder) => format!("`{name}`: no tag of {url} for {folder}/ matches {req}"),
-                None => format!("`{name}`: no tag of {url} matches {req}"),
-            })),
+            (None, Some(req)) => {
+                let mut message = match &d.folder {
+                    Some(folder) => {
+                        format!("`{name}`: no tag of {url} for {folder}/ matches {req}")
+                    }
+                    None => format!("`{name}`: no tag of {url} matches {req}"),
+                };
+                message.push_str(&not_semver_note(
+                    tags.iter().map(|(t, _)| t.as_str()),
+                    d.folder.as_deref(),
+                ));
+                Err(LogoxideError::Resolve(message))
+            }
             (None, None) => Ok((GitRef::Head, None)),
         }
     }
@@ -453,8 +608,24 @@ impl Resolver<'_> {
             }
             // Changed, and repairing: fetched again below, and its files put back
         }
+        let what = kept.map_or_else(|| url.to_string(), LockedPackage::label);
+        self.may_fetch(name, &what)?;
         let fetched = MemoryStorage::new();
-        let commit = self.fetcher.fetch(url, reference, &fetched)?;
+        let commit = (self.fetcher.fetch(url, reference, &fetched)).map_err(|e| match (kept, e) {
+            // The lock's commit, fetched by itself: a tag moved or a branch rewritten since takes
+            // it off the host
+            (Some(kept), LogoxideError::Fetch { url, message }) => LogoxideError::Fetch {
+                url,
+                message: format!(
+                    "{message} (the locked commit {} of {} may no longer be on the host: if its \
+                     tag was moved or its branch rewritten, `lx update {name}` locks what's there \
+                     now)",
+                    kept.commit.as_deref().unwrap_or("?"),
+                    kept.label()
+                ),
+            },
+            (_, e) => e,
+        })?;
         // A package in a folder of its repository is that folder's files
         let fetched = match d.folder.as_deref().map(|f| f.trim_matches('/')) {
             Some(folder) if !folder.is_empty() => {
@@ -555,21 +726,18 @@ impl Resolver<'_> {
         let d = &want.dependency;
         let id = d.package_id(&want.name);
         crate::manifest::check_id("package", id)?;
-        let kept = self
-            .previous
-            .filter(|_| !self.update.allows(&want.name))
-            .and_then(|previous| {
-                previous.packages.iter().find(|p| {
-                    p.id == id
-                        && p.registry.as_deref() == Some(registry)
-                        && p.archive.is_some()
-                        && p.sha256.is_some()
-                        && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
-                })
-            });
+        let kept = self.kept(want, |p| {
+            p.id == id
+                && p.registry.as_deref() == Some(registry)
+                && p.archive.is_some()
+                && p.sha256.is_some()
+                && p.checksum.is_some()
+                && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+        });
         let mut locked = match kept {
             Some(kept) => kept.clone(),
             None => {
+                self.may_choose(&want.name)?;
                 let text = self.fetcher.download(registry)?;
                 let catalog =
                     crate::catalog::Catalog::parse(registry, &String::from_utf8_lossy(&text))?;
@@ -597,6 +765,14 @@ impl Resolver<'_> {
                         want.name
                     ))
                 })?;
+                // Without the files' checksum, an installed copy could never be checked
+                let checksum = release.checksum.clone().ok_or_else(|| {
+                    LogoxideError::Resolve(format!(
+                        "`{}`: {registry} lists {id} {} without a `checksum` (republish it with \
+                         a newer lx)",
+                        want.name, release.version
+                    ))
+                })?;
                 LockedPackage {
                     id: id.to_string(),
                     rename: None,
@@ -614,7 +790,7 @@ impl Resolver<'_> {
                     archive: Some(release.url.clone()),
                     mirrors: release.mirrors.clone(),
                     sha256: Some(release.sha256.clone()),
-                    checksum: release.checksum.clone(),
+                    checksum: Some(checksum),
                     features: vec![],
                     default_features: true,
                     dependencies: vec![],
@@ -641,6 +817,7 @@ impl Resolver<'_> {
                 return Ok(locked);
             }
         }
+        self.may_fetch(&want.name, &locked.label())?;
         // From the archive's URL, else each mirror: the first whose bytes hash as listed
         let urls: Vec<String> = (locked.archive.iter().chain(&locked.mirrors))
             .cloned()
@@ -713,5 +890,20 @@ mod tests {
         assert_eq!(relative_join("", "Bibles/Mine"), "Bibles/Mine");
         assert_eq!(relative_join("Bibles/Mine", "../Lexicon"), "Bibles/Lexicon");
         assert_eq!(relative_join("Bibles/Mine", "/srv/Lexicon"), "/srv/Lexicon");
+    }
+
+    #[test]
+    fn tags_that_look_like_releases() {
+        let tags = [
+            "v1.0",
+            "2.1",
+            "v1.0.0",
+            "release",
+            "v2",
+            "books/v1.0",
+            "books/v1.0.0",
+        ];
+        assert_eq!(not_semver_tags(tags, None), ["v1.0", "2.1", "v2"]);
+        assert_eq!(not_semver_tags(tags, Some("books")), ["books/v1.0"]);
     }
 }

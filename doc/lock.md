@@ -50,7 +50,7 @@ checksum = "sha256:41c0…"
 | `tag`, `branch`, `rev` | string | How it was asked for (the commit is what is used) |
 | `commit` | string | The commit installed (git packages): 7 to 64 lowercase hex digits |
 | `folder` | string | The package's folder in its repository, when it isn't at the top |
-| `path` | string | A folder used in place, relative to the manifest (path packages) |
+| `path` | string | A folder used in place, relative to the manifest (path packages). An absolute path is read, but warned of: the lock isn't portable |
 | `registry` | string | The registry's catalog it was chosen from |
 | `archive` | string | That release's archive URL |
 | `mirrors` | array of strings | Other places serving the same archive, tried in order after `archive` |
@@ -71,21 +71,39 @@ A locked package's **key** is its version with what pins it, as semver build met
 - registry archive: `<version>+a<first 8 hex digits of the sha256>` (`1.2.0+a9f86d081`)
 - path: `<version>`
 
-Its **name** is `<id> <key>`, which `dependencies` lists. Lock files from before forks were
-supported name packages `<id> <version>`; readers should still accept that, matching by id and
-version. The key is also the package's folder in the library (`packages/<id>/<key>/`), so forks
-of a package at one version, or two registries' releases of it, never share a folder.
+Its **name** is `<id> <key>`, which `dependencies` lists; a package the manifest calls something
+else (`rename`) is `<rename> (<id>) <key>` (`kjv-two (kjv) 1.0.0+g3f9c2a1b`). Two names for one
+commit are two entries, each turned on and off and named in references apart, sharing one folder.
+Lock files from before forks were supported name packages `<id> <version>`, and those from before
+renames had their own names `<id> <key>`; readers should still accept both, matching by id and
+key, then by id and version. The key is also the package's folder in the library
+(`packages/<id>/<key>/`), so forks of a package at one version, or two registries' releases of it,
+never share a folder.
 
 ## Resolving and installing
 
 - A locked package is kept while the manifest still allows it (its requirement matches, and it
   comes from the same place), unless the user asks to update it; otherwise the newest allowed
   version is chosen: the newest `v<version>` tag matching `version` for git, or the newest
-  matching unyanked release for a registry ([catalog.md](catalog.md)).
+  matching unyanked release for a registry ([catalog.md](catalog.md)). Updating by name takes
+  only names the manifest has or packages the lock holds (as a package brings them in); any other
+  is refused, rather than updating nothing.
+- A lock can hold one package at two versions (a collection asks for `kjv` 1, the manifest for
+  `kjv` 2). The entry kept for a dependency is first the one the same asker locked (the
+  top-level `dependencies` for the manifest's, the naming package's `dependencies` for its own),
+  then any entry that still fits.
 - What is fetched is checked against the lock: an archive must hash to `sha256`, and the
   package's files to `checksum`. An installed copy whose checksum no longer matches (its files
   were edited) is an error unless the user asks to repair it, which puts back its declared files
   and leaves other files alone.
+- A locked commit is fetched by itself; one the host no longer has (a moved tag, a rewritten
+  branch) is an error saying to update that package. Updating warns of a release that came back
+  changed: a tag naming another commit, or a registry version with another archive or checksum
+  (`Lockfile::moved_since`).
+- Installing may be **locked** (`lx install --locked`, as in CI): the lock must come out exactly
+  as it was, so a dependency it lacks or that the manifest now asks for differently is an error,
+  as is having no lock. It may be **offline** (`lx install --offline`): nothing is fetched, so
+  what isn't installed already, or isn't locked, is an error. Both are Cargo's.
 - A git tag's version must equal the `version` in its `logoxide.toml`.
 - A git or registry package can't have `path` dependencies.
 - Dependencies with `enabled = false` stay locked and installed; nothing reads them.

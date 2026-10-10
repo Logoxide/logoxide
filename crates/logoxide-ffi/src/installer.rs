@@ -20,7 +20,7 @@ use logoxide_core::{
     git::{Fetcher, GitRef},
     library::library_dir,
     manifest::{MANIFEST, Manifest},
-    resolve::{Packages, Resolver, Update, tag_version},
+    resolve::{Frozen, Packages, Resolver, Update, tag_version},
 };
 
 use crate::{LogoxideError, LogoxideProject, PackageFile, PackageInfo, PackageLocation};
@@ -356,6 +356,7 @@ impl LogoxideInstaller {
                 previous: project.project.lock(),
                 update,
                 repair,
+                frozen: Frozen::default(),
             }
             .resolve(project.project.manifest())
         })?;

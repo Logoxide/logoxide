@@ -754,7 +754,7 @@ impl Settings {
         let package = library
             .open(locked, project.dir())
             .map_err(|e| format!("bibles: {id}: {e}"))?;
-        (bible.name, bible.aliases) = project.names(id, package.info());
+        (bible.name, bible.aliases) = project.names(locked, package.info());
         Ok(bible)
     }
 }

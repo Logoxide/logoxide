@@ -34,7 +34,7 @@ before changing the design.
     include a collection's); the `epub` format is kept as files, not read as verses. Keys it
     doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
     older lx reads a newer manifest. `validate` refuses a `git`/`registry`/`tag`/`branch`/`rev`
-    that starts with `-` (git would take it as an option), a `rev` that isn't hex, and names and
+    that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
     package in a folder of its repository (tags `<folder>/v<version>`, `lx add --folder`)
   - `storage.rs`: `Storage` (read, list, write, remove) over a folder (`FsStorage`), memory
@@ -63,8 +63,11 @@ before changing the design.
     aliases, and counts
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
-    `id version+g<commit>`, older lock files' `id version` still read; `rename` is the
-    manifest's name when it isn't the id; `get` finds by that name). `LockedPackage::check`
+    `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one
+    commit are two entries sharing a folder; older lock files' `id version` still read; `rename`
+    is the manifest's name when it isn't the id; `get` finds by that name). `moved_since` finds
+    releases that came back changed (a moved tag), which `lx install`/`lx update` warn of; a kept
+    commit that can't be fetched says it may be gone from the host. `LockedPackage::check`
     refuses a commit or sha256 that isn't hex and an id that isn't one, so a lock can't name a
     folder outside the library
   - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).
@@ -157,22 +160,27 @@ before changing the design.
     version never share a folder), without `.git`; path packages stay where they are.
     `Library::packages(base)` is the resolver's `Packages` on disk (a new version is written
     beside its folder, then renamed into place)
-  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes, through `Packages`
+  - `resolve.rs`: manifest + previous lock → new lock, installing as it goes (`Frozen`: `locked`
+    keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`), through `Packages`
     (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
     registries: paths and `file://` by default, HTTPS in lx and through the host in the
     bindings). A `registry` dependency (a catalog's URL) gets the newest release its catalog lists
     that the requirement allows, or the locked one (whose archive URL and hash the lock has, so
-    no catalog is read); the archive must hash to `sha256` and its files to `checksum`; lock
+    no catalog is read); the archive must hash to `sha256` and its files to `checksum` (a release without one is refused); lock
     entries have `registry`, `archive`, `mirrors` (the release's, tried in turn by
     `Fetcher::download_any`, which passes over bytes that don't hash as listed), `sha256`, and
     its library folder is `<version>+a<hash>`. A lock entry is kept
-    while the manifest still allows it (unless updating); fetched text is checked against the
+    while the manifest still allows it (unless updating), found first among what the same asker
+    locked (`Resolver::kept`: the manifest's top-level `dependencies`, or its parent's); fetched text is checked against the
     locked checksum; a tag's version must match its `logoxide.toml`. A package from another
     machine (git or a registry) can't name a path, a local or `file://` repository, or a local
     registry; a local one can (`folder_tag_version` reads a `folder`'s tags)
   - `project.rs`: a folder with `logoxide.toml` (edited with toml_edit, keeping comments; or
     `from_text` and `manifest_text` for hosts that do the reading and writing) and its
-    lock; `translations()` gives topos the Bibles it asks for
+    lock; `translations()` gives topos the Bibles it asks for; `names` gives a dependency's
+    `abbreviation`/`aliases` to the manifest's own copy only, and `name_clashes` says which names two
+    Bibles answer to (a diamond: the manifest's kjv 2 and a collection's kjv 1), which `lx install`
+    and `lx add` warn of
   - `summary.rs`: `logoxide.summary.toml` (verse counts in book order, sizes, element counts
     without structural markers) and `logoxide.verses.bin` (`LXV1`, 12 bytes a verse: book,
     chapter, verse, last, 8 bytes of SHA-256 of its words with notes and headings left out);
@@ -239,7 +247,7 @@ before changing the design.
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
   OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
-  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install`, `update`, `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
+  `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone), `check`, `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses; `--remove` deletes), `search` (catalogs; `--registry <name>`), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
@@ -252,7 +260,10 @@ before changing the design.
   versification> --to …` (`--with <map package>` adds one not in the project). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash lx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
-  installs and locks what it adds. Catalogs and
+  installs and locks what it adds (`--path` is written relative to the manifest; an absolute path
+  in a lock is warned of; a repository without release tags needs `--branch`, `--rev`, or
+  `--tag`; tags like `v1.0` that aren't semver are warned of: `resolve::not_semver_tags`), and `lx add` and `lx remove` write the manifest only once that
+  succeeds. Catalogs and
   imports come over HTTPS with ureq (`net.rs`: one agent, timeouts, `lx/<version>` user agent,
   the environment's proxy, three tries; media hashed as it's read; an HTTPS URL is fetched
   `https_only`, so a redirect to plain HTTP is refused, and plain HTTP is warned of there,
@@ -290,7 +301,8 @@ before changing the design.
   (`MappedPassage`: text, OSIS, verses, missing). `LogoxideProject.packages()` lists each package
   the manifest asks for followed by what it brings in (`LockedEntry.dependencyOf`), so hosts see
   a collection's packages; `LockedEntry.enabled` is false for one turned off (`setEnabled`) and
-  what it brings in; `isEnabled`, `enabledDependencies`, `disabledDependencies`, and
+  what it brings in; `nameClashes` (Bibles answering to one name, from `NamedBible`s); `isEnabled`,
+  `enabledDependencies`, `disabledDependencies`, and
   `Logoxide.packageInfo` (a package's details from its `logoxide.toml` alone, to name one that's off). `LogoxideInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
   that answers, are registries' catalogs and archives, with their mirrors; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;

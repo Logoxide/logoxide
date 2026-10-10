@@ -6,7 +6,10 @@ use std::{
 };
 
 use logoxide::{
-    Library, LogoxideError, Project, git::GitCli, manifest::DetailedDependency, resolve::Update,
+    Library, LogoxideError, Project,
+    git::GitCli,
+    manifest::DetailedDependency,
+    resolve::{Frozen, Update},
 };
 
 fn git(dir: &Path, args: &[&str]) {
@@ -307,6 +310,61 @@ fn forks_side_by_side() {
 }
 
 #[test]
+fn two_names_for_one_commit_stay_two() {
+    let world = World::new("two-names");
+    let repo = world.path("repos/kjv");
+    std::fs::create_dir_all(&repo).unwrap();
+    release(&repo, "kjv", "1.0.0", "words", "");
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("kjv", &git_dep(&repo, None)).unwrap();
+    let mut two = git_dep(&repo, None);
+    two.package = Some("kjv".into());
+    two.abbreviation = Some("KJV2".into());
+    two.aliases = Some(vec![]);
+    project.add("kjv-two", &two).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap().clone();
+    assert_eq!(lock.packages.len(), 2);
+    assert_eq!(lock.dependencies.len(), 2);
+    let (kjv, kjv_two) = (lock.get("kjv").unwrap(), lock.get("kjv-two").unwrap());
+    assert_eq!(kjv.commit, kjv_two.commit);
+    assert!(kjv_two.name().starts_with("kjv-two (kjv) 1.0.0+g"));
+    // One folder for both
+    assert_eq!(library.installed().len(), 1);
+    assert_eq!(
+        library.package_dir(kjv, project.dir()),
+        library.package_dir(kjv_two, project.dir())
+    );
+
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("KJV"), Some("KJV"));
+    assert_eq!(translations.get("KJV2"), Some("KJV2"));
+
+    // Turning one off leaves the other on
+    project.set_enabled("kjv", false).unwrap();
+    let in_use: Vec<&str> = project
+        .in_use()
+        .iter()
+        .map(|p| p.dependency_name())
+        .collect();
+    assert_eq!(in_use, ["kjv-two"]);
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("KJV"), None);
+    assert_eq!(translations.get("KJV2"), Some("KJV2"));
+
+    // Installing again keeps both, as they were
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(project.lock().unwrap(), &lock);
+}
+
+#[test]
 fn collections_bring_in_their_packages() {
     let world = World::new("collections");
     let bible = world.path("repos/tb");
@@ -340,6 +398,126 @@ fn collections_bring_in_their_packages() {
     let translations = project.translations(&library).unwrap();
     assert_eq!(translations.get("TB"), Some("TB"));
     assert_eq!(translations.get("LIB"), None);
+}
+
+/// A collection (released `v1.0.0`) of one package, with its requirement
+fn collection(dir: &Path, package: &str, url: &Path, version: &str) {
+    std::fs::create_dir_all(dir).unwrap();
+    std::fs::write(
+        dir.join("logoxide.toml"),
+        format!(
+            "[package]\nid = \"library\"\nname = \"A Library\"\nabbreviation = \"LIB\"\nversion = \"1.0.0\"\nkind = \"collection\"\nlanguage = \"en\"\n\n[dependencies]\n{package} = {{ git = \"{}\", version = \"{version}\" }}\n",
+            url.display()
+        ),
+    )
+    .unwrap();
+    git(dir, &["init", "-q", "-b", "main"]);
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-q", "-m", "1.0.0"]);
+    git(dir, &["tag", "v1.0.0"]);
+}
+
+#[test]
+fn a_locked_install_keeps_the_lock_as_it_is() {
+    let world = World::new("locked");
+    let mine = world.path("vault/mine");
+    std::fs::create_dir_all(&mine).unwrap();
+    release(&mine, "mine", "0.1.0", "mine", "");
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    let locked = Frozen {
+        locked: true,
+        offline: false,
+    };
+    // No lock file to keep
+    project
+        .add(
+            "mine",
+            &DetailedDependency {
+                path: Some("mine".into()),
+                default_features: true,
+                ..DetailedDependency::default()
+            },
+        )
+        .unwrap();
+    assert!(project.install_frozen(&library, &fetcher, locked).is_err());
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap().clone();
+    project.install_frozen(&library, &fetcher, locked).unwrap();
+    // A path package's new version would change it
+    release(&mine, "mine", "0.2.0", "mine", "");
+    let error = project
+        .install_frozen(&library, &fetcher, locked)
+        .unwrap_err();
+    assert!(error.to_string().contains("would change"), "{error}");
+    assert_eq!(project.lock().unwrap(), &lock);
+}
+
+#[test]
+fn each_asker_keeps_its_own_version() {
+    let world = World::new("askers");
+    let bible = world.path("repos/tb");
+    std::fs::create_dir_all(&bible).unwrap();
+    release(&bible, "tb", "1.0.0", "one", "");
+    release(&bible, "tb", "2.0.0", "two", "");
+    let shelf = world.path("repos/library");
+    collection(&shelf, "tb", &bible, "1");
+
+    let library = world.library("lib");
+    let fetcher = GitCli::default();
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project.add("library", &git_dep(&shelf, None)).unwrap();
+    project.add("tb", &git_dep(&bible, Some(">=1"))).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    let lock = project.lock().unwrap().clone();
+    assert_eq!(locked(&project), ["library 1.0.0", "tb 1.0.0", "tb 2.0.0"]);
+    assert_eq!(lock.get("tb").unwrap().version.to_string(), "2.0.0");
+
+    // Installing again: the manifest's tb stays 2.0.0, though 1.0.0 (the collection's) also
+    // matches `>=1` and comes first in the lock
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(project.lock().unwrap(), &lock);
+    // And on another device, from the same lock file
+    project.save_manifest().unwrap();
+    let mut other = Project::open(world.path("vault")).unwrap();
+    other
+        .install(&world.library("other"), &fetcher, Update::Nothing)
+        .unwrap();
+    assert_eq!(other.lock().unwrap(), &lock);
+
+    // Both are Bibles answering to TB: said, not hidden
+    let clashes = project.name_clashes(&library).unwrap();
+    assert_eq!(clashes.len(), 1);
+    assert_eq!(clashes[0].name, "TB");
+    let mut packages = clashes[0].packages.clone();
+    packages.sort();
+    assert_eq!(packages, ["tb 1.0.0", "tb 2.0.0"]);
+
+    // The manifest's abbreviation is the manifest's copy's alone: the collection's keeps TB
+    let mut renamed = git_dep(&bible, Some(">=1"));
+    renamed.abbreviation = Some("TB2".into());
+    project.add("tb", &renamed).unwrap();
+    project
+        .install(&library, &fetcher, Update::Nothing)
+        .unwrap();
+    assert!(project.name_clashes(&library).unwrap().is_empty());
+    let translations = project.translations(&library).unwrap();
+    assert_eq!(translations.get("TB2"), Some("TB2"));
+    assert_eq!(translations.get("TB"), Some("TB"));
+    let lock = project.lock().unwrap();
+    let collections = lock
+        .packages
+        .iter()
+        .find(|p| p.version.major == 1 && p.id == "tb");
+    let package = library.open(collections.unwrap(), project.dir()).unwrap();
+    assert_eq!(project.names(collections.unwrap(), package.info()).0, "TB");
 }
 
 #[test]
@@ -417,6 +595,45 @@ fn publish_mirrored(package: &Path, registry: &Path, mirrors: Vec<String>) {
         .unwrap()
         .unwrap();
     std::fs::write(catalog, text).unwrap();
+}
+
+#[test]
+fn registry_releases_must_give_their_checksum() {
+    let world = World::new("no-checksum");
+    let repo = world.path("authoring/tb");
+    let registry = world.path("registry");
+    std::fs::create_dir_all(&repo).unwrap();
+    release(&repo, "tb", "1.0.0", "one", "");
+    publish(&repo, &registry);
+    let catalog = registry.join("catalog.toml");
+    let text = std::fs::read_to_string(&catalog).unwrap();
+    let without: String = (text.lines())
+        .filter(|l| !l.starts_with("checksum"))
+        .map(|l| format!("{l}\n"))
+        .collect();
+    assert_ne!(without, text);
+    std::fs::write(&catalog, without).unwrap();
+
+    let library = world.library("lib");
+    let mut project = Project::init(world.path("vault")).unwrap();
+    project
+        .add(
+            "tb",
+            &DetailedDependency {
+                registry: Some(catalog.display().to_string()),
+                default_features: true,
+                ..DetailedDependency::default()
+            },
+        )
+        .unwrap();
+    let error = project
+        .install(&library, &GitCli::default(), Update::Nothing)
+        .unwrap_err();
+    assert!(
+        error.to_string().contains("without a `checksum`"),
+        "{error}"
+    );
+    assert!(library.installed().is_empty());
 }
 
 #[test]

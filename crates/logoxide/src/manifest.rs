@@ -722,6 +722,21 @@ pub fn check_id(what: &str, id: &str) -> Result<()> {
 }
 
 /**
+Checks a dependency's `rev`: a commit's full object id (40 hex digits, or 64 for SHA-256
+repositories). A shorter prefix could come to name another commit as the repository grows, and
+only a whole one can be fetched by itself from a host
+*/
+pub fn check_rev(rev: &str) -> Result<()> {
+    if matches!(rev.len(), 40 | 64) && rev.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Ok(());
+    }
+    Err(LogoxideError::Manifest(format!(
+        "rev `{rev}` isn't a full commit id (40 or 64 hex digits: `git rev-parse {rev}` gives \
+         it); name a branch with `branch`, a tag with `tag`"
+    )))
+}
+
+/**
 Checks what a dependency gives git and the library: its name and `package` are ids, and nothing
 it hands git could be read as an option (`--upload-pack=…`), so a manifest from anywhere can't run
 commands. A revision is a commit's hex; a folder is a plain relative path
@@ -747,13 +762,8 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
             ));
         }
     }
-    if let Some(rev) = &d.rev
-        && !((4..=64).contains(&rev.len()) && rev.bytes().all(|b| b.is_ascii_hexdigit()))
-    {
-        return err(format!(
-            "dependency `{name}`: rev `{rev}` isn't a commit (4 to 64 hex digits); name a branch \
-             with `branch`, a tag with `tag`"
-        ));
+    if let Some(rev) = &d.rev {
+        check_rev(rev).map_err(|e| LogoxideError::Manifest(format!("dependency `{name}`: {e}")))?;
     }
     if let Some(folder) = &d.folder {
         let plain = |part: &str| {
@@ -1092,11 +1102,15 @@ compare = ["mine"]
             ),
             (
                 "x = { git = \"https://e.org/x\", rev = \"main\" }",
-                "isn't a commit",
+                "isn't a full commit id",
             ),
             (
                 "x = { git = \"https://e.org/x\", rev = \"abc\" }",
-                "isn't a commit",
+                "isn't a full commit id",
+            ),
+            (
+                "x = { git = \"https://e.org/x\", rev = \"3f9c2a1b\" }",
+                "isn't a full commit id",
             ),
             ("x = { registry = \"-r\" }", "isn't one"),
             ("\"../x\" = { git = \"https://e.org/x\" }", "lowercase"),
@@ -1116,8 +1130,16 @@ compare = ["mine"]
             let error = bad(dependency);
             assert!(error.contains(message), "{dependency}: {error}");
         }
-        let fine = format!("{BSB}\nx = {{ git = \"https://e.org/x\", rev = \"3f9c2a1b\" }}\n");
+        let fine = format!(
+            "{BSB}\nx = {{ git = \"https://e.org/x\", rev = \"{}\" }}\n",
+            "3f".repeat(20)
+        );
         assert!(Manifest::parse(&fine).is_ok());
+        let sha256 = format!(
+            "{BSB}\nx = {{ git = \"https://e.org/x\", rev = \"{}\" }}\n",
+            "3f".repeat(32)
+        );
+        assert!(Manifest::parse(&sha256).is_ok());
         let folder = format!("{BSB}\nx = {{ git = \"https://e.org/x\", folder = \"books/x\" }}\n");
         let folder = Manifest::parse(&folder).unwrap();
         let Dependency::Detailed(x) = &folder.dependencies["x"] else {

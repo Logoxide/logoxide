@@ -14,7 +14,7 @@ use crate::{
     library::Library,
     lock::{LOCKFILE, Lockfile},
     manifest::{Dependency, DetailedDependency, MANIFEST, Manifest, PackageKind},
-    resolve::{Resolver, Update},
+    resolve::{Frozen, Resolver, Update},
 };
 use std::collections::BTreeMap;
 
@@ -29,6 +29,46 @@ pub struct Numbering {
     pub versification: String,
     /// A Bible's own verse counts, by book (none for a versification named alone)
     pub counts: BTreeMap<BookId, ChapterVerses>,
+}
+
+/// Two or more of a project's Bibles answering to one name: [`Project::name_clashes`]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NameClash {
+    /// The name, as the first of them spells it
+    pub name: String,
+    /// Each package answering to it (`kjv 1.0.0`, `kjv-bob (kjv) 1.0.0`), in the project's order
+    pub packages: Vec<String>,
+}
+
+/**
+The names more than one Bible answers to, ignoring case, from each Bible's label, abbreviation,
+and aliases (as [`Project::names`] gives them): references naming one of them can't say which
+*/
+pub fn name_clashes(
+    bibles: impl IntoIterator<Item = (String, String, Vec<String>)>,
+) -> Vec<NameClash> {
+    let mut clashes: Vec<NameClash> = vec![];
+    for (label, abbreviation, aliases) in bibles {
+        let mut own: Vec<String> = vec![];
+        for name in std::iter::once(abbreviation).chain(aliases) {
+            if name.is_empty() || own.iter().any(|o| o.eq_ignore_ascii_case(&name)) {
+                continue;
+            }
+            own.push(name.clone());
+            match clashes
+                .iter_mut()
+                .find(|c| c.name.eq_ignore_ascii_case(&name))
+            {
+                Some(clash) => clash.packages.push(label.clone()),
+                None => clashes.push(NameClash {
+                    name,
+                    packages: vec![label.clone()],
+                }),
+            }
+        }
+    }
+    clashes.retain(|c| c.packages.len() > 1);
+    clashes
 }
 
 /// A new project's `logoxide.toml`
@@ -402,13 +442,26 @@ impl Project {
         fetcher: &dyn Fetcher,
         update: Update,
     ) -> Result<&Lockfile> {
-        self.install_with(library, fetcher, update, false)
+        self.install_with(library, fetcher, update, false, Frozen::default())
+    }
+
+    /**
+    [`Project::install`] keeping what's locked (Cargo's `--locked`: the lock file must come out
+    as it was) and/or fetching nothing (`--offline`: everything must be installed already)
+    */
+    pub fn install_frozen(
+        &mut self,
+        library: &Library,
+        fetcher: &dyn Fetcher,
+        frozen: Frozen,
+    ) -> Result<&Lockfile> {
+        self.install_with(library, fetcher, Update::Nothing, false, frozen)
     }
 
     /// [`Project::install`], putting back the files of installed versions that changed (a
     /// reader edited them) instead of stopping there; files the packages don't declare stay
     pub fn repair(&mut self, library: &Library, fetcher: &dyn Fetcher) -> Result<&Lockfile> {
-        self.install_with(library, fetcher, Update::Nothing, true)
+        self.install_with(library, fetcher, Update::Nothing, true, Frozen::default())
     }
 
     fn install_with(
@@ -417,6 +470,7 @@ impl Project {
         fetcher: &dyn Fetcher,
         update: Update,
         repair: bool,
+        frozen: Frozen,
     ) -> Result<&Lockfile> {
         let packages = library.packages(&self.dir);
         let resolver = Resolver {
@@ -425,6 +479,7 @@ impl Project {
             previous: self.lock.as_ref(),
             update,
             repair,
+            frozen,
         };
         let lock = resolver.resolve(&self.manifest)?;
         let path = self.dir.join(LOCKFILE);
@@ -471,12 +526,25 @@ impl Project {
         let mut translations = Translations::default();
         let cache = library.book_cache();
         for (locked, package) in self.bibles(library)? {
-            let (abbreviation, aliases) = self.names(locked.dependency_name(), package.info());
+            let (abbreviation, aliases) = self.names(locked, package.info());
             translations = cache
                 .open(package)?
                 .add_as(translations, &abbreviation, &aliases);
         }
         Ok(translations)
+    }
+
+    /**
+    The names two or more of the project's Bibles (those [`Project::translations`] gives topos)
+    answer to: a package the manifest asks for at one version and a collection at another, or
+    two packages sharing an abbreviation. References naming one can't say which
+    */
+    pub fn name_clashes(&self, library: &Library) -> Result<Vec<NameClash>> {
+        let bibles = self.bibles(library)?;
+        Ok(name_clashes(bibles.iter().map(|(locked, package)| {
+            let (abbreviation, aliases) = self.names(locked, package.info());
+            (locked.label(), abbreviation, aliases)
+        })))
     }
 
     /// The versification maps in use (any package of the lock in use, so a Bible's own
@@ -500,7 +568,7 @@ impl Project {
     */
     pub fn numbering(&self, library: &Library, name: &str) -> Result<Numbering> {
         for (locked, package) in self.bibles(library)? {
-            let (abbreviation, aliases) = self.names(locked.dependency_name(), package.info());
+            let (abbreviation, aliases) = self.names(locked, package.info());
             let names = [locked.dependency_name(), abbreviation.as_str()];
             let is = (names.into_iter().chain(aliases.iter().map(String::as_str)))
                 .any(|n| n.eq_ignore_ascii_case(name));
@@ -549,15 +617,21 @@ impl Project {
         )
     }
 
-    /// What references name a dependency by here: its `abbreviation` and `aliases` in the
-    /// manifest, else the package's own
+    /**
+    What references name a locked package by here: the `abbreviation` and `aliases` the manifest
+    gives the dependency, else the package's own. Only the manifest's own copy takes them: the
+    same package at another version, brought in by a collection, keeps its own names
+    */
     pub fn names(
         &self,
-        dependency: &str,
+        locked: &crate::LockedPackage,
         info: &crate::manifest::Package,
     ) -> (String, Vec<String>) {
-        let detailed = match self.manifest.dependencies.get(dependency) {
-            Some(Dependency::Detailed(d)) => Some(d),
+        let root = (self.lock.iter())
+            .flat_map(|lock| lock.roots())
+            .any(|r| r.name() == locked.name());
+        let detailed = match self.manifest.dependencies.get(locked.dependency_name()) {
+            Some(Dependency::Detailed(d)) if root => Some(d),
             _ => None,
         };
         let abbreviation = (detailed.and_then(|d| d.abbreviation.clone()))
