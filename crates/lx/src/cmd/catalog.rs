@@ -108,8 +108,9 @@ pub(crate) fn catalog_build(
         true => None,
         false => std::fs::read_to_string(&output).ok(),
     };
-    let built = logoxide::registry_build::build_catalog(&folder, previous.as_deref(), url, name)
-        .map_err(|e| match e {
+    let built =
+        logoxide::publish::registry_build::build_catalog(&folder, previous.as_deref(), url, name)
+            .map_err(|e| match e {
             logoxide::LogoxideError::Catalog(message) => {
                 logoxide::LogoxideError::Catalog(format!("{}: {message}", output.display()))
             }

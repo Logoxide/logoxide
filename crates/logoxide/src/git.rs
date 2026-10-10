@@ -4,7 +4,7 @@ repository's tags, and its files at a commit); [`GitCli`] does it with the `git`
 reads any URL git does (`https://`, `ssh://`, `file://`, a local path).
 
 WebAssembly and phones have no `git`: there, logoxide-ffi's fetcher reads what the host downloads
-over HTTP (a repository's refs, and archives of its commits; see [`crate::archive`]).
+over HTTP (a repository's refs, and archives of its commits; see [`crate::net::archive`]).
 */
 
 use std::{
@@ -179,7 +179,7 @@ impl Default for GitCli {
 
 /**
 Whether the `git` command can be run here (`git --version` answers), asked once. Hosts without it
-fetch over HTTP instead (logoxide-app's `NetFetcher`, through [`crate::archive`])
+fetch over HTTP instead (logoxide-app's `NetFetcher`, through [`crate::net::archive`])
 */
 pub fn git_available() -> bool {
     static AVAILABLE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();

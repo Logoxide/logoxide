@@ -830,7 +830,7 @@ impl Resolver<'_> {
             }
         })?;
         let unpacked = MemoryStorage::new();
-        crate::archive::unpack(&bytes, &unpacked)?;
+        crate::net::archive::unpack(&bytes, &unpacked)?;
         let storage = crate::package::only_declared(&unpacked)?;
         let manifest =
             crate::manifest::Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?;

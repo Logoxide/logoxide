@@ -15,10 +15,10 @@ use std::{
 use boltffi::*;
 use logoxide_core::{
     LockedPackage, MemoryStorage, Storage,
-    archive::{self, Refs},
     git::{Fetcher, GitRef},
     library::library_dir,
     manifest::{MANIFEST, Manifest},
+    net::archive::{self, Refs},
     resolve::{Frozen, Packages, Resolver, Update, tag_version},
 };
 
