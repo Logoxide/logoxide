@@ -207,6 +207,14 @@ or in OSIS a range into the next chapter (`osisID="John.3.36-John.4.2"`; in ThML
 `parsed="|John|3|36|4|2"`), one verse from its first to its last: what a SWORD module links to one
 entry (a commentary's note on both chapters' verses).
 
+ThML has no verse elements: its verses are empty `<scripture parsed="|Gen|1|2|0|0"/>` markers
+(CCEL's Bibles) or `<scripCom parsed="|Gen|1|1|1|2"/>` (CCEL's commentaries), each running to the
+next. A chapter's own marker (`parsed="|Gen|1|0|0|0"`) is its verse 0: what a commentary says of
+the whole chapter is a note on verse 0. A division (`div1` to `div6`) whose first marker is in
+another chapter ends the verse before it, so an introduction isn't read as the last note of the
+chapter before; when that first marker is the chapter's verse 0, the chapter starts at the
+division's start, so an introduction written before the marker is part of verse 0's note.
+
 A file a book is named by its book's USFM code (`JHN.usx`, `43-JHNeng-kjv.usfm`), else by the code
 it gives (`\id JHN`, `<book code="JHN">`); a whole file's books are the ones its verses name.
 What isn't a book of the Bible is passed over and noted: the peripherals `FRT`, `INT`, `BAK`, `CNC`,

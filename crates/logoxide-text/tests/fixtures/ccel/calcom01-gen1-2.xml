@@ -1,0 +1,886 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ThML PUBLIC 
+    "-//CCEL/DTD Theological Markup Language//EN"
+    "http://www.ccel.org/dtd/ThML10.dtd">
+<!--
+<?xml-stylesheet type="text/xml"
+    href="http://www.ccel.org/ss/thml.html.xsl" ?>
+<?xml-stylesheet type="text/xsl"
+    href="http://www.ccel.org/ss/thml.html.xsl" ?>
+-->
+<!-- Copyright Christian Classics Ethereal Library -->
+<ThML>
+<ThML.head><electronicEdInfo><DC><DC.Title>Commentary on Genesis - Volume 1</DC.Title><DC.Type>Text.Commentary</DC.Type></DC></electronicEdInfo></ThML.head>
+<ThML.body>
+<div1 type="front" title="The Argument" n="vi">
+<p class="HDG-C-Gr-16-Pref26">Argument.</p>
+<p>Since the infinite wisdom of …</p>
+<p>The intention of Moses in …<scripRef passage="Ge 18:19" parsed="|Gen|18|19|0|0" osisRef="Bible:Gen.18.19">Genesis 18:19</scripRef>.) And we know that, long …</p>
+<p>I now return to the design of …<span lang="el" class="Greek">τὰ μἡ εχ …</span>, as if one should say, …<note place="foot" n="30">
+<p class="Footnote"> “<span lang="la" dir="ltr">Acsi dicas, spectacula rerum …</span>.” — <span lang="fr" dir="ltr">Comme si on disoit, Un …</span>. — French Tr.</p>
+</note>
+(<scripRef passage="Heb 11:3" parsed="|Heb|11|3|0|0" osisRef="Bible:Heb.11.3">Hebrews 11:3</scripRef>.) This is the reason why the …<scripRef passage="Ro 1:20" parsed="|Rom|1|20|0|0" osisRef="Bible:Rom.1.20">Romans
+1:20</scripRef>.) And that declaration of …<scripRef passage="Ps 19:1" parsed="|Ps|19|1|0|0" osisRef="Bible:Ps.19.1">Psalm 19:1</scripRef>.) This is the more …<i>works</i> of God, aspire with a …<i>Essence</i>. Both labor in vain. To be …<i>without witness</i>, (<scripRef passage="Ac 14:17" parsed="|Acts|14|17|0|0" osisRef="Bible:Acts.14.17">Acts 14:17</scripRef>.) For they shall not be …</p>
+<p>Here also the impiety of …<note place="foot" n="31">
+<p class="Footnote"> <span lang="la" dir="ltr">De Genesi contra Manich</span>. Lib. 11, De Civit. Dei.</p>
+</note>
+We indeed are not ignorant, …<note place="foot" n="32">
+<p class="Footnote"> <a />The erroneous system of …</p>
+</note>
+They who take it amiss that …</p>
+<p>Now, in describing the world …<note place="foot" n="33">
+<p class="Footnote"> “<span lang="la" dir="ltr">Non secus ac hebetes oculi …</span>.” — <span lang="fr" dir="ltr">Tout ainsi comme si on …</span>. Just as if one gave …<span lang="la" dir="ltr">specillis</span>
+spectacles.</p>
+</note>
+On this point, (as we have …<scripRef passage="Heb 11:3" parsed="|Heb|11|3|0|0" osisRef="Bible:Heb.11.3">Hebrews 11:3</scripRef>.) For faith properly …</p>
+<p>It may, however, be objected, …</p>
+<p class="SCRIPTURE">“After that, in the wisdom …<scripRef passage="1Co 1:21" parsed="|1Cor|1|21|0|0" osisRef="Bible:1Cor.1.21">1 Corinthians 1:21</scripRef>.)</p>
+<p>For he thus intimates, that …<scripRef passage="1Co 1:21" parsed="|1Cor|1|21|0|0" osisRef="Bible:1Cor.1.21">1 Corinthians 1:21</scripRef>.) Nothing shall we find, I …<note place="foot" n="34">
+<p class="Footnote"> In this, and the following …<scripRef passage="Eph 2:6" parsed="|Eph|2|6|0|0" osisRef="Bible:Eph.2.6">Ephesians 2:6</scripRef>).</p>
+</note>
+For the earth, with its …<i>heart</i>, but also his <i>hands</i> and his <i>feet</i>. I give the name of his …</p>
+<p>And, in fact, though Moses …</p>
+<p>Therefore, the perpetual …</p>
+<p>Let us now hearken to Moses.</p></div1>
+<div1 type="chapter" title="Chapter 1" n="vii">
+<p class="BOOK-CHAP-BLU-24-CEN12">Chapter 1</p>
+<div2 type="scripture" title="Genesis 1:1-31" n="i">
+<scripCom type="Commentary" passage="Gen 1" parsed="|Gen|1|0|0|0" osisRef="Bible:Gen.1" />
+<table border="2">
+<tr valign="top">
+<td>
+<p class="TableCaption15"><scripRef passage="Genesis 1:1-31" parsed="|Gen|1|1|1|31" osisRef="Bible:Gen.1.1-Gen.1.31">Genesis 1:1-31</scripRef></p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>1.</b> In the beginning God created …</p>
+</td><td>
+<p><b>1.</b> In principio creavit Deus …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>2.</b> And the earth was without …<i>was</i> upon the face of the deep. …</p>
+</td><td>
+<p><b>2.</b> Terra autem erat informis et …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>3.</b> And God said, Let there be …</p>
+</td><td>
+<p><b>3.</b> Et dixit Deus, Sit lux. Et fuit lux.</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>4.</b> And God saw the light, that <i>it was</i> good: and God divided the …</p>
+</td><td>
+<p><b>4.</b> Viditque Deus lucem quod …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>5.</b> And God called the light …</p>
+</td><td>
+<p><b>5.</b> Et vocavit Deus lucem, Diem: …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>6.</b> And God said, Let there be a …</p>
+</td><td>
+<p><b>6.</b> Et dixit Deus, Sit extensio …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>7.</b> And God made the firmament, …<i>were</i> under the firmament from the …<i>were</i> above the firmament: and it was so.</p>
+</td><td>
+<p><b>7.</b> Et fecit Deus expansionem: …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>8.</b> And God called the firmament …</p>
+</td><td>
+<p><b>8.</b> Vocavitque Deus expansionem …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>9.</b> And God said, Let the waters …<i>land</i> appear: and it was so.</p>
+</td><td>
+<p><b>9.</b> Postea dixit Deus, …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>10.</b> And God called the dry <i>land</i> Earth; and the gathering …<i>it was</i> good.</p>
+</td><td>
+<p><b>10.</b> Et vocavit Deus aridam, …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>11.</b> And God said, Let the earth …<i>and</i> the fruit tree yielding …<i>is</i> in itself, upon the earth: …</p>
+</td><td>
+<p><b>11.</b> Postea dixit Deus, Germinet …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>12.</b> And the earth brought forth grass, <i>and</i> herb yielding seed after his …<i>was</i> in itself, after his kind: …<i>it was</i> good.</p>
+</td><td>
+<p><b>12.</b> Et protulit terra germen, …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>13.</b> And the evening and the …</p>
+</td><td>
+<p><b>13.</b> Et fuit vespera, et fuit …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>14.</b> And God said, Let there be …</p>
+</td><td>
+<p><b>14.</b> Tunc dixit Deus, Sint …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>15.</b> And let them be for lights …</p>
+</td><td>
+<p><b>15.</b> Et sint in luminaria in …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>16.</b> And God made two great …<i>he made</i> the stars also.</p>
+</td><td>
+<p><b>16.</b> Et fecit Deus duo luminaria …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>17.</b> And God set them in the …</p>
+</td><td>
+<p><b>17.</b> Posuitque ea Deus in …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>18.</b> And rule over the day and …<i>it was</i> good.</p>
+</td><td>
+<p><b>18.</b> Et ut dominarentur diei ac …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>19.</b> And the evening and the …</p>
+</td><td>
+<p><b>19.</b> Et fuit vespera, et fuit …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>20.</b> And God said, Let the waters …<i>that</i> may fly above the earth in …</p>
+</td><td>
+<p><b>20.</b> Postea dixit Deus, Repere …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>21.</b> And God created great …<i>it was</i> good.</p>
+</td><td>
+<p><b>21.</b> Et creavit Deus cetos …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>22.</b> And God blessed them, …</p>
+</td><td>
+<p><b>22.</b> Beneedixitque eis, dicendo, …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>23.</b> And the evening and the …</p>
+</td><td>
+<p><b>23.</b> Et fuit vespera, et fuit …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>24.</b> And God said, Let the earth …</p>
+</td><td>
+<p><b>24.</b> Postea dixit Deus, Producat …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>25.</b> And God made the beast of …<i>it was</i> good.</p>
+</td><td>
+<p><b>25.</b> Fecitque Deus bestiam terrae …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>26.</b> And God said, Let us make …</p>
+</td><td>
+<p><b>26.</b> Et dixit Deus, Faciamus …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>27.</b> So God created man in his <i>own</i> image, in the image of God …</p>
+</td><td>
+<p><b>27.</b> Creavit itaque Deus hominem …<i>inquam</i> Dei creavit illum: masculum …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>28.</b> And God blessed them, and …</p>
+</td><td>
+<p><b>28.</b> Et benedixit illis Deus, …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>29.</b> And God said, Behold, I have …<i>is</i> upon the face of all the …<i>is</i> the fruit of a tree yielding …</p>
+</td><td>
+<p><b>29.</b> Et dixit Deus, Ecce, dedi …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>30.</b> And to every beast of the …<i>there is</i> life, <i>I have given</i> every green herb for meat: …</p>
+</td><td>
+<p><b>30.</b> Et omni bestiae terrae, et …<i>erit</i> in escam. Et fuit ita.</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>31.</b> And God saw every thing that …<i>it was</i> very good. And the evening …</p>
+</td><td>
+<p><b>31.</b> Et vidit Deus omne quod …</p>
+</td>
+</tr>
+</table>
+<p class="Center"> </p>
+<p class="Normal"><scripCom type="Commentary" passage="Ge 1:1" parsed="|Gen|1|1|0|0" osisRef="Bible:Gen.1.1" /></p><div class="Commentary">
+<p><b>1.</b> <i>In the beginning.</i> To expound the term …<note place="foot" n="35">
+<p class="Footnote"> “<span lang="fr" dir="ltr">La terre estoit vuide, et …</span>.” — “The earth was …</p>
+</note>
+He moreover teaches by the …<span lang="he" dir="rtl">יצר</span>, (<i>yatsar,</i>) which signifies to frame or …<span lang="he" dir="rtl">ברא</span>, (<i>bara,</i>) which signifies to create.<note place="foot" n="36">
+<p class="Footnote"> <span lang="he" dir="rtl">ברא</span> It has a twofold meaning — …</p>
+</note>
+Therefore his meaning is, …<note place="foot" n="37">
+<p class="Footnote"> <span lang="la" dir="ltr">Inter profanos homines</span>.</p>
+</note>
+who had received only an …<note place="foot" n="38">
+<p class="Footnote"> Steuchus Augustinus was the …<span lang="fr" dir="ltr">De Perennie Philosophia</span>,” Lugd. 1540, and is most …</p>
+</note>) in maintaining this gross …<note place="foot" n="39">
+<p class="Footnote"> “<span lang="la" dir="ltr">Sit igitur haec prima sententia</span>. <span lang="fr" dir="ltr">Que ceci dont soit premierement resolu</span>.” — French Tr.</p>
+</note>
+that the world is not …<scripRef passage="Ge 1:2" parsed="|Gen|1|2|0|0" osisRef="Bible:Gen.1.2">Genesis 1:2</scripRef>.) denominates <i>waters</i>. The reason of which is, …<note place="foot" n="40">
+<p class="Footnote"> Namely, into heaven and earth.</p>
+</note></p>
+<p><i>God.</i> Moses has it <i>Elohim</i>, a noun of the plural …<note place="foot" n="41">
+<p class="Footnote"> The reasoning of Calvin on …<span lang="he" dir="rtl">אלהים</span> which we translate God, to …<i>Ed</i></p>
+</note>
+They think that they have …<note place="foot" n="42">
+<p class="Footnote"> The error of Sabellius …<i>Ed</i>.</p>
+</note>
+because Moses afterwards …<i>Elohim</i> had spoken, and that the <i>Spirit of the Elohim</i> rested upon the waters. If …<note place="foot" n="43">
+<p class="Footnote"> The interpretation above …<span lang="he" dir="rtl">אלהים</span> (<i>Elohim</i>) receives confirmation from …</p>
+<p>On the plural form of the …<span lang="la" dir="ltr">Dominus potentiarum omnium</span>,’ ‘The Lord of all …<scripRef passage="Jos 22:22" parsed="|Josh|22|22|0|0" osisRef="Bible:Josh.22.22">Joshua 22:22</scripRef>; the thrice holy in <scripRef passage="Isa 6:3" parsed="|Isa|6|3|0|0" osisRef="Bible:Isa.6.3">Isaiah 6:3</scripRef>; and <span lang="he" dir="rtl">אדני אדנים</span> in <scripRef passage="De 10:17" parsed="|Deut|10|17|0|0" osisRef="Bible:Deut.10.17">Deuteronomy 10:17</scripRef>. It calls the attention to …<span lang="he" dir="rtl">אלהים</span> (<i>Elohim</i>).” See Dissertations, pp.268-273.</p>
+<p>It is, perhaps, necessary …<i>Ed</i>.</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:2" parsed="|Gen|1|2|0|0" osisRef="Bible:Gen.1.2" /></p><div class="Commentary">
+<p><b>2.</b> <i>And the earth was without …</i> I shall not be very …<span lang="he" dir="rtl">תוהו</span>, (<i>tohu,</i>) and <span lang="he" dir="rtl">בוהו</span>, (<i>bohu.</i>) The Hebrews use them when …<note place="foot" n="44">
+<p class="Footnote"> The words <span lang="he" dir="rtl">תהו ובהו</span> are rendered in Calvin’s text <span lang="la" dir="ltr">informis et inanis</span>, “shapeless and empty.” …<scripRef passage="Isa 34:11" parsed="|Isa|34|11|0|0" osisRef="Bible:Isa.34.11">Isaiah 34:11</scripRef>, “confusion” and …<span lang="el" class="Greek">κὰι ἀκατασκευάστος</span>, invisible and unfurnished. — <i>Ed</i></p>
+</note>
+Therefore I regard what he …<note place="foot" n="45">
+<p class="Footnote"> It is to be remarked, that …<span lang="la" dir="ltr">in superficiem voraginis</span>;” but in his Commentary he …<span lang="la" dir="ltr">super faciem abyssi</span>,” from the Latin Vulgate. — <i>Ed</i>.</p>
+</note>
+as a part of that confused …<i>abyss</i> and <i>waters</i>, since in that mass of …</p>
+<p><i>And the Spirit of God</i> Interpreters have wrested …<span lang="he" dir="rtl">מרחפת</span>, (<i>merachepeth</i>.) I will, in the first …<note place="foot" n="46">
+<p class="Footnote"> “<span lang="la" dir="ltr">Temperamento servari</span>.” Perhaps we should say, …</p>
+</note>
+He therefore asserts that …<note place="foot" n="47">
+<p class="Footnote"> The participle of the verb <span lang="he" dir="rtl">רהף</span> is here used instead of the …<scripRef passage="De 32:11" parsed="|Deut|32|11|0|0" osisRef="Bible:Deut.32.11">Deuteronomy 32:11</scripRef>, where the eagle is …<span lang="de" dir="ltr">Von der shaffenden und …</span>” — “of the creative …<i>Ed</i></p>
+</note>
+Inasmuch as it makes little …</p>
+<p class="SCRIPTURE">‘Send forth thy Spirit, and …<scripRef passage="Ps 104:30" parsed="|Ps|104|30|0|0" osisRef="Bible:Ps.104.30">Psalm 104:30</scripRef>;)</p>
+<p>so, on the other hand, as …<scripRef passage="Ps 104:29" parsed="|Ps|104|29|0|0" osisRef="Bible:Ps.104.29">Psalm 104:29</scripRef>.)</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:3" parsed="|Gen|1|3|0|0" osisRef="Bible:Gen.1.3" /></p><div class="Commentary">
+<p><b>3.</b> <i>And God said</i> Moses now, for the first …<i>speaking</i>, as if he had created the …<note place="foot" n="48">
+<p class="Footnote"> “<span lang="fr" dir="ltr">Sans sa Parole</span>” — “without his …</p>
+</note>
+Yet John testifies that</p>
+<p class="SCRIPTURE">‘without him nothing was …<scripRef passage="Joh 1:3" parsed="|John|1|3|0|0" osisRef="Bible:John.1.3">John 1:3</scripRef>.)</p>
+<p>And it is certain that the …<i>begun</i> by the same efficacy of the …<i>completed</i>. God, however, did not put …<note place="foot" n="49">
+<p class="Footnote"> “<span lang="la" dir="ltr">Sed Deus Verbum suum nonnisi …</span>.” — “<span lang="fr" dir="ltr">Mais Dieu n’a point mis sa …</span>.” — “But God did not …</p>
+</note>
+because in the act of distinguishing<note place="foot" n="50">
+<p class="Footnote"> <a />“<span lang="la" dir="ltr">In distinctione</span>.” The French is somewhat …<span lang="fr" dir="ltr">Pource que la distinction de …</span>.” — “Because that the …<i>Ed</i>.</p>
+</note>
+his wisdom begins to be …<note place="foot" n="51">
+<p class="Footnote"> “<span lang="la" dir="ltr">Latrat hic obscoenus canis</span>.”</p>
+</note>
+that the first beginning of …<note place="foot" n="52">
+<p class="Footnote"> “<span lang="fr" dir="ltr">Mais il faut bien autrement …</span>.” — French Tr.</p>
+</note>
+and without which God could …<note place="foot" n="53">
+<p class="Footnote"> <a />To understand this difficult …</p>
+<p>Having given, to the best of …</p>
+<p><b>1st</b>, That the Second Person of …</p>
+<p><b>2nd</b>, That He is truly though not …</p>
+<p>It furnishes occasion rather …<i>Ed</i>.</p>
+</note></p>
+<p><i>Let there be light.</i> It was proper that the …<note place="foot" n="54">
+<p class="Footnote"> “<span lang="fr" dir="ltr">De la distinction des les creatures</span>.” — French Tr. That is, …<i>Ed</i>.</p>
+</note>) It did not, however, happen …<note place="foot" n="55">
+<p class="Footnote"> See <a href="/ccel/Calvin/comm_vol01.htm|vol01.p61.note2">Note</a> at p. 61.</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:4" parsed="|Gen|1|4|0|0" osisRef="Bible:Gen.1.4" /></p><div class="Commentary">
+<p><b>4</b> <i>And God saw the light</i> Here God is introduced by …<note place="foot" n="56">
+<p class="Footnote"> “<span lang="fr" dir="ltr">L’homme devroit estendere …</span>.” — “Man ought to …</p>
+</note>
+we see what license he …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:5" parsed="|Gen|1|5|0|0" osisRef="Bible:Gen.1.5" /></p><div class="Commentary">
+<p><b>5.</b> <i>And God called the light</i> That is, God willed that …</p>
+<p><i>The first day</i> Here the error of those is …<scripRef passage="Ecclesiasticus 18:1" parsed="|Sir|18|1|0|0" osisRef="Bible:Sir.18.1">Ecclesiasticus 18:1</scripRef>.) For the Greek adverb <span lang="el" class="Greek">κοινὣ</span> which the writer uses, means …<note place="foot" n="57">
+<p class="Footnote"> So the English translation: …</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:6" parsed="|Gen|1|6|0|0" osisRef="Bible:Gen.1.6" /></p><div class="Commentary">
+<p><b>6</b> <i>Let there be a firmament</i><note place="foot" n="58">
+<p class="Footnote"> “<span lang="la" dir="ltr">Sit extensio</span>.” In the next verse he …<span lang="la" dir="ltr">expansio</span>”. “<span lang="la" dir="ltr">Fecit expansionem</span>.” — “He made an expanse.”</p>
+</note>
+The work of the second day …<span lang="he" dir="rtl">רקיע</span> (<i>rakia</i>) comprehends not only the …<span lang="he" dir="rtl"> רקיע</span>(<i>rakia</i>) without discrimination …<span lang="el" class="Greek">ςτερέωμα</span>, which the Latins have …<span lang="la" dir="ltr"><i>firmamentum</i></span>;<note place="foot" n="59">
+<p class="Footnote"> See the Septuagint and …<span lang="he" dir="rtl">רקע</span>, signifies, according to …<span lang="he" dir="rtl">רקיע</span>, is the outspreading of the …<i>Ed</i></p>
+</note>
+for literally it means <i>expanse</i>. And to this David alludes …<scripRef passage="Ps 104:2" parsed="|Ps|104|2|0|0" osisRef="Bible:Ps.104.2">Psalm 104:2</scripRef>.) If any one should inquire …<note place="foot" n="60">
+<p class="Footnote"> <span lang="la" dir="ltr">Astrologia</span>. This word includes, but is …<i>Ed</i>.</p>
+</note>
+and other recondite arts, …<note place="foot" n="61">
+<p class="Footnote"> The following are the words …<span lang="la" dir="ltr">“Idcirco enim pictura in …</span></p>
+</note>
+The things, therefore, which …<note place="foot" n="62">
+<p class="Footnote"> “<span lang="la" dir="ltr">Capitibus nostris sic minari, …</span>.” The French is more diffuse: “<span lang="fr" dir="ltr">Nous menacent, comme si elles …</span>.” “They threaten us, as …</p>
+</note>
+They who deny that this is …<scripRef passage="Ps 104:3" parsed="|Ps|104|3|0|0" osisRef="Bible:Ps.104.3">Psalm 104:3</scripRef>;) and he elsewhere calls …<scripRef passage="Ps 148:4" parsed="|Ps|148|4|0|0" osisRef="Bible:Ps.148.4">Psalm 148:4</scripRef>.) Since, therefore, God has …<note place="foot" n="63">
+<p class="Footnote"> <a />The Septuagint here inserts …<i>Ed</i>.</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:9" parsed="|Gen|1|9|0|0" osisRef="Bible:Gen.1.9" /></p><div class="Commentary">
+<p><b>9.</b> <i>Let the waters... be gathered together</i> This also is an illustrious …<note place="foot" n="64">
+<p class="Footnote"> This reasoning is to be …<i>Ed</i>.</p>
+</note>
+But that the seas, being …<scripRef passage="Ps 33:7" parsed="|Ps|33|7|0|0" osisRef="Bible:Ps.33.7">Psalm 33:7</scripRef>,</p>
+<p class="SCRIPTURE">‘He has gathered the waters …<br />
+and has laid them up in his …</p>
+<p>Also <scripRef passage="Ps 78:13" parsed="|Ps|78|13|0|0" osisRef="Bible:Ps.78.13">Psalm 78:13</scripRef>,</p>
+<p class="SCRIPTURE">‘He has collected the …<note place="foot" n="65">
+<p class="Footnote"> “<span lang="la" dir="ltr">Velut in utrem</span>;” “from the Vulgate.” …</p>
+</note></p>
+<p><scripRef passage="Jer 5:22" parsed="|Jer|5|22|0|0" osisRef="Bible:Jer.5.22">Jeremiah 5:22</scripRef>,</p>
+<p class="SCRIPTURE">‘Will ye not fear me? will …<br />
+who have placed the sand as …</p>
+<p><scripRef passage="Job 38:8" parsed="|Job|38|8|0|0" osisRef="Bible:Job.38.8">Job 38:8</scripRef>,</p>
+<p class="SCRIPTURE">‘Who has shut up the sea …<br />
+I have said, <br />
+Hitherto shalt thou proceed; …</p>
+<p>Let us, therefore, know that …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:11" parsed="|Gen|1|11|0|0" osisRef="Bible:Gen.1.11" /></p><div class="Commentary">
+<p><b>11.</b> <i>Let the earth bring forth grass</i> Hitherto the earth was naked …</p>
+<p class="SCRIPTURE">‘made by the word of the …<scripRef passage="Ps 33:6" parsed="|Ps|33|6|0|0" osisRef="Bible:Ps.33.6">Psalm 33:6</scripRef>.)</p>
+<p>Moreover, it did not happen …<note place="foot" n="66">
+<p class="Footnote"> “<span lang="la" dir="ltr">Nullas tunc soli et lunae …</span>.” — “<span lang="fr" dir="ltr">Il ne s’est point servi en …</span>.” — French Tr.</p>
+</note>
+He permits us to perceive …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:14" parsed="|Gen|1|14|0|0" osisRef="Bible:Gen.1.14" /></p><div class="Commentary">
+<p><b>14.</b> <i>Let there be lights</i><note place="foot" n="67">
+<p class="Footnote"> “<span lang="la" dir="ltr">Luminaria</span>” — “Luminaries.” Hebrew <span lang="he" dir="rtl">מארות</span>. Instruments of light, from <span lang="he" dir="rtl">אור</span>, light, in verse 3. …<i>Ainsworth</i></p>
+</note>
+Moses passes onwards to the …</p>
+<p><i>To divide the day from the night</i> He means the artificial day, …</p>
+<p><i>Let them be for signs</i> It must be remembered, that …<note place="foot" n="68">
+<p class="Footnote"> “<span lang="la" dir="ltr">Altera ad ordinaem politicum spectat</span>.”</p>
+</note>
+Under the term nature, I …<i>lustra</i> and
+olympiads; that they …<note place="foot" n="69">
+<p class="Footnote"> “<span lang="la" dir="ltr">Ex siderum praesagiis nihil …</span>.”</p>
+</note>
+Because Moses declares that …<i>signs</i>, they think themselves …<scripRef passage="Isa 44:25" parsed="|Isa|44|25|0|0" osisRef="Bible:Isa.44.25">Isaiah 44:25</scripRef>;) and forbids us to be …<scripRef passage="Jer 10:2" parsed="|Jer|10|2|0|0" osisRef="Bible:Jer.10.2">Jeremiah 10:2</scripRef>.) But since it is manifest …<span lang="he" dir="rtl">מועדים</span> (<i>moadim,)</i> which they translate …<note place="foot" n="70">
+<p class="Footnote"> See the Lexicons of …<span lang="de" dir="ltr">Zu Zeichen der Zeiten</span>.” The word stands — <b>1</b>. For the year. <b>2</b>. For an assembly. <b>3</b>. For the place of assembling. <b>4</b>. For a signal. — <i>Ed</i></p>
+</note>
+Finally, Moses commemorates …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:15" parsed="|Gen|1|15|0|0" osisRef="Bible:Gen.1.15" /></p><div class="Commentary">
+<p><b>15.</b> <i>Let them be for lights</i> It is well again to repeat …<note place="foot" n="71">
+<p class="Footnote"> “Great lights;” that is, …<i>Ed</i>.</p>
+</note>
+For Moses here addresses …<i>opaque</i> body, I allow to be true, …<i>dark</i> body. For, first, since it …<note place="foot" n="72">
+<p class="Footnote"> The reader will be in no …</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:16" parsed="|Gen|1|16|0|0" osisRef="Bible:Gen.1.16" /></p><div class="Commentary">
+<p><b>16.</b> <i>The greater light</i> I have said, that Moses does …</p>
+<p><i>To rule</i><note place="foot" n="73">
+<p class="Footnote"> “<span lang="la" dir="ltr">In dominum</span>.” For dominion.</p>
+</note>
+He does not ascribe such …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:20" parsed="|Gen|1|20|0|0" osisRef="Bible:Gen.1.20" /></p><div class="Commentary">
+<p><b>20.</b> <i>Let the waters bring forth... …</i><note place="foot" n="74">
+<p class="Footnote"> “<span lang="la" dir="ltr">Repere faciant aquae reptile …</span>.” — “Let the waters …<span lang="he" dir="rtl">שרף</span>, (<i>sheretz</i>,) as a substantaive, …<span lang="he" dir="rtl">נפש חיה</span>, (<i>nepesh chayah</i>,) “a living soul,” does …<i>Ed</i></p>
+</note>
+On the fifth day the birds …<note place="foot" n="75">
+<p class="Footnote"> For other opinions …<scripRef passage="Ge 2:19" parsed="|Gen|2|19|0|0" osisRef="Bible:Gen.2.19">Genesis 2:19</scripRef>, that fowls were made of the …<i>in loco</i>. But Calvin’s view is
+more …<span lang="la" dir="ltr">Natantium et volatilium unam …</span>,” etc. — Castalio, Lyra, …<i>Ed</i>.</p>
+</note>
+And, truly, the Lord, …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:21" parsed="|Gen|1|21|0|0" osisRef="Bible:Gen.1.21" /></p><div class="Commentary">
+<p><b>21.</b> <i>And God created</i> A question here arises out …<i>created</i>. For we have before …<note place="foot" n="76">
+<p class="Footnote"> “<span lang="la" dir="ltr">Ego vero ad opus diei quinti …</span>.” The passage seems to be …<span lang="fr" dir="ltr">Je ne
+restrain point la …</span>.” — <i>Ed</i>.</p>
+</note>
+God then, it is said, created <i>whales</i> (balaenas) and other fishes, …<i>cetos vel cete</i>) might in my judgment be not …<i>thynnus</i> or <i>tunny fish</i>, as corresponding with the …<i>thaninim.</i><note place="foot" n="77">
+<p class="Footnote"> <span lang="he" dir="rtl">תנינם</span>. “<span lang="la" dir="ltr">Significat omnia ingentia …</span>.” “It signifies all …<i>Ed</i></p>
+</note></p>
+<p>When he says that “the …<note place="foot" n="78">
+<p class="Footnote"> “<span lang="la" dir="ltr">Aquas fecisse reptare</span>,” that “the waters …<i>Ed</i>.</p>
+</note>
+he proceeds to commend the …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:22" parsed="|Gen|1|22|0|0" osisRef="Bible:Gen.1.22" /></p><div class="Commentary">
+<p><b>22.</b> <i>And God blessed them</i> <a />What is the force of this …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:24" parsed="|Gen|1|24|0|0" osisRef="Bible:Gen.1.24" /></p><div class="Commentary">
+<p><b>24.</b> <i>Let the earth bring forth</i> He descends to the sixth …<note place="foot" n="79">
+<p class="Footnote"> Namely, that God’s …<a href="/ccel/Calvin/comm_vol01.htm|vol01.chap1.vs22">verse 22</a>. — <i>Ed</i>.</p>
+</note>
+that Moses declares animals …<note place="foot" n="80">
+<p class="Footnote"> The reader is referred to <a href="/ccel/Calvin/comm_vol01.htm|vol01.p81.note1">Note 1, p. 81</a>, for another mode of …<i>Ed</i>.</p>
+</note></p>
+<p><i>Cattle</i><note place="foot" n="81">
+<p class="Footnote"> Cattle, <span lang="he" dir="rtl">בהמה</span>, (<i>Behemah</i>); plural, <span lang="he" dir="rtl">בהמות</span>, (<i>Behemoth</i>).</p>
+</note>
+Some of the Hebrews thus …<i>Behemoth</i>,
+(cattle,) added the other, …<note place="foot" n="82">
+<p class="Footnote"> “Reptiles.” In the …<span lang="he" dir="rtl">שרף</span>, (sharetz,) in the …<span lang="he" dir="rtl">רמש</span>,
+(remes). The latter word is …<i>Ed</i></p>
+</note>
+in this place, understand …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:26" parsed="|Gen|1|26|0|0" osisRef="Bible:Gen.1.26" /></p><div class="Commentary">
+<p><b>26.</b> <i>Let us make man</i><note place="foot" n="83">
+<p class="Footnote"> “<span lang="la" dir="ltr">Faciamus hominem</span>.”</p>
+</note>
+Although the tense here used …<i>commanding</i> ; now, when he approaches …<i>consultation</i>. God certainly might here …<span lang="el" class="Greek">μικρίκοσμος</span><i>,</i> “a world in miniature.” …<note place="foot" n="84">
+<p class="Footnote"> For the various opinions of …<i>Ed</i>.</p>
+</note>
+The earth, forsooth, was a …<note place="foot" n="85">
+<p class="Footnote"> “<span lang="la" dir="ltr">Ut certe aeterna ejus …</span>.” The expression is …<span lang="fr" dir="ltr">Comme a la verite, sa …</span>;” which translation is …<!-- <a href="comm_vol01.vol01.p75.note2"> -->2<!-- </a> --> and <!-- <a href="comm_vol01.vol01.p75.note5"> -->5<!-- </a> -->, at page 75. — <i>Ed</i>.</p>
+</note></p>
+<p><i>In our image, etc</i> Interpreters do not agree …<i>image</i> is to be distinguished from …<i>likeness</i> in the accidents
+of …<note place="foot" n="86">
+<p class="Footnote"> Some here distinguish, and …<i>Lyra</i>. Others blend them together, …<i>Tirinus</i>. — See Poole’s Synopsis. — <i>Ed</i>.</p>
+</note>
+But Augustine, beyond all …<i>likeness</i>, and contents himself with …<note place="foot" n="87">
+<p class="Footnote"> “I answer,” is not in …<i>Ed</i>.</p>
+</note>
+that where he twice uses the …<i>image</i>, he puts likeness in its place, (<scripRef passage="Ge 5:1" parsed="|Gen|5|1|0|0" osisRef="Bible:Gen.5.1">Genesis 5:1</scripRef>.) Although we have set aside …<i>Anthropomorphites</i> were too gross in seeking …<scripRef passage="Col 3:10" parsed="|Col|3|10|0|0" osisRef="Bible:Col.3.10">Colossians 3:10</scripRef>, and <scripRef passage="Eph 4:23" parsed="|Eph|4|23|0|0" osisRef="Bible:Eph.4.23">Ephesians 4:23</scripRef>.) That he made this image to …<i>synecdochee</i> ;<note place="foot" n="88">
+<p class="Footnote"> Synecdoche is the figure …<i>Ed</i>.</p>
+</note>
+for though this is the chief …<note place="foot" n="89">
+<p class="Footnote"> “<span lang="la" dir="ltr">Erat erim in singulis animae …</span>.”</p>
+</note>
+In the mind perfect …</p>
+<p><i>In our image, after our likeness</i> I do not scrupulously insist …<span lang="he" dir="rtl">ב</span>, (<i>beth,</i>) and <span lang="he" dir="rtl">כ</span>, (<i>caph</i><note place="foot" n="90">
+<p class="Footnote"> The two prefixes to the …<i>Ed</i>.</p>
+</note>) I know not whether there is …<note place="foot" n="91">
+<p class="Footnote"> “<span lang="la" dir="ltr">Innuit in homine esse …</span>.” — Oleaster in Poli Synopsi.</p>
+</note>
+It is also truly said that …<i>woman</i> to be the image of God, when …<i>government</i>, in which the man has …</p>
+<p><i>And let them have dominion</i><note place="foot" n="92">
+<p class="Footnote"> “<span lang="la" dir="ltr">Dominetur</span>.”</p>
+</note>
+Here he commemorates that …<note place="foot" n="93">
+<p class="Footnote"> “<span lang="la" dir="ltr">Quae quum habeant proprium nutum</span>.”</p>
+</note>
+seem to be less under …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:27" parsed="|Gen|1|27|0|0" osisRef="Bible:Gen.1.27" /></p><div class="Commentary">
+<p><b>27.</b> <i>So God created man</i> The reiterated mention of …<note place="foot" n="94">
+<p class="Footnote"> “<span lang="la" dir="ltr">Acsi virum dixisset esse …</span>.”</p>
+</note>
+Under these circumstances, …<scripRef passage="Ge 2:15" parsed="|Gen|2|15|0|0" osisRef="Bible:Gen.2.15">Genesis 2:15</scripRef>,) that one man was created …<note place="foot" n="95">
+<p class="Footnote"> On this difficult passage …<i>Ed</i>.</p>
+</note>
+For he there treats of …<i>one man</i>, in order that every one …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:28" parsed="|Gen|1|28|0|0" osisRef="Bible:Gen.1.28" /></p><div class="Commentary">
+<p><b>28.</b> <i>And God blessed them</i> This blessing of God may be …<note place="foot" n="96">
+<p class="Footnote"> “<span lang="la" dir="ltr">Certe fraenum viris et …</span>.”</p>
+</note>
+but, beginning at holy and …</p>
+<p><i>Subdue it</i> He confirms what he had …<scripRef passage="Ro 14:23" parsed="|Rom|14|23|0|0" osisRef="Bible:Rom.14.23">Romans 14:23</scripRef>.) Thus we are instructed to …<note place="foot" n="97">
+<p class="Footnote"> “<span lang="la" dir="ltr">Paterfamilias in mundo</span>.”</p>
+</note>
+it is not for thee to be …<note place="foot" n="98">
+<p class="Footnote"> See <scripRef passage="Ge 1:29,30" parsed="|Gen|1|29|1|30" osisRef="Bible:Gen.1.29-Gen.1.30">verses 29, 30</scripRef>, in which God promises the …<i>Ed</i>.</p>
+</note></p>
+<p>Some infer, from this passage …<note place="foot" n="99">
+<p class="Footnote"> It does not appear that …<i>Ed</i>.</p>
+</note>
+This, moreover, is the law …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 1:31" parsed="|Gen|1|31|0|0" osisRef="Bible:Gen.1.31" /></p><div class="Commentary">
+<p><b>31.</b> <i>And God saw everything</i> Once more, at the conclusion …<i>seeing</i>, he does it after the manner …<span lang="he" dir="rtl">מאד</span>, (<i>meod</i>,) that is, <i>very</i>. On each of the days, simple …</p></div></div2></div1>
+<div1 type="Chapter" title="Chapter 2" n="viii">
+<p class="BOOK-CHAP-BLU-24-CEN12">CHAPTER 2.</p>
+<div2 type="scripture" title="Genesis 2:1-25" n="i">
+<scripCom type="Commentary" passage="Gen 2" parsed="|Gen|2|0|0|0" osisRef="Bible:Gen.2" />
+<table border="2">
+<tr valign="top">
+<td>
+<p class="TableCaption15"><scripRef passage="Genesis 2:1-25" parsed="|Gen|2|1|2|25" osisRef="Bible:Gen.2.1-Gen.2.25">Genesis 2:1-25</scripRef></p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>1.</b> Thus the heavens and the …</p>
+</td><td>
+<p><b>1.</b> Perfecti fuerunt igitur …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>2.</b> And on the seventh day God …</p>
+</td><td>
+<p><b>2.</b> Perfeceratque Deus die …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>3.</b> And God blessed the seventh …</p>
+</td><td>
+<p><b>3.</b> Benedixit autem diei …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>4.</b> These <i>are</i> the generations of the …</p>
+</td><td>
+<p><b>4.</b> Istae sunt generationes …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>5.</b> And every plant of the field …<i>there was</i> not a man to till the ground.</p>
+</td><td>
+<p><b>5.</b> Et omne virgultum agri …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>6.</b> But there went up a mist …</p>
+</td><td>
+<p><b>6.</b> Sed vapot ascendebat e …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>7.</b> And the LORD God formed man <i>of</i> the dust of the ground, and …</p>
+</td><td>
+<p><b>7.</b> Formaverat autem Jehova Deus …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>8.</b> And the LORD God planted a …</p>
+</td><td>
+<p><b>8.</b> Plantaverat quoque Jehova …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>9.</b> And out of the ground made …</p>
+</td><td>
+<p><b>9.</b> Et germinare fecerat Jehova …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>10.</b> And a river went out of Eden …</p>
+</td><td>
+<p><b>10.</b> Et fluvius egrediebatur ex …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>11.</b> The name of the first <i>is</i> Pison: that <i>is</i> it which compasseth the …<i>there is</i> gold;</p>
+</td><td>
+<p><b>11.</b> Nomen unius, Pison: ipse …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>12.</b> And the gold of that land <i>is</i> good: there <i>is</i> bdellium and the onyx stone.</p>
+</td><td>
+<p><b>12.</b> Et aurum terrae illius …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>13.</b> And the name of the second river <i>is</i> Gihon: the same <i>is</i> it that compasseth the whole …</p>
+</td><td>
+<p><b>13.</b> Nomen vero fluvii secundi …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>14.</b> And the name of the third river <i>is</i> Hiddekel: that <i>is</i> it which goeth toward the …<i>is</i> Euphrates.</p>
+</td><td>
+<p><b>14.</b> Et nomen fluvii tertii …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>15.</b> And the LORD God took the …</p>
+</td><td>
+<p><b>15.</b> tulit itaque Jehova Deus …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>16.</b> And the LORD God commanded …</p>
+</td><td>
+<p><b>16.</b> Praecepitque Jehova Deus …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>17.</b> But of the tree of the …</p>
+</td><td>
+<p><b>17.</b> At de arbore scientiae boni …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>18.</b> And the LORD God said, <i>It is</i> not good that the man should …</p>
+</td><td>
+<p><b>18.</b> Et dixit Jehova Deus, Non …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>19.</b> And out of the ground the …<i>them</i> unto Adam to see what he …<i>was</i> the name thereof.</p>
+</td><td>
+<p><b>19.</b> Formaverat autem Jehova Deus …<i>illi inquum</i>, animae viventi, est nome ejus.</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>20.</b> And Adam gave names to all …</p>
+</td><td>
+<p><b>20.</b> Vocavit itaque Adam nomina …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>21.</b> And the LORD God caused a …</p>
+</td><td>
+<p><b>21.</b> Cadere igitur fecit Jehova …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>22.</b> And the rib, which the LORD …</p>
+</td><td>
+<p><b>22.</b> Et aedificavit Jehova Deus …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>23.</b> And Adam said, This <i>is</i> now bone of my bones, and …</p>
+</td><td>
+<p><b>23.</b> Et dixit Adam, Hac vice os …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>24.</b> Therefore shall a man leave …</p>
+</td><td>
+<p><b>24.</b> Idcirco relinquet …</p>
+</td>
+</tr><tr valign="top">
+<td>
+<p><b>25.</b> And they were both naked, …</p>
+</td><td>
+<p><b>25.</b> Erant autem ambo nudi, Adam …</p>
+</td>
+</tr>
+</table>
+<p class="Center"> </p>
+<p class="Normal"><scripCom type="Commentary" passage="Ge 2:1" parsed="|Gen|2|1|0|0" osisRef="Bible:Gen.2.1" /></p><div class="Commentary">
+<p><b>1.</b> <i>Thus the heavens and the …</i><note place="foot" n="100">
+<p class="Footnote"> The three verses at the …<span lang="la" dir="ltr">Male capita hoc loco sunt …</span>.” — <i>Ed</i>.</p>
+</note>
+Moses summarily repeats that …<i>host</i> we might not improperly …<i>abundance</i> ;<note place="foot" n="101">
+<p class="Footnote"> “<span lang="la" dir="ltr">Copiam</span>,” a questionable …<span lang="he" dir="rtl">צבאם</span>. The Septuagint gives the word <span lang="el" class="Greek">κόσμος</span>, and the Vulgate,
+<span lang="la" dir="ltr">ornatus</span>; the meaning of both words …<span lang="la" dir="ltr">Alii, virtus, copia eorum, …</span>.” — <i>Ed</i></p>
+</note>
+for Moses declares that this …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:2" parsed="|Gen|2|2|0|0" osisRef="Bible:Gen.2.2" /></p><div class="Commentary">
+<p><b>2.</b> <i>And he rested on the seventh day</i> The question may not …<note place="foot" n="102">
+<p class="Footnote"> <scripRef passage="Joh 5:17" parsed="|John|5|17|0|0" osisRef="Bible:John.5.17">John 5:17</scripRef>. This sentence is omitted in …<i>Ed</i>.</p>
+</note>
+because, if God should but …<scripRef passage="Ps 104:29" parsed="|Ps|104|29|0|0" osisRef="Bible:Ps.104.29">Psalm 104:29</scripRef><note place="foot" n="103">
+<p class="Footnote"> “Thou hidest thy face, …</p>
+</note>
+And indeed God is rightly …<note place="foot" n="104">
+<p class="Footnote"> The word translated preservation is <span lang="la" dir="ltr">vegetationem</span>, which means an enlivening …<i>Ed</i>.</p>
+</note>
+The solution of the …<i> From all his work which he had made</i> ; for he points out the …<scripRef passage="Ro 8:20" parsed="|Rom|8|20|0|0" osisRef="Bible:Rom.8.20">Romans 8:20</scripRef>,) and thus let us mourn, …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:3" parsed="|Gen|2|3|0|0" osisRef="Bible:Gen.2.3" /></p><div class="Commentary">
+<p><b>3.</b> <i>And God blessed the seventh day</i> It appears that God is here …<scripRef passage="Ge 24:31" parsed="|Gen|24|31|0|0" osisRef="Bible:Gen.24.31">Genesis 24:31</scripRef>.) Enter thou blessed of God. …<span lang="he" dir="rtl">קדש</span> (<i>kadesh</i>,) with the Hebrews, is to …<i>rest</i>, for he set apart a day …<note place="foot" n="105">
+<p class="Footnote"> Both in the Amsterdam …<span lang="la" dir="ltr">vocatio</span>; but as the French translation gives <span lang="fr" dir="ltr">reste</span>, and the Old English one …<span lang="la" dir="ltr">vacatio</span>, as the sense of the passage …<i>Ed</i>.</p>
+</note>
+which withdraws men from the …<note place="foot" n="106">
+<p class="Footnote"> “<span lang="la" dir="ltr">Sanctificationis symbolum</span>.” — “A symbol or sign …<scripRef passage="Eze 20:12" parsed="|Ezek|20|12|0|0" osisRef="Bible:Ezek.20.12">Ezekiel 20:12</scripRef>.
+— <i>Ed</i>.</p>
+</note>
+Therefore when we hear that …</p>
+<p><i>Which God created and made</i><note place="foot" n="107">
+<p class="Footnote"> “<span lang="la" dir="ltr">Quod creavarat Deus ut faceret</span>.” Hebrew <span lang="he" dir="rtl">אשר ברא אלהים לעשות</span>. “Which God created to …<span lang="la" dir="ltr">creando perfecerat</span>,” — “he had perfected …<i>Ed</i></p>
+</note>
+Here the Jews, in their …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:4" parsed="|Gen|2|4|0|0" osisRef="Bible:Gen.2.4" /></p><div class="Commentary">
+<p><b>4.</b> <i>These are the generations</i><note place="foot" n="108">
+<p class="Footnote"> A new section of the history …</p>
+<p>By a very careful examination …<span lang="he" dir="rtl">אלהים</span> (<i>Elohim</i>), <span lang="he" dir="rtl">יהוה</span> (<i>Jehovah</i>), and <span lang="he" dir="rtl">יהוה אלהים</span> (<i>Jehovah Elohim</i>), occur, he thinks he has …</p>
+<p>“These are the generations.” <span lang="he" dir="rtl">תולדות</span>, (<i>toledoth</i>), “<span lang="la" dir="ltr">modo origines ejus rei de qua …</span>, cap. 5:1.” “The term …<i>Dathe</i></p>
+</note>
+The design of Moses was …<i>origin</i> of the heaven and the earth, …<i>generation</i>. For there have always been …<i>synecdochee</i>, included. Some of the …<note place="foot" n="109">
+<p class="Footnote"> The word <span lang="he" dir="rtl">יהוה</span>, <i>Jehovah</i>, here first occurs, — that …<scripRef passage="Ex 6:3" parsed="|Exod|6|3|0|0" osisRef="Bible:Exod.6.3">Exodus 6:3</scripRef>, God declares that he had …<span lang="he" dir="rtl">יהוה</span> (<i>Jehovah</i>,) will be found in the work …<span lang="he" dir="rtl">אדנ</span>, (<i>Adonai</i>); it may suffice to state, …<span lang="he" dir="rtl"> היה</span>(<i>Jehovah</i>,) from the future of the verb <span lang="he" dir="rtl">הוה</span> or <span lang="he" dir="rtl">היה</span>, <i>to be</i>. Hence the meaning of the …<span lang="el" class="Greek">ὁ ὡν καὶ ὁ ἤν …</span>, “who is, and was, and is …</p>
+<p>“The Lord God.”-Jehovah …<i>Ed</i>.</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:5" parsed="|Gen|2|5|0|0" osisRef="Bible:Gen.2.5" /></p><div class="Commentary">
+<p><b>5.</b> <i>And every plant</i> This verse is connected with …<span lang="he" dir="rtl">שיה</span> (<i>sicah</i>,<note place="foot" n="110">
+<p class="Footnote"> <span lang="he" dir="rtl">שיח</span> <span lang="la" dir="ltr">Frutex, stirps</span>; a shrub — “<span lang="la" dir="ltr">cujus pulluli in summa …</span>,” — “whose shoots are …<i>Ed</i></p>
+</note>) which we translate plant, …<scripRef passage="Ge 21:15" parsed="|Gen|21|15|0|0" osisRef="Bible:Gen.21.15">Genesis 21:15</scripRef><note place="foot" n="111">
+<p class="Footnote"> “And the water was spent …</p>
+</note>) Therefore, some in this …<i>shrub</i>, to which I have no …<i>plant</i> is not unsuitable; because …<note place="foot" n="112">
+<p class="Footnote"> It seems remarkable that …<span lang="la" dir="ltr">virgultum</span>,” and then reason, in his …<span lang="la" dir="ltr">planta</span>.” — <i>Ed</i>.</p>
+</note>
+But although he has before …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:7" parsed="|Gen|2|7|0|0" osisRef="Bible:Gen.2.7" /></p><div class="Commentary">
+<p><b>7.</b> <i>And the Lord God formed man</i> He now explains what he had …<note place="foot" n="113">
+<p class="Footnote"> “<span lang="la" dir="ltr">Omnem animam viventum</span>,” — “every living …<i>Ed</i>.</p>
+</note>
+but, on the other hand, the …</p>
+<p><i>And breathed into his nostrils</i><note place="foot" n="114">
+<p class="Footnote"> “<span lang="la" dir="ltr">Inspiraverat in faciem</span>.”</p>
+</note>
+Whatever the greater part of …<i>breath</i>. Should any one object, that …<note place="foot" n="115">
+<p class="Footnote"> “<span lang="la" dir="ltr">Non tamen obstare quin gradum …</span>.”</p>
+</note>
+Moses first speaks of the …</p>
+<p><i>Man became a living soul</i><note place="foot" n="116">
+<p class="Footnote"> “<span lang="la" dir="ltr">Factus est in animam viventem</span>.”</p>
+</note>
+I take <span lang="he" dir="rtl">נפש</span> (<i>nepesh</i>,) for the very essence of …<i>living</i> suits only the present …<scripRef passage="1Co 15:45" parsed="|1Cor|15|45|0|0" osisRef="Bible:1Cor.15.45">1 Corinthians 15:45</scripRef>,) for no other purpose than …<i>celestial</i>, whereas before the fall of …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:8" parsed="|Gen|2|8|0|0" osisRef="Bible:Gen.2.8" /></p><div class="Commentary">
+<p><b>8.</b> <i>And the Lord God planted</i><note place="foot" n="117">
+<p class="Footnote"> “<span lang="la" dir="ltr">Plantaverat quoque Dominus</span>.” — “The Lord had also …</p>
+</note>
+Moses now adds the condition …<i>planted</i> accommodating himself, by a …<note place="foot" n="118">
+<p class="Footnote"> “<span lang="la" dir="ltr">Paradisum</span>.” — <i>Vulgate</i>.</p>
+</note>
+because the Hebrews call the …<span lang="he" dir="rtl"> פרדסים</span>(<i>Pardaisim</i>,<note place="foot" n="119">
+<p class="Footnote"> <span lang="he" dir="rtl">פרדס</span> <span lang="de" dir="ltr">Baumgarten</span>, Park, etc. “<span lang="de" dir="ltr">Wahrschenlich aus der …</span>.” — “Orchard, Park, …<i>Gesenius</i></p>
+</note>) and Xenophon pronounces the …</p>
+<p><i>In Eden</i> That Jerome improperly …<note place="foot" n="120">
+<p class="Footnote"> “<span lang="la" dir="ltr">Plantaverat autem Dominus …</span>.” — “But the Lord God …<i>Vulgate</i>.</p>
+</note>
+is very obvious: because …<note place="foot" n="121">
+<p class="Footnote"> The Hebrew word <span lang="he" dir="rtl">עדן</span> signifies pleasure, delight, …<i>Ed</i></p>
+</note>
+I do not indeed deny that …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:9" parsed="|Gen|2|9|0|0" osisRef="Bible:Gen.2.9" /></p><div class="Commentary">
+<p><b>9</b> <i>And out of the ground made …</i> The production here spoken …</p>
+<p><i>The tree of life also</i> It is uncertain whether he …<note place="foot" n="122">
+<p class="Footnote"> The above passage is wholly …<i>Ed</i>.</p>
+</note>
+He gave the tree of life its …<note place="foot" n="123">
+<p class="Footnote"> “<span lang="la" dir="ltr">Scimus minime esse insolens …</span>.” — “<span lang="fr" dir="ltr">Nous savons que ce n’est …</span>.” — French Trans. <span lang="la" dir="ltr">Virtus</span> in Latin, and
+<span lang="fr" dir="ltr">vertu</span> in French, may both signify …<i>Ed</i>.</p>
+<p>On the sacramental character …<scripRef passage="Re 22:2" parsed="|Rev|22|2|0|0" osisRef="Bible:Rev.22.2">Revelation 22:2</scripRef>). And so St. Austin, in that …<span lang="la" dir="ltr">Erat ei in caeteris lignis …</span>.’ In other trees there was …<i>Ed</i>.</p>
+</note>
+He does not indeed transfer …<scripRef passage="Joh 1:1-3" parsed="|John|1|1|1|3" osisRef="Bible:John.1.1-John.1.3">John 1:1-3</scripRef>,) that the life of all …</p>
+<p>I know that certain writers …</p>
+<p>Concerning the tree of …<note place="foot" n="124">
+<p class="Footnote"> “<span lang="la" dir="ltr">Dum Adam per se esse voluit, …</span>.” — <i>Lat</i>.</p>
+</note>
+and dared to try what he was …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:10" parsed="|Gen|2|10|0|0" osisRef="Bible:Gen.2.10" /></p><div class="Commentary">
+<p><b>10.</b> <i>And a river went out</i> Moses says that one river …<span lang="he" dir="rtl"> 
+הידקל</span>(<i>Hiddekel</i>) is the Tigris. But there is …<note place="foot" n="125">
+<p class="Footnote"> It appears that by the beginnings (<span lang="la" dir="ltr">principia</span>) and the mouths (<span lang="la" dir="ltr">ostia</span>) of the rivers, Calvin …<i>Ed</i>.</p>
+</note>
+by which they discharge …<note place="foot" n="126">
+<p class="Footnote"> This is a facsimile from the …<i>Ed</i>.</p>
+</note></p>
+<p><a /><!-- <img alt="Map of the Garden of Eden" src="../map_eden.jpg"/> --><br /></p>
+<p>Pliny indeed relates, in his …<note place="foot" n="127">
+<p class="Footnote"> “The Orcheni inhabiting a …</p>
+</note>
+And Pomponius Mela, in his …<note place="foot" n="128">
+<p class="Footnote"> About 420 miles.</p>
+</note>
+But he places the mouths of …<note place="foot" n="129">
+<p class="Footnote"> <span lang="la" dir="ltr">Mare Rubrum</span>. By the Red Sea, in this …<i>Ed</i>.</p>
+</note>
+He understands that junction …<scripRef passage="Isa 37:12" parsed="|Isa|37|12|0|0" osisRef="Bible:Isa.37.12">Isaiah 37:12</scripRef> <scripRef passage="Eze 27:23" parsed="|Ezek|27|23|0|0" osisRef="Bible:Ezek.27.23">Ezekiel 27:23</scripRef>. Moreover, when Moses …<note place="foot" n="130">
+<p class="Footnote"> Or “principal streams.” …</p>
+<p>The reader is referred to the …<span lang="la" dir="ltr">Eden est regio sen in …</span>.” — “Eden is a region …<i>Ed</i>.</p>
+</note>
+in its upper channels, and …</p>
+<p>The question remains …<i>Diglito</i> near its source; but after …<i>Pasitigris</i>. There is, therefore, no …<note place="foot" n="131">
+<p class="Footnote"> Circuit. It is observed, …<span lang="la" dir="ltr">Flexuoso cursu alluit</span>. — Johannes Clericus in loco. — <i>Ed</i>.</p>
+</note>
+the land of Havila, where …<scripRef passage="Ge 25:1" parsed="|Gen|25|1|0|0" osisRef="Bible:Gen.25.1">Genesis 25:1</scripRef>,) Moses relates, that the …<note place="foot" n="132">
+<p class="Footnote"> That is, the nations peopled …<scripRef passage="Ge 25:13-16" parsed="|Gen|25|13|25|16" osisRef="Bible:Gen.25.13-Gen.25.16">Genesis 25:13-16</scripRef>. — <i>Ed</i>.</p>
+</note>
+Then it appears that the Nabathaeans,<note place="foot" n="133">
+<p class="Footnote"> The descendants of Nebajoth, …<i>Ed</i>.</p>
+</note>
+of whom mention is there …<note place="foot" n="134">
+<p class="Footnote"> “There is bdellium and the …<i>Ed</i>.</p>
+</note></p>
+<p>The river Gihon still remains …<i>Chus</i>. All interpreters translate this word <i>Ethiopia</i>; but the country of the …<note place="foot" n="135">
+<p class="Footnote"> It would be wrong to omit …<i>Pison</i>,) which empties itself into …<i>Gihon</i>,) which runs into the …<i>Ed</i>.</p>
+</note></p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:15" parsed="|Gen|2|15|0|0" osisRef="Bible:Gen.2.15" /></p><div class="Commentary">
+<p><b>15.</b> <i>And the Lord God took the man</i> Moses now adds, that the …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:16" parsed="|Gen|2|16|0|0" osisRef="Bible:Gen.2.16" /></p><div class="Commentary">
+<p><b>16.</b> <i>And the Lord God commanded</i> Moses now teaches, that man …<scripRef passage="1Ti 1:9" parsed="|1Tim|1|9|0|0" osisRef="Bible:1Tim.1.9">1 Timothy 1:9</scripRef>.) For if it be so, then, …<scripRef passage="2Co 3:7" parsed="|2Cor|3|7|0|0" osisRef="Bible:2Cor.3.7">2 Corinthians 3:7</scripRef>,) I answer, it is so …</p>
+<p><i>Of every tree</i> To the end that Adam might …</p>
+<p>But it is asked, what kind of …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:18" parsed="|Gen|2|18|0|0" osisRef="Bible:Gen.2.18" /></p><div class="Commentary">
+<p><b>18.</b> <i>It is not good that the man …</i><note place="foot" n="136">
+<p class="Footnote"> “<span lang="la" dir="ltr">Non est bonum ut sit Adam solus</span>.” This is a variation from …<span lang="he" dir="rtl">אדם</span> stands for both. As a proper …<i>Ed</i></p>
+</note>
+Moses now explains the …<note place="foot" n="137">
+<p class="Footnote"> “<span lang="la" dir="ltr">Principium ergo generale est, …</span>.”</p>
+</note>
+Now, the human race could …<note place="foot" n="138">
+<p class="Footnote"> “<span lang="la" dir="ltr">Putant multi suisrationibus …</span>.” — “<span lang="fr" dir="ltr">Plusieurs estiment que le …</span>.” — French Tr.</p>
+</note>
+and therefore, abstain from …</p>
+<p><i>I will make him an help</i> It may be inquired, why this …<i>Let us make</i>, as before in the creation …</p>
+<p><i>Meet for him</i><note place="foot" n="139">
+<p class="Footnote"> “<span lang="la" dir="ltr">Coram ipso</span>,” before him. — “<span lang="fr" dir="ltr">Pour luy assister</span>,” to help him. — French Tr.</p>
+</note>
+In the Hebrew it is <span lang="he" dir="rtl">כנגדו</span> (<i>kenegedo</i>,) “as if opposite to,” …<span lang="he" dir="rtl">כ</span> (<i>Caph</i>) in that language is a note …<span lang="el" class="Greek">ἀντίστοικον</span>, or <span lang="el" class="Greek">ἀντίστροφον</span>;<note place="foot" n="140">
+<p class="Footnote"> <span lang="la" dir="ltr">Quod “ex adverso ei” respondet</span>. <span lang="fr" dir="ltr">Lud. de Dieu</span>. His counterpart.</p>
+</note>) for the woman is said to be <i>opposite</i> to or <i>over against</i> the man, because she …<note place="foot" n="141">
+<p class="Footnote"> “<span lang="la" dir="ltr">Quia sit translatitia loquutio</span>.”</p>
+</note>
+The Greek translators have …<span lang="el" class="Greek">Κατ᾿’ αὐτόν</span>;<note place="foot" n="142">
+<p class="Footnote"> A help according to him. See …</p>
+</note>
+and Jerome, “Which may be …<note place="foot" n="143">
+<p class="Footnote"> “<span lang="la" dir="ltr">Adjutorium simile sibi</span>,” a help like himself. — …<i>Patrick</i>.</p>
+</note>
+for Moses intended to note …<span lang="he" dir="rtl">כ</span> (<i>caph</i>) is of importance, as …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:19" parsed="|Gen|2|19|0|0" osisRef="Bible:Gen.2.19" /></p><div class="Commentary">
+<p><b>19.</b> <i>And out of the ground the …</i><note place="foot" n="144">
+<p class="Footnote"> “<span lang="la" dir="ltr">Formaverat autem Deus</span>,” — “God had …<i>Ed</i>.</p>
+</note>
+This is a more ample …<note place="foot" n="145">
+<p class="Footnote"> “<span lang="la" dir="ltr">Porro istud adducere Dei</span>.”</p>
+</note>
+signifies nothing else than …<scripRef passage="Ge 9:2" parsed="|Gen|9|2|0|0" osisRef="Bible:Gen.9.2">Genesis 9:2</scripRef>.) Besides,
+it is to be …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:21" parsed="|Gen|2|21|0|0" osisRef="Bible:Gen.2.21" /></p><div class="Commentary">
+<p><b>21.</b> <i>And the Lord God caused a …</i> Although to profane persons …<scripRef passage="Ge 1:28" parsed="|Gen|1|28|0|0" osisRef="Bible:Gen.1.28">Genesis 1:28</scripRef>,) “God created man... he …<note place="foot" n="146">
+<p class="Footnote"> “<span lang="la" dir="ltr">Ex putrido semine quotidie …</span>.”</p>
+</note>
+But they object that either …<note place="foot" n="147">
+<p class="Footnote"> “<span lang="la" dir="ltr">Quum se integrum vidit in …</span>.”</p>
+</note>
+And in this we see a true …<i>built</i>,<note place="foot" n="148">
+<p class="Footnote"> “<span lang="la" dir="ltr">Et aedificavit Jehova Deus …</span>.” — And Jehovah God …<span lang="he" dir="rtl">ויבן</span>, from <span lang="he" dir="rtl">בנה</span>, to build.</p>
+</note>
+to teach us that in the …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:22" parsed="|Gen|2|22|0|0" osisRef="Bible:Gen.2.22" /></p><div class="Commentary">
+<p><b>22.</b> <i>And brought her, etc</i> Moses now relates that …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:23" parsed="|Gen|2|23|0|0" osisRef="Bible:Gen.2.23" /></p><div class="Commentary">
+<p><b>23.</b> <i>And Adam said, etc</i> It is demanded whence Adam …</p>
+<p><i>This is now bone of, etc</i><note place="foot" n="149">
+<p class="Footnote"> “<span lang="la" dir="ltr">Hac vice os est ex ossibus meis</span>.” <span lang="he" dir="rtl">זאת הפעם</span>, (<i>zot haphaam</i>.) These words are rendered …<span lang="he" dir="rtl">זאת</span>) which at the present time (<span lang="he" dir="rtl">הפעם</span>, <i>hac vice</i>) passes before me, is the …<i>Ed</i></p>
+</note>
+In using the expression <span lang="he" dir="rtl">הפעם</span> (<i>hac vice</i>,) Adam indicates that …<note place="foot" n="150">
+<p class="Footnote"> “<span lang="la" dir="ltr">Nomen uxori a viro imponit</span>.” <span lang="he" dir="rtl">אשה</span>, (<i>ishah</i>,) from <span lang="he" dir="rtl">איש</span>, (<i>ish</i>,) which is the Hebrew word …<span lang="la" dir="ltr">virissa</span>; Dathe, after Le Clerc, the word <span lang="la" dir="ltr">vira</span>; and though neither of them …<span lang="la" dir="ltr">virago</span> in the Vulgate, which Calvin …<i>Ed</i></p>
+</note>
+that by this testimony and …<span lang="he" dir="rtl">אשה</span> (<i>ishah</i>,) by the word <i>virago</i>. It is, however, to be …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:24" parsed="|Gen|2|24|0|0" osisRef="Bible:Gen.2.24" /></p><div class="Commentary">
+<p><b>24.</b> <i>Therefore shall a man leave</i> It is doubted whether Moses …<note place="foot" n="151">
+<p class="Footnote"> See Le Clerc on this verse, …</p>
+</note>
+The last of these is that …<i>left</i> not because marriage severs …</p>
+<p><i>They shall be one flesh</i><note place="foot" n="152">
+<p class="Footnote"> “<span lang="la" dir="ltr">Erunt in carnem unam</span>.” — “<span lang="la" dir="ltr">In carne una</span>.” — Vulgate. <span lang="el" class="Greek">Εἰς σάρκα μίαν</span>. — Sept.</p>
+</note>
+Although the ancient Latin …<i>into</i> one flesh,’ and thus …<scripRef passage="Mt 19:5" parsed="|Matt|19|5|0|0" osisRef="Bible:Matt.19.5">Matthew 19:5</scripRef>. But though here no mention …<i>two</i>, yet there is no ambiguity …<scripRef passage="Mt 19:5" parsed="|Matt|19|5|0|0" osisRef="Bible:Matt.19.5">Matthew 19:5</scripRef>,) he certainly commands this …</p>
+<p class="SCRIPTURE">‘Did he not make them one …<note place="foot" n="153">
+<p class="Footnote"> <sup>“</sup><span lang="la" dir="ltr">Spiritus abundans in eo erat</span>” The word <span lang="la" dir="ltr">abundans</span> has in English the force of …<i>Ed</i></p>
+</note>
+(<scripRef passage="Mal 2:15" parsed="|Mal|2|15|0|0" osisRef="Bible:Mal.2.15">Malachi 2:15</scripRef>.)</p>
+<p>Wherefore, there is no doubt …</p>
+</div><p class="Normal"><scripCom type="Commentary" passage="Ge 2:25" parsed="|Gen|2|25|0|0" osisRef="Bible:Gen.2.25" /></p><div class="Commentary">
+<p><b>25.</b> <i>They were both naked</i> That the nakedness of men …</p></div></div2></div1>
+</ThML.body></ThML>

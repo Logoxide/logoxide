@@ -412,7 +412,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   over usfm-onion, whose USX drops the space between adjacent `\w` words; both gave the KJV's
   31,102 verses). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
   book; it's scanned for the books its verse markers name, cut into books, and its last parse
-  kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) become verse markers.
+  kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) and `<scripCom parsed=…/>` (CCEL's commentaries) become verse markers; a chapter's own (`|Gen|1|0|0|0`) is verse 0 (chapter introductions are notes on it), and a `div1`–`div6` whose first marker is in another chapter ends the verse before it (an End milestone naming nothing), or starts that chapter's verse 0 when its first marker is one (`mark_verses`).
   GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM
   code, English name, or GBF's numbers 1–39 and 64–90), `<SC…>`/`<SV…>` become chapter and verse
   markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is

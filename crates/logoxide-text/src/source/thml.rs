@@ -20,6 +20,9 @@ A folder of ThML files: a whole Bible in one file, as CCEL publishes them, or a 
   it for readers with `<sup class="verse">2</sup>`. Those markers become verse markers (with a
   chapter marker where the chapter changes), and the printed numbers are left out, so verses
   hash and render as USX's do
+- CCEL's commentaries mark their sections the same way with empty `<scripCom type="Commentary"
+  passage="Ge 1:1-2" parsed="|Gen|1|1|1|2"/>`, and a chapter's own section with
+  `parsed="|Gen|1|0|0|0"`, read as its verse 0 (see [`mark_verses`])
 - logoxide-markup reads `<scripture>` as an ordinary element, since in commentaries it holds
   quoted text; only empty ones are taken as verses
 */
@@ -33,24 +36,25 @@ pub struct ThmlSource {
 impl ThmlSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
         let (files, skipped) = whole_files(storage.as_ref(), dir, &["xml", "thml"], |text| {
-            scan_tags(text, "scripture", |tag| {
-                let tag = tag.trim_end();
-                if !tag.ends_with('/') {
-                    return None;
+            // A Bible's markers, then a commentary's
+            let mut scanned = scan_tags(text, "scripture", marker_reference);
+            let commentary = scan_tags(text, "scripCom", marker_reference);
+            for book in commentary.books {
+                if !scanned.books.contains(&book) {
+                    scanned.books.push(book);
                 }
-                match tag_place(|name| tag_attr(tag, name)) {
-                    Some(place) => {
-                        Some(format!("{}.{}.{}", place.book, place.chapter, place.verse))
-                    }
-                    // A lettered chapter (`|Esth|A|1|0|0`) isn't a place, but is said
-                    None => {
-                        let parsed = tag_attr(tag, "parsed")?.trim_matches('|');
-                        let mut parts = parsed.split('|');
-                        let (book, chapter) = (parts.next()?, parts.next()?);
-                        Some(format!("{book}.{chapter}"))
+            }
+            for (list, more) in [
+                (&mut scanned.unknown, commentary.unknown),
+                (&mut scanned.lettered, commentary.lettered),
+            ] {
+                for name in more {
+                    if !list.contains(&name) {
+                        list.push(name);
                     }
                 }
-            })
+            }
+            scanned
         })?;
         Ok(Self {
             storage,
@@ -90,7 +94,25 @@ impl Source for ThmlSource {
     }
 }
 
-/// Where a `<scripture>` marker is: an OSIS book name, chapter, verse, and the last verse of a
+/// The OSIS reference an empty marker's tag names (`Gen.1.2`), for finding a file's books; a
+/// lettered chapter (`|Esth|A|1|0|0`) isn't a place, but is named (`Esth.A`)
+fn marker_reference(tag: &str) -> Option<String> {
+    let tag = tag.trim_end();
+    if !tag.ends_with('/') {
+        return None;
+    }
+    match tag_place(|name| tag_attr(tag, name)) {
+        Some(place) => Some(format!("{}.{}.{}", place.book, place.chapter, place.verse)),
+        None => {
+            let parsed = tag_attr(tag, "parsed")?.trim_matches('|');
+            let mut parts = parsed.split('|');
+            let (book, chapter) = (parts.next()?, parts.next()?);
+            Some(format!("{book}.{chapter}"))
+        }
+    }
+}
+
+/// Where a `<scripture>` or `<scripCom>` marker is: an OSIS book name, chapter, verse, and the last verse of a
 /// bridge
 #[derive(Debug, PartialEq)]
 struct Place {
@@ -102,14 +124,17 @@ struct Place {
     last: u8,
 }
 
-/// A marker's place, from `parsed` (`|Gen|1|2|0|0`, `|Gen|1|2|1|3` for a bridge, `|John|3|36|4|2`
-/// into the next chapter) or `osisRef` (`Bible:Gen.1.2`)
+/**
+A marker's place, from `parsed` (`|Gen|1|2|0|0`, `|Gen|1|2|1|3` for a bridge, `|John|3|36|4|2`
+into the next chapter) or `osisRef` (`Bible:Gen.1.2`)
+- A chapter's own marker (`|Gen|1|0|0|0`, a commentary's on the whole chapter) is its verse 0
+*/
 fn tag_place<'a>(attr: impl Fn(&str) -> Option<&'a str>) -> Option<Place> {
     let number = |s: &str| s.trim().parse::<u8>().ok().filter(|n| *n > 0);
     if let Some(parsed) = attr("parsed") {
         let parts: Vec<&str> = parsed.trim_matches('|').split('|').collect();
         if let [book, chapter, verse, rest @ ..] = parts.as_slice() {
-            let (chapter, verse) = (number(chapter)?, number(verse)?);
+            let (chapter, verse) = (number(chapter)?, verse.trim().parse::<u8>().ok()?);
             let to = |s: &str| s.trim().parse::<u8>().ok();
             let (last_chapter, last) = match rest {
                 [to_chapter, to_verse, ..] if number(to_chapter) == Some(chapter) => {
@@ -145,8 +170,81 @@ fn tag_place<'a>(attr: impl Fn(&str) -> Option<&'a str>) -> Option<Place> {
     })
 }
 
-/// The tree with CCEL's verse markers as verse and chapter markers (see [`ThmlSource`]);
-/// `chapter` is the book and chapter of the marker before
+/// Whether an element is an empty `<scripture>` or `<scripCom>`: a verse marker (one holding
+/// text is a quotation)
+fn is_marker(e: &Element) -> bool {
+    e.children.is_empty()
+        && (e.name.eq_ignore_ascii_case("scripture") || e.name.eq_ignore_ascii_case("scripcom"))
+}
+
+/// Whether an element is one of ThML's divisions (`div1` to `div6`)
+fn is_division(e: &Element) -> bool {
+    let name = e.name.to_ascii_lowercase();
+    matches!(
+        name.as_str(),
+        "div1" | "div2" | "div3" | "div4" | "div5" | "div6"
+    )
+}
+
+/// The place of the first marker in `nodes`, in document order
+fn first_place(nodes: &[Node]) -> Option<Place> {
+    for node in nodes {
+        let Node::Element(e) = node else { continue };
+        if is_marker(e) {
+            if let Some(place) = tag_place(|n| e.attr(n)) {
+                return Some(place);
+            }
+            continue;
+        }
+        if let Some(place) = first_place(&e.children) {
+            return Some(place);
+        }
+    }
+    None
+}
+
+/// A chapter marker for a place's chapter
+fn chapter_marker(place: &Place) -> Node {
+    Node::Element(Element {
+        kind: Kind::Chapter,
+        name: String::from("chapter"),
+        attrs: vec![
+            (
+                String::from("osisID"),
+                format!("{}.{}", place.book, place.chapter),
+            ),
+            (String::from("n"), place.chapter.to_string()),
+        ],
+        children: vec![],
+        milestone: Some(Milestone::Start),
+        unclosed: false,
+    })
+}
+
+/// A marker ending the verse before, naming none (so it belongs to no book)
+fn verse_end() -> Node {
+    Node::Element(Element {
+        kind: Kind::Verse,
+        name: String::from("verse"),
+        attrs: vec![],
+        children: vec![],
+        milestone: Some(Milestone::End),
+        unclosed: false,
+    })
+}
+
+/**
+The tree with CCEL's verse markers as verse and chapter markers (see [`ThmlSource`]);
+`chapter` is the book and chapter of the marker before
+- A commentary's chapter marker (`|Gen|1|0|0|0`) is its verse 0, so what it says of the whole
+  chapter is a note on verse 0. Only the first in a chapter counts: a later one would number the
+  chapter's verses out of order
+- A division (`div1` to `div6`) whose first marker is in another chapter ends the verse before
+  it, so a chapter's introduction or a book's preface isn't read as the last note of the chapter
+  before. When that marker is the chapter's verse 0, the chapter and its verse 0 start at the
+  division's start instead (Matthew Henry puts the marker after a chapter's introduction,
+  Calvin before), so the introduction is the note on verse 0
+*/
 fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node> {
     let mut out = Vec::with_capacity(nodes.len());
     for node in nodes {
@@ -158,12 +256,11 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
         if name == "sup" && e.attr("class").is_some_and(|c| c == "verse") {
             continue;
         }
-        let place = (name == "scripture" && e.children.is_empty())
-            .then(|| tag_place(|n| e.attr(n)))
-            .flatten();
+        let marker = is_marker(&e);
+        let place = marker.then(|| tag_place(|n| e.attr(n))).flatten();
         // A lettered chapter's marker (`|Esth|A|1|0|0`): a verse marker, so its verses are left
         // out with it (`without_lettered`), not run into the verse before
-        let lettered = (name == "scripture" && e.children.is_empty() && place.is_none())
+        let lettered = (marker && place.is_none())
             .then(|| e.attr("parsed"))
             .flatten()
             .map(|parsed| parsed.trim_matches('|').replace('|', "."))
@@ -176,48 +273,66 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
             continue;
         }
         let Some(place) = place else {
-            e.children = mark_verses(std::mem::take(&mut e.children), chapter);
+            let mut children = vec![];
+            if is_division(&e)
+                && let Some(first) = first_place(&e.children)
+            {
+                let here = (first.book.clone(), first.chapter);
+                if chapter.as_ref() != Some(&here) {
+                    if first.verse == 0 {
+                        children.push(chapter_marker(&first));
+                        let empty = Element {
+                            kind: Kind::Verse,
+                            name: String::from("scripCom"),
+                            attrs: vec![],
+                            children: vec![],
+                            milestone: None,
+                            unclosed: false,
+                        };
+                        children.push(verse_marker(empty, &first));
+                        *chapter = Some(here);
+                    } else if chapter.is_some() {
+                        out.push(verse_end());
+                    }
+                }
+            }
+            children.extend(mark_verses(std::mem::take(&mut e.children), chapter));
+            e.children = children;
             out.push(Node::Element(e));
             continue;
         };
         let here = (place.book.clone(), place.chapter);
         if chapter.as_ref() != Some(&here) {
-            out.push(Node::Element(Element {
-                kind: Kind::Chapter,
-                name: String::from("chapter"),
-                attrs: vec![
-                    (
-                        String::from("osisID"),
-                        format!("{}.{}", place.book, place.chapter),
-                    ),
-                    (String::from("n"), place.chapter.to_string()),
-                ],
-                children: vec![],
-                milestone: Some(Milestone::Start),
-                unclosed: false,
-            }));
+            out.push(chapter_marker(&place));
             *chapter = Some(here);
-        }
-        e.kind = Kind::Verse;
-        e.milestone = Some(Milestone::Start);
-        let id = format!("{}.{}.{}", place.book, place.chapter, place.verse);
-        // A run into a later chapter is one id, which numbers it (`John.3.36-John.4.2`)
-        if place.last_chapter > place.chapter {
-            let end = format!("{}.{}.{}", place.book, place.last_chapter, place.last);
-            e.attrs
-                .push((String::from("osisID"), format!("{id}-{end}")));
-            out.push(Node::Element(e));
+        } else if place.verse == 0 {
+            // The chapter's verse 0 was marked already, at its division's start
             continue;
         }
-        let number = match place.last > place.verse {
-            true => format!("{}-{}", place.verse, place.last),
-            false => place.verse.to_string(),
-        };
-        e.attrs.push((String::from("osisID"), id));
-        e.attrs.push((String::from("n"), number));
-        out.push(Node::Element(e));
+        out.push(verse_marker(e, &place));
     }
     out
+}
+
+/// A marker element made a verse marker for its place
+fn verse_marker(mut e: Element, place: &Place) -> Node {
+    e.kind = Kind::Verse;
+    e.milestone = Some(Milestone::Start);
+    let id = format!("{}.{}.{}", place.book, place.chapter, place.verse);
+    // A run into a later chapter is one id, which numbers it (`John.3.36-John.4.2`)
+    if place.last_chapter > place.chapter {
+        let end = format!("{}.{}.{}", place.book, place.last_chapter, place.last);
+        e.attrs
+            .push((String::from("osisID"), format!("{id}-{end}")));
+        return Node::Element(e);
+    }
+    let number = match place.last > place.verse {
+        true => format!("{}-{}", place.verse, place.last),
+        false => place.verse.to_string(),
+    };
+    e.attrs.push((String::from("osisID"), id));
+    e.attrs.push((String::from("n"), number));
+    Node::Element(e)
 }
 
 #[cfg(test)]
@@ -305,5 +420,90 @@ The vision of Obadiah. <scripRef passage="Ruth 1:1">Ruth 1:1</scripRef></p>
             Some((4, 2))
         );
         assert_eq!(tag_place(attrs(&[("passage", "Gen 1")])), None);
+    }
+
+    /// Matthew Henry's Genesis 1–2 (CCEL's `henry/mhc1.xml`, its text cut short): sections
+    /// marked with empty `<scripCom>`, each chapter's after the chapter's introduction
+    const HENRY: &str = include_str!("../../tests/fixtures/ccel/mhc1-gen1-2.xml");
+    /// Calvin's Genesis 1–2 (`calvin/calcom01.xml`, cut short): a chapter's marker before its text
+    const CALVIN: &str = include_str!("../../tests/fixtures/ccel/calcom01-gen1-2.xml");
+
+    fn spans(package: &dyn Source, id: BookId) -> Vec<(u8, u8, u8)> {
+        let book = package.book(id).unwrap();
+        (book.spans.iter())
+            .map(|s| (s.chapter, s.verse, s.last))
+            .collect()
+    }
+
+    #[test]
+    fn a_commentarys_sections() {
+        let package = package("thml", &[("mhc1.xml", HENRY)]);
+        let genesis = book("GEN");
+        assert_eq!(package.books(), [genesis]);
+        let spans = spans(&*package, genesis);
+        assert_eq!(
+            spans[..4],
+            [(1, 0, 0), (1, 1, 2), (1, 3, 5), (1, 6, 8)],
+            "{spans:?}"
+        );
+        assert!(spans.contains(&(1, 31, 31)));
+        assert!(spans.contains(&(2, 0, 0)) && spans.contains(&(2, 21, 25)));
+        assert_eq!(spans.iter().filter(|s| s.1 == 0).count(), 2);
+        let texts = verse_texts(&*package, genesis);
+        // The chapter's introduction, before its marker, is the note on verse 0
+        let intro = |chapter: u8| {
+            let found = texts.iter().find(|(c, v, _)| (*c, *v) == (chapter, 0));
+            found.map(|(_, _, t)| t.as_str()).unwrap_or_default()
+        };
+        assert!(intro(1).contains("The foundation of all"), "{}", intro(1));
+        assert!(
+            intro(2).starts_with("This chapter is an appendix"),
+            "{}",
+            intro(2)
+        );
+        // and isn't in the last note of the chapter before
+        let last = texts.iter().find(|(c, v, _)| (*c, *v) == (1, 31));
+        let last = last.map(|(_, _, t)| t.as_str()).unwrap_or_default();
+        assert!(last.contains("We have here the approbation"), "{last}");
+        assert!(!last.contains("appendix"), "{last}");
+        let notes = package
+            .notes(&crate::bible_data().books().parse_osis("Gen.1.4").unwrap())
+            .unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!((notes[0].verse, notes[0].last), (3, 5));
+    }
+
+    #[test]
+    fn a_commentary_marking_chapters_first() {
+        let package = package("thml", &[("calcom01.xml", CALVIN)]);
+        let genesis = book("GEN");
+        let spans = spans(&*package, genesis);
+        assert_eq!(spans[..3], [(1, 0, 0), (1, 1, 1), (1, 2, 2)], "{spans:?}");
+        let at = spans.iter().position(|s| *s == (2, 0, 0)).unwrap();
+        assert_eq!(spans[at - 1], (1, 31, 31));
+        assert_eq!(spans[at + 1], (2, 1, 1));
+        let texts = verse_texts(&*package, genesis);
+        // The front matter (the Argument) is no verse's
+        assert!(!texts.iter().any(|(_, _, t)| t.contains("hearken to Moses")));
+        let last = &texts[at - 1].2;
+        assert!(!last.contains("Genesis 2:1-25"), "{last}");
+    }
+
+    /// A division whose first marker is in another chapter ends the verse before
+    #[test]
+    fn divisions_end_the_chapter_before() {
+        let thml = r#"<ThML><ThML.body><div1 title="Ruth">
+<div2 title="Chapter 1"><p><scripCom parsed="|Ruth|1|1|1|2"/>On the first.</p></div2>
+<div2 title="Chapter 2"><p>The second chapter's introduction.</p>
+<p><scripCom parsed="|Ruth|2|1|0|0"/>On Ruth 2:1.</p></div2>
+</div1></ThML.body></ThML>"#;
+        let package = package("thml", &[("ruth.xml", thml)]);
+        assert_eq!(
+            verse_texts(&*package, book("RUT")),
+            [
+                (1, 1, String::from("On the first.")),
+                (2, 1, String::from("On Ruth 2:1."))
+            ]
+        );
     }
 }
