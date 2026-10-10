@@ -225,6 +225,7 @@ pub(crate) fn finish(
         upstream: upstream(entry),
         versification: made.versification.unwrap_or_else(|| String::from("own")),
         maps_to: None,
+        keys: None,
         include: vec![],
     };
     let manifest = Manifest {

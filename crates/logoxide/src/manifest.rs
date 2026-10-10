@@ -154,6 +154,10 @@ pub struct Package {
     /// (logoxide-text's `versification`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maps_to: Option<String>,
+    /// For a dictionary (the `dictionary` format): what its entries are keyed by, Strong's Greek
+    /// or Hebrew numbers or headwords, which says how a key is matched (see [`Keys`])
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub keys: Option<Keys>,
     /// More files the package is made of, as patterns (`README.md`, `images/**`): besides
     /// these, only what the manifest names is (see [`crate::package::declared_files`])
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -231,6 +235,43 @@ pub enum PackageKind {
     Collection,
 }
 
+/**
+What a dictionary's entries are keyed by (`[package] keys`), which says how a key is matched
+(`doc/entries.md`): Strong's numbers are normalized (`G0025`, `g25`, and `G25` are one key,
+written `G25`: an uppercase letter, the number without leading zeros, any suffix as given);
+headwords are matched ignoring case and accents, as catalog search matches names
+*/
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Keys {
+    /// Strong's Greek numbers (`G25`)
+    StrongsGreek,
+    /// Strong's Hebrew numbers (`H430`)
+    StrongsHebrew,
+    /// Words, as a dictionary's headwords (`Aaron`, `ἀγαπάω`)
+    Headword,
+}
+
+impl Keys {
+    /// Its name as manifests give it (`strongs-greek`)
+    pub fn name(self) -> &'static str {
+        match self {
+            Keys::StrongsGreek => "strongs-greek",
+            Keys::StrongsHebrew => "strongs-hebrew",
+            Keys::Headword => "headword",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Keys> {
+        Some(match name.trim().to_ascii_lowercase().as_str() {
+            "strongs-greek" => Keys::StrongsGreek,
+            "strongs-hebrew" => Keys::StrongsHebrew,
+            "headword" => Keys::Headword,
+            _ => return None,
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Direction {
@@ -256,6 +297,9 @@ pub enum Format {
     Osis,
     Sword,
     Thml,
+    /// GBF (the General Bible Format, SWORD's older modules): a book a file, or a whole Bible,
+    /// its books, chapters, and verses marked by `<SB…>`, `<SC…>`, and `<SV…>` sync marks
+    Gbf,
     Zefania,
     /// A book as an EPUB: kept and summarized as files, not read as verses (topos finds the
     /// references in it)
@@ -263,6 +307,12 @@ pub enum Format {
     /// A versification map's lines, as Paratext's `.vrs` files write them
     /// (logoxide-text's `versification`)
     Vrs,
+    /// A dictionary's entries (`entries/*.xml`: `<entry key="G25">…</entry>` elements in the
+    /// markup each file declares; `doc/entries.md`), keyed as `[package] keys` says
+    Dictionary,
+    /// Cross-references (`xref/*.tsv`: `from`, `to`, and an optional weight a line, as OSIS
+    /// references; `doc/entries.md`)
+    Xref,
 }
 
 impl Format {
@@ -274,11 +324,32 @@ impl Format {
             "osis" => Format::Osis,
             "sword" => Format::Sword,
             "thml" => Format::Thml,
+            "gbf" => Format::Gbf,
             "zefania" => Format::Zefania,
             "epub" => Format::Epub,
             "vrs" => Format::Vrs,
+            "dictionary" => Format::Dictionary,
+            "xref" => Format::Xref,
             _ => return None,
         })
+    }
+
+    /// Its name as manifests give it (`usx`)
+    pub fn name(self) -> &'static str {
+        match self {
+            Format::Usx => "usx",
+            Format::Usfm => "usfm",
+            Format::Usj => "usj",
+            Format::Osis => "osis",
+            Format::Sword => "sword",
+            Format::Thml => "thml",
+            Format::Gbf => "gbf",
+            Format::Zefania => "zefania",
+            Format::Epub => "epub",
+            Format::Vrs => "vrs",
+            Format::Dictionary => "dictionary",
+            Format::Xref => "xref",
+        }
     }
 
     /// The extensions of its files (`None`: every file under its path, for formats logoxide keeps
@@ -290,18 +361,30 @@ impl Format {
             Format::Usj => &["json"],
             Format::Osis => &["xml", "osis"],
             Format::Thml => &["xml", "thml"],
+            Format::Gbf => &["gbf", "txt"],
             Format::Zefania => &["xml"],
             Format::Epub => &["epub"],
             Format::Vrs => &["vrs"],
+            Format::Dictionary => &["xml"],
+            Format::Xref => &["tsv"],
             Format::Sword => return None,
         })
     }
 
-    /// Whether logoxide reads it yet
+    /// Whether logoxide reads it yet (as verses, or as a dictionary's entries or a verse's
+    /// cross-references)
     pub fn readable(self) -> bool {
         matches!(
             self,
             Format::Usx | Format::Usfm | Format::Osis | Format::Thml
+        )
+    }
+
+    /// Whether it's read as verses: a Bible's text, which a summary counts and hashes
+    pub fn is_verse_text(self) -> bool {
+        matches!(
+            self,
+            Format::Usx | Format::Usfm | Format::Osis | Format::Thml | Format::Gbf
         )
     }
 }
@@ -680,6 +763,23 @@ impl Manifest {
                         "only a versification map has maps-to (kind = \"versification-map\")",
                     ));
                 }
+            }
+            // A dictionary says what its entries are keyed by
+            let dictionary =
+                (self.formats.keys()).any(|n| Format::from_name(n) == Some(Format::Dictionary));
+            match (dictionary, package.keys) {
+                (true, None) => {
+                    return err(String::from(
+                        "a dictionary names what its entries are keyed by: keys = \"strongs-greek\", \
+                         \"strongs-hebrew\", or \"headword\"",
+                    ));
+                }
+                (false, Some(_)) => {
+                    return err(String::from(
+                        "only a dictionary has keys (a `dictionary` format)",
+                    ));
+                }
+                _ => {}
             }
         }
         for (name, format) in &self.formats {
@@ -1089,6 +1189,43 @@ readme = "README.md""#,
         );
         assert!(warnings("en-Latn").unwrap().is_empty());
         assert!(warnings("grc").unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_dictionary_names_its_keys() {
+        let dictionary = |keys: &str, format: &str| {
+            Manifest::parse(&format!(
+                "[package]\nid = \"strongs\"\nname = \"Strong's\"\nabbreviation = \"STR\"\n\
+                 version = \"1.0.0\"\nlanguage = \"grc\"\nkind = \"lexicon\"\n{keys}\n\
+                 [formats]\n{format}\n"
+            ))
+        };
+        let entries = "dictionary = { path = \"entries/\" }";
+        let manifest = dictionary("keys = \"strongs-greek\"", entries).unwrap();
+        let info = manifest.package.as_ref().unwrap();
+        assert_eq!(info.keys, Some(Keys::StrongsGreek));
+        assert_eq!(
+            Manifest::parse(&manifest.to_toml().unwrap()).unwrap(),
+            manifest
+        );
+        let error = |keys: &str, format: &str| dictionary(keys, format).unwrap_err().to_string();
+        assert!(error("", entries).contains("keys = \"strongs-greek\""));
+        assert!(error("keys = \"strong\"", entries).contains("unknown variant"));
+        assert!(
+            error("keys = \"headword\"", "usx = { path = \"usx/\" }").contains("only a dictionary")
+        );
+        assert!(dictionary("", "xref = { path = \"xref/\" }").is_ok());
+        assert_eq!(Keys::from_name("Strongs-Hebrew"), Some(Keys::StrongsHebrew));
+        assert_eq!(Keys::Headword.name(), "headword");
+        // The new formats' files, by extension
+        assert_eq!(Format::from_name("dictionary"), Some(Format::Dictionary));
+        assert_eq!(Format::Dictionary.extensions(), Some(&["xml"][..]));
+        assert_eq!(Format::Xref.extensions(), Some(&["tsv"][..]));
+        assert_eq!(Format::Gbf.extensions(), Some(&["gbf", "txt"][..]));
+        for format in [Format::Gbf, Format::Dictionary, Format::Xref] {
+            assert_eq!(Format::from_name(format.name()), Some(format));
+        }
+        assert!(Format::Gbf.is_verse_text() && !Format::Dictionary.is_verse_text());
     }
 
     #[test]

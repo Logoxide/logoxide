@@ -162,6 +162,7 @@ pub fn new_from_file(
         upstream: None,
         versification: String::from("own"),
         maps_to: None,
+        keys: None,
         include: vec![],
     };
     let manifest = Manifest {
@@ -222,6 +223,7 @@ pub fn new_collection(given: &NewPackage, dest: &dyn Storage) -> Result<Manifest
         upstream: None,
         versification: String::from("own"),
         maps_to: None,
+        keys: None,
         include: vec![],
     };
     let manifest = Manifest {

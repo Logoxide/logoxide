@@ -68,6 +68,7 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 | `upstream` | table | no | Where the text was imported from (written by importers; see [Imports](#imports)) |
 | `versification` | string | no | `own` (the default: the text's own verse markers say) or a named versification (`English`, `KJV`, `Original`, …) |
 | `maps-to` | string | only for a map | For `kind = "versification-map"`: the versification it maps `versification` to. Any other kind must not have it |
+| `keys` | string | only for a dictionary | For a package with a `dictionary` format: what its entries are keyed by, `strongs-greek`, `strongs-hebrew`, or `headword`, which says how a key is matched ([entries.md](entries.md#keys)). A package without that format must not have it |
 | `include` | array of strings | no | More files the package is made of, as [patterns](#what-a-package-is-made-of) (`README.md`, `images/**`) |
 
 A package (other than a collection) must have a non-empty `[formats]`, unless it's a recording
@@ -133,9 +134,9 @@ its `id` (a fork, added with `package = "kjv"`, is its original's work).
 | `kind` | What it is |
 |---|---|
 | `bible` | A translation, read as verses (the default). It needs a readable format |
-| `commentary` | Notes on passages |
-| `lexicon` | A dictionary of words |
-| `cross-references` | Links between passages |
+| `commentary` | Notes on passages: OSIS or ThML files whose verse markers say which verses each note is on, read by passage |
+| `lexicon` | A dictionary: Strong's numbers or headwords and their entries (the `dictionary` format, [entries.md](entries.md)) |
+| `cross-references` | Links between passages (the `xref` format, [entries.md](entries.md)) |
 | `versification-map` | How one versification's verses map to another's (a `vrs` format) |
 | `book` | Any other book, kept as files (an EPUB); its Bible references are found in it |
 | `collection` | Other packages, as its dependencies, and no text of its own |
@@ -189,11 +190,14 @@ Format names (case-insensitive) and the files each is made of:
 | `usfm` | `*.usfm`, `*.sfm`, a book a file | yes (second) |
 | `osis` | `*.xml`, `*.osis`: a book a file, or the whole Bible in one | yes (third) |
 | `thml` | `*.xml`, `*.thml`: a book a file, or the whole Bible in one | yes (fourth) |
+| `gbf` | `*.gbf`, `*.txt`: a book a file, or the whole Bible in one, with GBF's sync marks | yes (fifth) |
 | `usj` | `*.json` | not yet |
 | `zefania` | `*.xml` | not yet |
 | `epub` | `*.epub` | no: kept as files; references are found in them |
 | `vrs` | `*.vrs` | no: a versification map's lines |
 | `sword` | every file under `path` | no: kept as files |
+| `dictionary` | `*.xml`: a dictionary's entries, `<entry key="G25">…</entry>` in the markup each file declares ([entries.md](entries.md)) | no: read as entries by key |
+| `xref` | `*.tsv`: `from`, `to`, and an optional weight a line, OSIS references ([entries.md](entries.md)) | no: read as a verse's cross-references |
 
 Other names are allowed and kept, but nothing reads them. Opening a Bible picks, among the formats
 its enabled features turn on, the first readable one in the order above.
@@ -209,6 +213,18 @@ What isn't a book of the Bible is passed over and noted: the peripherals `FRT`, 
 `GLO`, `TDX`, `NDX`, `OTH`, and `XXA` to `XXG`. A book the reader doesn't know (topos's book data
 lacks it) is passed over with a warning, its verses left out, and so is a file that names no book.
 A book in two files is an error naming both.
+
+**GBF** (the General Bible Format, which SWORD's older modules are written in) has no XML: its
+markup is `<XY…>` tokens (logoxide-markup reads them), and its structure is sync marks: `<SBJohn>`
+starts a book (named by its OSIS id, USFM code, or English name; GBF's own numbers 1 to 39 and 64
+to 90 are read too), `<SC3>` a chapter, and `<SV16>` a verse (`<SC>` or `<SV>` without a number is
+one more than the last). A bridge is its first and last marks with nothing between (`<SV16><SV17>`),
+as GBF writes them. A file's books are the ones its `<SB>` marks name; a file without one is a
+book a file, named by its file name as the other formats' are. A chapter's text before its first
+verse (a heading, a commentary's introduction) belongs to no verse, like USX's. A SWORD import
+writes a GBF module this way, a book a file (`gbf/John.gbf`); a note SWORD links across a chapter
+(John 3:36 to 4:2), which OSIS and ThML keep as one range, is written at its first verse, with
+the verses it covers in the next chapter as an empty bridge (`<SC4><SV1><SV2>`).
 
 ## `[features]`
 

@@ -49,8 +49,14 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     `in_use`: the lock's packages from dependencies that are on, which `bibles`, `translations`,
     and `versifications` read). `[package]` has `authors` (a list) and `description`. Kinds
     include `book` and `collection` (no `[formats]`, only dependencies; a project's Bibles
-    include a collection's); the `epub` format is kept as files, not read as verses. Keys it
-    doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
+    include a collection's); the `epub` format is kept as files, not read as verses. Formats
+    `gbf` (GBF with its `<SB>`/`<SC>`/`<SV>` sync marks, `.gbf` and `.txt`), `dictionary`
+    (`entries/*.xml`, `<entry key=… headword=… link=…>` bodies in the markup the root declares,
+    the owner's D10) and `xref` (`xref/*.tsv`: `from`, `to`, optional weight, OSIS references)
+    are specified in `doc/entries.md`; `[package] keys` (`Keys`: `strongs-greek`,
+    `strongs-hebrew`, `headword`) is required with a `dictionary` format and refused without
+    one; a dictionary's kind is `lexicon` (no new kind), cross-references' `cross-references`.
+    Keys it doesn't know are passed over, not refused (`Manifest::unknown_keys`, which lx warns of), so an
     older lx reads a newer manifest. `validate` refuses a `git`/`registry`/`tag`/`branch`/`rev`
     that starts with `-` (git would take it as an option), a `rev` that isn't a full commit id (`check_rev`: 40 or 64 hex digits), and names and
     `package =` that aren't ids (`is_valid_id`, `check_id`). A git dependency's `folder` names a
@@ -520,5 +526,5 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   unit tests
 - Commit messages end with a `Co-Authored-By` line
 - Formats for other implementations are specified in `doc/` (`manifest.md`, `catalog.md`,
-  `lock.md`, `summaries.md`, `trust.md`): change them with the code. `scripts/` has CI's helpers
+  `lock.md`, `summaries.md`, `entries.md`, `trust.md`): change them with the code. `scripts/` has CI's helpers
   (`check-versions.sh`, `topos-ref.sh`, `patch-unpublished.sh`); the minimum Rust is 1.89
