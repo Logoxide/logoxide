@@ -30,6 +30,10 @@ serde.workspace = true
 sha2 = "0.10"
 clap_complete = { version = "4.6.11", features = ["unstable-dynamic"] }
 
+# Stopping quietly when what reads lx's output stops (`lx list | head`)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 assert_cmd = "2"
 serde_json.workspace = true

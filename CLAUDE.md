@@ -236,7 +236,7 @@ before changing the design.
   import --update, show --references; others refuse it). `lx publish` warns of a license that
   isn't free or the public domain. `main.rs` dispatches; `cli.rs` (clap), `net.rs`, and
   `cmd/{project,package,catalog,import,media,map}.rs`; `tests/cli.rs` runs lx in temporary
-  folders (assert_cmd)
+  folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly
 - `crates/logoxide-ffi`: BoltFFI 0.31 bindings (npm and PyPI `logoxide`), re-exporting topos-ffi
   (`pub use topos_bible::*`: BoltFFI exports a local dependency's items), so apps need one
   package. Its library is `logoxide` (BoltFFI names artifacts after the package), so it depends on

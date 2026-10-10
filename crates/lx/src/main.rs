@@ -40,6 +40,13 @@ fn config() -> &'static logoxide::config::Config {
 }
 
 fn main() -> ExitCode {
+    // Rust ignores SIGPIPE, so printing after the reader has gone (`lx list | head`) panics; the
+    // default ends lx quietly, as it does other commands
+    #[cfg(unix)]
+    // SAFETY: nothing else has started yet, and SIG_DFL is a valid disposition for SIGPIPE
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
     // `COMPLETE=bash lx` writes the shell's completion script; the shell then runs lx to complete
     clap_complete::CompleteEnv::with_factory(Cli::command).complete();
     let cli = Cli::parse();
