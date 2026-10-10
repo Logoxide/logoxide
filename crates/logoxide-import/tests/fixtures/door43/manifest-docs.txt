@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manifest File &mdash; Resource Container 0.2 documentation</title>
+      <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="_static/documentation_options.js?v=10f1778b"></script>
+        <script src="_static/doctools.js?v=9a2dae69"></script>
+        <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Media" href="media.html" />
+    <link rel="prev" title="Resource Container Structure" href="structure.html" /> 
+<script async type="text/javascript" src="/_/static/javascript/readthedocs-addons.js"></script><meta name="readthedocs-project-slug" content="resource-container" /><meta name="readthedocs-version-slug" content="latest" /><meta name="readthedocs-resolver-filename" content="/manifest.html" /><meta name="readthedocs-http-status" content="200" /></head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Resource Container
+          </a>
+              <div class="version">
+                0.2
+              </div>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="structure.html">Resource Container Structure</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Manifest File</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#definitions">Definitions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#generating-from-usfm">Generating From USFM</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="media.html">Media</a></li>
+<li class="toctree-l1"><a class="reference internal" href="container_types.html">Container Types</a></li>
+<li class="toctree-l1"><a class="reference internal" href="linking.html">Linking</a></li>
+<li class="toctree-l1"><a class="reference internal" href="app_meta.html">App Meta</a></li>
+<li class="toctree-l1"><a class="reference internal" href="usfm_manifest.html">USFM to Manifest</a></li>
+<li class="toctree-l1"><a class="reference internal" href="slug.html">Identifier</a></li>
+<li class="toctree-l1"><a class="reference internal" href="date.html">Date</a></li>
+<li class="toctree-l1"><a class="reference internal" href="libraries.html">Code Libraries</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Resource Container Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ubxf.html">Unlocked Bible Interchange Format (UBXF)</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Resource Container</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Manifest File</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/manifest.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="manifest-file">
+<span id="manifest"></span><h1>Manifest File<a class="headerlink" href="#manifest-file" title="Link to this heading">¶</a></h1>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Keys must always be represented even when the value is optional.
+If the key is not needed/available the value may be empty.</p>
+</div>
+<p>Resource Containers (RCs) have a <code class="docutils literal notranslate"><span class="pre">manifest.yaml</span></code> file that describes its content and structure.
+Most of the information adheres to the <a class="reference external" href="http://dublincore.org/documents/dcmi-terms">Dublin Core Meta Data Initiative</a>
+and can be found nested within the <code class="docutils literal notranslate"><span class="pre">dublin_core</span></code> key.</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nn">---</span>
+<span class="nt">dublin_core</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">conformsto</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;rc0.2&#39;</span>
+<span class="w">    </span><span class="nt">contributor</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;A</span><span class="nv"> </span><span class="s">Contributor&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;Another</span><span class="nv"> </span><span class="s">Contributor&#39;</span>
+<span class="w">    </span><span class="nt">creator</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Someone</span><span class="nv"> </span><span class="s">Or</span><span class="nv"> </span><span class="s">Organization&#39;</span>
+<span class="w">    </span><span class="nt">description</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;One</span><span class="nv"> </span><span class="s">or</span><span class="nv"> </span><span class="s">two</span><span class="nv"> </span><span class="s">sentence</span><span class="nv"> </span><span class="s">description</span><span class="nv"> </span><span class="s">of</span><span class="nv"> </span><span class="s">the</span><span class="nv"> </span><span class="s">resource.&#39;</span>
+<span class="w">    </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;text/usfm&#39;</span>
+<span class="w">    </span><span class="nt">identifier</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;ulb&#39;</span>
+<span class="w">    </span><span class="nt">issued</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;2015-12-17&#39;</span>
+<span class="w">    </span><span class="nt">language</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">identifier</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;en&#39;</span>
+<span class="w">        </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;English&#39;</span>
+<span class="w">        </span><span class="nt">direction</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;ltr&#39;</span>
+<span class="w">    </span><span class="nt">modified</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;2015-12-22T12:01:30-05:00&#39;</span>
+<span class="w">    </span><span class="nt">publisher</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Name</span><span class="nv"> </span><span class="s">of</span><span class="nv"> </span><span class="s">Publisher&#39;</span>
+<span class="w">    </span><span class="nt">relation</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;en/udb&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;el-x-koine/ugnt?v=0.7&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;en/tn&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;en/tq&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;en/tw&#39;</span>
+<span class="w">    </span><span class="nt">rights</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;CC</span><span class="nv"> </span><span class="s">BY-SA</span><span class="nv"> </span><span class="s">4.0&#39;</span>
+<span class="w">    </span><span class="nt">source</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span>
+<span class="w">            </span><span class="nt">identifier</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;asv&#39;</span>
+<span class="w">            </span><span class="nt">language</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;en&#39;</span>
+<span class="w">            </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;1901&#39;</span>
+<span class="w">    </span><span class="nt">subject</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Bible&#39;</span>
+<span class="w">    </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Unlocked</span><span class="nv"> </span><span class="s">Literal</span><span class="nv"> </span><span class="s">Bible&#39;</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;book&#39;</span>
+<span class="w">    </span><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;3&#39;</span>
+
+<span class="nt">checking</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">checking_entity</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;Organization</span><span class="nv"> </span><span class="s">or</span><span class="nv"> </span><span class="s">Church</span><span class="nv"> </span><span class="s">network&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;Organization</span><span class="nv"> </span><span class="s">or</span><span class="nv"> </span><span class="s">Church</span><span class="nv"> </span><span class="s">network&#39;</span>
+<span class="w">    </span><span class="nt">checking_level</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;3&#39;</span>
+
+<span class="nt">projects</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span>
+<span class="w">        </span><span class="nt">categories</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&#39;bible-ot&#39;</span>
+<span class="w">        </span><span class="nt">identifier</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;gen&#39;</span>
+<span class="w">        </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;./content&#39;</span>
+<span class="w">        </span><span class="nt">sort</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">        </span><span class="nt">title</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;Genesis&#39;</span>
+<span class="w">        </span><span class="nt">versification</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;kjv&#39;</span>
+</pre></div>
+</div>
+<section id="definitions">
+<span id="manifest-definitions"></span><h2>Definitions<a class="headerlink" href="#definitions" title="Link to this heading">¶</a></h2>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">dublin_core</span></code></p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">conformsto</span></code>: the version of this specification used by the RC.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">contributor</span></code>: an array of names or aliases of people that have contributed to the resource.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">creator</span></code>: the entity in charge of creating the resource.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">description</span></code>: a brief description of what the resource is.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">format</span></code>: the file format of content within the RC, e.g. <code class="docutils literal notranslate"><span class="pre">text/usfm</span></code>, <code class="docutils literal notranslate"><span class="pre">text/markdown</span></code> etc.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">identifier</span></code>: a <a class="reference internal" href="slug.html#identifier"><span class="std std-ref">Identifier</span></a> formatted string uniquely identifying the resource.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">issued</span></code>: the <a class="reference internal" href="date.html#date"><span class="std std-ref">Date</span></a> of publication. Normally this should stay in sync with <code class="docutils literal notranslate"><span class="pre">version</span></code> increments.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">language</span></code>: the language of the resource.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">modified</span></code>: the date the resource was last modified. Occassionally, this may be more recent than <code class="docutils literal notranslate"><span class="pre">issued</span></code> if there are metadata changes that do not include changes to the content.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">publisher</span></code>: the name of the entity that published the resource.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">relation</span></code>:  an array of <a class="reference internal" href="linking.html#short-links"><span class="std std-ref">Short Links</span></a> to related resources. A version parameter (<code class="docutils literal notranslate"><span class="pre">v</span></code>) may be provided if you want to link to a specific version of the resource. If a version number is not included then any version should satisfy the relation.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">rights</span></code>: the license under which the resource is distributed.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">title</span></code>: the title of the resource</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">type</span></code>: the RC <a class="reference internal" href="container_types.html#types"><span class="std std-ref">container type</span></a>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">version</span></code>: the published iteration of the resource.</p></li>
+</ul>
+</div></blockquote>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">projects</span></code>: an array of projects inside the RC.</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">categories</span></code>: an array of category <a class="reference internal" href="slug.html#identifier"><span class="std std-ref">identifiers</span></a> used for hierarchical ordering.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">identifier</span></code>: an <a class="reference internal" href="slug.html#identifier"><span class="std std-ref">Identifier</span></a> formatted string uniquely identifying the project.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">path</span></code>: the relative path to the project within the RC. Depending on the RC type this may be a directory or a file.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">sort</span></code>: the sorting order of this project when viewed in relation to other projects in this RC.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">title</span></code>: the title of the project.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">versification</span></code>: the system used for placing verse markers and consequently chunk markers.</p></li>
+</ul>
+</div></blockquote>
+</li>
+</ul>
+</section>
+<section id="generating-from-usfm">
+<h2>Generating From USFM<a class="headerlink" href="#generating-from-usfm" title="Link to this heading">¶</a></h2>
+<p>See <a class="reference internal" href="usfm_manifest.html#usfm-manifest"><span class="std std-ref">USFM to Manifest</span></a> for instructions on populating the manifest.yaml from the headers in a usfm file.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="structure.html" class="btn btn-neutral float-left" title="Resource Container Structure" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="media.html" class="btn btn-neutral float-right" title="Media" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2017, Door43.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

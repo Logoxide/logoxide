@@ -221,27 +221,115 @@ Any order, as they're reachable; each in `logoxide-import`.
   limit, immutable versions duplicating media, and whether a registry's catalog lists media at
   all.
 
-## Status (2026-10-11, logoxide main e872e66)
+## Status (2026-10-11, checkpoint; logoxide main after 39ca0af, plugin main 737f9f4)
 
-Done: G.4; all of H; I.1–I.4; L.4; M.1, M.2, M.3's LSP half. Open, in this order:
+Done: G.4; all of H (C6 included); I.1–I.5; L.4; M.1, M.2; M.3's LSP half and the plugin's
+model half; M.4. Every check is green (`cargo test --workspace` 34 suites, the FFI's 19 tests,
+the no-read build, KJV and BSB verify unchanged); `lx` and `logoxide-lsp` are installed from
+main. Nothing pushed or published; topos has a local `v0.6.0` tag. The owner's standing
+instruction: finish everything here, no crates.io publishing without asking.
 
-1. **I.5 and I.6 (Rust)**: `lx show` for notes, entries, keys, cross-references (JSON too,
-   `tests/cli.rs` fixtures); the bindings' `LogoxidePackage.notes/entry/keys/crossReferences`
-   and `LogoxideProject.commentaries/dictionaries/crossReferences` (BoltFFI's Python naming:
-   no `_boltffi_<class>_<method>` collisions); the LSP's `commentaries` and `strongs` settings
-   in hover. An agent for this was briefed and cut off before writing anything.
-2. **I.6 (plugin)**: a commentary reader and Strong's lookup on those bindings, and M.4
-   (`importPrefixes` filter, the H.2 error kinds), after the bindings exist and `pack:wasm`
-   runs. The plugin's M.3 half (mapped references in its reader) waits for the owner's
-   uncommitted `reader.ts` work (G.3).
-3. **L.2 and L.3**: Door43 still times out from this machine (both the catalog API and the git
-   host, checked 2026-10-11): build `door43.rs` on saved fixtures (`manifest.yaml`, the
-   catalog API's JSON, a tar.gz made in the test) and say it's untested live. CCEL commentaries
-   (ThML, `kind = "commentary"`, through `Source::notes`; find CCEL's work pages, e.g. Matthew
-   Henry's `ccel/henry/mhc1.xml`) and books (`kind = "book"`; citations in ThML need
-   `citations::find` extended past EPUBs). An agent for this was briefed and cut off too.
-4. **J** (`logoxide-app`), then **K** (MCP), as written above.
-5. The owner's: G.1 (push the local topos `v0.6.0` tag, made 2026-10-11), G.2, G.3, G.5.
+Open, in this order. Each was researched or designed by an agent that stopped at the
+checkpoint before writing code; the designs below are theirs, so the next agent starts writing.
+
+1. **I.6 bindings** (not started). `LogoxidePackage.notes(passage, options: BookTextOptions)
+   -> Vec<Note>` {chapter, verse, last, lastChapter, part, text, html}, `entry(key, options)
+   -> Option<Entry>` {key, headword, text, html}, `keys() -> Vec<String>`,
+   `crossReferences(verse: String) -> Vec<CrossReference>` {from, to, weight?};
+   `LogoxideProject.commentaries()/dictionaries()/crossReferences() -> Vec<LockedEntry>`;
+   `PackageInfo.keys: Option<String>` (`CatalogEntry.keys` needs a `keys` field on the core's
+   `CatalogEntry` and the import crate's five struct literals). No `_boltffi_` name collisions
+   for these, and topos-ffi exports no `Note`/`Entry`/`CrossReference`. Then `npm run pack:wasm`.
+2. **I.6 LSP** (not started): the `commentaries` setting (off; `true` or ids) adding each
+   commentary's notes to hover after the Bible text, and `strongs = true` showing a Strong's
+   dictionary's entry when hovering `G25`/`H430`; through `Project::commentaries` and
+   `Source::notes`/`entry`; tests in `server/tests.rs` with a tiny commentary package.
+3. **A SWORD import bug found by I.5** (in `logoxide-import`'s `sword::import`, I.4): MHCC's
+   John 3 comes out with notes on 3:1-8 and 3:22-36 only; the 3:9-21 entry is missing (the
+   fixture tests pass, so it's something in the live module's linking or spans). Reproduce
+   with `lx import sword:crosswire/MHCC` and `lx show … --notes "John 3:16"`.
+4. **I.6 plugin**: a commentary reader and Strong's lookup on the new bindings; and the
+   **plugin's M.3 display half**, whose model half (`LogoxideBibles.versifications`,
+   `numbering`, `mapped`; `src/core/mapping.ts`'s `versesParts`, `mappedLabel`; tests) is in
+   plugin commit 737f9f4. Remaining there, in order: a `placeIn(passage, bible, translation)`
+   helper in `main.ts` (source = the named Bible else the current; same folder → as written;
+   `versesParts(mapped.verses, chapterVerses(to, bookId))`; empty with `mapped` → "not in
+   it"); `embedPassage` using it per compare Bible with a numbering label (`Psalm 51:1 · KJV
+   (Psalm 51:3)`); `parallel.ts`'s `openIn` and relocated-link handler; `playPassage` for a
+   recorded Bible; README's "Several translations"; a headless check with a map package made
+   in `test-vault/Logoxide/imports/` (a copy of `imports/edtest` with `versification =
+   "MapTest"` and a `versification-map` package `KJV` → `MapTest`, `JHN 3:16 = JHN 3:17`).
+5. **J `logoxide-app`** (not started; design settled, see the J section above and these
+   specifics): `http.rs` with `Http { get, get_to }` and a `Note` callback (`Downloading`,
+   `Insecure`) so the crate never prints, `UreqHttp::new(user_agent)` moved from
+   `lx/src/net.rs` (20 s connect, 60 s response, 1 h body, proxy, three tries with 500·3ⁿ ms
+   pauses, HTTPS kept, 1 GiB cap; `get_to` retries only before the sink has bytes);
+   `media::verify`; `fetch::NetFetcher` over the core's `archive` plus `git::git_available()`
+   in the core so `Cli::fetcher` falls back (the FFI's `Round` swaps `RefCell` for `Mutex` so
+   `Fetcher: Send + Sync`); `catalogs.rs` (`Loaded { catalogs, warnings }`, `load_catalogs`,
+   `load_catalog`, `load_registry`, `registry_url -> Resolved { url, warnings }`, `shadowed`
+   and `other_registries` returning lx's exact warning strings); `import.rs` (`find_entry`,
+   `run(&mut project, library, entry, http, fetcher) -> Imported { id, name, dir, skipped }`,
+   `plan_updates -> UpdatePlans { plans: Vec<UpdatePlan { dependency, import, dir, from,
+   upstream_from, outcome: Current | Changed(Change) | Failed }>, warnings }`,
+   `apply_update(change, dir, allow_removals)`; lx keeps the prompt, JSON reports, relock);
+   `read.rs` (`read(project, library, reader, reference, style) -> Read { bible, abbreviation,
+   passage, text, versification }` via topos's `parse_with_translation` over
+   `project.translations`; `compare(…, bibles, style) -> Vec<Compared { bible, passage,
+   text: Option<Text>, missing, mapped }>`; needs `Project::bibles` made `pub`); `lib.rs`'s
+   `Logoxide` facade with `default_native()` under `ureq`. FFI (J.3): `HostHttp` over the
+   installer's given downloads for `LogoxideInstaller.loadCatalogs`; `readPassage` and
+   `comparePassage` native-only like `openPackageDir`, taking folder paths and
+   `BookTextStyle`. Then J.2 (lx on it, `lx read`, `lx compare`) and J.4 (exports, docs,
+   topos's layer table, `check-versions.sh`).
+6. **K MCP**, after J, as written above.
+7. **L.2 Door43** (still unreachable: on 2026-10-10 and 2026-10-11 the catalog API, swagger,
+   and archive URLs all time out; `api.door43.org` doesn't resolve). Write it on fixtures:
+   `door43.rs` (prefix `door43`, `door43:<owner>/<repo>`, `tracks_versions: true`, archive
+   `https://git.door43.org/<owner>/<repo>/archive/<tag>.tar.gz` through the core's
+   `archive::unpack` into a `MemoryStorage`, `.usfm` files into `usfm/`, `LICENSE.md` as the
+   license file when present, upstream version `dublin_core.version` else the tag),
+   `serde_yaml 0.9.34` (deprecated but frozen; the only YAML crate in the offline registry),
+   `PREFIXES` → 5, `build`, `publisher_name`, `catalog::parse_text` on a location containing
+   `door43.org/api/v1/catalog`. The DCS catalog JSON shape is undocumented anywhere reachable
+   (v5 `{"ok":true,"data":[{owner, name, full_name, title, language, language_title,
+   language_direction, subject, branch_or_tag_name, release.tag_name, tarbar_url,
+   metadata_url, ingredients[]}]}` from memory): write the fixture from that and say so. The
+   `manifest.yaml` shape is confirmed (`crates/logoxide-import/tests/fixtures/door43/`).
+8. **L.3 CCEL** (researched live, fixtures saved under
+   `crates/logoxide-import/tests/fixtures/ccel/`, see its README). CCEL has stable genre
+   indexes: `https://ccel.org/index/genre/gen-COM` (213 commentaries, one page) and `gen-BIB`
+   (42 Bibles), each entry `<p class="List2"><a href="/ccel/<author>/<work>.html">…`.
+   Plan: `catalog::parse_text` recognizes `ccel.org/index/genre/gen-XXX` → `ccel::genre_catalog
+   (text, kind)` (`gen-COM` commentary, `gen-BIB` Bible, else book); import names
+   `ccel:<author>/<work>`, ids `ccel-<author>-<work>`, ThML at
+   `https://ccel.org/ccel/<author>/<work>.xml` (confirmed for henry/mhc1, barnes/1cor,
+   calvin/calcom01, calvin/institutes, anonymous/jasher; brenton/lxx answers HTML, refused
+   already); pass over links of other shapes; add `DC.Type` to `ThmlHead` (`Text.Commentary`,
+   `Text.Bible`, `Text.Monograph`) so an import by name picks its kind. Whether `gen-COM`
+   joins `DEFAULT_CATALOGS` is the owner's call (not taken). **The ThML reader lacks what
+   commentaries need**: they mark sections with empty `<scripCom type="Commentary"
+   passage="Ge 1:1-2" parsed="|Gen|1|1|1|2" osisRef="Bible:Gen.1.1-Gen.1.2"/>` milestones
+   (never `<scripture parsed=…/>`; chapter-level ones `parsed="|Gen|1|0|0|0"`; Henry's sits
+   after the chapter introduction, Calvin's before), inside `<div1 title="Genesis"
+   id="Gen"><div2 title="Chapter I">`. Change `crates/logoxide-text/src/source/thml.rs`: scan
+   `scripCom` as well as `scripture`; treat an empty `scripCom` like an empty `scripture`; a
+   verse-0 marker becomes the chapter marker plus a verse marker `n="0"` (so chapter
+   introductions are notes on verse 0); before a `div1`–`div6` whose first marker is in another
+   chapter, insert a verse End milestone (no id; `split_books`/`without_lettered` ignore it) so
+   a chapter's introduction doesn't land in the previous chapter's last note; this changes
+   SWORD ThML commentary hashes at chapter ends (no users, overwrite OK). Scans ("Images
+   Only", e.g. barnes/1cor) have no markers and rightly fail "no books". **Books** (`kind =
+   "book"` ThML): `citations::find` is EPUB-only; parse ThML with logoxide-markup, join text
+   nodes with `\n` as topos's XML search does, run `BibleMatcher::search`, fill `Citation` with
+   empty `cfi`, spine 0, offsets from that text, `chapter` from the enclosing `divN` title;
+   two core changes: `references::epub_files` must also hand a book package's ThML files to
+   `citations::find`, and `Package::open` must open a `Book` kind with `NoText` (today it opens
+   the best readable format and a book's ThML would be read as verse text); `finish` in
+   logoxide-import must not require books for `PackageKind::Book`.
+9. The owner's: G.1 (push the topos tag), G.2, G.5 (publishing, only when asked).
+
+Then the pieces of M left: none beyond item 4.
 
 ## Order and split
 
