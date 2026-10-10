@@ -10,7 +10,13 @@ use logoxide_core::{
 };
 use topos_bible::ToposTranslations;
 
-use crate::{LogoxideBook, LogoxideError, PackageFeatures, PackageFile};
+use crate::{
+    BookTextOptions, LogoxideBook, LogoxideError, PackageFeatures, PackageFile,
+    book::{nodes_html, nodes_text},
+};
+use logoxide_core::topos_bible::segments::Passage as CorePassage;
+use logoxide_markup::verses::{passage_ranges, slice};
+use topos_bible::Passage;
 
 /// What a package is (`kind` in its `logoxide.toml`)
 #[data]
@@ -106,6 +112,9 @@ pub struct PackageInfo {
     pub versification: String,
     /// For a versification map: the versification it maps `versification` to
     pub maps_to: Option<String>,
+    /// For a dictionary: what its entries are keyed by (`strongs-greek`, `strongs-hebrew`, or
+    /// `headword`), which says what to look up in it
+    pub keys: Option<String>,
 }
 
 impl From<&manifest::Package> for PackageInfo {
@@ -140,6 +149,7 @@ impl From<&manifest::Package> for PackageInfo {
             upstream: info.upstream.as_ref().map(Upstream::from),
             versification: info.versification.clone(),
             maps_to: info.maps_to.clone(),
+            keys: info.keys.map(|k| k.name().to_string()),
         }
     }
 }
@@ -420,6 +430,48 @@ pub struct SkippedFile {
     pub message: String,
     /// Worth a warning (its verses are left out), not only a note
     pub warning: bool,
+}
+
+/// A commentary's note on a passage: the verses it covers (`chapter`:`verse` to
+/// `lastChapter`:`last`), and its text
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Note {
+    pub chapter: u8,
+    pub verse: u8,
+    /// The last verse it covers (`verse` when it's on one)
+    pub last: u8,
+    /// The chapter `last` is in: `chapter`, unless the note runs into a later one
+    pub last_chapter: u8,
+    /// Which part of the verse (1 for `20a`), 0 for the whole
+    pub part: u8,
+    /// As plain text, notes in brackets when kept
+    pub text: String,
+    /// As HTML, with logoxide-markup's classes
+    pub html: String,
+}
+
+/// A dictionary's entry
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Entry {
+    /// Its key in normal form (`G25`), or an alias's own key
+    pub key: String,
+    /// The word it's about, when the dictionary says (`ἀγαπάω`)
+    pub headword: Option<String>,
+    pub text: String,
+    pub html: String,
+}
+
+/// One cross-reference: from a passage to another, as OSIS references in normal form
+/// (`Gen.1.1`, `John.1.1-John.1.3`)
+#[data]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CrossReference {
+    pub from: String,
+    pub to: String,
+    /// How strong the link is, when the package says
+    pub weight: Option<f64>,
 }
 
 /// A memory storage that remembers what was written to it, so the host can save it
@@ -715,6 +767,92 @@ impl LogoxidePackage {
             book.spans.clone(),
             Some(book.id.0),
         ))
+    }
+
+    /**
+    A commentary's notes on a passage (in a Bible, its verses): each of its spans covering any
+    verse of the passage, in the book's order, as text and HTML. None for a book it lacks (a
+    commentary may cover a few) or a passage in no book it has; a note across chapters is found
+    by any verse it covers. Its books are parsed once and cached, as `book` is
+    */
+    pub fn notes(
+        &self,
+        passage: Passage,
+        options: BookTextOptions,
+    ) -> Result<Vec<Note>, LogoxideError> {
+        if !self.books().contains(&passage.book_id) {
+            return Ok(Vec::new());
+        }
+        // logoxide-text's `Source::notes`, over the cached book rather than a fresh parse
+        let book = self.cached.book(BookId(passage.book_id))?;
+        let passage = CorePassage::from(&passage);
+        let mut notes = vec![];
+        for range in passage_ranges(&book.spans, &passage) {
+            for span in book.spans.get(range).into_iter().flatten() {
+                let nodes = slice(&book.nodes, &span.start, Some(&span.end));
+                notes.push(Note {
+                    chapter: span.chapter,
+                    verse: span.verse,
+                    last: span.last,
+                    last_chapter: span.last_chapter,
+                    part: span.part,
+                    text: nodes_text(&nodes, &options),
+                    html: nodes_html(&nodes, &options),
+                });
+            }
+        }
+        Ok(notes)
+    }
+
+    /**
+    A dictionary's entry for a key: matched by its normal form (`G0025`, `g25`, and `G25` are
+    one key), then ignoring case and accents (`αγαπαω` finds `ἀγαπάω`); an alias reads as its
+    target. None for a key it lacks, or in a package that isn't a
+    dictionary
+    */
+    pub fn entry(
+        &self,
+        key: String,
+        options: BookTextOptions,
+    ) -> Result<Option<Entry>, LogoxideError> {
+        let source = self.cached.package().source();
+        Ok(source.entry(&key)?.map(|e| Entry {
+            text: nodes_text(&e.nodes, &options),
+            html: nodes_html(&e.nodes, &options),
+            key: e.key,
+            headword: e.headword,
+        }))
+    }
+
+    /// A dictionary's keys in normal form, in its files' order (a cross-reference package's:
+    /// the passages its lines are for); empty for other packages
+    pub fn keys(&self) -> Vec<String> {
+        self.cached.package().source().keys()
+    }
+
+    /**
+    A cross-reference package's lines for a verse or passage, in file order: every line whose
+    passage covers any verse of it. `verse` is an OSIS reference (`John.3.16`) or one topos
+    reads (`John 3:16`); an error if it's neither. Empty in other packages
+    */
+    pub fn cross_references(&self, verse: String) -> Result<Vec<CrossReference>, LogoxideError> {
+        let books = logoxide_core::bible_data().books();
+        let osis = match books.parse_osis(verse.trim()) {
+            Ok(_) => verse,
+            Err(_) => (logoxide_core::bible_data().parse(&verse))
+                .and_then(|p| p.to_osis(books))
+                .ok_or_else(|| LogoxideError::Invalid {
+                    message: format!("`{verse}` isn't a Bible reference"),
+                })?,
+        };
+        let source = self.cached.package().source();
+        Ok((source.cross_references(&osis)?.into_iter())
+            .map(|x| CrossReference {
+                from: x.from,
+                to: x.to,
+                weight: x.weight,
+            })
+            .collect())
     }
 
     /// `translations` with this package added: its abbreviation, aliases, and verse counts, so

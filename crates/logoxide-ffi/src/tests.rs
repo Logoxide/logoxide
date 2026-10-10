@@ -6,8 +6,8 @@ use std::collections::HashMap;
 use crate::{
     BookStyle, BookTextOptions, Dependency, FetchRequest, ImportDownload, InspectStep, InstallStep,
     Logoxide, LogoxideError, LogoxideInstaller, LogoxideProject, MappedVerse, NameClash,
-    NamedBible, OffsetUnit, PackageFeatures, PackageFile, PackageKind, PackageLocation, Topos,
-    ToposTranslations, UpdateMode, VerseTiming,
+    NamedBible, OffsetUnit, PackageFeatures, PackageFile, PackageKind, PackageLocation,
+    PackageManifest, Topos, ToposTranslations, UpdateMode, VerseTiming,
 };
 
 const USX: &str = r#"<?xml version="1.0" encoding="utf-8"?>
@@ -1209,4 +1209,222 @@ fn lists_the_categories() {
     assert_eq!(categories[0].name, "biblical-theology");
     assert!(categories.iter().any(|c| c.name == "church-history"));
     assert_eq!(logoxide.max_categories(), 5);
+}
+
+const COMMENTARY: &str = "[package]\nid = \"mhcc\"\nname = \"A Commentary\"\nabbreviation = \"MHCC\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\nkind = \"commentary\"\n\n[formats]\nosis = { path = \"osis/\" }\n";
+
+const DICTIONARY: &str = "[package]\nid = \"strongs\"\nname = \"Strong's Greek\"\nabbreviation = \"STR\"\nversion = \"1.0.0\"\nlanguage = \"grc\"\nlicense = \"CC0-1.0\"\nkind = \"lexicon\"\nkeys = \"strongs-greek\"\n\n[formats]\ndictionary = { path = \"entries/\" }\n";
+
+const XREF: &str = "[package]\nid = \"tsk\"\nname = \"Treasury\"\nabbreviation = \"TSK\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nlicense = \"CC0-1.0\"\nkind = \"cross-references\"\n\n[formats]\nxref = { path = \"xref/\" }\n";
+
+#[test]
+fn commentaries_dictionaries_and_cross_references() {
+    let logoxide = Logoxide::new();
+    let topos = Topos::new();
+    let options = BookTextOptions {
+        notes: false,
+        headings: false,
+        class_prefix: "topos-".into(),
+    };
+    let passage = |s: &str| topos.parse(s.into(), BookStyle::Name).unwrap();
+
+    // A commentary in OSIS as SWORD imports write it: a note on 3:16 and one on 3:17-18
+    let commentary = logoxide
+        .open_package(
+            vec![
+                file("logoxide.toml", COMMENTARY),
+                file(
+                    "osis/John.xml",
+                    r#"<osis><osisText osisIDWork="MHCC"><div type="book" osisID="John"><chapter osisID="John.3" sID="John.3"/><verse osisID="John.3.16" sID="John.3.16" n="16"/>God so loved: the <hi type="italic">world</hi>.<verse eID="John.3.16"/><verse osisID="John.3.17 John.3.18" sID="John.3.17" n="17-18"/>Not to condemn.<verse eID="John.3.17"/><chapter eID="John.3"/></div></osisText></osis>"#,
+                ),
+            ],
+            defaults(),
+            vec![],
+        )
+        .unwrap();
+    let notes = commentary
+        .notes(passage("John 3:16-17"), options.clone())
+        .unwrap();
+    let verses: Vec<(u8, u8, u8, u8, &str)> = (notes.iter())
+        .map(|n| (n.chapter, n.verse, n.last_chapter, n.last, n.text.as_str()))
+        .collect();
+    assert_eq!(
+        verses,
+        [
+            (3, 16, 3, 16, "God so loved: the world."),
+            (3, 17, 3, 18, "Not to condemn."),
+        ]
+    );
+    assert!(notes[0].html.contains("world"), "{}", notes[0].html);
+    assert!(notes[0].html.contains("topos-"), "{}", notes[0].html);
+    // A verse it lacks, or a book: nothing
+    assert!(
+        commentary
+            .notes(passage("John 4:1"), options.clone())
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        commentary
+            .notes(passage("Romans 1:1"), options.clone())
+            .unwrap()
+            .is_empty()
+    );
+    // A commentary has no entries or keys
+    assert!(commentary.keys().is_empty());
+    assert_eq!(
+        commentary.entry("G25".into(), options.clone()).unwrap(),
+        None
+    );
+
+    // A Strong's dictionary: a TEI entry with a headword, and a plain one
+    let dictionary = logoxide
+        .open_package(
+            vec![
+                file("logoxide.toml", DICTIONARY),
+                file(
+                    "entries/greek.xml",
+                    "<entries keys=\"strongs-greek\" markup=\"tei\">\n<entry key=\"G0025\" headword=\"ἀγαπάω\"><entryFree><orth>ἀγαπάω</orth> to love</entryFree></entry>\n<entry key=\"G26\">love</entry>\n</entries>\n",
+                ),
+            ],
+            defaults(),
+            vec![],
+        )
+        .unwrap();
+    assert_eq!(dictionary.info().keys.as_deref(), Some("strongs-greek"));
+    assert_eq!(commentary.info().keys, None);
+    assert_eq!(dictionary.keys(), ["G25", "G26"]);
+    // By its key in any form
+    let entry = dictionary
+        .entry("g0025".into(), options.clone())
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        (entry.key.as_str(), entry.headword.as_deref()),
+        ("G25", Some("ἀγαπάω"))
+    );
+    assert!(entry.text.contains("to love"), "{}", entry.text);
+    assert!(entry.html.contains("to love"), "{}", entry.html);
+    assert_eq!(
+        dictionary.entry("G9999".into(), options.clone()).unwrap(),
+        None
+    );
+    assert!(
+        dictionary
+            .notes(passage("John 3:16"), options)
+            .unwrap()
+            .is_empty()
+    );
+
+    // Cross-references: lines covering any verse of the one asked for, OSIS or not
+    let xref = logoxide
+        .open_package(
+            vec![
+                file("logoxide.toml", XREF),
+                file(
+                    "xref/gen.tsv",
+                    "# Genesis\nGen.1.1\tJohn.1.1-John.1.3\t1\nGen.1.1\tHeb.11.3\t0.8\nGen.1.1-Gen.1.5\tPs.33.6\nGen.2.1\tExod.20.11\n",
+                ),
+            ],
+            defaults(),
+            vec![],
+        )
+        .unwrap();
+    let found = xref.cross_references("Gen.1.1".into()).unwrap();
+    let lines: Vec<(&str, &str, Option<f64>)> = (found.iter())
+        .map(|x| (x.from.as_str(), x.to.as_str(), x.weight))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            ("Gen.1.1", "John.1.1-John.1.3", Some(1.0)),
+            ("Gen.1.1", "Heb.11.3", Some(0.8)),
+            ("Gen.1.1-Gen.1.5", "Ps.33.6", None),
+        ]
+    );
+    assert_eq!(
+        xref.cross_references("Genesis 1:3".into()).unwrap().len(),
+        1
+    );
+    assert!(
+        xref.cross_references("Exodus 1:1".into())
+            .unwrap()
+            .is_empty()
+    );
+    assert!(matches!(
+        xref.cross_references("nothing at all".into()),
+        Err(LogoxideError::Invalid { .. })
+    ));
+    assert_eq!(xref.keys(), ["Gen.1.1", "Gen.1.1-Gen.1.5", "Gen.2.1"]);
+
+    // A project's commentaries, dictionaries, and cross-references, by the manifests the host
+    // read: one turned off isn't in use
+    let manifest = r#"
+[dependencies]
+test = { path = "bibles/test" }
+mhcc = { path = "mhcc" }
+strongs = { path = "strongs" }
+tsk = { path = "tsk", enabled = false }
+"#;
+    let lock = r#"
+version = 1
+dependencies = ["test 1.0.0", "mhcc 1.0.0", "strongs 1.0.0", "tsk 1.0.0"]
+
+[[package]]
+id = "test"
+version = "1.0.0"
+path = "bibles/test"
+
+[[package]]
+id = "mhcc"
+version = "1.0.0"
+path = "mhcc"
+
+[[package]]
+id = "strongs"
+version = "1.0.0"
+path = "strongs"
+
+[[package]]
+id = "tsk"
+version = "1.0.0"
+path = "tsk"
+"#;
+    let project = logoxide
+        .parse_project(Some(manifest.into()), Some(lock.into()))
+        .unwrap();
+    let manifests = || {
+        [
+            ("test", MANIFEST),
+            ("mhcc", COMMENTARY),
+            ("strongs", DICTIONARY),
+            ("tsk", XREF),
+        ]
+        .map(|(name, manifest)| PackageManifest {
+            name: name.into(),
+            manifest: manifest.into(),
+        })
+        .to_vec()
+    };
+    let names = |entries: Vec<crate::LockedEntry>| -> Vec<String> {
+        entries.into_iter().map(|e| e.name).collect()
+    };
+    assert_eq!(names(project.commentaries(manifests()).unwrap()), ["mhcc"]);
+    assert_eq!(
+        names(project.dictionaries(manifests()).unwrap()),
+        ["strongs"]
+    );
+    assert!(project.cross_references(manifests()).unwrap().is_empty());
+    let on = project.set_enabled("tsk".into(), true).unwrap();
+    assert_eq!(names(on.cross_references(manifests()).unwrap()), ["tsk"]);
+    // Without its manifest, an entry is left out; a manifest that can't be read is an error
+    assert!(project.commentaries(vec![]).unwrap().is_empty());
+    let bad = vec![PackageManifest {
+        name: "mhcc".into(),
+        manifest: "[package\n".into(),
+    }];
+    assert!(matches!(
+        project.commentaries(bad),
+        Err(LogoxideError::Invalid { .. })
+    ));
 }

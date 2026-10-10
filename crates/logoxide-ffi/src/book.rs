@@ -298,6 +298,25 @@ impl LogoxideBook {
     }
 }
 
+/// Nodes (a commentary's note, a dictionary's entry) as plain text, as `LogoxideBook::text`
+/// writes a passage
+pub(crate) fn nodes_text(nodes: &[Node], options: &BookTextOptions) -> String {
+    let text = TextOptions {
+        filter: filter(options),
+        ..TextOptions::default()
+    };
+    plain_text(nodes, &text).trim().to_string()
+}
+
+/// Nodes as HTML, as `LogoxideBook::html` writes a passage
+pub(crate) fn nodes_html(nodes: &[Node], options: &BookTextOptions) -> String {
+    HtmlRenderer::with_options(HtmlOptions {
+        class_prefix: options.class_prefix.clone().into(),
+        filter: filter(options),
+    })
+    .render(nodes)
+}
+
 fn filter(options: &BookTextOptions) -> Filter {
     let mut filter = Filter::all().drop(Kind::Metadata);
     if !options.notes {
