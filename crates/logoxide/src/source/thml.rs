@@ -5,7 +5,7 @@ use topos_bible_markup::{Element, Kind, Markup, Milestone, Node};
 
 use super::{
     Book, Skipped, Source,
-    whole::{Parsed, marker_book, osis_book_name, scan_tags, tag_attr, whole_files},
+    whole::{Parsed, marker_book, scan_tags, tag_attr, whole_files},
 };
 use crate::{
     error::{LogoxideError, Result},
@@ -38,8 +38,18 @@ impl ThmlSource {
                 if !tag.ends_with('/') {
                     return None;
                 }
-                let place = tag_place(|name| tag_attr(tag, name))?;
-                osis_book_name(&place.book).map(str::to_string)
+                match tag_place(|name| tag_attr(tag, name)) {
+                    Some(place) => {
+                        Some(format!("{}.{}.{}", place.book, place.chapter, place.verse))
+                    }
+                    // A lettered chapter (`|Esth|A|1|0|0`) isn't a place, but is said
+                    None => {
+                        let parsed = tag_attr(tag, "parsed")?.trim_matches('|');
+                        let mut parts = parsed.split('|');
+                        let (book, chapter) = (parts.next()?, parts.next()?);
+                        Some(format!("{book}.{chapter}"))
+                    }
+                }
             })
         })?;
         Ok(Self {
@@ -142,6 +152,20 @@ fn mark_verses(nodes: Vec<Node>, chapter: &mut Option<(String, u8)>) -> Vec<Node
         let place = (name == "scripture" && e.children.is_empty())
             .then(|| tag_place(|n| e.attr(n)))
             .flatten();
+        // A lettered chapter's marker (`|Esth|A|1|0|0`): a verse marker, so its verses are left
+        // out with it (`without_lettered`), not run into the verse before
+        let lettered = (name == "scripture" && e.children.is_empty() && place.is_none())
+            .then(|| e.attr("parsed"))
+            .flatten()
+            .map(|parsed| parsed.trim_matches('|').replace('|', "."))
+            .filter(|reference| super::whole::lettered_chapter(reference));
+        if let Some(reference) = lettered {
+            e.kind = Kind::Verse;
+            e.milestone = Some(Milestone::Start);
+            e.attrs.push((String::from("osisID"), reference));
+            out.push(Node::Element(e));
+            continue;
+        }
         let Some(place) = place else {
             e.children = mark_verses(std::mem::take(&mut e.children), chapter);
             out.push(Node::Element(e));

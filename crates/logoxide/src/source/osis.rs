@@ -5,7 +5,7 @@ use topos_bible_markup::Markup;
 
 use super::{
     Book, Skipped, Source,
-    whole::{Parsed, marker_book, osis_book_name, scan_tags, tag_attr, whole_files},
+    whole::{Parsed, marker_book, scan_tags, tag_attr, whole_files},
 };
 use crate::{
     error::{LogoxideError, Result},
@@ -33,7 +33,6 @@ impl OsisSource {
                 ["osisID", "sID"]
                     .iter()
                     .find_map(|name| tag_attr(tag, name))
-                    .and_then(osis_book_name)
                     .map(str::to_string)
             })
         })?;

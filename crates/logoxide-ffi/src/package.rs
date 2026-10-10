@@ -255,8 +255,8 @@ pub struct SkippedFile {
     pub path: String,
     /// Its book's code or name as the file gives it (`FRT`, `JUB`); empty when it names none
     pub book: String,
-    /// `peripheral` (front matter, a glossary, …), `unknown` (a book logoxide doesn't know), or
-    /// `no-book`
+    /// `peripheral` (front matter, a glossary, …), `unknown` (a book logoxide doesn't know),
+    /// `no-book`, or `lettered-chapter` (Esther's chapters A to F)
     pub reason: String,
     /// What `lx check` says of it (`usx/FRT.usx: FRT isn't a book of the Bible, passed over`)
     pub message: String,
@@ -468,6 +468,7 @@ impl LogoxidePackage {
             SkipReason::Peripheral => "peripheral",
             SkipReason::Unknown => "unknown",
             SkipReason::NoBook => "no-book",
+            SkipReason::LetteredChapter => "lettered-chapter",
         };
         (self.cached.package().source().skipped().iter())
             .map(|s| SkippedFile {

@@ -67,6 +67,17 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 A package (other than a collection) must have a non-empty `[formats]`. A collection must have
 none. A versification map must give both `versification` (not `own`) and `maps-to`.
 
+Versification names are matched ignoring case. A Bible imported from a SWORD module keeps the
+module's own (its conf's `Versification`, `KJV` when it gives none), spelled as SWORD spells it:
+`KJV`, `KJVA`, `NRSV`, `NRSVA`, `MT`, `Leningrad`, `Synodal`, `SynodalProt`, `Vulg`, `LXX`,
+`Orthodox`, `German`, `Luther`, `Catholic`, `Catholic2`, `Segond`, `Calvin`, `DarbyFr`. A map
+between one of them and another versification names it the same way. Other imports keep `own`.
+
+Esther's lettered chapters (A to F, the Greek additions some Bibles number apart) aren't in the
+format: chapters are numbers. No import makes them (SWORD numbers chapters by its versification,
+and eBible.org and fetch.bible give Greek Esther, `ESG`, numbered chapters). In OSIS and ThML, a
+verse marker with a lettered chapter (`Esth.A.1`, `|Esth|A|1|`) is passed over with a warning.
+
 ### Kinds
 
 | `kind` | What it is |

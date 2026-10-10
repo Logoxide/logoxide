@@ -77,6 +77,9 @@ pub enum SkipReason {
     Unknown,
     /// A file with the format's extension that names no book, by its name or its text
     NoBook,
+    /// Verses in a lettered chapter (Esther's Greek additions, `Esth.A.1`), which the format
+    /// hasn't: chapters are numbers
+    LetteredChapter,
 }
 
 /// A file, or a book in one, that a source passed over
@@ -111,6 +114,10 @@ impl std::fmt::Display for Skipped {
                 )
             }
             SkipReason::NoBook => write!(f, "{path}: names no book, passed over"),
+            SkipReason::LetteredChapter => write!(
+                f,
+                "{path}: {book} has lettered chapters (A to F), which logoxide doesn't read, passed over"
+            ),
         }
     }
 }
@@ -336,6 +343,38 @@ mod tests {
             ("usx/other.usx", "<usx><book code=\"JHN\"/></usx>"),
         ]);
         assert!(UsxSource::open(Arc::new(storage), "usx").is_err());
+    }
+
+    /// Esther's lettered chapters (the Greek additions some Bibles number A to F) aren't read
+    #[test]
+    fn lettered_chapters_are_passed_over() {
+        let osis = r#"<osis><osisText><div type="book" osisID="Esth"><chapter osisID="Esth.1"><verse osisID="Esth.1.1">In the days of Ahasuerus</verse><verse osisID="Esth.1.2">that</verse></chapter><chapter osisID="Esth.A"><verse osisID="Esth.A.1">In the second year</verse></chapter></div></osisText></osis>"#;
+        let storage = MemoryStorage::with([("osis/esth.xml", osis)]);
+        let source = OsisSource::open(Arc::new(storage), "osis").expect("opens");
+        let esther = crate::bible_data()
+            .books()
+            .search_usfm("EST")
+            .expect("Esther");
+        assert_eq!(source.books(), [esther]);
+        let skip = &source.skipped()[0];
+        assert_eq!(
+            (skip.path.as_str(), skip.book.as_str(), skip.reason),
+            ("osis/esth.xml", "Esth", SkipReason::LetteredChapter)
+        );
+        assert!(skip.is_warning());
+        let book = source.book(esther).expect("reads");
+        let numbered: Vec<(u8, u8)> = (book.spans.iter()).map(|s| (s.chapter, s.verse)).collect();
+        assert_eq!(numbered, [(1, 1), (1, 2)]);
+        // In ThML, CCEL's markers
+        let thml = r#"<ThML><ThML.body><div1><scripture parsed="|Esth|1|1|0|0"/>In the days <scripture parsed="|Esth|A|1|0|0"/>In the second year</div1></ThML.body></ThML>"#;
+        let storage = MemoryStorage::with([("thml/esth.xml", thml)]);
+        let source = ThmlSource::open(Arc::new(storage), "thml").expect("opens");
+        assert_eq!(source.skipped()[0].reason, SkipReason::LetteredChapter);
+        let package = osis::tests::package("thml", &[("esth.xml", thml)]);
+        assert_eq!(
+            osis::tests::verse_texts(&package, esther),
+            [(1, 1, String::from("In the days"))]
+        );
     }
 
     #[test]

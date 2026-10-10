@@ -28,8 +28,14 @@ their USFM codes:
   Writing the same verse on several lines does the same: `PSA 51:0 = PSA 51:1` and
   `PSA 51:0 = PSA 51:2`
 - Verse 0 is a psalm's title, which English Bibles don't number
-- `#` starts a comment. Lines of verse counts (`MAL 1:14 2:17 3:18 4:6`) and of verses a
-  versification leaves out (`-PSA 9:21`), which a whole `.vrs` file has, are skipped
+- A verse may name a part (`ESG 1:1a`, Paratext's lettered parts): it's mapped as the whole
+  verse, so `ESG 1:1 = ESG 1:1a` and `ESG 1:2 = ESG 1:1b` map both to 1:1; the part is kept in
+  [`VerseRange`] to show. Lines naming parts of one verse don't overlap
+- `#` starts a comment. A whole `.vrs` file also has lines of verse counts (`MAL 1:14 2:17 3:18
+  4:6`: the last verse of each chapter) and of verses its versification leaves out (`-PSA 9:21`),
+  both describing `versification` (the left side). A mapping naming a verse past its book's
+  counts is a mistake ([`VersificationMap::problems`]); a verse left out has no counterpart, and
+  nothing maps to it the other way. Those lines for books topos doesn't know are passed over
 
 A verse no line names keeps its number, unless another verse was mapped to that number: then it
 has no counterpart (English `Psalm 51:20` is no verse, and Hebrew `Malachi 4:1` neither). Maps
@@ -83,13 +89,18 @@ impl std::fmt::Display for Verse {
     }
 }
 
-/// Verses in one chapter: `PSA 51:1-19`
+/// Verses in one chapter: `PSA 51:1-19`, or part of a verse: `ESG 1:1a`
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VerseRange {
     pub book: BookId,
     pub chapter: u8,
     pub first: u8,
     pub last: u8,
+    /// The part of the first verse named (`a` in `1:1a`), when only a part is: it's mapped as the
+    /// whole verse, and the part kept to show
+    pub first_part: Option<char>,
+    /// The part of the last verse named (`b` in `22:43-44b`)
+    pub last_part: Option<char>,
 }
 
 impl VerseRange {
@@ -100,6 +111,32 @@ impl VerseRange {
     /// How many verses (never none)
     pub fn count(&self) -> usize {
         usize::from(self.last - self.first) + 1
+    }
+
+    /// The part of a verse of it that's named, if only a part is
+    pub fn part_of(&self, verse: u8) -> Option<char> {
+        match verse {
+            v if v == self.first && self.first_part.is_some() => self.first_part,
+            v if v == self.last => self.last_part,
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for VerseRange {
+    /// `PSA 51:1-19`, `ESG 1:1a`
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let books = crate::bible_data().books();
+        match books.get_usfm(self.book) {
+            Some(code) => write!(f, "{code} {}:", self.chapter)?,
+            None => write!(f, "{} {}:", self.book.0, self.chapter)?,
+        }
+        let part = |p: Option<char>| p.map(String::from).unwrap_or_default();
+        write!(f, "{}{}", self.first, part(self.first_part))?;
+        if self.last != self.first || self.last_part != self.first_part {
+            write!(f, "-{}{}", self.last, part(self.last_part))?;
+        }
+        Ok(())
     }
 }
 
@@ -113,27 +150,25 @@ pub struct Mapping {
 }
 
 impl Mapping {
-    /// Its verses, pair by pair: verse by verse, or one to each of many
-    fn pairs(&self) -> Vec<(Verse, Verse)> {
-        match (self.from.count(), self.to.count()) {
-            (1, _) => (self.to.verses())
-                .map(|to| {
-                    (
-                        Verse::new(self.from.book, self.from.chapter, self.from.first),
-                        to,
-                    )
-                })
+    /// Its verses, pair by pair: verse by verse, or one to each of many. Ranges of different
+    /// lengths, neither one verse, are an error ([`VersificationMap::problems`] says so first)
+    fn pairs(&self) -> Result<Vec<(Verse, Verse)>> {
+        let (from, to) = (self.from, self.to);
+        Ok(match (from.count(), to.count()) {
+            (1, _) => (to.verses())
+                .map(|to| (Verse::new(from.book, from.chapter, from.first), to))
                 .collect(),
-            (_, 1) => (self.from.verses())
-                .map(|from| {
-                    (
-                        from,
-                        Verse::new(self.to.book, self.to.chapter, self.to.first),
-                    )
-                })
+            (_, 1) => (from.verses())
+                .map(|from| (from, Verse::new(to.book, to.chapter, to.first)))
                 .collect(),
-            _ => self.from.verses().zip(self.to.verses()).collect(),
-        }
+            (a, b) if a == b => from.verses().zip(to.verses()).collect(),
+            (a, b) => {
+                return Err(LogoxideError::Versification(format!(
+                    "{}: {a} verses map to {b}: give ranges of one length, or one verse",
+                    self.at
+                )));
+            }
+        })
     }
 }
 
@@ -148,42 +183,87 @@ pub struct VersificationMap {
     forward: BTreeMap<Verse, Vec<Verse>>,
     /// Each verse of `to` that verses of `from` map to
     backward: BTreeMap<Verse, Vec<Verse>>,
+    /// The last verse of each chapter of a book in `from`, as the `.vrs` file's count lines give
+    /// them (books without a line aren't checked)
+    from_counts: BTreeMap<BookId, Vec<u8>>,
+    /// The same in `to` (only a reversed map has them)
+    to_counts: BTreeMap<BookId, Vec<u8>>,
+    /// Verses `from` leaves out (`-PSA 9:21`): none of them has a counterpart
+    from_excluded: BTreeSet<Verse>,
+    /// Verses `to` leaves out (only a reversed map has them): nothing maps to them
+    to_excluded: BTreeSet<Verse>,
+    /// Mapping lines passed over, each where it is and the book topos doesn't know
+    passed_over: Vec<(String, String)>,
 }
 
 impl VersificationMap {
-    /// A map from its `.vrs` files' text, each with its name (for errors): `(eng.vrs, text)`
+    /**
+    A map from its `.vrs` files' text, each with its name (for errors): `(eng.vrs, text)`. Their
+    verse-count lines and lines of verses left out describe `from`
+    */
     pub fn parse<'a>(
         from: &str,
         to: &str,
         files: impl IntoIterator<Item = (&'a str, &'a str)>,
     ) -> Result<VersificationMap> {
         let mut mappings = vec![];
+        let (mut counts, mut excluded) = (BTreeMap::new(), BTreeSet::new());
+        let mut passed_over = vec![];
         for (file, text) in files {
             for (n, line) in text.lines().enumerate() {
                 let at = format!("{file}:{}", n + 1);
-                if let Some(mapping) = parse_line(line, &at)? {
-                    mappings.push(mapping);
+                match parse_line(line, &at)? {
+                    Line::Mapping(mapping) => mappings.push(mapping),
+                    Line::Counts(book, chapters) => {
+                        counts.insert(book, chapters);
+                    }
+                    Line::Excluded(range) => excluded.extend(range.verses()),
+                    Line::Unknown(code) => passed_over.push((at, code)),
+                    Line::Other => {}
                 }
             }
         }
-        VersificationMap::new(from, to, mappings)
+        let mut map = VersificationMap::build(from, to, mappings, counts, excluded)?;
+        map.passed_over = passed_over;
+        Ok(map)
+    }
+
+    /// The mapping lines passed over, each where it is (`eng.vrs:375`) and the book code topos
+    /// doesn't know (`DAG`)
+    pub fn passed_over(&self) -> &[(String, String)] {
+        &self.passed_over
     }
 
     /// A map from its lines; an error if they overlap (see [`VersificationMap::problems`])
     pub fn new(from: &str, to: &str, mappings: Vec<Mapping>) -> Result<VersificationMap> {
+        VersificationMap::build(from, to, mappings, BTreeMap::new(), BTreeSet::new())
+    }
+
+    fn build(
+        from: &str,
+        to: &str,
+        mappings: Vec<Mapping>,
+        from_counts: BTreeMap<BookId, Vec<u8>>,
+        from_excluded: BTreeSet<Verse>,
+    ) -> Result<VersificationMap> {
         let mut map = VersificationMap {
             from: from.to_string(),
             to: to.to_string(),
             mappings,
             forward: BTreeMap::new(),
             backward: BTreeMap::new(),
+            from_counts,
+            to_counts: BTreeMap::new(),
+            from_excluded,
+            to_excluded: BTreeSet::new(),
+            passed_over: vec![],
         };
-        let problems = map.problems();
-        if !problems.is_empty() {
-            return Err(LogoxideError::Versification(problems.join("; ")));
+        let mistakes = map.mistakes();
+        if !mistakes.is_empty() {
+            return Err(LogoxideError::Versification(mistakes.join("; ")));
         }
         for mapping in &map.mappings {
-            for (from, to) in mapping.pairs() {
+            for (from, to) in mapping.pairs()? {
                 let targets = map.forward.entry(from).or_default();
                 if !targets.contains(&to) {
                     targets.push(to);
@@ -257,15 +337,73 @@ impl VersificationMap {
                 .collect(),
             forward: self.backward.clone(),
             backward: self.forward.clone(),
+            from_counts: self.to_counts.clone(),
+            to_counts: self.from_counts.clone(),
+            from_excluded: self.to_excluded.clone(),
+            to_excluded: self.from_excluded.clone(),
+            passed_over: self.passed_over.clone(),
         }
     }
 
+    /// The verses `from` leaves out (`-PSA 9:21` lines): they have no counterpart
+    pub fn excluded(&self) -> &BTreeSet<Verse> {
+        &self.from_excluded
+    }
+
+    /// The last verse of each chapter of the books whose counts the `.vrs` files give, in `from`
+    pub fn counts(&self) -> &BTreeMap<BookId, Vec<u8>> {
+        &self.from_counts
+    }
+
     /**
-    What's wrong with its lines: a verse on one side of several lines, unless each of them names
-    it alone on that side (one verse written to each of many, line by line); ranges of different
-    lengths where neither is one verse
+    What's wrong with its lines: its mistakes (which a map can't be made with: lines that overlap,
+    ranges that can't be paired), then the verses its lines name that the `.vrs` files' counts say
+    don't exist (verse 0, a psalm's title, always may). Those are only said: Paratext's own files
+    have some (the BSB's maps Greek Esther 8:36-41, of a chapter of 39 verses)
     */
     pub fn problems(&self) -> Vec<String> {
+        let mut problems = self.mistakes();
+        problems.extend(self.past_counts());
+        problems
+    }
+
+    /// The verses lines name that the counts say don't exist
+    fn past_counts(&self) -> Vec<String> {
+        let mut problems = vec![];
+        for m in &self.mappings {
+            for (range, counts, name) in [
+                (m.from, &self.from_counts, &self.from),
+                (m.to, &self.to_counts, &self.to),
+            ] {
+                let Some(chapters) = counts.get(&range.book) else {
+                    continue;
+                };
+                let last = (usize::from(range.chapter).checked_sub(1))
+                    .and_then(|i| chapters.get(i))
+                    .copied();
+                match last {
+                    None => problems.push(format!(
+                        "{}: {range}: {name} has no chapter {}",
+                        m.at, range.chapter
+                    )),
+                    Some(last) if range.last > last => problems.push(format!(
+                        "{}: {range}: chapter {} has {last} verses in {name}",
+                        m.at, range.chapter
+                    )),
+                    Some(_) => {}
+                }
+            }
+        }
+        problems
+    }
+
+    /**
+    The lines a map can't be made with: a verse on one side of several lines, unless each of them
+    names it alone on that side (one verse written to each of many, line by line); ranges of
+    different lengths where neither is one verse. A part of a verse (`ESG 1:1a`) is apart from the
+    rest of it, so lines naming parts overlap nothing
+    */
+    fn mistakes(&self) -> Vec<String> {
         let mut problems = vec![];
         for m in &self.mappings {
             if m.from.count() > 1 && m.to.count() > 1 && m.from.count() != m.to.count() {
@@ -281,12 +419,14 @@ impl VersificationMap {
             ("left", (|m: &Mapping| m.from) as fn(&Mapping) -> VerseRange),
             ("right", |m: &Mapping| m.to),
         ] {
-            // Each verse, with the lines naming it and whether alone
+            // Each verse, with the lines naming it (not only a part of it) and whether alone
             let mut seen: BTreeMap<Verse, Vec<(&str, bool)>> = BTreeMap::new();
             for m in &self.mappings {
                 let r = range(m);
                 for verse in r.verses() {
-                    seen.entry(verse).or_default().push((&m.at, r.count() == 1));
+                    if r.part_of(verse.verse).is_none() {
+                        seen.entry(verse).or_default().push((&m.at, r.count() == 1));
+                    }
                 }
             }
             for (verse, lines) in seen {
@@ -303,14 +443,21 @@ impl VersificationMap {
     }
 
     /// Where a verse of `from` is in `to`: its verses there (several, when it was split), or
-    /// [`None`] if it has no counterpart
+    /// [`None`] if it has no counterpart (one of the two leaves it out)
     pub fn map_verse(&self, verse: Verse) -> Option<Vec<Verse>> {
-        match self.forward.get(&verse) {
-            Some(targets) => Some(targets.clone()),
-            // Another verse has this number now
-            None if self.backward.contains_key(&verse) => None,
-            None => Some(vec![verse]),
+        if self.from_excluded.contains(&verse) {
+            return None;
         }
+        let targets = match self.forward.get(&verse) {
+            Some(targets) => targets.clone(),
+            // Another verse has this number now
+            None if self.backward.contains_key(&verse) => return None,
+            None => vec![verse],
+        };
+        let targets: Vec<Verse> = (targets.into_iter())
+            .filter(|v| !self.to_excluded.contains(v))
+            .collect();
+        (!targets.is_empty()).then_some(targets)
     }
 
     /// The last verse its left side names in each chapter of a book (verse 0 counts), by chapter
@@ -392,7 +539,8 @@ fn write(verses: &[Verse]) -> String {
         .join("; ")
 }
 
-/// `PSA 51:1-19` (a verse, or a range within a chapter)
+/// `PSA 51:1-19` (a verse, or a range within a chapter), either end perhaps a part of a verse
+/// (`ESG 1:1a`, `1KI 22:43b-44`)
 fn parse_range(text: &str, at: &str) -> Result<VerseRange> {
     let bad = |why: &str| LogoxideError::Versification(format!("{at}: `{text}`: {why}"));
     let (code, numbers) = (text.trim().split_once(' '))
@@ -403,13 +551,21 @@ fn parse_range(text: &str, at: &str) -> Result<VerseRange> {
     let (chapter, verses) =
         (numbers.trim().split_once(':')).ok_or_else(|| bad("write chapter:verse"))?;
     let number = |n: &str| n.trim().parse::<u8>().map_err(|_| bad("not a number"));
+    // A verse, perhaps with a part's letter after it (`20a`)
+    let verse = |n: &str| -> Result<(u8, Option<char>)> {
+        let n = n.trim();
+        match n.chars().last() {
+            Some(part) if part.is_ascii_lowercase() => Ok((number(&n[..n.len() - 1])?, Some(part))),
+            _ => Ok((number(n)?, None)),
+        }
+    };
     let chapter = number(chapter)?;
-    let (first, last) = match verses.split_once('-') {
+    let ((first, first_part), (last, last_part)) = match verses.split_once('-') {
         Some((_, last)) if last.contains(':') => {
             return Err(bad("a range can't span chapters"));
         }
-        Some((first, last)) => (number(first)?, number(last)?),
-        None => (number(verses)?, number(verses)?),
+        Some((first, last)) => (verse(first)?, verse(last)?),
+        None => (verse(verses)?, verse(verses)?),
     };
     if last < first {
         return Err(bad("the range ends before it starts"));
@@ -419,30 +575,80 @@ fn parse_range(text: &str, at: &str) -> Result<VerseRange> {
         chapter,
         first,
         last,
+        first_part,
+        last_part,
     })
 }
 
-/// A mapping line, or [`None`] for a comment, a blank line, or a `.vrs` file's other lines
-fn parse_line(line: &str, at: &str) -> Result<Option<Mapping>> {
+/// A line of a `.vrs` file
+enum Line {
+    Mapping(Mapping),
+    /// A book's verse counts (`MAL 1:14 2:17 3:18 4:6`): the last verse of each chapter
+    Counts(BookId, Vec<u8>),
+    /// Verses the versification leaves out (`-PSA 9:21`)
+    Excluded(VerseRange),
+    /// A mapping naming a book topos doesn't know (its USFM code)
+    Unknown(String),
+    /// A comment, a blank line, or counts or verses left out of a book topos doesn't know
+    Other,
+}
+
+/// A line of a `.vrs` file: a mapping, a book's verse counts, or verses left out
+fn parse_line(line: &str, at: &str) -> Result<Line> {
     let line = line.split('#').next().unwrap_or_default().trim();
+    let known = |code: &str| crate::bible_data().books().search_usfm(code);
+    if let Some(excluded) = line.strip_prefix('-') {
+        let code = excluded.split_whitespace().next().unwrap_or_default();
+        return match known(code) {
+            Some(_) => Ok(Line::Excluded(parse_range(excluded, at)?)),
+            None => Ok(Line::Other),
+        };
+    }
     let Some((from, to)) = line.split_once('=') else {
-        // Verse counts (`MAL 1:14 2:17`), verses left out (`-PSA 9:21`), or nothing
-        let number = |n: &str| n.parse::<u8>().is_ok();
-        let mut words = line.split_whitespace().skip(1).peekable();
-        let counts = words.peek().is_some()
-            && words.all(|n| {
-                n.split_once(':')
-                    .is_some_and(|(c, v)| number(c) && number(v))
-            });
-        return match line.is_empty() || line.starts_with('-') || counts {
-            true => Ok(None),
-            false => Err(LogoxideError::Versification(format!(
+        // Verse counts (`MAL 1:14 2:17`), or nothing
+        let number = |n: &str| n.parse::<u8>().ok();
+        let mut words = line.split_whitespace();
+        let code = words.next().unwrap_or_default();
+        let pairs: Option<Vec<(u8, u8)>> = (words.map(|w| {
+            let (c, v) = w.split_once(':')?;
+            Some((number(c)?, number(v)?))
+        }))
+        .collect();
+        return match (pairs, line.is_empty()) {
+            (_, true) => Ok(Line::Other),
+            (Some(pairs), false) if !pairs.is_empty() => {
+                let Some(book) = known(code) else {
+                    return Ok(Line::Other);
+                };
+                let mut counts: Vec<u8> = vec![];
+                for (chapter, last) in pairs.into_iter().filter(|(c, _)| *c > 0) {
+                    let index = usize::from(chapter) - 1;
+                    if counts.len() <= index {
+                        counts.resize(index + 1, 0);
+                    }
+                    counts[index] = last;
+                }
+                Ok(Line::Counts(book, counts))
+            }
+            _ => Err(LogoxideError::Versification(format!(
                 "{at}: `{line}` is no mapping (`BOOK C:V = BOOK C:V`)"
             ))),
         };
     };
     let from = from.trim().trim_start_matches('&');
-    Ok(Some(Mapping {
+    // A book with a USFM code topos doesn't know (yet): the line is passed over, and said
+    let looks_like_code = |c: &str| {
+        c.len() == 3
+            && c.bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    };
+    for side in [from, to] {
+        let code = side.split_whitespace().next().unwrap_or_default();
+        if looks_like_code(code) && known(code).is_none() {
+            return Ok(Line::Unknown(code.to_string()));
+        }
+    }
+    Ok(Line::Mapping(Mapping {
         from: parse_range(from, at)?,
         to: parse_range(to, at)?,
         at: at.to_string(),
@@ -774,7 +980,19 @@ MAL 4:1-6 = MAL 3:19-24
                 .unwrap_err()
                 .to_string()
         };
-        assert!(bad("XYZ 1:1 = GEN 1:1").contains("m.vrs:1"));
+        assert!(bad("Genesis 1:1 = GEN 1:1").contains("m.vrs:1"));
+        // A book topos doesn't know is passed over, and said
+        let map = VersificationMap::parse(
+            "A",
+            "B",
+            [("m.vrs", "GEN 1:1 = GEN 1:2\nZZZ 1:1 = ZZZ 1:2")],
+        )
+        .unwrap();
+        assert_eq!(map.mappings().len(), 1);
+        assert_eq!(
+            map.passed_over(),
+            [(String::from("m.vrs:2"), String::from("ZZZ"))]
+        );
         assert!(bad("GEN 1:1-3 = GEN 1:2-3").contains("one length"));
         assert!(bad("GEN 1:1-3 = GEN 1:2-4\nGEN 1:3 = GEN 1:9").contains("GEN 1:3 is on the left"));
         assert!(
@@ -787,5 +1005,92 @@ MAL 4:1-6 = MAL 3:19-24
         let ok = "# Versification \"English\"\nGEN 1:31 2:25\n-PSA 9:21\n\nPSA 3:0-8 = PSA 3:1-9 # titles";
         let map = VersificationMap::parse("English", "Original", [("eng.vrs", ok)]).unwrap();
         assert_eq!((map.mappings().len(), map.len()), (1, 9));
+        // Ranges of different lengths can't be paired, even made by hand
+        let gen_ = crate::bible_data().books().search_usfm("GEN").unwrap();
+        let range = |first, last| VerseRange {
+            book: gen_,
+            chapter: 1,
+            first,
+            last,
+            first_part: None,
+            last_part: None,
+        };
+        let uneven = Mapping {
+            from: range(1, 3),
+            to: range(1, 2),
+            at: String::from("by hand"),
+        };
+        assert!(uneven.pairs().is_err());
+        assert!(VersificationMap::new("A", "B", vec![uneven]).is_err());
+    }
+
+    #[test]
+    fn parts_of_verses_map_as_whole_verses() {
+        // As the BSB's versification.vrs has them: Greek Esther's verses in the parts of 1:1
+        let text = "ESG 1:1 = ESG 1:1a\nESG 1:2 = ESG 1:1b\nESG 1:3 = ESG 1:1c\nGEN 35:20a = GEN 35:21\nGEN 35:20b-21 = GEN 35:22-23\n";
+        let map = VersificationMap::parse("BSB", "Original", [("b.vrs", text)]).unwrap();
+        let shown: Vec<String> = (map.mappings().iter())
+            .map(|m| format!("{} = {}", m.from, m.to))
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                "ESG 1:1 = ESG 1:1a",
+                "ESG 1:2 = ESG 1:1b",
+                "ESG 1:3 = ESG 1:1c",
+                "GEN 35:20a = GEN 35:21",
+                "GEN 35:20b-21 = GEN 35:22-23",
+            ]
+        );
+        let maps = Versifications::new(vec![map]);
+        let to = |r: &str| {
+            let m = maps.map_reference(r, "BSB", "Original", None).unwrap();
+            m.text()
+        };
+        assert_eq!(to("Greek Esther 1:2"), "Greek Esther 1:1");
+        assert_eq!(to("Genesis 35:20"), "Genesis 35:21-22");
+        let back = maps
+            .map_reference("Greek Esther 1:1", "Original", "BSB", None)
+            .unwrap();
+        assert_eq!(back.text(), "Greek Esther 1:1-3");
+    }
+
+    #[test]
+    fn verses_left_out_and_counts() {
+        let text = "PSA 9:20 10:18\n-PSA 9:21\nPSA 10:1 = PSA 9:22\n";
+        let map = VersificationMap::parse("English", "Original", [("e.vrs", text)]).unwrap();
+        let psa = crate::bible_data().books().search_usfm("PSA").unwrap();
+        assert!(map.excluded().contains(&Verse::new(psa, 9, 21)));
+        assert_eq!(
+            map.counts().get(&psa),
+            Some(&vec![0, 0, 0, 0, 0, 0, 0, 0, 20, 18])
+        );
+        let maps = Versifications::new(vec![map]);
+        // Left out: no counterpart either way
+        let m = maps
+            .map_reference("Psalm 9:21", "English", "Original", None)
+            .unwrap();
+        assert_eq!(
+            (m.text(), m.missing_text()),
+            (String::new(), String::from("Psalm 9:21"))
+        );
+        let m = maps
+            .map_reference("Psalm 9:21", "Original", "English", None)
+            .unwrap();
+        assert_eq!(m.missing_text(), "Psalm 9:21");
+        // Past the counts: a verse English doesn't have, said but mapped
+        let text = "PSA 9:20\nPSA 9:25 = PSA 9:26\nPSA 10:1 = PSA 10:1";
+        let map = VersificationMap::parse("English", "O", [("e.vrs", text)]).unwrap();
+        assert_eq!(
+            map.problems(),
+            [
+                "e.vrs:2: PSA 9:25: chapter 9 has 20 verses in English",
+                "e.vrs:3: PSA 10:1: English has no chapter 10",
+            ]
+        );
+        assert_eq!(map.len(), 2);
+        // A book topos doesn't know, in counts or left out, is passed over
+        let map = VersificationMap::parse("A", "B", [("x.vrs", "ZZZ 1:5\n-ZZZ 1:3\n")]).unwrap();
+        assert!(map.counts().is_empty() && map.excluded().is_empty());
     }
 }

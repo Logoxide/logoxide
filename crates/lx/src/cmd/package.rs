@@ -261,6 +261,17 @@ pub(crate) fn print_skipped(skipped: &[logoxide::source::Skipped]) {
     }
 }
 
+/// What's said of a versification map that it can still be used with: verses past its counts,
+/// and lines naming books logoxide doesn't know (passed over)
+fn map_warnings(map: &logoxide::versification::VersificationMap) -> Vec<String> {
+    let mut warnings = map.problems();
+    warnings
+        .extend((map.passed_over().iter()).map(|(at, code)| {
+            format!("{at}: {code} is a book logoxide doesn't know, passed over")
+        }));
+    warnings
+}
+
 pub(crate) fn check(
     args: &PackageArgs,
     cache: Option<PathBuf>,
@@ -341,6 +352,8 @@ pub(crate) fn check(
                     "to": map.to,
                     "lines": map.mappings().len(),
                     "verses": map.len(),
+                    "excluded": map.excluded().len(),
+                    "warnings": map_warnings(map),
                 })
             }),
             titles: (titles.iter())
@@ -359,6 +372,9 @@ pub(crate) fn check(
     }
     match (package_kind, map) {
         (_, Some(map)) => {
+            for warning in map_warnings(&map) {
+                errln!("warning: {warning}");
+            }
             outln!(
                 "a versification map from {} to {}: {} lines, {} verses mapped",
                 map.from,

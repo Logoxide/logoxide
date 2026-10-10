@@ -54,7 +54,10 @@ before changing the design.
     peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know (JUB until it
     does) and files naming no book warned of (the owner's D4); a book in two files is an error
     naming both. `lx check` (and its JSON's `skipped`), `lx release`, and `lx import` print them;
-    the FFI has `LogoxidePackage.skipped()`
+    the FFI has `LogoxidePackage.skipped()`. Esther's lettered chapters (`Esth.A.1`, CCEL's
+    `|Esth|A|1|`) aren't in the format (the owner's D6; the simpler choice, skipping, was taken:
+    no import makes them): OSIS and ThML markers naming one are passed over with what follows
+    them (`whole::without_lettered`) and warned of (`SkipReason::LetteredChapter`)
   - `package.rs`: opening a package picks the best readable format its enabled features turn on;
     a package that isn't a Bible (a book, a collection) may have none and opens with
     `source::NoText` (no books, so no verses in its summary). `checksum()` hashes every file but
@@ -136,7 +139,9 @@ before changing the design.
     sword-modules' `MemoryFiles` and writes each book in the module's markup (`osis/John.xml`
     with verse milestones, or CCEL-style ThML), dropping the entries' own book and chapter
     milestones, making linked verses bridges (`n="16-17"`), and leaving out introductions that
-    are another verse's entry; the conf gives version, license (`sword_license`), language, and
+    are another verse's entry; the conf's `Versification` is kept (`sword_versification`: SWORD's
+    names as SWORD spells them, `KJV` when absent; other imports say `own`); the conf gives
+    version, license (`sword_license`), language, and
     `COPYRIGHT.txt`. A vault uses any of them as a path package in `imports/<id>/`. Updating:
     `upstream(entry)` is what each import writes as `upstream`, so `Catalog::find_upstream`
     finds an installed import's entry (no field records the import name); `compare_import`
@@ -230,9 +235,18 @@ before changing the design.
     versification` to `maps-to`, a `vrs` format of Paratext `.vrs` mapping lines, so `eng.vrs`
     reads as it is; verse 0 is a psalm's title). Unnamed verses keep their number unless another
     took it (then no counterpart); `Versifications::route` follows maps both ways and through
-    each other; `Project::numbering` turns a Bible's name into its versification and counts,
-    `Project::map_reference` maps. The summary counts `mappings`; any change is minor. Sample
-    package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs)
+    each other (names ignore case); `Project::numbering` turns a Bible's name into its
+    versification and counts, `Project::map_reference` maps. Partial verses (`ESG 1:1a`) map as
+    whole verses, the part kept in `VerseRange` (`first_part`, `last_part`, its `Display`), and
+    lines naming parts overlap nothing; excluded lines (`-PSA 9:21`, `excluded()`) map to `None`
+    both ways (so `Mapped::missing`); count lines (`counts()`) let `problems()` say which verses
+    don't exist, only said (`lx check` warns), since Paratext's own files have some (the BSB's
+    ESG 8:36-41); mapping lines naming a book topos doesn't know are passed over
+    (`passed_over()`, warned of). Overlaps and uneven ranges stay errors (`mistakes`, and
+    `Mapping::pairs` returns one). The summary counts `mappings`; any change is minor. Sample
+    package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs).
+    The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) still fails on two
+    overlapping ranges onto Greek Esther 5:2 (lines 333 and 338)
 - `crates/logoxide-lsp`: the language server (topos's `topos-lsp` until October 2026, moved with
   its history so topos never depends on logoxide). `bible.rs`'s `Bible` reads a package or a plain
   USX folder through logoxide sources; `settings.rs` finds the project (the `project` setting, a
