@@ -267,3 +267,64 @@ fn formats_are_only_where_a_command_has_them() {
             .is_some_and(|c| !c.is_empty())
     );
 }
+
+/// Commits what's in a package's folder and tags it (`tag`)
+fn tagged(dir: &Path, tag: &str) {
+    if !dir.join(".git").exists() {
+        git(dir, &["init", "-q", "-b", "main"]);
+    }
+    git(dir, &["add", "-A"]);
+    git(dir, &["commit", "-q", "-m", tag]);
+    git(dir, &["tag", tag]);
+}
+
+/// Adds lines to a package's `logoxide.toml`
+fn append_manifest(dir: &Path, text: &str) {
+    let manifest = std::fs::read_to_string(dir.join("logoxide.toml")).unwrap();
+    std::fs::write(dir.join("logoxide.toml"), format!("{manifest}{text}")).unwrap();
+}
+
+/// The one installed version of a package in a world's library
+fn installed_dir(world: &World, id: &str) -> PathBuf {
+    let mut versions = std::fs::read_dir(world.path(&format!("library/packages/{id}"))).unwrap();
+    versions.next().unwrap().unwrap().path()
+}
+
+#[test]
+fn a_failed_add_or_remove_leaves_the_manifest_alone() {
+    let world = World::new("failed-add");
+    world.ok(&["init"]);
+    let manifest = world.path("vault/logoxide.toml");
+    let before = std::fs::read(&manifest).unwrap();
+
+    // A repository that isn't there
+    let missing = world.path("nothing").display().to_string();
+    assert_eq!(world.lx(&["add", "--git", &missing]).status.code(), Some(1));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+
+    // A package that reads, but whose own dependency can't be fetched: installing fails after
+    // the manifest was edited in memory
+    let repo = world.path("tb");
+    package(&repo, "tb", "1.0.0");
+    append_manifest(
+        &repo,
+        &format!("\n[dependencies]\ngone = {{ git = \"{missing}\" }}\n"),
+    );
+    tagged(&repo, "v1.0.0");
+    let out = world.lx(&["add", "--git", &repo.display().to_string()]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+    assert!(!world.path("vault/logoxide.lock").exists());
+
+    // Removing, when what's left no longer installs (an installed copy was edited)
+    let other = world.path("ob");
+    released(&other, "ob", "1.0.0");
+    let kept = world.path("kb");
+    released(&kept, "kb", "1.0.0");
+    world.ok(&["add", "--git", &other.display().to_string()]);
+    world.ok(&["add", "--git", &kept.display().to_string()]);
+    let before = std::fs::read(&manifest).unwrap();
+    std::fs::write(installed_dir(&world, "kb").join("usx/JHN.usx"), "edited").unwrap();
+    assert_eq!(world.lx(&["remove", "ob"]).status.code(), Some(1));
+    assert_eq!(std::fs::read(&manifest).unwrap(), before);
+}

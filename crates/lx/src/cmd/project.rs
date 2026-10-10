@@ -181,10 +181,12 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             }
         }
     }
+    // Installed from the edited manifest before it's written: if installing fails, the file is
+    // as it was
     project.add(&name, &dependency)?;
-    project.save_manifest()?;
     let fetcher = cli.fetcher(&library);
-    let lock = project.install(&library, &fetcher, Update::Only([name.clone()].into()))?;
+    let lock = (project.install(&library, &fetcher, Update::Only([name.clone()].into()))?).clone();
+    project.save_manifest()?;
     let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
     println!(
         "added {locked} to {}: installed, and locked in {}",
@@ -252,8 +254,9 @@ pub(crate) fn remove(cli: &Cli, id: &str) -> logoxide::Result<()> {
             "no dependency `{id}`"
         )));
     }
-    project.save_manifest()?;
+    // Written only once the rest still installs
     project.install(&library, &cli.fetcher(&library), Update::Nothing)?;
+    project.save_manifest()?;
     println!("removed {id}");
     Ok(())
 }
