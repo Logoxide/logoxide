@@ -271,8 +271,11 @@ fn main() -> ExitCode {
             update: true,
             dry_run,
             yes,
+            ..
         } => import_update(&cli, source.as_deref(), *dry_run, *yes),
-        Command::Import { source, .. } => import(&cli, source.as_deref().unwrap_or_default()),
+        Command::Import { source, vendor, .. } => {
+            import(&cli, source.as_deref().unwrap_or_default(), *vendor)
+        }
         Command::Catalog(CatalogCommand::Entry { git }) => {
             catalog_entry(&cli, &logoxide::git::expand_url(git))
         }

@@ -99,16 +99,17 @@ lx show --git github:someone/kjv
 # contents: note 6959, strongs 349308, words-of-jesus 2038, ...
 ```
 
-Add what the vault uses. Git packages are installed into the library (`LOGOXIDE_HOME`, else
-`~/.local/share/logoxide`) as plain files and locked; imports become path packages in `imports/`:
+Add what the vault uses. Packages are installed into the library (`LOGOXIDE_HOME`, else
+`~/.local/share/logoxide`) as plain files and locked, git packages and imports alike, so every
+project on the machine that locks the same version shares one copy:
 
 ```sh
 lx add github:someone/kjv                                 # the newest release, ^1.0.1
 lx add github:someone/bsb --version 1                     # any 1.x
-lx import ebible:eng-asv                                  # into imports/ebible-eng-asv
+lx import ebible:eng-asv                                  # made from eBible.org's zip, into the library
 lx list
 # bsb 1.0.1  BSB (Berean Standard Bible), LicenseRef-PublicDomain  https://github.com/someone/bsb v1.0.1
-# ebible-eng-asv 1.0.0  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  path imports/ebible-eng-asv
+# ebible-eng-asv 1.0.0  ASV (American Standard Version (1901)), LicenseRef-PublicDomain  import ebible:eng-asv (2026-10-08)
 # kjv 1.0.1  KJV (King James Version (1769)), LicenseRef-PublicDomain  https://github.com/someone/kjv v1.0.1
 ```
 
@@ -129,7 +130,16 @@ lx import ccel:kjv              # CCEL's ThML, a whole Bible in one file, with t
 lx import ccel:henry/mhc1       # any other CCEL work by its author and name: here a commentary
 lx import sword:crosswire/KJV   # the module's OSIS entries, a file a book (osis/John.xml)
 lx import sword:crosswire/MHCC  # a commentary: kind = "commentary", an entry a span of verses
+lx import --vendor ebible:eng-asv  # into the project's imports/ebible-eng-asv, a path package
 ```
+
+An import is kept in the library by its files' checksum (`packages/ebible-eng-asv/1.0.0+i46122bcf`),
+and its lock entry says what it was made from: each download's URL and SHA-256, and the
+publisher's version. Another project importing the same text uses the same folder, and doesn't
+download it again when the publisher's versions follow its updates (eBible.org's, SWORD's) and
+the catalog still lists the version the library has. `--vendor` puts it in the project's
+`imports/<id>/` instead, as a path package: to edit it by hand, or to carry it with the project
+(a phone's vault that syncs only its own folder).
 
 Each import's version is logoxide's own: 1.0.0 when it's imported, then raised by what each update
 changes, like any package's, so a dependency on `^1` is safe across the publisher's years. The
@@ -148,7 +158,7 @@ The manifest now reads:
 [dependencies]
 kjv = { git = "https://github.com/someone/kjv", version = "1.0.1" }
 bsb = { git = "https://github.com/someone/bsb", version = "1" }
-ebible-eng-asv = { path = "imports/ebible-eng-asv" }
+ebible-eng-asv = { import = "ebible:eng-asv" }
 ```
 
 `github:owner/repo` is short for `https://github.com/owner/repo` (`gitlab:` and `codeberg:` work
@@ -201,13 +211,18 @@ The lock file says exactly which text the vault uses, so a second device (or a t
 same verses, and a changed file is caught by its checksum:
 
 ```sh
-cd ~/Notes                                # synced: logoxide.toml, logoxide.lock, imports/
+cd ~/Notes                                # synced: logoxide.toml, logoxide.lock
 lx install
 # bsb 1.0.1
 # ebible-eng-asv 1.0.0
 # kjv 1.0.1
 # 3 packages, locked in ./logoxide.lock
 ```
+
+An import that isn't in this device's library is made again from the locked downloads, which
+must hash as locked, and must come out with the locked checksum: if the publisher has changed its
+file since, or the import comes out otherwise, `lx install` says so, and `lx update <name>` locks
+what it makes now.
 
 ### Keeping up
 
@@ -222,9 +237,11 @@ lx clean --remove                         # delete them
 An update never crosses a major version: `version = "1"` stays on 1.x, because a major version
 means verses were renumbered or removed, and verse links could point at other text.
 
-Imports aren't followed by `lx update` (they're path packages: nothing upstream is locked).
-`lx import --update` makes each one again from its publisher's download and replaces those that
-changed, saying how (a reader's files beside them stay):
+`lx update <import>` locks the publisher's text as it is now. `lx import --update` makes each
+import again from its publisher's download and replaces those that changed, saying how: a new
+version beside the old one in the library (which another project may still lock, and `lx clean`
+removes once none does), or a vendored import's files in place (a reader's files beside them
+stay):
 
 ```sh
 lx import --update --dry-run              # what would change
@@ -243,7 +260,8 @@ same text a patch), so one version never names two texts.
 ## Publishing: a package of your own
 
 A package is a git repository with a `logoxide.toml` and its text, released by tags (`v1.0.0`).
-Start from a folder of USX or USFM books, or from an import (`imports/ebible-eng-asv` is already one):
+Start from a folder of USX or USFM books, or from an import (`lx import --vendor ebible:eng-asv`
+makes `imports/ebible-eng-asv`, already one):
 
 ```toml
 [package]

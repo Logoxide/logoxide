@@ -25,8 +25,12 @@ When a dependency is first resolved, logoxide takes what its source says:
   SHA-256 and files' checksum. Whoever controls the catalog controls which archive is accepted:
   the archive is checked against the catalog, and the catalog against nothing.
 - **imports** (`lx import ebible:…`, `fetch:…`, `ccel:…`, `sword:…`, `door43:…`): the publisher's download
-  (from its URL as the catalog gives it), made into a package in the project's folder. It is
-  then a path package, which the project holds itself.
+  (from its URL as the catalog gives it), made into a package and kept in the library. The lock
+  pins each download's SHA-256 and the package's checksum, so making it again on another device
+  gives the same text or fails; the first download is checked against nothing, as a catalog is.
+  The import is found in the project's own catalogs, so a fetched package's `import` dependency
+  can only name what the user's catalogs list. `lx import --vendor` makes it a path package in
+  the project's folder instead, which the project holds itself.
 
 Catalogs and archives fetched over **plain HTTP** (any `http://` URL, including one SWORD
 repository in CrossWire's list) give no integrity at all on first use: anyone on the network

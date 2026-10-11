@@ -51,7 +51,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     naming a book matches what's about it) and `lx search --category` filters. `topos_config.rs` reads topos's `config.toml` book data
     (`data`/`merge-data`/`remove-data`, as the CLI and logoxide-lsp do) and `BookFilters`
     (topos's `BibleFilter`: testaments, genres, books, and exclusions) gives the codes kept;
-    `lx search -t/--nt/--ot/-g/-b/--exclude-*` keeps packages with any about-book among them. A dependency can name another package
+    `lx search -t/--nt/--ot/-g/-b/--exclude-*` keeps packages with any about-book among them. A dependency is one of `git`,
+    `registry`, `path`, or `import` (`{ import = "ebible:eng-asv" }`, `is_import_name`: a
+    lowercase prefix, a colon, an id). A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
     `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
     locked and installed, so `lx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and
@@ -141,7 +143,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one
     commit are two entries sharing a folder; older lock files' `id version` still read; `rename`
-    is the manifest's name when it isn't the id; `get` finds by that name). `moved_since` finds
+    is the manifest's name when it isn't the id; `get` finds by that name; `LockedPackage::new`
+    fills in nothing; an import's entry has `import`, `upstream-version`, `[[package.download]]`s
+    (`LockedDownload`: name, url, optional sha256) and a required checksum, its key
+    `<version>+i<8 hex of the checksum>`). `moved_since` finds
     releases that came back changed (a moved tag), which `lx install`/`lx update` warn of; a kept
     commit that can't be fetched says it may be gone from the host. `LockedPackage::check`
     refuses a commit or sha256 that isn't hex and an id that isn't one, so a lock can't name a
@@ -243,7 +248,12 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     never in the library (Dropbox syncs it); `lock_all` takes several in one order, one folder
     once; readers take none; a no-op in WebAssembly
   - `resolve.rs`: manifest + previous lock → new lock, installing as it goes (`Frozen`: `locked`
-    keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`), through `Packages`
+    keeps the lock as it is, `offline` fetches nothing; `Project::install_frozen`); an `import`
+    dependency (`import_release`) is asked of the fetcher (`Fetcher::import`, whose default says
+    it can't: the core knows no publisher) as an `ImportRequest`: `ImportKind::Pinned(locked)`
+    when locked but not in the library (made again, given the locked version, checked against
+    the locked checksum, else an error saying `lx update <name>`), `Fresh { current }` when new
+    or updating (versioned against `current`); kept in the library by checksum, through `Packages`
     (where installed versions and path packages are) and a `Fetcher` (git, and `download` for
     registries: paths and `file://` by default, HTTPS in lx and through the host in the
     bindings). A `registry` dependency (a catalog's URL) gets the newest release its catalog lists
@@ -556,12 +566,23 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   project's and config's URL catalogs and URL registries, or those named by URL or registry
   name: `Refreshed`). `find_entry` refreshes when no kept copy lists the import; `plan_updates`
   always refreshes.
+  `importer.rs` (phase O, the owner's 2026-10-10 request: imports in the shared library):
+  `Importing` wraps any `Fetcher` and answers `Fetcher::import` (entries from the project's
+  catalogs, `give_entry`; builds `prepare`d by a planned update; `with_library`: a fresh import
+  first takes a library copy of the version the catalog lists, for publishers whose versions
+  track updates, so a second project downloads nothing); `make(entry, downloads, kind, reader)`
+  (shared with the FFI), `download`, `download_pinned` (each locked download by its SHA-256,
+  else `Mismatch` saying the publisher changed it). Builds are deterministic (logoxide-import's
+  tests build each publisher's twice: `build_twice`).
   `import.rs`: `check_source`, `find_entry` (the project's catalogs, a CrossWire-listed SWORD
   repository's too), `files` (each download from the first URL that has it, then `build`),
-  `run` (staged, renamed into place, added, installed, else rolled back: `Imported` with
-  `skipped`), `plan_updates` (`UpdatePlan { dependency, import, dir, from, upstream_from,
-  outcome: Current | Changed(Box<Change { update, fresh, removed }>) | Failed }`) and
-  `apply_update(change, dir, allow_removals)`. `clean.rs`: `clean(library, projects, remove,
+  `run` (adds `{ import = … }` and installs through an `Importing`: `Imported` with `version`,
+  the library `dir`, `skipped`), `run_vendored` (the old path package in `imports/<id>/`:
+  staged, renamed into place, added, installed, else rolled back), `plan_updates` (both kinds:
+  `UpdatePlan { dependency, import, dir, in_library, from, upstream_from, outcome: Current |
+  Changed(Box<Change { update, fresh, removed, downloads, upstream_version }>) | Failed }`) and
+  `apply_update(change, dir, allow_removals)` for a vendored one; a library one is installed
+  with `Update::Only` and `Change::build` prepared, beside the old version. `clean.rs`: `clean(library, projects, remove,
   prune_roots, said)` under the library's lock, each step a `Cleaning` given as it happens
   (`STALE_STAGING`). `media.rs`: `verify(http, url, file)`, hashed as it downloads. `read.rs`:
   `read(project, library, reader, reference, style)` (topos's `parse_with_translation` over
@@ -571,7 +592,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   through `Project::versifications`, `own` read as written: `Compared { reference, passages,
   text, missing, mapped, versification }`); errors are `Resolve`. `lib.rs`: `Logoxide { config,
   library, http, fetcher, reader }` (`new`, `default_native` under `ureq`; `project`,
-  `catalogs`, `registry`, `install`, `import`, `plan_updates`, `clean`, `read`, `compare`;
+  `catalogs`, `registry`, `importing`, `install` (through `importing`, its warnings to a
+  `Warn`), `install_with`, `import(project, source, vendored, warn)`, `plan_updates`, `clean`,
+  `read`, `compare`;
   `catalog_cache` from the library's cache and `catalog-max-age`, `catalog_fetch(freshness)`,
   `refresh_catalogs`; the MCP server's catalogs come through it, so they're kept too)
 - `crates/lx` (package `logoxide-cli`, binary `lx`): `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
@@ -588,9 +611,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
   reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not;
-  `--refresh` downloads URL catalogs again, `--offline` only what's kept), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
-  `--dry-run`, `--yes`: make imports again, replace changed ones, re-lock them; one failing doesn't
-  stop the rest, and removing files is asked about in a terminal, else needs `--yes`), `catalog list|add|remove|refresh|entry|build` (`refresh [<URL or registry>…]`: the URL
+  `--refresh` downloads URL catalogs again, `--offline` only what's kept), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (an `import` dependency kept in the library; `--vendor`: a path package in `imports/<id>/`, built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `--dry-run`, `--yes`: make imports again, replace changed ones (a new library version, or a
+  vendored one's files), re-lock them; one failing doesn't stop the rest, and removing a vendored
+  one's files is asked about in a terminal, else needs `--yes`; `lx update <import>` takes the
+  publisher's text now; `add`, `remove`, `install`, `update` all go through `app().install`), `catalog list|add|remove|refresh|entry|build` (`refresh [<URL or registry>…]`: the URL
   catalogs and registries downloaded again and kept, each said refreshed or failed, JSON too;
   `add`, `lx add` through a registry, and `--registry` read theirs afresh; completion uses kept
   copies of URL registries offline) (`add <folder or catalog> --name <registry>`; `build <folder>` writes a catalog.toml of its repositories' newest releases, read with `git show`, each with its `path` and `commit`, unchanged ones kept unless `--force`; `--url` with `{path}`/`{name}`; folder registries read releases the same way), `registry init <folder | github:owner/repo>`, `publish <package> --to …` (`--all`: every
@@ -711,7 +736,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `enabledDependencies`, `disabledDependencies`, and
   `Logoxide.readPackageInfo` (a package's details from its `logoxide.toml` alone, to name one that's off; not `packageInfo`: BoltFFI's Python names each method `_boltffi_<class>_<method>` in snake case, so `Logoxide.package_info` was `LogoxidePackage.info`, and no two may meet that way). `LogoxideInstaller` (`installer.rs`) runs the ordinary resolver against what the host has
   given (`Download` requests, answered with `provideDownload(url, …)` from the first of `urls`
-  that answers, are registries' catalogs and archives, with their mirrors; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;
+  that answers, are registries' catalogs and archives, with their mirrors, and imports'
+  downloads; `ImportEntry { import }`, answered with `provideImportEntry(entry)`
+  (`LogoxideCatalog.findImport`), when `loadCatalogs` didn't list an `import` dependency's
+  entry: the round's `Fetcher::import` makes it with logoxide-app's `importer::make`;
+  `Dependency.import`, `LockedEntry.import`; `LogoxideProject.registries()`, `addRegistry`, `removeRegistry`;
   `Dependency.registry`); whatever is missing (refs, an archive, an installed package's files) stops the round and
   is asked for (`FetchRequest`), and the host calls again. A round (`Round`, behind mutexes, so
   it's a `Fetcher`, `Send + Sync`) is also logoxide-app's `Http` (`HostHttp`, over the downloads

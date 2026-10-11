@@ -299,13 +299,16 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Makes a package from another publisher's download, puts it in the project's `imports/`,
-    /// and adds it as a path package: `ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or
-    /// `sword:<repository>/<module>` (as `lx search` shows), from the project's catalogs (and
-    /// for SWORD, the repositories CrossWire lists)
+    /// Makes a package from another publisher's download and adds it as a dependency
+    /// (`{ import = "ebible:eng-asv" }`), kept in the library like any installed package and
+    /// shared by every project that locks the same files: `ebible:<id>`, `fetch:<id>`,
+    /// `ccel:<id>`, or `sword:<repository>/<module>` (as `lx search` shows), from the project's
+    /// catalogs (and for SWORD, the repositories CrossWire lists). `--vendor` puts it in the
+    /// project's `imports/` as a path package instead
     ///
     /// `--update` makes the project's imports again from their publishers' downloads and replaces
-    /// the ones that changed (a reader's files beside them stay), saying what changed
+    /// the ones that changed (a new version in the library; a vendored one in place, a reader's
+    /// files beside it kept), saying what changed
     Import {
         /// `ebible:eng-asv`, `fetch:eng_bsb`, `ccel:kjv`, `sword:crosswire/KJV`; with `--update`,
         /// one import (its dependency's name, or this), else all of them
@@ -314,6 +317,10 @@ pub(crate) enum Command {
         /// Update imports: download each again, and replace it if it changed
         #[arg(long)]
         update: bool,
+        /// Put it in the project's `imports/<id>/` as a path package (to edit it by hand, or to
+        /// carry it with the project), not in the library
+        #[arg(long, conflicts_with = "update")]
+        vendor: bool,
         /// With `--update`: say what would change, and change nothing
         #[arg(long, requires = "update")]
         dry_run: bool,

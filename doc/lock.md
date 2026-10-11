@@ -9,7 +9,7 @@ sync both. This describes the format as logoxide 0.1 reads and writes it; the re
 ```toml
 # Written by lx: the exact text this uses. Commit it with logoxide.toml.
 version = 1
-dependencies = ["bsb 1.0.0+gb0d4882a", "romans 1.0.2+a9f86d081"]
+dependencies = ["bsb 1.0.0+gb0d4882a", "romans 1.0.2+a9f86d081", "ebible-eng-asv 1.0.0+i46122bcf"]
 
 [[package]]
 id = "bsb"
@@ -29,6 +29,18 @@ archive = "https://example.org/registry/romans/romans-1.0.2.tar.gz"
 mirrors = ["https://archive.org/download/registry/romans-1.0.2.tar.gz"]
 sha256 = "sha256:9f86d081884c…"
 checksum = "sha256:41c0…"
+
+[[package]]
+id = "ebible-eng-asv"
+version = "1.0.0"
+import = "ebible:eng-asv"
+upstream-version = "2026-10-08"
+checksum = "sha256:46122bcfb8ff…"
+
+[[package.download]]
+name = "zip"
+url = "https://ebible.org/Scriptures/eng-asv_usfm.zip"
+sha256 = "sha256:c8517c52166d…"
 ```
 
 ## Top level
@@ -55,13 +67,16 @@ checksum = "sha256:41c0…"
 | `archive` | string | That release's archive URL |
 | `mirrors` | array of strings | Other places serving the same archive, tried in order after `archive` |
 | `sha256` | string | The SHA-256 of the archive's bytes (`sha256:` and hex) |
-| `checksum` | string | The package's [checksum](catalog.md#checksums). Absent for path packages, whose files change as they're written |
+| `import` | string | The [import](#imports) it was made by (`ebible:eng-asv`) |
+| `upstream-version` | string | For an import: the publisher's version of the text, as its catalog listed it |
+| `download` | array of tables | For an import: each file it was made from, as `name` (the import's name for it: `zip`, `thml`, `jhn`), `url` (where it came from), and `sha256` (of its bytes; absent when it was taken from a copy already in the library, which nothing downloaded) |
+| `checksum` | string | The package's [checksum](catalog.md#checksums). Absent for path packages, whose files change as they're written; required for an import |
 | `features` | array of strings | Features turned on, besides the defaults |
 | `default-features` | boolean | `false` when its defaults are off. Default `true` |
 | `dependencies` | array of strings | The packages it depends on, as their names |
 
 A git package has `git` and `commit`; a registry package has `registry`, `archive`, and `sha256`;
-a path package has `path`.
+an import has `import` and `checksum`; a path package has `path`.
 
 ## Names
 
@@ -69,6 +84,8 @@ A locked package's **key** is its version with what pins it, as semver build met
 
 - git: `<version>+g<first 8 hex digits of the commit>` (`1.2.0+g3f9c2a1b`)
 - registry archive: `<version>+a<first 8 hex digits of the sha256>` (`1.2.0+a9f86d081`)
+- import: `<version>+i<first 8 hex digits of the checksum>` (`1.0.0+i46122bcf`), so two projects'
+  imports share a folder exactly when their files are the same
 - path: `<version>`
 
 Its **name** is `<id> <key>`, which `dependencies` lists; a package the manifest calls something
@@ -107,6 +124,27 @@ never share a folder.
 - A git tag's version must equal the `version` in its `logoxide.toml`.
 - A git or registry package can't have `path` dependencies.
 - Dependencies with `enabled = false` stay locked and installed; nothing reads them.
+
+## Imports
+
+An `import` dependency is made, not fetched: the host finds the import in the project's catalogs,
+downloads what it needs, and builds the package with logoxide-import, which makes the same files
+from the same downloads and catalog entry. The package manager knows no publisher; it asks the
+host's fetcher (`Fetcher::import`).
+
+- A locked import already in the library is used as it is, checked by its checksum like any.
+- One not in the library is made again from its `download`s: each from its `url`, then the
+  catalog entry's other places for it, the first whose bytes hash to its `sha256`, given the
+  locked `version` (an import's version is logoxide's own, raised by updates). Its files must
+  then have the locked `checksum`. A download that hashes otherwise (the publisher changed it)
+  or a build that comes out otherwise (the catalog's entry or the importer changed) is an error
+  that says to update it; offline, nothing is made.
+- A new or updated import is the publisher's text as it is now. Updating versions it against the
+  one it replaces (a reworded verse is minor, a removed one major, as
+  [summaries.md](summaries.md) says), and puts it in a new folder beside the old one, which other
+  projects may still lock and `lx clean` removes once none does. Where the publisher's versions
+  follow its updates (eBible.org's dates, a SWORD module's `Version`), a copy already in the
+  library of the version the catalog lists is used without downloading.
 
 ## The library's roots
 

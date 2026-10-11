@@ -127,6 +127,21 @@ pub trait Fetcher: Send + Sync {
         ))
     }
 
+    /**
+    An import's package, made from its publisher's downloads ([`crate::resolve::ImportRequest`]).
+    The package manager knows no publisher: hosts that import (logoxide-app, the bindings) say
+    how; others can't
+    */
+    fn import(
+        &self,
+        request: &crate::resolve::ImportRequest<'_>,
+    ) -> Result<crate::resolve::ImportBuild> {
+        Err(LogoxideError::Resolve(format!(
+            "`{}`: {} is an import, and imports can't be made here",
+            request.name, request.import
+        )))
+    }
+
     /// The repository's files at `reference` into `dest` (without `.git`), and the commit
     /// they're from
     fn fetch(&self, url: &str, reference: &GitRef, dest: &dyn Storage) -> Result<String>;

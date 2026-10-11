@@ -256,6 +256,7 @@ bsb = { git = "https://github.com/someone/bsb", version = "1" }
 kjv = { git = "github:someone/kjv", tag = "v1.0.1", features = ["usx"], default-features = false }
 kjv-bob = { git = "github:bob/kjv", package = "kjv", abbreviation = "KJVB" }
 romans = { registry = "https://example.org/registry/catalog.toml", version = "1" }
+ebible-eng-asv = { import = "ebible:eng-asv" }
 mine = { path = "Bibles/My Translation" }
 strongs = { git = "https://example.org/strongs", optional = true, enabled = false }
 ```
@@ -265,6 +266,7 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 | `git` | string | A git repository's URL (never starting with `-`). `github:owner/repo`, `gitlab:owner/repo`, and `codeberg:owner/repo` are short for the hosts' HTTPS URLs |
 | `registry` | string | A registry's catalog (its URL, or a file's path), whose releases are archives ([catalog.md](catalog.md)) |
 | `path` | string | A folder, relative to this manifest, used in place. `lx add --path` writes it relative even when given absolute; an absolute one is warned of, since the lock file names it too and another machine won't have it |
+| `import` | string | An [import](#imports) (`ebible:eng-asv`, `sword:crosswire/KJV`): a package made from its publisher's download as it installs, found in the project's catalogs, and kept in the library like a fetched one. The name is a publisher's prefix (lowercase letters and digits), a colon, and its id. `version` is then a requirement on the import's own version |
 | `version` | string | A semver requirement (`1`, `^1.2`, `>=1, <3`): the newest release matching it. For git, releases are tags `v<version>` with a whole semver version (`v1.0.0`; `v1.0` is no release, and is named when nothing matches) |
 | `tag` | string | For `git` only: this tag |
 | `rev` | string | For `git` only: this commit, by its full object id (40 hex digits, or 64 in a SHA-256 repository); a shorter prefix is refused |
@@ -278,8 +280,8 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 | `aliases` | array of strings | Its aliases here, in place of its own |
 | `enabled` | boolean | `false` turns it off without removing it: it stays locked and installed, but nothing reads it. Default `true` |
 
-Exactly one of `git`, `registry`, and `path` must be given, and at most one of `tag`, `rev`, and
-`branch` (only with `git`). A bare requirement (`bsb = "1"`) parses, but there is no default
+Exactly one of `git`, `registry`, `path`, and `import` must be given, and at most one of `tag`,
+`rev`, and `branch` (only with `git`). A bare requirement (`bsb = "1"`) parses, but there is no default
 registry, so installing it is an error.
 
 A package fetched from git or a registry can't have `path` dependencies (they would name files
@@ -428,7 +430,12 @@ smaller than the change.
 ## Imports
 
 Packages made from other publishers' downloads (`lx import`) are ordinary packages that say where
-their text came from in `[package.upstream]`:
+their text came from in `[package.upstream]`. A project uses one as an `import` dependency
+(`ebible-eng-asv = { import = "ebible:eng-asv" }`, what `lx import` writes): the host makes it
+from the publisher's download when it installs, and keeps it in the library by its files'
+checksum, so every project locking the same files shares one copy, and the lock pins what it was
+made from ([lock.md](lock.md#imports)). Or as a path package (`lx import --vendor`, in the
+project's `imports/<id>/`), carried with the project and editable by hand.
 
 ```toml
 [package.upstream]

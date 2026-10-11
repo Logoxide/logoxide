@@ -80,6 +80,8 @@ pub struct LockedEntry {
     pub git: Option<String>,
     /// The commit its files are from
     pub commit: Option<String>,
+    /// The import it was made by (`ebible:eng-kjv2006`), kept in the library by its checksum
+    pub import: Option<String>,
     /// The package the manifest asks for that brings it in (what the manifest calls that one),
     /// when the manifest doesn't ask for it itself. A collection's packages are the project's
     /// Bibles and books; another package's dependencies aren't
@@ -105,6 +107,7 @@ impl From<&LockedPackage> for LockedEntry {
             checksum: locked.checksum.clone(),
             git: locked.git.clone(),
             commit: locked.commit.clone(),
+            import: locked.import.clone(),
             dependency_of: None,
             enabled: true,
         }
@@ -122,7 +125,7 @@ pub struct PackageManifest {
 }
 
 /// A dependency to add, as `logoxide.toml` writes it: `git` (with at most one of `version`, `tag`,
-/// `branch`, or `rev`) or `path`
+/// `branch`, or `rev`), `registry`, `path`, or `import`
 #[data]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Dependency {
@@ -130,6 +133,9 @@ pub struct Dependency {
     /// A registry's catalog whose releases are archives (`CatalogSource::Registry`'s `catalog`)
     pub registry: Option<String>,
     pub path: Option<String>,
+    /// An import (`ebible:eng-kjv2006`), made from its publisher's download as it installs and
+    /// kept in the library by its checksum (the installer asks for its entry and downloads)
+    pub import: Option<String>,
     /// A version requirement, like Cargo's: `1.2` allows 1.2.0 up to 2.0.0
     pub version: Option<String>,
     pub tag: Option<String>,
@@ -161,6 +167,7 @@ impl TryFrom<Dependency> for DetailedDependency {
             git: d.git.as_deref().map(logoxide_core::git::expand_url),
             registry: d.registry,
             path: d.path,
+            import: d.import,
             version,
             tag: d.tag,
             branch: d.branch,

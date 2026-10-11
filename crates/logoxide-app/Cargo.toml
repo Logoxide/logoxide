@@ -33,3 +33,5 @@ serde_json.workspace = true
 # Making the archives the fetcher's tests read
 tar = { version = "0.4", default-features = false }
 flate2 = "1"
+# Publishers' downloads, for the import tests
+zip = { version = "2", default-features = false, features = ["deflate"] }

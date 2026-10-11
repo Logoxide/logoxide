@@ -141,7 +141,8 @@ pub(crate) fn show(
                 (d.git
                     .as_deref()
                     .or(d.registry.as_deref())
-                    .or(d.path.as_deref()))
+                    .or(d.path.as_deref())
+                    .or(d.import.as_deref()))
                 .unwrap_or_default(),
                 d.version
                     .as_ref()

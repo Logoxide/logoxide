@@ -15,7 +15,7 @@ use crate::{
     app,
     cli::{AddArgs, Cli, Format},
     cmd::catalog::{load_registry, registry_url, warn_other_registries},
-    config, print_json,
+    config, print_json, warn,
 };
 
 fn version_req(text: &str) -> logoxide::Result<semver::VersionReq> {
@@ -211,8 +211,8 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
     // Installed from the edited manifest before it's written: if installing fails, the file is
     // as it was
     project.add(&name, &dependency)?;
-    let fetcher = cli.fetcher();
-    let lock = (project.install(&library, fetcher, Update::Only([name.clone()].into()))?).clone();
+    let only = Update::Only([name.clone()].into());
+    let lock = app().install(&mut project, only, Frozen::default(), &mut warn())?;
     project.save_manifest()?;
     let locked = lock.get(&name).map(|p| p.label()).unwrap_or(name);
     outln!(
@@ -377,7 +377,12 @@ pub(crate) fn remove(cli: &Cli, id: &str) -> logoxide::Result<()> {
         )));
     }
     // Written only once the rest still installs
-    project.install(&library, cli.fetcher(), Update::Nothing)?;
+    app().install(
+        &mut project,
+        Update::Nothing,
+        Frozen::default(),
+        &mut warn(),
+    )?;
     project.save_manifest()?;
     outln!("removed {id}");
     Ok(())
@@ -439,7 +444,7 @@ pub(crate) fn install(cli: &Cli, update: Update, frozen: Frozen) -> logoxide::Re
     let before: Vec<String> = (previous.iter())
         .flat_map(|l| l.packages.iter().map(|p| p.name()))
         .collect();
-    let lock = app().install(&mut project, update, frozen)?;
+    let lock = app().install(&mut project, update, frozen, &mut warn())?;
     // A release whose tag now names another commit: what was read before may not be what's
     // read now
     for moved in previous.map(|p| lock.moved_since(&p)).unwrap_or_default() {
@@ -508,6 +513,8 @@ struct Listed {
     commit: Option<String>,
     path: Option<String>,
     registry: Option<String>,
+    /// The import it was made by (`ebible:eng-asv`)
+    import: Option<String>,
 }
 
 /// The locked packages; with `only`, those in use (`true`) or not (`false`)
@@ -550,6 +557,7 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
                 commit: locked.commit.clone(),
                 path: locked.path.clone(),
                 registry: locked.registry.clone(),
+                import: locked.import.clone(),
             });
         }
         return print_json(&listed);
@@ -578,9 +586,13 @@ pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
                     .unwrap_or("")
             ),
             (_, Some(path)) => format!("path {path}"),
-            _ => match &locked.registry {
-                Some(registry) => format!("registry {registry}"),
-                None => String::new(),
+            _ => match (&locked.registry, &locked.import) {
+                (Some(registry), _) => format!("registry {registry}"),
+                (_, Some(import)) => match &locked.upstream_version {
+                    Some(upstream) => format!("import {import} ({upstream})"),
+                    None => format!("import {import}"),
+                },
+                _ => String::new(),
             },
         };
         let installed = if library.is_installed(locked, project.dir()) {
@@ -633,6 +645,9 @@ struct InfoReport {
     commit: Option<String>,
     path: Option<String>,
     registry: Option<String>,
+    /// The import it was made by (`ebible:eng-asv`), and the publisher's version of its text
+    import: Option<String>,
+    upstream_version: Option<String>,
     /// Where it is, how many files, and their bytes
     dir: String,
     files: usize,
@@ -699,6 +714,8 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
             commit: locked.commit.clone(),
             path: locked.path.clone(),
             registry: locked.registry.clone(),
+            import: locked.import.clone(),
+            upstream_version: locked.upstream_version.clone(),
             dir: dir.display().to_string(),
             files: files.len(),
             size,
@@ -733,7 +750,22 @@ pub(crate) fn info(cli: &Cli, id: &str) -> logoxide::Result<()> {
     let from = match (&locked.git, &locked.path) {
         (Some(git), _) => format!("{git} at {}", locked.commit.as_deref().unwrap_or("?")),
         (_, Some(path)) => format!("path {path}"),
-        _ => String::from("?"),
+        _ => match (&locked.registry, &locked.import) {
+            (Some(registry), _) => format!("registry {registry}"),
+            (_, Some(import)) => {
+                let made = (locked.downloads.iter())
+                    .map(|d| d.url.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                match &locked.upstream_version {
+                    Some(upstream) => {
+                        format!("import {import}, the publisher's {upstream} ({made})")
+                    }
+                    None => format!("import {import} ({made})"),
+                }
+            }
+            _ => String::from("?"),
+        },
     };
     outln!("from: {from}");
     outln!(

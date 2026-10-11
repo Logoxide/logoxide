@@ -322,7 +322,7 @@ pub(crate) mod tests {
             }]
         );
         let dest = MemoryStorage::new();
-        crate::build(entry, &[("zip".into(), bytes)], &dest).unwrap();
+        crate::tests::build_twice(entry, &[("zip".into(), bytes)], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             [

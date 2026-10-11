@@ -1,29 +1,29 @@
 //! `lx import`: packages made from other publishers' downloads, and updating them
 
 use logoxide::resolve::{Frozen, Update};
-use logoxide_app::import::{Outcome, UpdatePlan};
+use logoxide_app::{
+    import::{Outcome, UpdatePlan},
+    importer::Importing,
+};
 
 use crate::{
     app,
     cli::{Cli, Format},
     cmd::package::{DiffReport, print_skipped},
-    config, print_json, warn,
+    print_json, warn,
 };
 
-pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
+pub(crate) fn import(cli: &Cli, source: &str, vendored: bool) -> logoxide::Result<()> {
     logoxide_app::import::check_source(source)?;
     let library = cli.library();
     let mut project = cli.project(&library)?;
-    let (app, mut warn) = (app(), warn());
     // The project's catalogs, in order: the first that lists it is the one used
-    let fetch = app.catalog_fetch(logoxide_app::catalog_cache::Freshness::Fresh);
-    let entry = logoxide_app::import::find_entry(fetch, config(), &project, source, &mut warn)?;
-    let imported =
-        logoxide_app::import::run(&mut project, &library, &entry, app.http(), app.fetcher())?;
+    let imported = app().import(&mut project, source, vendored, &mut warn())?;
     print_skipped(&imported.skipped);
     outln!(
-        "imported {} ({}) into {}",
+        "imported {} {} ({}) into {}",
         imported.id,
+        imported.version,
         imported.name,
         imported.dir.display()
     );
@@ -32,13 +32,15 @@ pub(crate) fn import(cli: &Cli, source: &str) -> logoxide::Result<()> {
 }
 
 /**
-`lx import --update`: each of the project's imports (path packages whose `upstream` a catalog
-entry's import writes), or the one named, made again from its publisher's download and compared
-with the one the project has; changed ones are replaced (unless `dry_run`) and locked again. An
+`lx import --update`: each of the project's imports (`import` dependencies, and path packages
+whose `upstream` a catalog entry's import writes), or the one named, made again from its
+publisher's download and compared with the one the project has; changed ones are replaced
+(unless `dry_run`: a new version in the library, or a vendored one's files) and locked again. An
 entry whose versions follow its updates (eBible.org's dates, SWORD's `Version`) is only
 downloaded when the catalog lists a newer version. One that fails is said, and the rest go on;
 those replaced are locked again whatever failed, and then it's an error. Files an update removes
-are asked about first in a terminal (unless `yes`); elsewhere, `yes` must allow it
+from a vendored import are asked about first in a terminal (unless `yes`); elsewhere, `yes` must
+allow it
 */
 pub(crate) fn import_update(
     cli: &Cli,
@@ -50,6 +52,7 @@ pub(crate) fn import_update(
     let mut project = cli.project(&library)?;
     let json = cli.format == Format::Json;
     let plans = app().plan_updates(&project, name, &mut warn())?;
+    let importing = app().importing(&project);
     let mut changed = std::collections::BTreeSet::new();
     let (mut reports, mut failed) = (vec![], vec![]);
     for plan in plans {
@@ -66,7 +69,8 @@ pub(crate) fn import_update(
             error: None,
         };
         let dep = plan.dependency.clone();
-        match update_import(plan, &mut report, UpdateOptions { dry_run, yes, json }) {
+        let options = UpdateOptions { dry_run, yes, json };
+        match update_import(plan, &mut report, options, &importing) {
             Ok(()) if report.status == "updated" => {
                 changed.insert(dep);
             }
@@ -87,7 +91,10 @@ pub(crate) fn import_update(
     let locked = match changed.is_empty() {
         true => Ok(()),
         false => {
-            (app().install(&mut project, Update::Only(changed), Frozen::default())).map(|_| ())
+            let update = Update::Only(changed);
+            let locked = app().install_with(&mut project, &importing, update, Frozen::default());
+            importing.warnings().into_iter().for_each(&mut warn());
+            locked.map(|_| ())
         }
     };
     if json {
@@ -142,12 +149,14 @@ fn update_import(
     plan: UpdatePlan,
     report: &mut ImportReport,
     options: UpdateOptions,
+    importing: &Importing<'_>,
 ) -> logoxide::Result<()> {
     let UpdateOptions { dry_run, yes, json } = options;
     let UpdatePlan {
         dependency: dep,
         import: import_name,
         dir,
+        in_library,
         from,
         outcome,
         ..
@@ -185,9 +194,15 @@ fn update_import(
     report.upstream_to = update.upstream_to.clone();
     report.removed = removed.clone();
     if dry_run {
-        if !removed.is_empty() {
+        if !removed.is_empty() && !in_library {
             say(format!("    would remove {}", removed.join(", ")));
         }
+        return Ok(());
+    }
+    // Kept in the library: the new version goes beside the old, which other projects may lock
+    if in_library {
+        importing.prepare(&import_name, change.build()?);
+        report.status = "updated";
         return Ok(());
     }
     if !removed.is_empty() && !yes {

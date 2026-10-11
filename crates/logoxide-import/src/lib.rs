@@ -1,7 +1,8 @@
 /*!
 logoxide-import: packages from other publishers' downloads, so a Bible that isn't a logoxide
-package can still be installed: its files with a `logoxide.toml` around them, which a vault then
-uses as a path package (or which can be pushed anywhere as a git repository).
+package can still be installed: its files with a `logoxide.toml` around them, which a project
+uses as an `import` dependency kept in the library (logoxide-app's `importer`), or as a path
+package (or which can be pushed anywhere as a git repository).
 
 - **eBible.org** ([`ebible`]): a translation's `<id>_usfm.zip`, one USFM file per book, with its
   copyright in `copr.htm` (the package's license file)
@@ -46,7 +47,7 @@ use logoxide::{
 
 pub use update::{
     ImportUpdate, apply_import, compare_import, compare_publisher_versions, import_is_current,
-    import_removals,
+    import_removals, set_version,
 };
 
 /// Every publisher's import prefix: what `ebible:<id>` and `fetch:<id>` start with
@@ -295,6 +296,29 @@ pub(crate) mod tests {
             writer.write_all(bytes).unwrap();
         }
         writer.finish().unwrap().into_inner()
+    }
+
+    /**
+    Builds `entry`'s import into `dest`, and again elsewhere: the two must be the same bytes, so
+    a locked import made again on another machine has the checksum it was locked with
+    */
+    pub(crate) fn build_twice(
+        entry: &logoxide::catalog::CatalogEntry,
+        files: &[(String, Vec<u8>)],
+        dest: &dyn logoxide::storage::Storage,
+    ) {
+        super::build(entry, files, dest).unwrap();
+        use logoxide::storage::Storage;
+        let again = super::MemoryStorage::new();
+        super::build(entry, files, &again).unwrap();
+        assert_eq!(dest.walk("").unwrap(), again.walk("").unwrap());
+        for path in again.walk("").unwrap() {
+            assert_eq!(
+                dest.read(&path).unwrap(),
+                again.read(&path).unwrap(),
+                "{path}"
+            );
+        }
     }
 
     #[test]

@@ -223,6 +223,63 @@ Any order, as they're reachable; each in `logoxide-import`.
 4. **The plugin** uses `importPrefixes` for its browser's source filter and the new error kinds
    (phase H.2); its headless tests cover an import end to end once.
 
+## Phase O: imports in the library (the owner's request, 2026-10-10)
+
+Today an import is a path package in each project's `imports/<id>/`: made once per project,
+never shared, unpinned (a path package's lock entry has no checksum), versioned per project (two
+projects' `1.0.0` can be different texts), and not rebuilt by `lx install` on a clone without the
+folder. Imports become dependencies like git and registry ones, kept in the shared library.
+
+1. **Manifest**: `name = { import = "ebible:eng-kjv2006" }` (`DetailedDependency.import`; with
+   `version` a requirement on the import's own version; refused beside `git`, `registry`,
+   `path`, and `folder`; a name starting with `-` or without `prefix:` refused). `doc/manifest.md`.
+2. **Lock**: an import's entry has `import`, `upstream-version` (the publisher's), `download`s
+   (`[[package.download]]`: `name`, `url`, `sha256`, each file the build read), and a required
+   `checksum`; its library folder is `<version>+i<8 hex of the checksum>`, beside `+g` and
+   `+a`, so two projects' imports share a folder exactly when their files are the same.
+   `doc/lock.md`.
+3. **The core stays publisher-free**: `Fetcher::import(&ImportRequest) -> ImportBuild` (a
+   default that says the host can't import), asked for a build: `Pinned` (rebuild the locked
+   one: the same downloads, by their hashes, at the locked version) or `Fresh` (the publisher's
+   current text; with the installed `current`, versioned against it as `lx import --update`
+   does). The resolver: a kept, installed import is checked by checksum like any; one not
+   installed is rebuilt (`Pinned`) and must match the lock's checksum, else an error naming
+   what changed (a download's hash: the publisher changed it; else the build) and `lx update
+   <name>` / `lx import --update`; offline and `--locked` as for git. `Update` allows `Fresh`.
+4. **logoxide-import**: builds are deterministic (the same downloads and entry make the same
+   bytes, tested per publisher), and `set_version` writes the locked version into a rebuild
+   (an import's version is logoxide's label, given when it's locked).
+5. **logoxide-app**: `Importing<F>` wraps any `Fetcher`, building through the project's
+   catalogs (`find_entry`, loaded once) and `Http`, recording each download's URL and SHA-256;
+   `build_import(entry, downloads, request, reader)` is the shared step (the FFI's too).
+   `Logoxide::install` uses it. `import::run` adds `{ import = … }` and installs (the library
+   holds it); `run_vendored` keeps today's `imports/<id>/` path package (`lx import --vendor`:
+   for hand-editing, or a project that carries its texts). `plan_updates` covers both:
+   an import dependency's update is planned against its library copy and applied by installing
+   with `Update::Only` (the planned build handed to the importer, so nothing downloads twice),
+   leaving the old version for other projects and `lx clean`.
+6. **lx**: `import --vendor`; `import --update` for both kinds; `lx update <import>` takes the
+   publisher's current text; `list`/`info` show `import ebible:…`. **MCP**: `import` as lx's.
+   **FFI**: `FetchRequest::Import { import, downloads }`, answered with `provideImport(entry,
+   files)` (the downloads' bytes, by name, as `importDownloaded` takes them); the plugin keeps
+   path imports until it answers these (its library is the vault, so it saves nothing there).
+7. Docs: `doc/workflow.md`, CLAUDE.md, the crates' docs.
+
+Check: a project importing into the library, a second project using the same folder without
+downloading, a clone without the library rebuilding to the same checksum, a changed download
+refused, `lx import --update` making a new folder, `lx clean` keeping both while each is locked;
+the real eBible.org KJV end to end.
+
+**Done** (2026-10-10, branch `phase-o-imports`), as above, with one addition: a fresh import
+first looks in the library for a copy of the version the catalog lists (eBible.org and SWORD,
+whose versions track updates), so a second project downloads nothing; a lock entry's download
+then has no `sha256` (made again, it's checked by checksum alone). `logoxide-app`'s
+`tests/imports.rs` covers the checks on a fake web; checked live with eBible.org's ASV (31,102
+verses, a second project shared the folder without downloading, a fresh library rebuilt the same
+lock, `--offline` refused) and CrossWire's KJV (rebuilt to the same lock on a third library).
+The FFI's `import_dependencies_install_through_the_host` covers the host loop. Left: the
+plugin answering `ImportEntry` (its library is the vault; it keeps vendored imports until then).
+
 ## Later (not planned; the owner's deferrals, N8)
 
 - **Catalogs of catalogs** (`[[catalog]]` entries a search follows). To settle first: cycles and

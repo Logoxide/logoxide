@@ -13,13 +13,16 @@ use std::{
 };
 
 use boltffi::*;
+use logoxide_app::importer;
 use logoxide_core::{
     LockedPackage, MemoryStorage, Storage,
     git::{Fetcher, GitRef},
     library::library_dir,
     manifest::{MANIFEST, Manifest},
     net::archive::{self, Refs},
-    resolve::{Frozen, Packages, Resolver, Update, tag_version},
+    resolve::{
+        Frozen, ImportBuild, ImportKind, ImportRequest, Packages, Resolver, Update, tag_version,
+    },
 };
 
 use crate::{
@@ -62,6 +65,10 @@ pub enum FetchRequest {
     /// and give them to `provideFiles(location, files)`, or `provideMissing(location)` if it
     /// isn't there
     Files { location: PackageLocation },
+    /// Find the import (`ebible:eng-kjv2006`) in the project's catalogs and give its entry to
+    /// `provideImportEntry(entry)`: what an `import` dependency is made from, when the last
+    /// `loadCatalogs` didn't list it. Its downloads are then asked for as `Download`s
+    ImportEntry { import: String },
 }
 
 /// What `install` did: it needs something, or it's done
@@ -113,6 +120,8 @@ struct Given {
     catalog: Option<logoxide_core::catalog::Catalog>,
     /// Versions installed by this installer, by their folder in the library
     installed: BTreeMap<String, Arc<MemoryStorage>>,
+    /// Imports' catalog entries the host gave, by import name
+    import_entries: HashMap<String, logoxide_core::catalog::CatalogEntry>,
 }
 
 /// One round: the resolver's fetcher and packages, over what's been given. What's missing is
@@ -213,9 +222,43 @@ impl<'a> Round<'a> {
     }
 }
 
+impl Round<'_> {
+    /// An import's catalog entry: from the catalogs `loadCatalogs` read, else given, else asked
+    /// for
+    fn import_entry(
+        &self,
+        import: &str,
+    ) -> logoxide_core::Result<logoxide_core::catalog::CatalogEntry> {
+        let given = self.given();
+        let listed = (given.catalog.as_ref()).and_then(|c| c.find_import(import));
+        if let Some(entry) = listed.or_else(|| given.import_entries.get(import)) {
+            return Ok(entry.clone());
+        }
+        drop(given);
+        Err(self.ask(FetchRequest::ImportEntry {
+            import: import.to_string(),
+        }))
+    }
+}
+
 impl Fetcher for Round<'_> {
     fn tags(&self, url: &str) -> logoxide_core::Result<Vec<(String, String)>> {
         Ok(self.refs(url)?.tags)
+    }
+
+    /// An import made as logoxide-app makes it, from its entry and downloads the host gives
+    /// (each asked for as a `Download`)
+    fn import(&self, request: &ImportRequest<'_>) -> logoxide_core::Result<ImportBuild> {
+        let entry = self.import_entry(request.import)?;
+        let http = HostHttp { round: self };
+        let files = match &request.kind {
+            ImportKind::Pinned(locked) => {
+                importer::download_pinned(&http, &entry, request.name, locked)?
+            }
+            ImportKind::Fresh { .. } => importer::download(&http, &entry)?,
+        };
+        let reader = logoxide_core::reader::DefaultReader;
+        Ok(importer::make(&entry, &files, &request.kind, &reader)?.0)
     }
 
     fn download(&self, url: &str) -> logoxide_core::Result<Vec<u8>> {
@@ -343,6 +386,7 @@ while (step.tag === "Fetch") {
   if (r.tag === "Refs") installer.provideRefs(r.repository, await get(r.url));
   else if (r.tag === "Archive") installer.provideArchive(r.repository, r.commit, await getFirst(r.urls));
   else if (r.tag === "Download") installer.provideDownload(r.url, await getFirst(r.urls));
+  else if (r.tag === "ImportEntry") installer.provideImportEntry(catalog.findImport(r.import));
   else if (await exists(r.location)) installer.provideFiles(r.location, await readAll(r.location));
   else installer.provideMissing(r.location);
   step = installer.install(project, UpdateMode.Nothing);
@@ -536,6 +580,14 @@ impl LogoxideInstaller {
     /// `message` says why. Reading catalogs passes over it with a warning; installing stops
     pub fn provide_download_failed(&self, url: String, message: String) {
         locked(&self.given).failed.insert(url, message);
+    }
+
+    /// The answer to an `ImportEntry` request: the import's entry, as a catalog lists it
+    pub fn provide_import_entry(&self, entry: crate::CatalogEntry) {
+        let entry: logoxide_core::catalog::CatalogEntry = entry.into();
+        if let Some(import) = entry.source.import_name().map(String::from) {
+            locked(&self.given).import_entries.insert(import, entry);
+        }
     }
 
     /// The answer to a `Download` request

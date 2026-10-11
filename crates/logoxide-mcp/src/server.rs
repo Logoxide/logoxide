@@ -214,8 +214,8 @@ impl Server {
 
     #[tool(
         description = "Imports a package one of the project's catalogs lists (`ebible:eng-kjv2006`, \
-        as search_catalogs gives it) into the project's imports/ folder, and adds and installs \
-        it (only with --allow-writes; never a URL or a path)",
+        as search_catalogs gives it) and adds it as an import dependency, installed in the library \
+        (only with --allow-writes; never a URL or a path)",
         annotations(
             read_only_hint = false,
             destructive_hint = false,

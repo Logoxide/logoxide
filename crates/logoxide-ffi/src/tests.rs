@@ -408,6 +408,7 @@ impl Host {
         );
         self.requests.push(request.clone());
         match request {
+            FetchRequest::ImportEntry { import } => panic!("no imports here: {import}"),
             FetchRequest::Refs { repository, url } => {
                 assert_eq!(url, format!("{URL}.git/info/refs?service=git-upload-pack"));
                 installer.provide_refs(repository, Self::refs()).unwrap();
@@ -779,6 +780,99 @@ fn catalogs_and_ebible_imports() {
     let fewer = mine.remove_catalog(ebible.clone()).unwrap();
     assert_eq!(fewer.catalogs().len(), 5);
     assert!(!fewer.catalogs().contains(&ebible));
+}
+
+/// An `import` dependency installed through the host: its entry and download asked for, made,
+/// kept in the library by its checksum, and made again from the lock on another device
+#[test]
+fn import_dependencies_install_through_the_host() {
+    use std::io::Write;
+
+    let logoxide = Logoxide::new();
+    let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n\"eng\",\"eng-asv\",\"English\",\"American Standard Version (1901)\",\"\",\"True\",\"public domain\",\"2026-10-08\",\"ltr\",\"True\",\"ASV\"\n";
+    let catalog = logoxide
+        .parse_catalog(logoxide.ebible_catalog_url(), csv.into())
+        .unwrap();
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    writer
+        .start_file(
+            "73-JHNeng-asv.usfm",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+    writer
+        .write_all(b"\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n")
+        .unwrap();
+    let zip = writer.finish().unwrap().into_inner();
+    let zip_url = "https://ebible.org/Scriptures/eng-asv_usfm.zip";
+    let project = (logoxide.parse_project(None, None).unwrap())
+        .add_dependency(
+            "ebible-eng-asv".into(),
+            Dependency {
+                import: Some("ebible:eng-asv".into()),
+                default_features: true,
+                ..Dependency::default()
+            },
+        )
+        .unwrap();
+    assert!(
+        project
+            .manifest_text()
+            .contains("ebible-eng-asv = { import = \"ebible:eng-asv\" }")
+    );
+    // Answers what an install asks, counting the requests
+    let run = |installer: &LogoxideInstaller, project: &LogoxideProject| {
+        let mut asked = vec![];
+        loop {
+            match installer.install(project, UpdateMode::Nothing).unwrap() {
+                InstallStep::Done { lock, files } => return (lock, files, asked),
+                InstallStep::Fetch { request } => {
+                    asked.push(request.clone());
+                    match request {
+                        FetchRequest::ImportEntry { import } => {
+                            let entry = catalog.find_import(import).unwrap();
+                            installer.provide_import_entry(entry);
+                        }
+                        FetchRequest::Download { url, .. } => {
+                            assert_eq!(url, zip_url);
+                            installer.provide_download(url, zip.clone());
+                        }
+                        FetchRequest::Files { location } => installer.provide_missing(location),
+                        other => panic!("{other:?}"),
+                    }
+                }
+            }
+        }
+    };
+    let installer = logoxide.installer();
+    let (lock, files, asked) = run(&installer, &project);
+    assert!(asked.contains(&FetchRequest::ImportEntry {
+        import: "ebible:eng-asv".into()
+    }));
+    assert!(lock.contains("import = \"ebible:eng-asv\""), "{lock}");
+    assert!(lock.contains("[[package.download]]"), "{lock}");
+    let dir = files[0]
+        .path
+        .split('/')
+        .take(3)
+        .collect::<Vec<_>>()
+        .join("/");
+    assert!(dir.starts_with("packages/ebible-eng-asv/1.0.0+i"), "{dir}");
+    let entry = &(logoxide.parse_project(Some(project.manifest_text()), Some(lock.clone())))
+        .unwrap()
+        .packages()[0];
+    assert_eq!(entry.import.as_deref(), Some("ebible:eng-asv"));
+    assert_eq!(
+        entry.location,
+        PackageLocation::Library { dir: dir.clone() }
+    );
+
+    // Another device with the lock: made again from the locked download, the same files
+    let locked =
+        (logoxide.parse_project(Some(project.manifest_text()), Some(lock.clone()))).unwrap();
+    let (again, files_again, _) = run(&logoxide.installer(), &locked);
+    assert_eq!(again, lock);
+    assert_eq!(files_again, files);
 }
 
 #[test]

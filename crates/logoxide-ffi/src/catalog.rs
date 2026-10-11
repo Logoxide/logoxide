@@ -317,6 +317,12 @@ impl LogoxideCatalog {
             .map(CatalogEntry::from)
     }
 
+    /// The entry for an import (`ebible:eng-kjv2006`): what an installer's `ImportEntry` request
+    /// asks for (`LogoxideInstaller.provideImportEntry`)
+    pub fn find_import(&self, import: String) -> Option<CatalogEntry> {
+        self.catalog.find_import(&import).map(CatalogEntry::from)
+    }
+
     /// This catalog and another's packages (an id in both is this one's)
     pub fn merge(&self, other: &LogoxideCatalog) -> LogoxideCatalog {
         LogoxideCatalog {
