@@ -139,6 +139,8 @@ lx add --registry https://example.org/registry/catalog.toml romans
 lx install                                 # what logoxide.lock says, on a new device
 lx update [id]                             # newer versions the requirements allow
 lx list
+lx add --global github:someone/kjv         # into the library's own logoxide.toml, even in a vault
+lx list --all                              # every version in the library, and who uses it
 
 lx new --from book.epub --license CC0-1.0   # a package from one file: an EPUB's title and authors fill it in
 lx new my-library --kind collection --name "My Library" --language en   # a package of packages

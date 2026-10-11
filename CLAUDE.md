@@ -584,7 +584,8 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `apply_update(change, dir, allow_removals)` for a vendored one; a library one is installed
   with `Update::Only` and `Change::build` prepared, beside the old version. `clean.rs`: `clean(library, projects, remove,
   prune_roots, said)` under the library's lock, each step a `Cleaning` given as it happens
-  (`STALE_STAGING`). `media.rs`: `verify(http, url, file)`, hashed as it downloads. `read.rs`:
+  (`STALE_STAGING`); `installed(library, projects)` (no lock) each version with its `used_by`
+  (`User`: path, host, gone). `media.rs`: `verify(http, url, file)`, hashed as it downloads. `read.rs`:
   `read(project, library, reader, reference, style)` (topos's `parse_with_translation` over
   `Project::translations`; the Bible named, else `Project::bibles`' first: `Read { bible,
   abbreviation, passage, reference, osis, text, versification }`) and `compare(…, bibles,
@@ -640,8 +641,11 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   the prompts, the JSON reports, and the words. Packages come through git where it's installed,
   else over HTTPS (`NetFetcher`); `Cli::git` is the `git` command for release, diff, and
   publish. The
-  project is `--project`, else the current folder if it has a `logoxide.toml`, else the library's
-  own. `--format text|json` (JSON for list, info, check, diff, verify, catalog list, catalog refresh, search,
+  project is `--project`, else the library's own with `--global` (no `-g`: `lx search -g` is a
+  genre), else the current folder if it has a `logoxide.toml`, else the library's own; `lx list
+  --all` (`list_all`) lists every version in the library with the projects locking it
+  (logoxide-app's `clean::installed`: the library's own, this one, and every root; none means
+  `lx clean --remove` deletes it). `--format text|json` (JSON for list, info, check, diff, verify, catalog list, catalog refresh, search,
   import --update, read, compare, show --references, --notes, --entry, --keys, and --xref;
   others refuse it). `lx publish` prints
   `license::assess`'s concerns, and for a package whose rights say it isn't redistributable

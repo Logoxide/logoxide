@@ -318,6 +318,12 @@ impl Logoxide {
         clean::clean(&self.library, projects, remove, prune_roots, said)
     }
 
+    /// Every version in the library, with the projects (`projects` and the library's roots)
+    /// that use it ([`clean::installed`])
+    pub fn installed(&self, projects: &[Project]) -> Result<Vec<clean::Installed>> {
+        clean::installed(&self.library, projects)
+    }
+
     /// A passage from one of the project's Bibles (`John 3:16 KJV`; [`read::read`])
     pub fn read(&self, project: &Project, reference: &str, style: &Style) -> Result<read::Read> {
         read::read(project, &self.library, self.reader(), reference, style)

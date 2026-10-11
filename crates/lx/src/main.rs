@@ -42,7 +42,7 @@ use cmd::{
     map::map,
     media::{media_add, media_check},
     package::{Lookup, check, diff, lookup, new, release, show, show_remote, verify},
-    project::{add, clean, info, install, is_enabled, list, remove, repair, set_enabled},
+    project::{add, clean, info, install, is_enabled, list, list_all, remove, repair, set_enabled},
     read::{compare, read},
 };
 
@@ -214,7 +214,10 @@ fn main() -> ExitCode {
             },
             Frozen::default(),
         ),
-        Command::List { enabled, disabled } => list(
+        Command::List { all: true, .. } => list_all(&cli),
+        Command::List {
+            enabled, disabled, ..
+        } => list(
             &cli,
             match (enabled, disabled) {
                 (true, _) => Some(true),

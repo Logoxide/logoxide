@@ -22,6 +22,9 @@ pub(crate) struct Cli {
     /// The folder with the logoxide.toml to use: the current one if it has one, else the library's
     #[arg(long, global = true)]
     pub(crate) project: Option<PathBuf>,
+    /// Use the library's own logoxide.toml, even in a project (`--project <library>`)
+    #[arg(long, global = true, conflicts_with = "project")]
+    pub(crate) global: bool,
     /// The library (LOGOXIDE_HOME, else ~/.config/logoxide/config.toml's `library`, else
     /// $XDG_DATA_HOME/logoxide)
     #[arg(long, global = true)]
@@ -64,6 +67,7 @@ impl Cli {
     pub(crate) fn project(&self, library: &Library) -> logoxide::Result<Project> {
         let dir = match &self.project {
             Some(dir) => dir.clone(),
+            None if self.global => library.root().to_path_buf(),
             None if std::path::Path::new(MANIFEST).is_file() => PathBuf::from("."),
             None => library.root().to_path_buf(),
         };
@@ -225,7 +229,8 @@ pub(crate) enum Command {
         #[arg(add = ArgValueCompleter::new(complete::dependency))]
         ids: Vec<String>,
     },
-    /// The packages logoxide.toml asks for, as locked (those turned off are marked `(off)`)
+    /// The packages logoxide.toml asks for, as locked (those turned off are marked `(off)`);
+    /// --all: every version in the library, and the projects using it
     List {
         /// Only the packages in use (logoxide.toml's that are on, and what they bring in)
         #[arg(long, conflicts_with = "disabled")]
@@ -233,6 +238,10 @@ pub(crate) enum Command {
         /// Only the packages turned off (and what only they bring in)
         #[arg(long)]
         disabled: bool,
+        /// Every version in the library, whichever project installed it, with the projects that
+        /// use it (those using none are what `lx clean --remove` deletes)
+        #[arg(long, conflicts_with_all = ["enabled", "disabled"])]
+        all: bool,
     },
     /// Whether a package is on: prints `on` or `off`, and exits with 0 if it's on, 1 if it's off,
     /// and 2 on an error (no such dependency, no project)

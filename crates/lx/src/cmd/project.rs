@@ -517,6 +517,106 @@ struct Listed {
     import: Option<String>,
 }
 
+/// An installed version, as `lx list --all --format json` prints it
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledVersion {
+    id: String,
+    version: String,
+    /// Its folder in the library's `packages/<id>/`: `<version>+g<commit>` (`+a` a registry's,
+    /// `+i` an import's)
+    key: String,
+    dir: String,
+    abbreviation: Option<String>,
+    title: Option<String>,
+    license: Option<String>,
+    /// The projects locking it; none: `lx clean --remove` deletes it
+    used_by: Vec<UsedBy>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UsedBy {
+    path: String,
+    host: String,
+    /// The library's own logoxide.toml (what `--global` uses)
+    library: bool,
+    /// On this host, and its logoxide.toml gone
+    gone: bool,
+}
+
+/// Every version in the library, and the projects using it (the library's own, this one, and
+/// every root)
+pub(crate) fn list_all(cli: &Cli) -> logoxide::Result<()> {
+    let library = cli.library();
+    let projects = [Project::open(library.root())?, cli.project(&library)?];
+    let installed = app().installed(&projects)?;
+    let canonical = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    let own = canonical(library.root()).display().to_string();
+    let here = canonical(projects[1].dir()).display().to_string();
+    let host = logoxide::roots::host_name();
+    if cli.format == Format::Json {
+        let listed: Vec<InstalledVersion> = (installed.into_iter())
+            .map(|v| InstalledVersion {
+                id: v.id.clone(),
+                version: v.version().to_string(),
+                key: v.key.clone(),
+                dir: v.dir.display().to_string(),
+                abbreviation: v.package.as_ref().map(|p| p.abbreviation.clone()),
+                title: v.package.as_ref().map(|p| p.name.clone()),
+                license: v.package.as_ref().and_then(|p| p.license.clone()),
+                used_by: (v.used_by.into_iter())
+                    .map(|u| UsedBy {
+                        library: u.host == host && u.path == own,
+                        path: u.path,
+                        host: u.host,
+                        gone: u.gone,
+                    })
+                    .collect(),
+            })
+            .collect();
+        return print_json(&listed);
+    }
+    if installed.is_empty() {
+        outln!(
+            "nothing in the library ({}) yet: `lx add --global <package>` adds one to it",
+            library.root().display()
+        );
+        return Ok(());
+    }
+    for v in &installed {
+        let about = match &v.package {
+            Some(p) => match &p.license {
+                Some(license) => format!("{} ({}), {license}", p.abbreviation, p.name),
+                None => format!("{} ({})", p.abbreviation, p.name),
+            },
+            None => String::from("(its logoxide.toml doesn't read)"),
+        };
+        let users: Vec<String> = (v.used_by.iter())
+            .map(|u| {
+                let mut said = u.path.clone();
+                if u.host != host {
+                    said = format!("{said} on {}", u.host);
+                } else if u.path == own {
+                    said = String::from("the library's own (--global)");
+                } else if u.path == here {
+                    said = format!("{said} (here)");
+                }
+                if u.gone {
+                    said.push_str(" (gone)");
+                }
+                said
+            })
+            .collect();
+        let used = match users.is_empty() {
+            true => String::from("unused (lx clean --remove deletes it)"),
+            false => format!("used by {}", users.join(", ")),
+        };
+        outln!("{} {}  {about}  {used}", v.id, v.key);
+    }
+    Ok(())
+}
+
 /// The locked packages; with `only`, those in use (`true`) or not (`false`)
 pub(crate) fn list(cli: &Cli, only: Option<bool>) -> logoxide::Result<()> {
     let library = cli.library();
@@ -829,6 +929,12 @@ pub(crate) fn clean(
             others.len(),
             if others.len() == 1 { " is" } else { "s are" },
             others.join(", ")
+        ),
+        Cleaning::Unreadable { id, key, dir, error } => outln!(
+            "kept {id} {key}: its logoxide.toml doesn't read, so its files can't be told from \
+             yours (delete {} by hand if nothing in it is yours): {}",
+            dir.display(),
+            error.lines().last().unwrap_or_default()
         ),
         Cleaning::Removed { id, key } => outln!("removed {id} {key}"),
         Cleaning::Unused { id, key, dir } => outln!("unused: {id} {key} ({})", dir.display()),

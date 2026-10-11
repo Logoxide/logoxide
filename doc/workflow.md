@@ -125,6 +125,10 @@ and needs no catalog: its file's head says whether it's a Bible, a commentary, o
 (`https://ccel.org/index/genre/gen-COM`) is searched by default, any other is added
 (`lx catalog add https://ccel.org/index/genre/gen-BIB`).
 
+Outside a vault, lx uses the library's own `logoxide.toml` (in `LOGOXIDE_HOME`): packages for the
+whole machine, for reading with `lx read` anywhere or with editors that open no vault. In a vault,
+`--global` reaches it (`lx add --global github:someone/kjv`, `lx list --global`).
+
 ```sh
 lx import ccel:kjv              # CCEL's ThML, a whole Bible in one file, with the Apocrypha
 lx import ccel:henry/mhc1       # any other CCEL work by its author and name: here a commentary
@@ -230,6 +234,7 @@ what it makes now.
 lx update                                 # newer versions the requirements allow (kjv 1.0.1 → 1.1.0)
 lx update kjv                             # just one
 lx remove bsb                             # out of logoxide.toml; its files stay in the library
+lx list --all                             # every version in the library, and the projects using it
 lx clean                                  # versions no lock here uses (--keep ~/Other/Vault)
 lx clean --remove                         # delete them
 ```

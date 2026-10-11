@@ -2,7 +2,7 @@
 Shell completion, run by `lx` itself (`source <(COMPLETE=bash lx)`; also `zsh`, `fish`), so it
 knows the project's registries and dependencies: `lx add dorean-local:<Tab>` lists that
 registry's packages, by path and by id. The project is the current folder's, else the library's
-own, as when `--project` isn't given. Registries on the web aren't downloaded for this
+own, as when `--project` isn't given (with `--global`, the library's own). Registries on the web aren't downloaded for this
 */
 
 use std::{ffi::OsStr, path::PathBuf};
@@ -15,9 +15,10 @@ fn config() -> logoxide::config::Config {
     logoxide::config::Config::load().unwrap_or_default()
 }
 
-/// The project `lx` would use here without `--project`
+/// The project `lx` would use here without `--project`: the library's own with `-g`
 fn project() -> Option<Project> {
-    let dir = match std::path::Path::new(MANIFEST).is_file() {
+    let global = std::env::args().any(|a| a == "--global");
+    let dir = match !global && std::path::Path::new(MANIFEST).is_file() {
         true => PathBuf::from("."),
         false => (config().library(None, None).root()).to_path_buf(),
     };

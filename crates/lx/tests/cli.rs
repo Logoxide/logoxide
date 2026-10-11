@@ -210,6 +210,76 @@ fn a_vault_adds_lists_turns_off_and_cleans() {
 }
 
 #[test]
+fn global_adds_to_the_library_and_list_all_shows_every_version() {
+    let world = World::new("global");
+    let (one, two) = (world.path("one"), world.path("two"));
+    released(&one, "one", "1.0.0");
+    released(&two, "two", "1.0.0");
+    world.ok(&["init"]);
+    // In a project, --global is the library's own logoxide.toml
+    world.ok(&["add", "--git", &one.display().to_string()]);
+    let added = world.ok(&["add", "--global", "--git", &two.display().to_string()]);
+    assert!(added.contains("library/logoxide.toml"), "{added}");
+    assert!(world.ok(&["list"]).contains("one 1.0.0"));
+    let global = world.ok(&["list", "--global"]);
+    assert!(
+        global.contains("two 1.0.0") && !global.contains("one"),
+        "{global}"
+    );
+    assert!(
+        !world
+            .lx(&["list", "--global", "--project", "."])
+            .status
+            .success()
+    );
+
+    let all = world.ok(&["list", "--all"]);
+    assert!(all.contains("one 1.0.0+g"), "{all}");
+    assert!(all.contains("(here)"), "{all}");
+    assert!(
+        all.contains("used by the library's own (--global)"),
+        "{all}"
+    );
+    let listed = world.json(&["list", "--all", "--format", "json"]);
+    assert_eq!(listed.as_array().map(Vec::len), Some(2));
+    assert_eq!(listed[1]["id"], "two");
+    assert_eq!(listed[1]["abbreviation"], "TWO");
+    assert_eq!(listed[1]["usedBy"][0]["library"], true);
+
+    // What no project uses is said, as lx clean says it
+    world.ok(&["--global", "remove", "two"]);
+    let all = world.ok(&["list", "--all"]);
+    assert!(
+        all.contains("two 1.0.0+g") && all.contains("unused (lx clean --remove deletes it)"),
+        "{all}"
+    );
+    let listed = world.json(&["list", "--all", "--format", "json"]);
+    assert_eq!(listed[1]["usedBy"], serde_json::json!([]));
+
+    // A version an older lx installed, whose manifest this one can't read, is said and kept,
+    // and the clean goes on to the rest
+    let old = world.path("library/packages/old/1.0.0+g0123abcd");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(
+        old.join("logoxide.toml"),
+        "[package]\nid = \"old\"\nname = \"Old\"\nabbreviation = \"OLD\"\nversion = \"1.0.0\"\nlanguage = \"en\"\nupstream = \"a string, as it was\"\n",
+    )
+    .unwrap();
+    assert!(
+        world
+            .ok(&["list", "--all"])
+            .contains("old 1.0.0+g0123abcd  (its logoxide.toml doesn't read)")
+    );
+    let cleaned = world.ok(&["clean", "--remove"]);
+    assert!(
+        cleaned.contains("kept old 1.0.0+g0123abcd: its logoxide.toml doesn't read"),
+        "{cleaned}"
+    );
+    assert!(cleaned.contains("removed two 1.0.0+g"), "{cleaned}");
+    assert!(old.join("logoxide.toml").is_file());
+}
+
+#[test]
 fn path_packages_are_used_in_place() {
     let world = World::new("path");
     package(&world.path("local"), "local", "0.1.0");
