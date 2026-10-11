@@ -493,7 +493,7 @@ fn catalog_entry(catalog: &str, entry: &CatalogEntry) -> Value {
             .text("name", &entry.name, SHORT)
             .text("abbreviation", &entry.abbreviation, SHORT)
             .text("language", &entry.language, SHORT)
-            .maybe("languageName", entry.language_name.as_deref(), SHORT)
+            .text("languageName", entry.language_shown(), SHORT)
             .maybe("version", entry.version.as_deref(), SHORT)
             .maybe("description", entry.description.as_deref(), LONG)
             .maybe("license", entry.license.as_deref(), SHORT)

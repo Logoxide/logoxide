@@ -97,7 +97,11 @@ entry whose `id` isn't one (`../kjv`, `KJV`, empty) is passed over with a warnin
 of the catalog read: an id names a folder in the library. Searches match without regard to case
 or combining marks (both sides are lowercased, decomposed to NFD, stripped of every mark,
 Unicode's `General_Category=Mark`, and a final sigma read as `σ`), so `ιησους` finds `Ἰησοῦς`,
-`בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. When catalogs are searched together, the
+`בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. A search for a language (`lx search
+--language`) takes a BCP 47 tag as RFC 4647's basic filtering does, both tags made canonical
+first (`en` matches `en-US` and `en-Latn`, `eng` is `en`, `pt-BR` doesn't match `pt`), or a
+language's name: an entry's `language-name`, or the English name of a language with a
+two-letter ISO 639-1 code (`Korean` finds `ko`), compared as words are. When catalogs are searched together, the
 first entry with a given id wins, so catalogs with overlapping ids should prefix them
 (logoxide's importers use `ebible-`, `fetch-`, `ccel-`, `sword-`); `lx search` and `lx import` warn when an
 id is listed by more than one of the project's catalogs, and `lx add` when another of its

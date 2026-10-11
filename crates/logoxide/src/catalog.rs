@@ -247,6 +247,31 @@ impl CatalogEntry {
         (self.rights).or(crate::license::derived_rights(self.license.as_deref()))
     }
 
+    /**
+    Whether it's in the language `wanted` names: a BCP 47 range its tag matches
+    ([`crate::language::matches_range`]: `en` is every English, `pt-BR` only Brazil's, `eng` is
+    `en`), or the language's name, as the catalog gives it (`Español`) or in English
+    ([`crate::language::language_name`]: `Spanish`), ignoring case and marks
+    */
+    pub fn in_language(&self, wanted: &str) -> bool {
+        let wanted = fold(wanted.trim());
+        crate::language::matches_range(&wanted, &self.language)
+            || (self.language_name.as_deref())
+                .into_iter()
+                .chain(crate::language::language_name(&self.language))
+                .any(|name| fold(name) == wanted)
+    }
+
+    /**
+    Its language's name to show: the catalog's (`Español`), else its English name
+    ([`crate::language::language_name`]), else its tag
+    */
+    pub fn language_shown(&self) -> &str {
+        (self.language_name.as_deref())
+            .or_else(|| crate::language::language_name(&self.language))
+            .unwrap_or(&self.language)
+    }
+
     /// Whether it's mainly about the book with this USFM code (`ROM`), as its `about-books` says
     pub fn is_about(&self, book: &str) -> bool {
         self.about_books.iter().any(|b| b == book)
@@ -522,6 +547,41 @@ impl Catalog {
                     work: entry.work.clone(),
                     name: (entry.work.as_deref())
                         .map(|id| self.work(id).map_or(id, |w| w.name.as_str()).to_string()),
+                    entries: vec![entry],
+                }),
+            }
+        }
+        groups
+    }
+
+    /**
+    Entries grouped by language, in the order of each language's first entry (so a ranked list
+    stays ranked), entries in their order within a group, each group named in English where
+    logoxide knows the language's name, so catalogs naming it otherwise agree. A language is its
+    tag's ([`crate::language::primary_language`]: `en`, `en-US`, and `eng` are one), and an entry
+    whose language isn't a tag (`und`) is grouped by the name its catalog gives
+    */
+    pub fn group_by_language<'a>(
+        entries: impl IntoIterator<Item = &'a CatalogEntry>,
+    ) -> Vec<LanguageGroup<'a>> {
+        let mut groups: Vec<LanguageGroup<'a>> = vec![];
+        for entry in entries {
+            let language = crate::language::primary_language(&entry.language);
+            let named = (language == "und")
+                .then(|| entry.language_name.as_deref().map(fold))
+                .flatten();
+            match (groups.iter_mut()).find(|g| g.language == language && g.key == named) {
+                Some(group) => {
+                    if group.name.is_none() {
+                        group.name = entry.language_name.clone();
+                    }
+                    group.entries.push(entry);
+                }
+                None => groups.push(LanguageGroup {
+                    name: (crate::language::language_name(&language).map(String::from))
+                        .or_else(|| entry.language_name.clone()),
+                    language,
+                    key: named,
                     entries: vec![entry],
                 }),
             }
@@ -853,6 +913,19 @@ pub struct WorkGroup<'a> {
     pub entries: Vec<&'a CatalogEntry>,
 }
 
+/// Entries in one language ([`Catalog::group_by_language`])
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LanguageGroup<'a> {
+    /// The language's subtag (`en`, `grc`), `und` when the entries' isn't a tag
+    pub language: String,
+    /// The language's English name (`Spanish`: [`crate::language::language_name`]), else the
+    /// first a catalog gives (`Koine Greek`)
+    pub name: Option<String>,
+    /// For `und`: the name its entries share, folded
+    key: Option<String>,
+    pub entries: Vec<&'a CatalogEntry>,
+}
+
 /// Where a work in [`Catalog::works_listing`] is named
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WorkFrom {
@@ -1065,6 +1138,52 @@ mod tests {
             works: vec![],
             warnings: vec![],
         }
+    }
+
+    #[test]
+    fn entries_are_found_and_grouped_by_language() {
+        let mut catalog = ebible();
+        let mut us = catalog.entries[0].clone();
+        us.id = String::from("us");
+        us.language = String::from("en-US");
+        us.language_name = None;
+        let mut odd = catalog.entries[0].clone();
+        odd.id = String::from("odd");
+        odd.language = String::from("und");
+        odd.language_name = Some(String::from("Ancient Ones"));
+        let mut korean = catalog.entries[0].clone();
+        korean.id = String::from("korean");
+        korean.language = String::from("ko");
+        korean.language_name = None;
+        catalog.entries.extend([us, odd, korean]);
+        let ids = |wanted: &str| -> Vec<&str> {
+            (catalog.entries.iter())
+                .filter(|e| e.in_language(wanted))
+                .map(|e| e.id.as_str())
+                .collect()
+        };
+        assert_eq!(ids("en"), ["ebible-eng-asv", "us"]);
+        assert_eq!(ids("eng"), ["ebible-eng-asv", "us"]);
+        assert_eq!(ids("en-US"), ["us"]);
+        assert_eq!(ids("hebrew"), ["ebible-hebwlc"]);
+        assert_eq!(ids("ancient ones"), ["odd"]);
+        // A language the catalog doesn't name is found and shown by its English name
+        assert_eq!(ids("korean"), ["korean"]);
+        assert_eq!(catalog.entries[4].language_shown(), "Korean");
+        assert_eq!(catalog.entries[3].language_shown(), "Ancient Ones");
+        let groups = Catalog::group_by_language(&catalog.entries);
+        let summary: Vec<(&str, Option<&str>, usize)> = (groups.iter())
+            .map(|g| (g.language.as_str(), g.name.as_deref(), g.entries.len()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                ("en", Some("English"), 2),
+                ("he", Some("Hebrew"), 1),
+                ("und", Some("Ancient Ones"), 1),
+                ("ko", Some("Korean"), 1)
+            ]
+        );
     }
 
     #[test]

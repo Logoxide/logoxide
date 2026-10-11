@@ -332,6 +332,8 @@ fn edition_words(entry: &logoxide::catalog::CatalogEntry) -> String {
 pub(crate) struct Filters<'a> {
     pub(crate) books: logoxide::topos_config::BookFilters,
     pub(crate) category: Option<&'a str>,
+    /// Languages (tags or names), any of which a package must be in
+    pub(crate) languages: &'a [String],
 }
 
 /// How `lx search` shows what it finds: at most `limit`, as JSON, or as a list not grouped by
@@ -341,6 +343,8 @@ pub(crate) struct Shown {
     pub(crate) limit: usize,
     pub(crate) json: bool,
     pub(crate) flat: bool,
+    /// Gathered under each language first
+    pub(crate) by_language: bool,
 }
 
 /// `lx search`'s catalogs at URLs: from the cache while they're young enough, downloaded again
@@ -437,7 +441,12 @@ pub(crate) fn search(
     shown: Shown,
     freshness: Freshness,
 ) -> logoxide::Result<()> {
-    let Shown { limit, json, flat } = shown;
+    let Shown {
+        limit,
+        json,
+        flat,
+        by_language,
+    } = shown;
     // The books packages must be about, with the genres and names topos's config gives
     let books = match filters.books.is_empty() {
         true => None,
@@ -456,6 +465,7 @@ pub(crate) fn search(
     found.retain(|e| {
         (books.as_ref()).is_none_or(|codes| e.about_books.iter().any(|b| codes.contains(b)))
             && (filters.category).is_none_or(|c| e.categories.iter().any(|x| x == c))
+            && (filters.languages.is_empty() || filters.languages.iter().any(|l| e.in_language(l)))
     });
     // A package another catalog also lists by its id: only the first catalog's is shown
     for (id, names) in &shadowed {
@@ -490,7 +500,7 @@ pub(crate) fn search(
                     "id": e.id,
                     "abbreviation": e.abbreviation,
                     "name": e.name,
-                    "language": e.language_name.as_deref().unwrap_or(&e.language),
+                    "language": e.language_shown(),
                     "languageTag": e.language,
                     "script": e.script,
                     "license": e.license,
@@ -509,7 +519,7 @@ pub(crate) fn search(
         return Ok(());
     }
     let print = |entry: &logoxide::catalog::CatalogEntry, indent: &str| {
-        let language = entry.language_name.as_deref().unwrap_or(&entry.language);
+        let language = entry.language_shown();
         let source = match (&entry.source, entry.source.import_name()) {
             (_, Some(name)) => format!("lx import {name}"),
             _ if through.contains_key(&source_key(entry)) => {
@@ -534,21 +544,34 @@ pub(crate) fn search(
         }
         outln!("{indent}    {source}");
     };
-    let listed = found.iter().take(limit).copied();
-    match flat {
-        true => listed.for_each(|entry| print(entry, "")),
-        // Each work's editions together, under its name, where there are two or more
+    // Each work's editions together, under its name, where there are two or more
+    let print_all = |entries: Vec<&logoxide::catalog::CatalogEntry>, indent: &str| match flat {
+        true => entries.into_iter().for_each(|entry| print(entry, indent)),
         false => {
-            for group in all.group_by_work(listed) {
+            for group in all.group_by_work(entries) {
                 match (&group.name, &group.work, group.entries.len()) {
                     (Some(name), Some(work), n) if n > 1 => {
-                        outln!("{name} (work `{work}`): {n} editions");
+                        outln!("{indent}{name} (work `{work}`): {n} editions");
                         for entry in &group.entries {
-                            print(entry, "  ");
+                            print(entry, &format!("{indent}  "));
                         }
                     }
-                    _ => group.entries.iter().for_each(|entry| print(entry, "")),
+                    _ => (group.entries.iter()).for_each(|entry| print(entry, indent)),
                 }
+            }
+        }
+    };
+    let listed: Vec<_> = found.iter().take(limit).copied().collect();
+    match by_language {
+        false => print_all(listed, ""),
+        true => {
+            for group in logoxide::catalog::Catalog::group_by_language(listed) {
+                let n = group.entries.len();
+                match &group.name {
+                    Some(name) => outln!("{name} ({}): {n}", group.language),
+                    None => outln!("{}: {n}", group.language),
+                }
+                print_all(group.entries, "  ");
             }
         }
     }

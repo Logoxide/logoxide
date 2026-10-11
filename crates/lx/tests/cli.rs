@@ -437,6 +437,59 @@ fn catalog_text_is_printed_without_escapes() {
 }
 
 #[test]
+fn search_filters_and_groups_by_language() {
+    let world = World::new("languages");
+    world.ok(&["init"]);
+    let catalog = world.path("catalog.toml");
+    let package = |id: &str, name: &str, language: &str, language_name: &str| {
+        format!(
+            "[[package]]\nid = \"{id}\"\nname = \"{name}\"\nabbreviation = \"{}\"\nlanguage = \"{language}\"\nlanguage-name = \"{language_name}\"\nwork = \"bsb\"\ngit = \"https://example.com/{id}\"\n\n",
+            id.to_uppercase()
+        )
+    };
+    std::fs::write(
+        &catalog,
+        [
+            package("bsb", "Berean Standard Bible", "en", "English"),
+            package("bsb-es", "Biblia Estándar de Berea", "es", "Español"),
+            package("bsb-us", "Berean Standard Bible (US)", "en-US", "English"),
+            package("bsb-fr", "Bible Standard de Bérée", "fr", "Français"),
+        ]
+        .concat(),
+    )
+    .unwrap();
+    let catalog = catalog.to_str().unwrap();
+    let ids = |args: &[&str]| -> Vec<String> {
+        let mut args = args.to_vec();
+        args.extend(["--catalog", catalog, "--json"]);
+        (world.json(&args).as_array().unwrap().iter())
+            .map(|e| e["id"].as_str().unwrap().to_string())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ids(&["search", "--language", "en"]), ["bsb", "bsb-us"]);
+    assert_eq!(ids(&["search", "--language", "eng"]), ["bsb", "bsb-us"]);
+    assert_eq!(ids(&["search", "--language", "en-US"]), ["bsb-us"]);
+    assert_eq!(
+        ids(&["search", "--language", "espanol", "--language", "French"]),
+        ["bsb-es", "bsb-fr"]
+    );
+    let out = world.ok(&["search", "--catalog", catalog, "--by-language"]);
+    let english = out.find("English (en): 2").expect(&out);
+    // Headings name a language in English, whatever the catalog calls it; entries as it does
+    let spanish = out.find("Spanish (es): 1").expect(&out);
+    assert!(out.contains("Biblia Estándar de Berea, Español"), "{out}");
+    assert!(english < spanish && out.contains("French (fr): 1"), "{out}");
+    // Within a language, a work's editions are still gathered
+    assert!(
+        out.contains("  Berean Standard Bible (work `bsb`): 2 editions"),
+        "{out}"
+    );
+    assert!(out.contains("    BSB-US (bsb-us)"), "{out}");
+}
+
+#[test]
 fn catalog_ids_are_checked_and_shadowing_is_said() {
     let world = World::new("ids");
     world.ok(&["init"]);

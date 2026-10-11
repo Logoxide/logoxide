@@ -295,6 +295,17 @@ edition's). The owner, 2026-10-10: not important; a claim stays only what its au
 - **Catalogs of catalogs** (`[[catalog]]` entries a search follows). To settle first: cycles and
   depth, whether a followed catalog's registries are usable, who wins when ids collide across
   levels, caching, and how `lx catalog list` shows them.
+- **Translations of works** (`translation-of`; the owner, 2026-10-10: to consider later). A
+  translation is its own work, and the work says what it was translated from:
+  `[works.institutes-beveridge] translation-of = "institutes"`, with the work's `language`, in
+  `works.toml` and catalogs' `[works]`; a package's own `translation-of` only for a work nothing
+  names. `lx works` and grouped searches would then gather translations under their original
+  (Institutes: Latin; English: Beveridge, Battles). For Bibles, left out unless one Bible was
+  made from another (a translation of the Vulgate or the KJV). To settle: whether it lives on
+  the work, the package, or both; how deep grouping goes (a translation of a translation); what
+  the FFI's `WorkGroup` carries. A package keeps one `language` (several only, maybe, for an
+  interlinear or diglot); a work in many languages is a collection whose languages are optional
+  dependencies behind features, which works today.
 - **`lx media publish --to <registry>`**: media next to a registry's archives (GitHub release
   files), filling each `[[media.files]]` entry's `url`/`mirrors`. To settle: GitHub's 2 GiB
   limit, immutable versions duplicating media, and whether a registry's catalog lists media at

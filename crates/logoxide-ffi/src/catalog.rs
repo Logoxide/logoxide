@@ -101,6 +101,8 @@ pub struct CatalogEntry {
     pub aliases: Vec<String>,
     /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it
     pub language: String,
+    /// The language's name: the catalog's (`Español`), else its English name where logoxide
+    /// knows it (`Korean`)
     pub language_name: Option<String>,
     /// Its script, ISO 15924 (`Latn`, `Hebr`), when the catalog or the language tag says
     pub script: Option<String>,
@@ -183,7 +185,8 @@ impl From<&CoreEntry> for CatalogEntry {
             abbreviation: e.abbreviation.clone(),
             aliases: e.aliases.clone(),
             language: e.language.clone(),
-            language_name: e.language_name.clone(),
+            language_name: (e.language_name.clone())
+                .or_else(|| logoxide_core::language::language_name(&e.language).map(String::from)),
             script: e.script.clone(),
             description: e.description.clone(),
             license: e.license.clone(),

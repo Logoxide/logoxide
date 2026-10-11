@@ -248,6 +248,8 @@ fn main() -> ExitCode {
             registry,
             books,
             category,
+            language,
+            by_language,
             limit,
             flat,
             json,
@@ -261,11 +263,13 @@ fn main() -> ExitCode {
             Filters {
                 books: books.filters(),
                 category: category.as_deref(),
+                languages: language,
             },
             Shown {
                 limit: *limit,
                 json: *json || cli.format == Format::Json,
                 flat: *flat,
+                by_language: *by_language,
             },
             search_freshness(*refresh, *offline),
         ),

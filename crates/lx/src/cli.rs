@@ -288,6 +288,15 @@ pub(crate) enum Command {
         /// Only packages in this category (`--category systematic-theology`)
         #[arg(long, value_parser = category_values())]
         category: Option<String>,
+        /// Only packages in this language (repeat for more): a BCP 47 tag, which takes its
+        /// regions and scripts too (`en` is `en-US` as well, `eng` is `en`), or the language's
+        /// name as the catalog gives it (`--language Español`)
+        #[arg(long)]
+        language: Vec<String>,
+        /// Gather what's found under each language (English, then Spanish, …), in the order of
+        /// each language's best match
+        #[arg(long)]
+        by_language: bool,
         /// How many to show
         #[arg(long, default_value_t = 20)]
         limit: usize,

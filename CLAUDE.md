@@ -620,7 +620,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   commentary's notes and a dictionary's or cross-reference package's entries, reading each),
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
-  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not;
+  reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not; `--language` (repeated) keeps packages in any of them (`CatalogEntry::in_language`: a BCP 47 range by RFC 4647's basic filtering over canonical tags, `language::matches_range`, or the catalog's language name), `--by-language` gathers under each language first (`Catalog::group_by_language`, by `language::primary_language`, each named in English by `language::language_name`: `ISO_639_1`'s fourth column, SIL's `Ref_Name` without qualifiers; entries show `CatalogEntry::language_shown`, the catalog's name, else that, else the tag, as the FFI's `CatalogEntry.languageName` and the MCP's `languageName` do);
   `--refresh` downloads URL catalogs again, `--offline` only what's kept; `cmd/catalog.rs`'s
   `gather` reads the registries and catalogs both it and `works` use), `works [query]
   [--registry|--catalog] [--packages]` (every work: logoxide's table, the catalogs', then ids
