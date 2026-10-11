@@ -268,7 +268,7 @@ fn global_adds_to_the_library_and_list_all_shows_every_version() {
     assert!(
         world
             .ok(&["list", "--all"])
-            .contains("old 1.0.0+g0123abcd  (its logoxide.toml doesn't read)")
+            .contains("old 1.0.0+g0123abcd  (its logoxide.toml doesn't read)  unused (delete ")
     );
     let cleaned = world.ok(&["clean", "--remove"]);
     assert!(

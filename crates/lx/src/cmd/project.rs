@@ -608,9 +608,11 @@ pub(crate) fn list_all(cli: &Cli) -> logoxide::Result<()> {
                 said
             })
             .collect();
-        let used = match users.is_empty() {
-            true => String::from("unused (lx clean --remove deletes it)"),
-            false => format!("used by {}", users.join(", ")),
+        let used = match (users.is_empty(), &v.package) {
+            (true, Some(_)) => String::from("unused (lx clean --remove deletes it)"),
+            // lx clean can't tell its files from a reader's, so keeps it
+            (true, None) => format!("unused (delete {} by hand)", v.dir.display()),
+            (false, _) => format!("used by {}", users.join(", ")),
         };
         outln!("{} {}  {about}  {used}", v.id, v.key);
     }
