@@ -280,6 +280,16 @@ lock, `--offline` refused) and CrossWire's KJV (rebuilt to the same lock on a th
 The FFI's `import_dependencies_install_through_the_host` covers the host loop. Left: the
 plugin answering `ImportEntry` (its library is the vault; it keeps vendored imports until then).
 
+## Phase P: works named by registries (the owner's request, 2026-10-10)
+
+Done: a catalog's `[works.<id>]` (a folder registry's `works.toml`, which `lx catalog build`
+writes into its catalog) names works beside logoxide's table, which keeps its ids and alone gives
+imports a work; `lx works` (and `LogoxideCatalog.works`) lists the table's, the catalogs', and
+ids only packages claim, with the packages claiming each. A work is a name, not an owner.
+
+Not planned: checking a claim against the text (comparing verse hashes with a reference
+edition's). The owner, 2026-10-10: not important; a claim stays only what its author says.
+
 ## Later (not planned; the owner's deferrals, N8)
 
 - **Catalogs of catalogs** (`[[catalog]]` entries a search follows). To settle first: cycles and

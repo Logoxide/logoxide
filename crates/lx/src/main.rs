@@ -36,7 +36,7 @@ use cli::{CatalogCommand, Cli, Command, Format, MediaCommand, RegistryCommand};
 use cmd::{
     catalog::{
         Filters, Shown, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_refresh,
-        catalog_remove, package_url, search, search_freshness,
+        catalog_remove, package_url, search, search_freshness, works,
     },
     import::{import, import_update},
     map::map,
@@ -269,6 +269,22 @@ fn main() -> ExitCode {
             },
             search_freshness(*refresh, *offline),
         ),
+        Command::Works {
+            query,
+            catalog,
+            registry,
+            packages,
+            refresh,
+            offline,
+        } => works(
+            &cli,
+            &query.join(" "),
+            catalog,
+            registry.as_deref(),
+            *packages,
+            json,
+            search_freshness(*refresh, *offline),
+        ),
         Command::Import {
             source,
             update: true,
@@ -379,6 +395,7 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
                 | Command::Diff { .. }
                 | Command::Verify(_)
                 | Command::Search { .. }
+                | Command::Works { .. }
                 | Command::Catalog(CatalogCommand::List)
                 | Command::Catalog(CatalogCommand::Refresh { .. })
                 | Command::Import { update: true, .. }
@@ -390,7 +407,7 @@ fn check_format(cli: &Cli) -> logoxide::Result<()> {
         Format::Json if json => Ok(()),
         Format::Tsv if references => Ok(()),
         Format::Json => Err(logoxide::LogoxideError::Manifest(String::from(
-            "--format json: only for list, info, check, diff, verify, search, catalog list, catalog refresh, import --update, read, compare, and show --references, --notes, --entry, --keys, or --xref",
+            "--format json: only for list, info, check, diff, verify, search, works, catalog list, catalog refresh, import --update, read, compare, and show --references, --notes, --entry, --keys, or --xref",
         ))),
         Format::Tsv => Err(logoxide::LogoxideError::Manifest(String::from(
             "--format tsv: only for show --references",

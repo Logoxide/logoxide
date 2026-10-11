@@ -4,7 +4,7 @@ use boltffi::*;
 use logoxide_core::{
     catalog::{
         Catalog, CatalogEntry as CoreEntry, CatalogRelease as CoreRelease,
-        CatalogSource as CoreSource, Download as CoreDownload,
+        CatalogSource as CoreSource, Download as CoreDownload, WorkFrom as CoreWorkFrom,
     },
     manifest::Direction,
 };
@@ -141,8 +141,37 @@ pub struct CatalogEntry {
 pub struct WorkGroup {
     /// The work's id (`kjv`), if its entries name one
     pub work: Option<String>,
-    /// Its name (`King James Version`), from logoxide's table of works, else its id
+    /// Its name (`King James Version`), from logoxide's table of works, else a catalog's, else
+    /// its id
     pub name: Option<String>,
+    pub entries: Vec<CatalogEntry>,
+}
+
+/// Where a work is named (`LogoxideCatalog.works`)
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkFrom {
+    /// logoxide's own table of works
+    Logoxide,
+    /// A catalog's `[works]` (a registry's), by the catalog's name
+    Catalog { name: String },
+    /// Nowhere: only packages claim it
+    Unnamed,
+}
+
+/// A work packages can say they're editions of, and the packages that do
+/// (`LogoxideCatalog.works`)
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkInfo {
+    /// What a package's `work` names it by (`kjv`)
+    pub id: String,
+    /// None when nothing names it
+    pub name: Option<String>,
+    pub aliases: Vec<String>,
+    /// Its Wikidata item (`Q…`), when known
+    pub wikidata: Option<String>,
+    pub from: WorkFrom,
     pub entries: Vec<CatalogEntry>,
 }
 
@@ -300,11 +329,34 @@ impl LogoxideCatalog {
         } else {
             limit as usize
         };
-        (logoxide_core::catalog::group_by_work(found.into_iter().take(limit)).into_iter())
-            .map(|group| WorkGroup {
-                name: group.name(),
-                work: group.work.clone(),
-                entries: group.entries.into_iter().map(CatalogEntry::from).collect(),
+        (self
+            .catalog
+            .group_by_work(found.into_iter().take(limit))
+            .into_iter())
+        .map(|group| WorkGroup {
+            name: group.name.clone(),
+            work: group.work.clone(),
+            entries: group.entries.into_iter().map(CatalogEntry::from).collect(),
+        })
+        .collect()
+    }
+
+    /// Every work a package can say it's an edition of: logoxide's table, then those the
+    /// catalogs name (`[works]`), then ids packages claim that nothing names, each with the
+    /// packages claiming it; with `query`, those whose id, name, or aliases hold each word
+    pub fn works(&self, query: String) -> Vec<WorkInfo> {
+        (self.catalog.works_listing(&query).into_iter())
+            .map(|w| WorkInfo {
+                id: w.id,
+                name: w.name,
+                aliases: w.aliases,
+                wikidata: w.wikidata,
+                from: match w.from {
+                    CoreWorkFrom::Logoxide => WorkFrom::Logoxide,
+                    CoreWorkFrom::Catalog(name) => WorkFrom::Catalog { name },
+                    CoreWorkFrom::Unnamed => WorkFrom::Unnamed,
+                },
+                entries: w.entries.into_iter().map(CatalogEntry::from).collect(),
             })
             .collect()
     }

@@ -1466,3 +1466,63 @@ fn catalog_refresh_with_nothing_downloaded() {
         serde_json::json!([])
     );
 }
+
+#[test]
+fn works_are_listed_with_registries_own() {
+    let world = World::new("works-listed");
+    world.ok(&["init"]);
+    // A registry folder whose works.toml names a work its package claims
+    let gill = world.path("reg/gill");
+    released(&gill, "gill", "1.0.0");
+    let manifest = std::fs::read_to_string(gill.join("logoxide.toml")).unwrap();
+    std::fs::write(
+        gill.join("logoxide.toml"),
+        manifest
+            .replace("version = \"1.0.0\"", "version = \"1.1.0\"")
+            .replace("language = \"en\"", "language = \"en\"\nwork = \"gill\""),
+    )
+    .unwrap();
+    git(&gill, &["commit", "-q", "-am", "1.1.0"]);
+    git(&gill, &["tag", "v1.1.0"]);
+    std::fs::write(
+        world.path("reg/works.toml"),
+        "[gill]\nname = \"John Gill's Exposition\"\naliases = [\"Gill\"]\nwikidata = \"Q1\"\n\n[kjv]\nname = \"Not the KJV\"\n",
+    )
+    .unwrap();
+    let folder = world.path("reg").display().to_string();
+    world.ok(&["catalog", "add", &folder, "--name", "reg"]);
+
+    let out = world.lx(&["works", "--registry", "reg", "--packages"]);
+    let (stdout, stderr) = (
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+    assert!(out.status.success(), "{stderr}");
+    assert!(
+        stdout.contains("gill: John Gill's Exposition (named by reg), 1 package")
+            && stdout.contains("GILL (gill): Test gill")
+            && stdout.contains("kjv: King James Version (logoxide's table)"),
+        "{stdout}"
+    );
+    // logoxide's table keeps its ids
+    assert!(
+        stderr.contains("work `kjv`: logoxide's table names it"),
+        "{stderr}"
+    );
+
+    let works = world.json(&["works", "gill", "--registry", "reg", "--format", "json"]);
+    assert_eq!(works.as_array().unwrap().len(), 1, "{works}");
+    assert_eq!(works[0]["from"], "catalog");
+    assert_eq!(works[0]["catalog"], "reg");
+    assert_eq!(works[0]["wikidata"], "Q1");
+    assert_eq!(works[0]["packages"][0]["id"], "gill");
+    // Searching finds its package by the work's name
+    let found = world.json(&["search", "exposition", "--registry", "reg", "--json"]);
+    assert_eq!(found[0]["id"], "gill", "{found}");
+
+    // `lx catalog build` writes the works into the catalog
+    let out = world.ok(&["catalog", "build", &folder]);
+    assert!(out.contains("1 work named"), "{out}");
+    let built = std::fs::read_to_string(world.path("reg/catalog.toml")).unwrap();
+    assert!(built.contains("[works.gill]"), "{built}");
+}

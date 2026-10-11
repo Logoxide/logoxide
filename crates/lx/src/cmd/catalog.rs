@@ -139,6 +139,13 @@ pub(crate) fn catalog_build(
     for skip in built.skipped {
         outln!("    skipped {skip}");
     }
+    if built.works > 0 {
+        let plural = if built.works == 1 { "" } else { "s" };
+        outln!("    {} work{plural} named", built.works);
+    }
+    for warning in built.warnings {
+        errln!("warning: {warning}");
+    }
     Ok(())
 }
 
@@ -307,6 +314,20 @@ fn source_key(entry: &logoxide::catalog::CatalogEntry) -> String {
     }
 }
 
+/// An entry's edition, as `lx search` and `lx works` show it (` [1769-oxford]`, ` [2nd, 1885]`)
+fn edition_words(entry: &logoxide::catalog::CatalogEntry) -> String {
+    match (&entry.edition, entry.edition_year) {
+        // An edition named by its year needn't say it twice
+        (Some(edition), Some(year)) if edition.contains(&year.to_string()) => {
+            format!(" [{edition}]")
+        }
+        (Some(edition), Some(year)) => format!(" [{edition}, {year}]"),
+        (Some(edition), None) => format!(" [{edition}]"),
+        (None, Some(year)) => format!(" [{year}]"),
+        (None, None) => String::new(),
+    }
+}
+
 /// What `lx search` keeps besides what its words match
 pub(crate) struct Filters<'a> {
     pub(crate) books: logoxide::topos_config::BookFilters,
@@ -332,24 +353,24 @@ pub(crate) fn search_freshness(refresh: bool, offline: bool) -> Freshness {
     }
 }
 
-pub(crate) fn search(
+/// The project's registries and catalogs (or `catalogs`, or only `registry`) as one
+pub(crate) struct Gathered {
+    /// Every registry package (even two with one id: they differ by path), then the catalogs'
+    pub(crate) all: logoxide::catalog::Catalog,
+    /// Ids more than one catalog lists ([`logoxide::catalog::Catalog::shadowed`])
+    pub(crate) shadowed: Vec<(String, Vec<String>)>,
+    /// What names each registry's packages: `<registry>:<path>`, by their [`source_key`]
+    pub(crate) through: std::collections::HashMap<String, String>,
+    /// How many registries and catalogs were read
+    pub(crate) searched: usize,
+}
+
+pub(crate) fn gather(
     cli: &Cli,
-    query: &str,
     catalogs: &[String],
     registry: Option<&str>,
-    filters: Filters,
-    shown: Shown,
     freshness: Freshness,
-) -> logoxide::Result<()> {
-    let Shown { limit, json, flat } = shown;
-    // The books packages must be about, with the genres and names topos's config gives
-    let books = match filters.books.is_empty() {
-        true => None,
-        false => {
-            let config = logoxide::topos_config::read(None)?;
-            (filters.books).codes(&logoxide::topos_config::bible_data(&config)?)?
-        }
-    };
+) -> logoxide::Result<Gathered> {
     // The project's registries come first, then its catalogs
     let mut registries = vec![];
     let (catalogs, base) = match catalogs.is_empty() {
@@ -380,7 +401,6 @@ pub(crate) fn search(
         }
         false => (catalogs.to_vec(), PathBuf::from(".")),
     };
-    // What names each registry's packages: `<registry>:<path>`, by their URLs
     let mut through: std::collections::HashMap<String, String> = Default::default();
     for catalog in &registries {
         for entry in &catalog.entries {
@@ -389,18 +409,49 @@ pub(crate) fn search(
         }
     }
     let searched = registries.len() + catalogs.len();
-    // Every registry package is listed, even two with one id (they differ by path)
-    let mut all = logoxide::catalog::Catalog {
-        name: String::new(),
-        entries: registries.into_iter().flat_map(|c| c.entries).collect(),
-        warnings: vec![],
-    };
+    let mut all = logoxide::catalog::Catalog::default();
+    for catalog in registries {
+        all.entries.extend(catalog.entries);
+        all.add_works(catalog.works);
+    }
     let mut shadowed = vec![];
     if !catalogs.is_empty() {
         let loaded = load_catalogs(&catalogs, &base, freshness)?;
         shadowed = logoxide::catalog::Catalog::shadowed(&loaded);
         all = (loaded.into_iter()).fold(all, |all, c| all.merge(c));
     }
+    Ok(Gathered {
+        all,
+        shadowed,
+        through,
+        searched,
+    })
+}
+
+pub(crate) fn search(
+    cli: &Cli,
+    query: &str,
+    catalogs: &[String],
+    registry: Option<&str>,
+    filters: Filters,
+    shown: Shown,
+    freshness: Freshness,
+) -> logoxide::Result<()> {
+    let Shown { limit, json, flat } = shown;
+    // The books packages must be about, with the genres and names topos's config gives
+    let books = match filters.books.is_empty() {
+        true => None,
+        false => {
+            let config = logoxide::topos_config::read(None)?;
+            (filters.books).codes(&logoxide::topos_config::bible_data(&config)?)?
+        }
+    };
+    let Gathered {
+        all,
+        shadowed,
+        through,
+        searched,
+    } = gather(cli, catalogs, registry, freshness)?;
     let mut found = all.search(query);
     found.retain(|e| {
         (books.as_ref()).is_none_or(|codes| e.about_books.iter().any(|b| codes.contains(b)))
@@ -470,15 +521,7 @@ pub(crate) fn search(
             }
             (_, None) => String::new(),
         };
-        let edition = match (&entry.edition, entry.edition_year) {
-            (Some(edition), Some(year)) if edition.contains(&year.to_string()) => {
-                format!(" [{edition}]")
-            }
-            (Some(edition), Some(year)) => format!(" [{edition}, {year}]"),
-            (Some(edition), None) => format!(" [{edition}]"),
-            (None, Some(year)) => format!(" [{year}]"),
-            (None, None) => String::new(),
-        };
+        let edition = edition_words(entry);
         outln!(
             "{indent}{} ({}): {}{edition}, {language}, {}",
             entry.abbreviation,
@@ -496,8 +539,8 @@ pub(crate) fn search(
         true => listed.for_each(|entry| print(entry, "")),
         // Each work's editions together, under its name, where there are two or more
         false => {
-            for group in logoxide::catalog::group_by_work(listed) {
-                match (group.name(), &group.work, group.entries.len()) {
+            for group in all.group_by_work(listed) {
+                match (&group.name, &group.work, group.entries.len()) {
                     (Some(name), Some(work), n) if n > 1 => {
                         outln!("{name} (work `{work}`): {n} editions");
                         for entry in &group.entries {
@@ -519,6 +562,105 @@ pub(crate) fn search(
         } else {
             String::new()
         }
+    );
+    Ok(())
+}
+
+/**
+`lx works`: every work a package can say it's an edition of, as the project's registries and
+catalogs (or `catalogs`, or `registry`) see them, with where each is named and how many packages
+claim it (`packages`: which)
+*/
+pub(crate) fn works(
+    cli: &Cli,
+    query: &str,
+    catalogs: &[String],
+    registry: Option<&str>,
+    packages: bool,
+    json: bool,
+    freshness: Freshness,
+) -> logoxide::Result<()> {
+    use logoxide::catalog::WorkFrom;
+    let Gathered { all, .. } = gather(cli, catalogs, registry, freshness)?;
+    // What gathering them passed over (two catalogs naming one work otherwise)
+    for warning in &all.warnings {
+        errln!("warning: {warning}");
+    }
+    let listing = all.works_listing(query);
+    if json {
+        let works: Vec<serde_json::Value> = (listing.iter())
+            .map(|w| {
+                let (from, catalog) = match &w.from {
+                    WorkFrom::Logoxide => ("logoxide", None),
+                    WorkFrom::Catalog(name) => ("catalog", Some(name)),
+                    WorkFrom::Unnamed => ("unnamed", None),
+                };
+                let entries: Vec<serde_json::Value> = (w.entries.iter())
+                    .map(|e| {
+                        serde_json::json!({
+                            "id": e.id,
+                            "abbreviation": e.abbreviation,
+                            "name": e.name,
+                            "edition": e.edition,
+                            "editionYear": e.edition_year,
+                        })
+                    })
+                    .collect();
+                serde_json::json!({
+                    "id": w.id,
+                    "name": w.name,
+                    "aliases": w.aliases,
+                    "wikidata": w.wikidata,
+                    "from": from,
+                    "catalog": catalog,
+                    "packages": entries,
+                })
+            })
+            .collect();
+        println!("{}", serde_json::Value::Array(works));
+        return Ok(());
+    }
+    for work in &listing {
+        let n = work.entries.len();
+        let claimed = match n {
+            0 => String::from("no packages"),
+            1 => String::from("1 package"),
+            n => format!("{n} packages"),
+        };
+        match (&work.name, &work.from) {
+            (Some(name), WorkFrom::Logoxide) => {
+                outln!("{}: {name} (logoxide's table), {claimed}", work.id)
+            }
+            (Some(name), WorkFrom::Catalog(catalog)) => {
+                outln!("{}: {name} (named by {catalog}), {claimed}", work.id)
+            }
+            _ => outln!("{}: named by nothing, claimed by {claimed}", work.id),
+        }
+        if !work.aliases.is_empty() {
+            outln!("    also {}", work.aliases.join(", "));
+        }
+        if let Some(qid) = &work.wikidata {
+            outln!("    https://www.wikidata.org/wiki/{qid}");
+        }
+        if packages {
+            for entry in &work.entries {
+                let edition = edition_words(entry);
+                outln!(
+                    "    {} ({}): {}{edition}",
+                    entry.abbreviation,
+                    entry.id,
+                    entry.name
+                );
+            }
+        }
+    }
+    let count = |from: fn(&WorkFrom) -> bool| listing.iter().filter(|w| from(&w.from)).count();
+    outln!(
+        "{} work(s): {} logoxide's, {} the catalogs', {} named by nothing",
+        listing.len(),
+        count(|f| *f == WorkFrom::Logoxide),
+        count(|f| matches!(f, WorkFrom::Catalog(_))),
+        count(|f| *f == WorkFrom::Unnamed),
     );
     Ok(())
 }

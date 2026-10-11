@@ -2,7 +2,9 @@
 Folder registries: a folder of package repositories (at any depth) read as a catalog, each package
 from its newest release, read from git without checking anything out. `lx catalog build` writes
 one as a `catalog.toml` ([`build_catalog`]), and a registry that names a folder is read the same
-way ([`folder_catalog`]). It runs `git`, so it's native only
+way ([`folder_catalog`]). A `works.toml` in the folder's root names works its packages may be
+editions of (as a `catalog.toml`'s `[works]`, which `lx catalog build` writes from it). It runs
+`git`, so it's native only
 */
 
 use std::{
@@ -131,7 +133,29 @@ pub fn folder_catalog(name: &str, folder: &Path) -> Result<(Catalog, Vec<String>
         }
     }
     let url = format!("file://{}", folder.display());
-    Ok((Catalog::from_packages(name, &url, packages), warnings))
+    let mut catalog = Catalog::from_packages(name, &url, packages);
+    let works = folder.join(crate::works::WORKS_FILE);
+    if let Some(text) = read_works_file(&works)? {
+        match crate::works::read_table(&text) {
+            Ok(table) => {
+                let at = works.display().to_string();
+                let (declared, passed_over) = crate::works::parse_declared(name, Some(&at), table);
+                catalog.works = declared;
+                warnings.extend(passed_over);
+            }
+            Err(e) => warnings.push(format!("{}: {e}", works.display())),
+        }
+    }
+    Ok((catalog, warnings))
+}
+
+/// A folder's `works.toml`, if it has one
+fn read_works_file(path: &Path) -> Result<Option<String>> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Ok(Some(text)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(LogoxideError::io(&path.display().to_string(), e)),
+    }
 }
 
 /// What [`build_catalog`] made
@@ -147,6 +171,10 @@ pub struct BuiltCatalog {
     pub kept: usize,
     /// The repositories left out, each with why (`books/romans (no release yet: lx release)`)
     pub skipped: Vec<String>,
+    /// The works it names (from the folder's `works.toml`, else the previous catalog's)
+    pub works: usize,
+    /// What was passed over in them, and why
+    pub warnings: Vec<String>,
 }
 
 /**
@@ -154,7 +182,7 @@ A `catalog.toml` of a folder's package repositories, each from its newest releas
 and commit. `url` is each package's git URL, `{path}` being its path in the folder and `{name}` its
 folder's name (its `file://` URL by default); `name` is the catalog's (the folder's by default).
 An entry of `previous` (the catalog written last time) whose path, commit, and URL are unchanged
-is kept as it was
+is kept as it was. Its `[works]` are the folder's `works.toml`, else `previous`'s (written by hand)
 */
 pub fn build_catalog(
     folder: &Path,
@@ -167,12 +195,14 @@ pub fn build_catalog(
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default()
     });
-    // The entries written last time, by path
+    // The entries written last time, by path, and its works
     let mut before: HashMap<String, toml_edit::Table> = HashMap::new();
+    let mut works: Option<toml_edit::Item> = None;
     if let Some(text) = previous {
         let doc: toml_edit::DocumentMut = text
             .parse()
             .map_err(|e| LogoxideError::Catalog(format!("the previous catalog: {e}")))?;
+        works = doc.get("works").cloned();
         if let Some(packages) = doc.get("package").and_then(|p| p.as_array_of_tables()) {
             for table in packages.iter() {
                 if let Some(path) = table.get("path").and_then(|p| p.as_str()) {
@@ -230,17 +260,33 @@ pub fn build_catalog(
         read += 1;
     }
     let count = tables.len();
+    let works_file = folder.join(crate::works::WORKS_FILE);
+    if let Some(text) = read_works_file(&works_file)? {
+        let doc: toml_edit::DocumentMut = (text.parse())
+            .map_err(|e| LogoxideError::Catalog(format!("{}: {e}", works_file.display())))?;
+        let mut table = doc.as_table().clone();
+        table.set_implicit(true);
+        works = Some(toml_edit::Item::Table(table));
+    }
+    let mut doc: toml_edit::DocumentMut = (Catalog::toml_document(Some(&name), tables).parse())
+        .map_err(|e: toml_edit::TomlError| LogoxideError::Catalog(e.to_string()))?;
+    if let Some(works) = works {
+        doc.insert("works", works);
+    }
     let text = format!(
-        "# Written by lx catalog build: the newest release of each package in {}\n{}",
+        "# Written by lx catalog build: the newest release of each package in {}\n{doc}",
         folder.display(),
-        Catalog::toml_document(Some(&name), tables)
     );
+    // Read back, as a reader will: what its works pass over is said
+    let parsed = Catalog::parse_toml(&text)?;
     Ok(BuiltCatalog {
         text,
         count,
         read,
         kept,
         skipped,
+        works: parsed.works.len(),
+        warnings: parsed.warnings,
     })
 }
 
@@ -356,6 +402,29 @@ mod tests {
         assert_eq!((again.count, again.read, again.kept), (2, 1, 1));
         assert!(again.text.contains("version = \"0.2.0\""));
         assert!(again.text.contains("name = \"mine\""));
+        assert_eq!(again.works, 0);
+
+        // A works.toml names works for the folder's packages, read and written into the catalog
+        std::fs::write(
+            root.join("works.toml"),
+            "# Gill's works\n[gill]\nname = \"John Gill's Exposition\"\n\n[kjv]\nname = \"Mine\"\n",
+        )
+        .unwrap();
+        let (catalog, warnings) = folder_catalog("mine", &root).unwrap();
+        assert_eq!(catalog.work("gill").unwrap().name, "John Gill's Exposition");
+        assert_eq!(catalog.works[0].catalog, "mine");
+        assert_eq!(warnings.len(), 1, "{warnings:?}");
+        let built = build_catalog(&root, Some(&again.text), None, Some("mine")).unwrap();
+        assert_eq!(built.works, 1);
+        assert_eq!(built.warnings.len(), 1, "{:?}", built.warnings);
+        assert!(built.text.contains("[works.gill]"), "{}", built.text);
+        let parsed = Catalog::parse("catalog.toml", &built.text).unwrap();
+        assert_eq!(parsed.work("gill").unwrap().name, "John Gill's Exposition");
+        // Without the file, the catalog's works written last time are kept
+        std::fs::remove_file(root.join("works.toml")).unwrap();
+        let kept = build_catalog(&root, Some(&built.text), None, Some("mine")).unwrap();
+        assert_eq!(kept.works, 1);
+        assert!(kept.text.contains("[works.gill]"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

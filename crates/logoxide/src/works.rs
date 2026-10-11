@@ -4,6 +4,12 @@ James Version); a package says which it is with `work = "kjv"`, and which editio
 (`1769-oxford`) and `edition-year`. logoxide's table of works (`data/works.toml`, the owner's D9)
 gives each work's name, aliases, its Wikidata item when known, and the import names known to be
 it, so an import is given its work by its name ([`of_import`]), never by guessing from a title.
+
+A catalog may name works of its own (`[works.<id>]` in a `catalog.toml`, or a folder registry's
+`works.toml`), in the same form without `imports` ([`parse_declared`]): so a registry's packages
+can share a work logoxide's table doesn't have yet. logoxide's table wins: a catalog's work with
+one of its ids is passed over. Naming a work owns nothing: any package may say it's any work, and
+`lx works` says which works are named where and which claimed ones nothing names
 */
 
 use std::{collections::BTreeMap, sync::OnceLock};
@@ -25,6 +31,90 @@ pub struct Work {
     /// The import names known to be it (`ebible:eng-kjv2006`, `sword:crosswire/KJV`)
     #[serde(default)]
     pub imports: Vec<String>,
+}
+
+/**
+A work a catalog names (`[works.<id>]`), and the catalog's name: a registry's works sit beside
+logoxide's ([`works`]), never in place of one
+*/
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DeclaredWork {
+    pub work: Work,
+    pub catalog: String,
+}
+
+/**
+A catalog's `[works]` table read: each work checked ([`check`]) and none of logoxide's ids, the
+rest passed over with a warning naming `location`. A work's `imports` are passed over too (only
+logoxide's table gives imports their work, checked against the publishers' lists)
+*/
+pub fn parse_declared(
+    catalog: &str,
+    location: Option<&str>,
+    table: BTreeMap<String, Work>,
+) -> (Vec<DeclaredWork>, Vec<String>) {
+    let at = location.map(|l| format!("{l}: ")).unwrap_or_default();
+    let (mut declared, mut warnings) = (vec![], vec![]);
+    for (id, work) in table {
+        let work = Work { id, ..work };
+        if let Err(why) = check(&work) {
+            warnings.push(format!("{at}passed over {why}"));
+            continue;
+        }
+        if get(&work.id).is_some() {
+            warnings.push(format!(
+                "{at}passed over work `{}`: logoxide's table names it",
+                work.id
+            ));
+            continue;
+        }
+        if !work.imports.is_empty() {
+            warnings.push(format!(
+                "{at}work `{}`: `imports` passed over (only logoxide's table gives imports a work)",
+                work.id
+            ));
+        }
+        declared.push(DeclaredWork {
+            work: Work {
+                imports: vec![],
+                ..work
+            },
+            catalog: catalog.to_string(),
+        });
+    }
+    (declared, warnings)
+}
+
+/// Checks a work: its id is one (as a package's), it has a name, and its Wikidata item, if any,
+/// is `Q` and digits
+pub fn check(work: &Work) -> Result<(), String> {
+    if !crate::manifest::is_valid_id(&work.id) {
+        return Err(format!(
+            "work `{}`: use lowercase letters, digits, `-`, and `_`",
+            work.id
+        ));
+    }
+    if work.name.trim().is_empty() {
+        return Err(format!("work `{}`: no name", work.id));
+    }
+    if let Some(qid) = &work.wikidata {
+        let digits = qid.strip_prefix('Q').unwrap_or_default();
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(format!(
+                "work `{}`: `wikidata` `{qid}` isn't an item (`Q` and digits)",
+                work.id
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A folder registry's works, in its root: logoxide's table's form, without `imports`
+pub const WORKS_FILE: &str = "works.toml";
+
+/// A `[works]` table's text (`works.toml`, or a catalog's `[works]` alone) read, unchecked
+pub fn read_table(text: &str) -> Result<BTreeMap<String, Work>, String> {
+    toml::from_str(text).map_err(|e| e.to_string())
 }
 
 /// The table, as logoxide is built with it
@@ -86,15 +176,7 @@ mod tests {
         assert!(works().len() >= 7);
         let mut imports = std::collections::BTreeSet::new();
         for work in works() {
-            assert!(crate::manifest::is_valid_id(&work.id), "{}", work.id);
-            assert!(!work.name.is_empty(), "{}", work.id);
-            if let Some(qid) = &work.wikidata {
-                let digits = qid.strip_prefix('Q').unwrap_or_default();
-                assert!(
-                    !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()),
-                    "{qid}"
-                );
-            }
+            check(work).unwrap();
             for import in &work.imports {
                 let (prefix, id) = import.split_once(':').unwrap();
                 // The publishers logoxide-import reads (its `PREFIXES`)
@@ -109,5 +191,53 @@ mod tests {
         assert_eq!(of_import("sword:crosswire/KJV").unwrap().id, "kjv");
         assert_eq!(of_import("ebible:eng-asv").unwrap().id, "asv");
         assert!(of_import("ebible:nothing").is_none());
+    }
+
+    #[test]
+    fn a_catalogs_works_are_checked() {
+        let table: BTreeMap<String, Work> = toml::from_str(
+            r#"
+            [gill]
+            name = "John Gill's Exposition"
+            aliases = ["Gill"]
+            wikidata = "Q123"
+
+            [kjv]
+            name = "Not the KJV"
+
+            [Bad]
+            name = "Bad id"
+
+            [unnamed]
+            name = " "
+
+            [odd-qid]
+            name = "Odd"
+            wikidata = "123"
+
+            [claims]
+            name = "Claims imports"
+            imports = ["ebible:eng-kjv2006"]
+            "#,
+        )
+        .unwrap();
+        let (declared, warnings) = parse_declared("mine", Some("catalog.toml"), table);
+        let ids: Vec<&str> = declared.iter().map(|d| d.work.id.as_str()).collect();
+        assert_eq!(ids, ["claims", "gill"]);
+        assert!(
+            declared
+                .iter()
+                .all(|d| d.catalog == "mine" && d.work.imports.is_empty())
+        );
+        assert_eq!(warnings.len(), 5, "{warnings:?}");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("`kjv`: logoxide's table names it"))
+        );
+        assert!(warnings.iter().all(|w| w.starts_with("catalog.toml: ")));
+        // logoxide's own table is untouched by what a catalog says
+        assert_eq!(get("kjv").unwrap().name, "King James Version");
+        assert_eq!(of_import("ebible:eng-kjv2006").unwrap().id, "kjv");
     }
 }

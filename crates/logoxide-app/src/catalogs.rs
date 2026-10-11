@@ -362,7 +362,7 @@ pub fn load_registry(
                 Path::new(""),
             )?,
         };
-        catalog.name = name.to_string();
+        catalog.rename(name);
         return Ok(catalog);
     }
     let (mut catalog, warnings) =

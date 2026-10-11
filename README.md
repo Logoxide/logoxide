@@ -65,7 +65,8 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
   bridges, or titles; major: verses removed, renumbered, or joined), then commits and tags it. `lx diff`,
   `lx verify`, and `lx show --git URL` (a release's summary, without downloading its text)
 - Catalogs and imports: `lx search` finds packages by name, abbreviation, language, keyword,
-  category, or the books they're about, in your own catalogs (`catalog.toml`, anyone can host
+  category, the books they're about, or the work they're an edition of (`lx works` lists the
+  works logoxide and your registries name), in your own catalogs (`catalog.toml`, anyone can host
   one) and five publishers' lists searched by default: eBible.org's and fetch.bible's (about 2,900
   translations), CCEL's Bibles and commentaries (ThML), and CrossWire's SWORD repository (OSIS, ThML, and GBF
   Bibles and commentaries, and its dictionaries, Strong's among them). `lx import ebible:<id>`,

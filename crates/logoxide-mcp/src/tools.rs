@@ -533,6 +533,7 @@ pub fn search_catalogs(context: &Context, params: SearchParams) -> Out {
     let mut all = Catalog {
         name: String::new(),
         entries: vec![],
+        works: vec![],
         warnings: vec![],
     };
     let mut seen = std::collections::HashSet::new();

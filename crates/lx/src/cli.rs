@@ -308,6 +308,30 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Lists the works a package can say it's an edition of (`work = "kjv"` in its
+    /// logoxide.toml): logoxide's own table, then the works the project's registries and
+    /// catalogs name (`[works]` in a catalog.toml, a folder registry's works.toml), then ids
+    /// packages claim that nothing names. A work is a name, not an owner: any package may claim
+    /// any work
+    Works {
+        /// Words to find in a work's id, name, or aliases (every one must match)
+        query: Vec<String>,
+        /// A catalog to read (a URL or a path), instead of the project's
+        #[arg(long)]
+        catalog: Vec<String>,
+        /// Only this registry's works and packages (lx catalog list), with logoxide's table
+        #[arg(long, conflicts_with = "catalog", add = ArgValueCompleter::new(complete::registry))]
+        registry: Option<String>,
+        /// List each work's packages, not only how many there are
+        #[arg(long)]
+        packages: bool,
+        /// Download the catalogs at URLs again, however recently they were kept
+        #[arg(long, conflicts_with = "offline")]
+        refresh: bool,
+        /// Download nothing: catalogs at URLs only as they were last kept, of any age
+        #[arg(long)]
+        offline: bool,
+    },
     /// Makes a package from another publisher's download and adds it as a dependency
     /// (`{ import = "ebible:eng-asv" }`), kept in the library like any installed package and
     /// shared by every project that locks the same files: `ebible:<id>`, `fetch:<id>`,

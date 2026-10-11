@@ -126,7 +126,10 @@ logoxide keeps a table of works (`crates/logoxide/data/works.toml`): each work's
 aliases (which searches match), its Wikidata item when known, and the import names known to be it
 (`ebible:eng-kjv2006`, `sword:crosswire/KJV`). An import whose name is listed is given that
 `work`; nothing is ever guessed from a title. Other ids may be used for works the table doesn't
-have. A package that doesn't say its work takes the work of another of the project's Bibles with
+have, and a catalog or registry may name them (`[works]`, [catalog.md](catalog.md#works)), so
+they're shown and searched by name; `lx works` lists every work the project's registries and
+catalogs know of, with the packages claiming each. Saying a work claims nothing exclusive: two
+packages saying `kjv` are both shown as the KJV, and nothing checks that either is. A package that doesn't say its work takes the work of another of the project's Bibles with
 its `id` (a fork, added with `package = "kjv"`, is its original's work).
 
 ### Kinds

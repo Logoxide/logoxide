@@ -128,6 +128,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
     Ok(Catalog {
         name: String::from("CCEL"),
         entries,
+        works: vec![],
         warnings: vec![],
     })
 }
@@ -215,6 +216,7 @@ pub fn genre_catalog(text: &str, genre: &str) -> Result<Catalog> {
     Ok(Catalog {
         name: format!("CCEL {genre}"),
         entries,
+        works: vec![],
         warnings: vec![],
     })
 }
@@ -237,6 +239,7 @@ pub fn named_catalog(import: &str) -> Option<Catalog> {
     Some(Catalog {
         name: String::from("CCEL"),
         entries: vec![entry],
+        works: vec![],
         warnings: vec![],
     })
 }

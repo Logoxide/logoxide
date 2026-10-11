@@ -330,6 +330,9 @@ struct TomlCatalog {
     name: Option<String>,
     #[serde(default, rename = "package")]
     packages: Vec<TomlEntry>,
+    /// Works it names (`[works.<id>]`), as logoxide's table does, without `imports`
+    #[serde(default)]
+    works: std::collections::BTreeMap<String, crate::works::Work>,
 }
 
 /**
@@ -343,6 +346,9 @@ pub const CATALOG_FORMAT: u32 = 1;
 pub struct Catalog {
     pub name: String,
     pub entries: Vec<CatalogEntry>,
+    /// The works it names beside logoxide's table (`[works.<id>]`; a folder registry's
+    /// `works.toml`)
+    pub works: Vec<crate::works::DeclaredWork>,
     /// What reading it passed over, and why (an entry whose id isn't one), for a warning
     pub warnings: Vec<String>,
 }
@@ -456,9 +462,18 @@ impl Catalog {
                 keys: e.keys,
             });
         }
+        let name = catalog.name.unwrap_or_default();
+        // Its works say where they're named: by its name, else where it is
+        let named_by = match (name.as_str(), location) {
+            ("", Some(location)) => location,
+            (name, _) => name,
+        };
+        let (works, passed_over) = crate::works::parse_declared(named_by, location, catalog.works);
+        warnings.extend(passed_over);
         Ok(Catalog {
-            name: catalog.name.unwrap_or_default(),
+            name,
             entries,
+            works,
             warnings,
         })
     }
@@ -469,7 +484,116 @@ impl Catalog {
     catalogs list, then the rest
     */
     pub fn search_grouped(&self, query: &str) -> Vec<WorkGroup<'_>> {
-        group_by_work(self.search(query))
+        self.group_by_work(self.search(query))
+    }
+
+    /// Names it `name` (a registry by its name in the project), the works it names too
+    pub fn rename(&mut self, name: &str) {
+        self.name = name.to_string();
+        for declared in &mut self.works {
+            declared.catalog = name.to_string();
+        }
+    }
+
+    /**
+    The work with this id: logoxide's table's ([`crate::works::get`]), else the one this catalog
+    (or one merged into it) names
+    */
+    pub fn work(&self, id: &str) -> Option<&crate::works::Work> {
+        crate::works::get(id).or_else(|| (self.works.iter()).map(|d| &d.work).find(|w| w.id == id))
+    }
+
+    /**
+    Entries grouped by the work each is an edition of, in the order of each work's first entry
+    (so a ranked list stays ranked), entries in their order within a group; an entry with no
+    work is a group of its own. Each group's name is its work's ([`Catalog::work`]), else its id
+    */
+    pub fn group_by_work<'a>(
+        &self,
+        entries: impl IntoIterator<Item = &'a CatalogEntry>,
+    ) -> Vec<WorkGroup<'a>> {
+        let mut groups: Vec<WorkGroup<'a>> = vec![];
+        for entry in entries {
+            match (entry.work.as_ref())
+                .and_then(|work| groups.iter_mut().find(|g| g.work.as_ref() == Some(work)))
+            {
+                Some(group) => group.entries.push(entry),
+                None => groups.push(WorkGroup {
+                    work: entry.work.clone(),
+                    name: (entry.work.as_deref())
+                        .map(|id| self.work(id).map_or(id, |w| w.name.as_str()).to_string()),
+                    entries: vec![entry],
+                }),
+            }
+        }
+        groups
+    }
+
+    /**
+    Every work there is to name, as these catalogs see it: logoxide's table, then the works the
+    catalogs name, then ids entries claim that nothing names, each with the entries claiming it.
+    With `query`, only works whose id, name, or aliases hold each of its words (ignoring case and
+    marks, as [`Catalog::search`] does)
+    */
+    pub fn works_listing(&self, query: &str) -> Vec<WorkListing<'_>> {
+        let words: Vec<String> = query.split_whitespace().map(fold).collect();
+        let claiming = |id: &str| -> Vec<&CatalogEntry> {
+            (self.entries.iter())
+                .filter(|e| e.work.as_deref() == Some(id))
+                .collect()
+        };
+        let mut listed: Vec<WorkListing<'_>> = (crate::works::works().iter())
+            .map(|w| (w, WorkFrom::Logoxide))
+            .chain((self.works.iter()).map(|d| (&d.work, WorkFrom::Catalog(d.catalog.clone()))))
+            .map(|(work, from)| WorkListing {
+                id: work.id.clone(),
+                name: Some(work.name.clone()),
+                aliases: work.aliases.clone(),
+                wikidata: work.wikidata.clone(),
+                from,
+                entries: claiming(&work.id),
+            })
+            .collect();
+        for entry in &self.entries {
+            if let Some(id) = &entry.work
+                && !listed.iter().any(|l| &l.id == id)
+            {
+                listed.push(WorkListing {
+                    id: id.clone(),
+                    name: None,
+                    aliases: vec![],
+                    wikidata: None,
+                    from: WorkFrom::Unnamed,
+                    entries: claiming(id),
+                });
+            }
+        }
+        listed.retain(|l| {
+            let names: Vec<String> = std::iter::once(&l.id)
+                .chain(&l.name)
+                .chain(&l.aliases)
+                .map(|n| fold(n))
+                .collect();
+            (words.iter()).all(|w| names.iter().any(|n| n.contains(w.as_str())))
+        });
+        listed
+    }
+
+    /**
+    Adds works another catalog names after this one's: a work with an id already here is passed
+    over, with a warning when the two differ
+    */
+    pub fn add_works(&mut self, works: Vec<crate::works::DeclaredWork>) {
+        for declared in works {
+            match (self.works.iter()).find(|d| d.work.id == declared.work.id) {
+                Some(kept) if kept.work != declared.work => self.warnings.push(format!(
+                    "work `{}` is named by {} and {}: {}'s is used",
+                    declared.work.id, kept.catalog, declared.catalog, kept.catalog
+                )),
+                Some(_) => {}
+                None => self.works.push(declared),
+            }
+        }
     }
 
     /// The entries `query` matches, best first: every word of it must be in the entry's id,
@@ -482,7 +606,10 @@ impl Catalog {
             .map(|word| (fold(word), crate::manifest::book_code(word)))
             .collect();
         let mut found: Vec<(u32, &CatalogEntry)> = (self.entries.iter())
-            .filter_map(|entry| Some((score(entry, &words)?, entry)))
+            .filter_map(|entry| {
+                let work = (entry.work.as_deref()).and_then(|id| self.work(id));
+                Some((score(entry, work, &words)?, entry))
+            })
             .collect();
         found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(&b.1.name)));
         found.into_iter().map(|(_, e)| e).collect()
@@ -553,6 +680,7 @@ impl Catalog {
         Catalog {
             name: name.to_string(),
             entries,
+            works: vec![],
             warnings: vec![],
         }
     }
@@ -617,6 +745,7 @@ impl Catalog {
             }
         }
         self.warnings.extend(other.warnings);
+        self.add_works(other.works);
         self
     }
 
@@ -714,43 +843,37 @@ impl Catalog {
     }
 }
 
-/// Entries of one work ([`group_by_work`]), or one entry of none
+/// Entries of one work ([`Catalog::group_by_work`]), or one entry of none
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WorkGroup<'a> {
     /// The work's id (`kjv`), if its entries name one
     pub work: Option<String>,
+    /// The work's name (logoxide's table's, else a catalog's, else its id), if it has a work
+    pub name: Option<String>,
     pub entries: Vec<&'a CatalogEntry>,
 }
 
-impl WorkGroup<'_> {
-    /// The work's name, from logoxide's table of works (else its id), if the group has a work
-    pub fn name(&self) -> Option<String> {
-        let work = self.work.as_deref()?;
-        Some(crate::works::get(work).map_or_else(|| work.to_string(), |w| w.name.clone()))
-    }
+/// Where a work in [`Catalog::works_listing`] is named
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WorkFrom {
+    /// logoxide's own table (`data/works.toml`)
+    Logoxide,
+    /// The catalog of this name (`[works.<id>]`)
+    Catalog(String),
+    /// Nowhere: only entries claim it
+    Unnamed,
 }
 
-/**
-Entries grouped by the work each is an edition of, in the order of each work's first entry (so a
-ranked list stays ranked), entries in their order within a group; an entry with no work is a
-group of its own
-*/
-pub fn group_by_work<'a>(
-    entries: impl IntoIterator<Item = &'a CatalogEntry>,
-) -> Vec<WorkGroup<'a>> {
-    let mut groups: Vec<WorkGroup<'a>> = vec![];
-    for entry in entries {
-        match (entry.work.as_ref())
-            .and_then(|work| groups.iter_mut().find(|g| g.work.as_ref() == Some(work)))
-        {
-            Some(group) => group.entries.push(entry),
-            None => groups.push(WorkGroup {
-                work: entry.work.clone(),
-                entries: vec![entry],
-            }),
-        }
-    }
-    groups
+/// A work, where it's named, and the entries claiming it ([`Catalog::works_listing`])
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkListing<'a> {
+    pub id: String,
+    /// None when nothing names it
+    pub name: Option<String>,
+    pub aliases: Vec<String>,
+    pub wikidata: Option<String>,
+    pub from: WorkFrom,
+    pub entries: Vec<&'a CatalogEntry>,
 }
 
 /// Gives imports the works logoxide's table knows their import names to be
@@ -828,14 +951,18 @@ fn fold(text: &str) -> String {
         .collect()
 }
 
-/// How well `words` (each with the book it names, if any) match `entry`, if every one does
-fn score(entry: &CatalogEntry, words: &[(String, Option<String>)]) -> Option<u32> {
+/// How well `words` (each with the book it names, if any) match `entry` and its `work`'s names,
+/// if every one does
+fn score(
+    entry: &CatalogEntry,
+    work: Option<&crate::works::Work>,
+    words: &[(String, Option<String>)],
+) -> Option<u32> {
     if words.is_empty() {
         return Some(0);
     }
     let exact = [fold(&entry.abbreviation), fold(&entry.id)];
     // Its work's names (`Authorized Version` finds every edition of the KJV)
-    let work = (entry.work.as_deref()).and_then(crate::works::get);
     let names: Vec<String> = [&entry.name]
         .into_iter()
         .chain(&entry.aliases)
@@ -935,8 +1062,103 @@ mod tests {
         Catalog {
             name: String::from("eBible.org"),
             entries,
+            works: vec![],
             warnings: vec![],
         }
+    }
+
+    #[test]
+    fn catalogs_name_works_of_their_own() {
+        let mine = Catalog::parse_toml_at(
+            Some("https://example.org/catalog.toml"),
+            r#"
+name = "mine"
+
+[works.gill]
+name = "John Gill's Exposition of the Bible"
+aliases = ["Gill's Exposition"]
+wikidata = "Q42"
+
+[works.kjv]
+name = "Something else"
+
+[[package]]
+id = "gill-1810"
+name = "Gill, 1810"
+abbreviation = "GILL"
+language = "en"
+kind = "commentary"
+work = "gill"
+git = "https://example.org/gill"
+
+[[package]]
+id = "gill-modern"
+name = "Gill, modernized"
+abbreviation = "GILLM"
+language = "en"
+kind = "commentary"
+work = "gill"
+git = "https://example.org/gill-modern"
+
+[[package]]
+id = "mystery"
+name = "A mystery"
+abbreviation = "MYS"
+language = "en"
+work = "mystery-text"
+git = "https://example.org/mystery"
+"#,
+        )
+        .unwrap();
+        // logoxide's table keeps `kjv`
+        assert_eq!(mine.works.len(), 1);
+        assert_eq!(mine.warnings.len(), 1, "{:?}", mine.warnings);
+        assert!(mine.warnings[0].contains("logoxide's table names it"));
+        // Its name finds its editions, gathered under it
+        let groups = mine.search_grouped("exposition");
+        assert_eq!(groups.len(), 1, "{groups:?}");
+        assert_eq!(
+            groups[0].name.as_deref(),
+            Some("John Gill's Exposition of the Bible")
+        );
+        assert_eq!(groups[0].entries.len(), 2);
+        // Another catalog naming it otherwise is warned of; the first is used
+        let other = Catalog::parse_toml(
+            "name = \"other\"\n[works.gill]\nname = \"Gill\"\n[works.henry]\nname = \"Matthew Henry\"\n",
+        )
+        .unwrap();
+        let all = mine.merge(other);
+        assert_eq!(all.work("gill").unwrap().aliases, ["Gill's Exposition"]);
+        assert_eq!(all.work("henry").unwrap().name, "Matthew Henry");
+        assert_eq!(all.work("kjv").unwrap().name, "King James Version");
+        assert!(
+            all.warnings
+                .iter()
+                .any(|w| w.contains("named by mine and other"))
+        );
+        // Every work: logoxide's, the catalogs', then what only entries claim
+        let listing = all.works_listing("");
+        assert!(listing.len() > 7);
+        let gill = listing.iter().find(|l| l.id == "gill").unwrap();
+        assert_eq!(gill.from, WorkFrom::Catalog("mine".into()));
+        assert_eq!(gill.entries.len(), 2);
+        assert_eq!(gill.wikidata.as_deref(), Some("Q42"));
+        let last = listing.last().unwrap();
+        assert_eq!(
+            (last.id.as_str(), &last.from),
+            ("mystery-text", &WorkFrom::Unnamed)
+        );
+        assert_eq!(last.name, None);
+        let kjv = listing.iter().find(|l| l.id == "kjv").unwrap();
+        assert_eq!(kjv.from, WorkFrom::Logoxide);
+        assert!(kjv.entries.is_empty());
+        // A query keeps works whose id, name, or aliases match each word
+        let ids: Vec<String> = (all.works_listing("authorized").iter())
+            .map(|l| l.id.clone())
+            .collect();
+        assert_eq!(ids, ["kjv"]);
+        assert_eq!(all.works_listing("mystery").len(), 1);
+        assert_eq!(all.works_listing("gill exposition").len(), 1);
     }
 
     #[test]
@@ -971,10 +1193,7 @@ git = "https://example.org/bsb"
         let groups = all.search_grouped("american standard");
         assert_eq!(groups.len(), 1, "{groups:?}");
         assert_eq!(groups[0].work.as_deref(), Some("asv"));
-        assert_eq!(
-            groups[0].name().as_deref(),
-            Some("American Standard Version")
-        );
+        assert_eq!(groups[0].name.as_deref(), Some("American Standard Version"));
         let ids: Vec<&str> = groups[0].entries.iter().map(|e| e.id.as_str()).collect();
         assert_eq!(ids, ["asv-1901", "ebible-eng-asv"]);
         // An entry of no work is a group of its own

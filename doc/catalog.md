@@ -65,6 +65,7 @@ size = 1834201
 | `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed |
 | `name` | string | The catalog's name, shown in search results |
 | `package` | array of tables | Its packages |
+| `works` | table of tables | Works its packages may be editions of, beside logoxide's own table ([below](#works)) |
 
 ### `[[package]]`
 
@@ -124,6 +125,35 @@ another `sha256` is an error; release a new version instead.
 Choosing a release for a requirement: among releases not yanked whose version parses, the
 newest that matches the requirement; with no requirement, the newest that isn't a pre-release.
 
+### `[works]`
+
+A catalog may name works logoxide's table of works doesn't have, so its packages' `work` (see
+[works and editions](manifest.md#works-and-editions)) has a name to show and to be searched by:
+
+```toml
+[works.gill]
+name = "John Gill's Exposition of the Bible"
+aliases = ["Gill's Exposition"]
+wikidata = "Q1234567"
+```
+
+| Key | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | What it's called |
+| `aliases` | array of strings | no | Other names searches find it by |
+| `wikidata` | string | no | Its Wikidata item: `Q` and digits |
+
+Each table's key is the work's id, an id as a package's is. A work whose id logoxide's table
+already has, whose id isn't one, with no name, or with a `wikidata` that isn't an item, is passed
+over with a warning, and the rest of the catalog read. `imports` (in logoxide's table, the import
+names known to be the work) is passed over with a warning: only logoxide's table, checked against
+the publishers' own lists, gives imports a work. When catalogs are searched together, the first
+to name a work's id is used, and a later one naming it otherwise is warned of.
+
+Naming a work owns nothing: any package may say it's an edition of any work, named anywhere or
+nowhere. `lx works` lists logoxide's table, then the works the project's registries and catalogs
+name, then ids packages claim that nothing names, each with the packages claiming it.
+
 ## Registries
 
 A project names registries in `[settings.registries]` (or a machine's config), so
@@ -131,7 +161,10 @@ A project names registries in `[settings.registries]` (or a machine's config), s
 `catalog.toml` (its URL or path) or a **folder of package repositories**: every git repository
 in it, at any depth, with a `logoxide.toml` that has `[package]`, is a package named by its path
 in the folder and found at its `file://` URL. A name matches an entry's `path` first, then its
-`id`; an id two entries share names neither, and the path must be given.
+`id`; an id two entries share names neither, and the path must be given. A `works.toml` in the
+folder's root names its works, in the form of a catalog's `[works]` without the `works.` prefix
+(`[gill]`); `lx catalog build` writes it into the catalog as `[works]` (with no `works.toml`, the
+previous catalog's `[works]` are kept, so they can be written there by hand).
 
 A dependency `{ registry = "<catalog URL>", version = "1" }` downloads only the chosen release's
 archive. Installing:

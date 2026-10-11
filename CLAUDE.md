@@ -77,11 +77,20 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
     Wikidata QID, and the import names checked against the publishers' lists to be it: KJV,
     ASV, WEB, BSB, Douay-Rheims, LXX, Vulgate so far; no QIDs yet). `of_import`/`of_source`
     give an import its work (catalog entries and `import::finish`), never guessed from titles.
-    `Catalog::search` matches a work's names; `search_grouped`/`group_by_work` gather editions
-    (`WorkGroup`); `Project::same_works` (a Bible without `work` takes that of another with its
+    Catalogs name works of their own (`[works.<id>]`, a folder registry's `works.toml`,
+    `WORKS_FILE`: name, aliases, wikidata; `parse_declared` checks each (`check`) and passes over
+    logoxide's ids and any `imports`, warned) into `Catalog::works` (`DeclaredWork`: the work and
+    its catalog's name; `add_works` on merge, the first kept, a differing one warned of;
+    `Catalog::rename` renames them with a registry); a work is a name, never owned: any package
+    may claim any id. `Catalog::work(id)` (the table's, else the catalogs'),
+    `works_listing(query)` (`WorkListing`: the table's, the catalogs', then ids only entries claim,
+    `WorkFrom::Logoxide`/`Catalog`/`Unnamed`, each with its claiming entries; `lx works`,
+    `LogoxideCatalog.works`); `lx catalog build` writes the folder's `works.toml` as `[works]`
+    (else keeps the previous catalog's). `Catalog::search` matches a work's names;
+    `search_grouped`/`Catalog::group_by_work` gather editions (`WorkGroup`, with its `name`); `Project::same_works` (a Bible without `work` takes that of another with its
     package id: forks inherit it) is what lx warns of after add, install, and import;
     `works::describe` for lx info and show. The FFI's `PackageInfo` and `CatalogEntry` carry
-    `work`, `edition`, `editionYear`; `LogoxideCatalog.searchGrouped`
+    `work`, `edition`, `editionYear`; `LogoxideCatalog.searchGrouped`, `works(query)` (`WorkInfo`, `WorkFrom`)
   - `language.rs`: `language` is checked as well-formed BCP 47 (`language-tags`, its grammar
     only), `script` as ISO 15924's form. `canonical` gives a tag's canonical form: the registry's
     replacements (`language-tags`' `canonicalize`, but a suppressed script is kept: `en-Latn`
@@ -612,7 +621,10 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `release` (`--set-version`), `diff`,
   `verify`, `info`, `clean` (versions no lock here uses and no root keeps; `--remove` deletes; gone roots
   reported, `--prune-roots` forgets them), `search` (catalogs; `--registry <name>`; each work's editions under its name, `--flat` not;
-  `--refresh` downloads URL catalogs again, `--offline` only what's kept), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (an `import` dependency kept in the library; `--vendor`: a path package in `imports/<id>/`, built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  `--refresh` downloads URL catalogs again, `--offline` only what's kept; `cmd/catalog.rs`'s
+  `gather` reads the registries and catalogs both it and `works` use), `works [query]
+  [--registry|--catalog] [--packages]` (every work: logoxide's table, the catalogs', then ids
+  only packages claim, with how many packages claim each), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (an `import` dependency kept in the library; `--vendor`: a path package in `imports/<id>/`, built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones (a new library version, or a
   vendored one's files), re-lock them; one failing doesn't stop the rest, and removing a vendored
   one's files is asked about in a terminal, else needs `--yes`; `lx update <import>` takes the
@@ -645,7 +657,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   genre), else the current folder if it has a `logoxide.toml`, else the library's own; `lx list
   --all` (`list_all`) lists every version in the library with the projects locking it
   (logoxide-app's `clean::installed`: the library's own, this one, and every root; none means
-  `lx clean --remove` deletes it). `--format text|json` (JSON for list, info, check, diff, verify, catalog list, catalog refresh, search,
+  `lx clean --remove` deletes it). `--format text|json` (JSON for list, info, check, diff, verify, catalog list, catalog refresh, search, works,
   import --update, read, compare, show --references, --notes, --entry, --keys, and --xref;
   others refuse it). `lx publish` prints
   `license::assess`'s concerns, and for a package whose rights say it isn't redistributable

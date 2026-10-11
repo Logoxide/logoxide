@@ -143,6 +143,7 @@ pub fn catalog(location: &str, bytes: &[u8]) -> Result<Catalog> {
     Ok(Catalog {
         name: format!("SWORD: {short}"),
         entries,
+        works: vec![],
         warnings: vec![],
     })
 }

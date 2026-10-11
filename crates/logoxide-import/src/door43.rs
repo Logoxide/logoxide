@@ -170,6 +170,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
     Ok(Catalog {
         name: String::from("Door43"),
         entries,
+        works: vec![],
         warnings: vec![],
     })
 }

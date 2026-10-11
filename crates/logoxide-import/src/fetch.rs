@@ -150,6 +150,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
     Ok(Catalog {
         name: String::from("fetch.bible"),
         entries,
+        works: vec![],
         warnings: vec![],
     })
 }

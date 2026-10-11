@@ -709,6 +709,11 @@ fn catalogs_and_ebible_imports() {
         (groups.len(), groups[0].name.as_deref()),
         (1, Some("American Standard Version"))
     );
+    // Every work, with the packages claiming it
+    let asv = all.works("american".into());
+    assert_eq!(asv.len(), 1);
+    assert_eq!(asv[0].from, crate::WorkFrom::Logoxide);
+    assert!(asv[0].entries.iter().any(|e| e.id == "ebible-eng-asv"));
     let zip_url = "https://ebible.org/Scriptures/eng-asv_usfm.zip";
     assert_eq!(
         entry.source,
