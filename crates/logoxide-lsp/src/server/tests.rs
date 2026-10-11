@@ -914,6 +914,43 @@ fn markup_templates() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `hover-trim` leaves out the line break a heading's template starts with; `hover-max` cuts the
+/// text after that many bytes (2000 by default, 0 for no limit)
+#[test]
+fn hover_trim_and_max() {
+    let markup = json!({ "headings": { "display": "\n{text}" } });
+    let (mut server, uri, dir) = with_bible("John 3:16", markup.clone(), "hover-trim");
+    let bible = dir.join("Bibles/BSB");
+    let mut configure = |extra: Value| {
+        let mut settings = json!({
+            "no-config": true,
+            "bible": bible.to_str().unwrap(),
+            "markup": markup,
+        });
+        settings
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        server.configure(settings).unwrap();
+        hover_text(&server, &uri, 0, 2).unwrap()
+    };
+    let hover = configure(json!({}));
+    assert!(
+        hover.contains("1:0:19:3 2:0:4:0\n\nJesus and Nicodemus\n"),
+        "{hover}"
+    );
+    let hover = configure(json!({ "hover-trim": true }));
+    assert!(
+        hover.contains("0:0:19:3 1:0:4:0\nJesus and Nicodemus\n[16] For God"),
+        "{hover}"
+    );
+    let hover = configure(json!({ "hover-trim": true, "hover-max": 10 }));
+    assert!(hover.contains("\nJesus and …\n```"), "{hover}");
+    let hover = configure(json!({ "hover-max": 0 }));
+    assert!(hover.contains("loved the world.\n```"), "{hover}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Hovering a verse in a whole book counts its references; go to declaration opens the book
 /// like definition; completions resolve to the passage's text
 #[test]

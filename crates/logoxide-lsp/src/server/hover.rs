@@ -25,6 +25,15 @@ fn note_reference(book: &str, note: &Note) -> String {
 }
 
 impl Server {
+    /// A text as hover (and completion documentation) shows it: without its leading whitespace
+    /// with `hover-trim`
+    pub(super) fn hover_shown(&self, text: bible::Text) -> bible::Text {
+        match self.hover_trim {
+            true => text.trim_start(),
+            false => text,
+        }
+    }
+
     /// The Bibles whose text hover shows for a reference: the one it names (or the default), then
     /// the `hover-bibles` setting's
     fn hover_texts(&self, translation: Option<&Translation>) -> Vec<&Bible> {
@@ -98,8 +107,8 @@ impl Server {
                         None => (vec![found.psg.clone()], format!("*{}*", bible.name)),
                     };
                     let texts: Vec<String> = (passages.iter())
-                        .filter_map(|p| bible.passage(p, None, Some(MAX_HOVER_TEXT)))
-                        .map(|text| text.fence(true))
+                        .filter_map(|p| bible.passage(p, None, self.hover_limit))
+                        .map(|text| self.hover_shown(text).fence(true))
                         .collect();
                     if texts.is_empty() {
                         continue;
@@ -164,9 +173,8 @@ impl Server {
                 .notes(passage, self.stretch_notes)
                 .into_iter())
             .filter_map(|note| {
-                let text =
-                    bible::nodes_text(&note.nodes, &commentary.markup, Some(MAX_HOVER_TEXT))?;
-                Some((note, text))
+                let text = bible::nodes_text(&note.nodes, &commentary.markup, self.hover_limit)?;
+                Some((note, self.hover_shown(text)))
             })
             .collect();
             for (note, text) in notes.iter().take(MAX_HOVER_NOTES) {
@@ -202,8 +210,8 @@ impl Server {
             .iter()
             .filter(|d| d.covers(&key))
             .filter_map(|d| {
-                let (entry, text) = d.entry(&key, Some(MAX_HOVER_TEXT))?;
-                Some((d, entry, text))
+                let (entry, text) = d.entry(&key, self.hover_limit)?;
+                Some((d, entry, self.hover_shown(text)))
             })
             .collect();
         let (_, first, _) = entries.first()?;

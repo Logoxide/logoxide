@@ -44,7 +44,7 @@ pub use search::Search;
 mod tests;
 
 use crate::{
-    bible::{self, Bible, Bibles, MAX_HOVER_TEXT, Part, Token},
+    bible::{self, Bible, Bibles, Part, Token},
     dictionary::{self, Dictionary},
     settings::{
         self, Configured, HoverField, InlayHints, Insertion, ReferenceDiagnostics, Replace,
@@ -199,6 +199,10 @@ pub struct Server {
     stretch_notes: bool,
     /// Whether completion offers the chapter or verse already typed (`complete-typed`)
     complete_typed: bool,
+    /// Whether hover leaves out a text's leading whitespace (`hover-trim`)
+    hover_trim: bool,
+    /// How many bytes of a text hover shows (`hover-max`; none for no limit)
+    hover_limit: Option<usize>,
     /// The Strong's dictionaries whose entries hover shows on a Strong's number (`strongs`)
     dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
@@ -226,6 +230,8 @@ impl Server {
             commentaries: vec![],
             stretch_notes: false,
             complete_typed: true,
+            hover_trim: false,
+            hover_limit: Some(bible::MAX_HOVER_TEXT),
             dictionaries: vec![],
             library: None,
             insertions: vec![],
@@ -256,6 +262,8 @@ impl Server {
             reference_diagnostics,
             complete_typed,
             hover,
+            hover_trim,
+            hover_limit,
             extensions,
             bibles,
             hover_bibles,
@@ -273,6 +281,8 @@ impl Server {
         self.commentaries = commentaries;
         self.stretch_notes = stretch_notes;
         self.complete_typed = complete_typed;
+        self.hover_trim = hover_trim;
+        self.hover_limit = hover_limit;
         self.dictionaries = dictionaries;
         self.insertions = insertions;
         self.matcher = Arc::new(matcher);

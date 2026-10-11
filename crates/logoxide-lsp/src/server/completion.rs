@@ -83,7 +83,8 @@ impl Server {
         let text = data
             .and_then(|data| data.get("passage")?.as_str())
             .and_then(|passage| self.matcher.data().parse(passage))
-            .and_then(|passage| bible?.passage(&passage, None, Some(MAX_HOVER_TEXT)));
+            .and_then(|passage| bible?.passage(&passage, None, self.hover_limit))
+            .map(|text| self.hover_shown(text));
         if let Some(text) = text {
             // What to color, for editors that draw the documentation themselves
             if let Some(Value::Object(data)) = &mut item.data {

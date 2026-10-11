@@ -419,6 +419,13 @@ pub struct Settings {
     pub complete_typed: Option<bool>,
     /// What the hover shows below the reference (`"osis,book"` or a list; `[]` for none)
     pub hover: Option<OneOrMany>,
+    /// Hover (and completion documentation) leaves out the leading whitespace of a passage's
+    /// text, a note's, or an entry's (a chapter label or heading displayed after a line break);
+    /// off by default
+    pub hover_trim: bool,
+    /// How many bytes of a passage's text (a note's, an entry's) hover and completion
+    /// documentation show before cutting it with ` …`: 2000 by default, 0 for no limit
+    pub hover_max: Option<usize>,
     /// A Bible's folder (a logoxide package, or USX files, one book each), for passage text in
     /// hover and go-to-definition
     pub bible: Option<String>,
@@ -468,6 +475,10 @@ pub struct Configured {
     /// The `complete-typed` setting
     pub complete_typed: bool,
     pub hover: Vec<HoverField>,
+    /// The `hover-trim` setting
+    pub hover_trim: bool,
+    /// The `hover-max` setting: none for no limit
+    pub hover_limit: Option<usize>,
     pub extensions: Vec<String>,
     pub bibles: Bibles,
     /// The `hover-bibles` setting, as the Bibles' names
@@ -691,6 +702,11 @@ impl Settings {
             reference_diagnostics: self.reference_diagnostics,
             complete_typed: self.complete_typed.unwrap_or(true),
             hover,
+            hover_trim: self.hover_trim,
+            hover_limit: match self.hover_max {
+                Some(0) => None,
+                max => Some(max.unwrap_or(crate::bible::MAX_HOVER_TEXT)),
+            },
             extensions,
             hover_bibles: (self.hover_bibles.values().iter())
                 .flat_map(|names| names.split(','))

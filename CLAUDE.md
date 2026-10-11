@@ -536,6 +536,9 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   `Source::notes` would give, from the cached book; `bible::nodes_text` writes a tree in the
   markup's style without labels; each note labeled `*MHCC* (John 3:16-18)`, at most
   `MAX_HOVER_NOTES` a commentary; `stretch-notes = true` stretches them, `book_notes`);
+  `hover-max` (`Server::hover_limit`, default `MAX_HOVER_TEXT`, 0 none) cuts hover and
+  completion texts, `hover-trim` (`Server::hover_shown`, `Text::trim_start`) drops their leading
+  whitespace;
   `strongs = true` keeps `Project::dictionaries` whose `keys`
   are Strong's (`dictionary.rs`: `Dictionary`, and `strongs_at`, an uppercase `G`/`H` number
   standing alone, normalized by logoxide-text's `normalize_key`), and hovering one shows its

@@ -51,7 +51,8 @@ use crate::settings::MarkupSettings;
 /// The scheme of whole-book documents: `logoxide://BSB/JHN`
 pub const SCHEME: &str = "logoxide";
 
-/// Hover text is cut after this many bytes (a whole psalm is plenty)
+/// Hover text is cut after this many bytes by default (a whole psalm is plenty; the `hover-max`
+/// setting changes it)
 pub const MAX_HOVER_TEXT: usize = 2000;
 
 /// What colors a part of a rendered book (the semantic token types, in the legend's order)
@@ -136,6 +137,20 @@ impl Text {
             false => format!(" {info}"),
         };
         format!("{fence}{SCHEME}{info}\n{}\n{fence}", self.text)
+    }
+
+    /// The text without its leading whitespace (a chapter label or heading displayed after a
+    /// line break), its tokens moved with it
+    pub fn trim_start(mut self) -> Self {
+        let cut = self.text.len() - self.text.trim_start().len();
+        if cut > 0 {
+            self.text.drain(..cut);
+            self.tokens.retain(|(range, _)| range.end > cut);
+            for (range, _) in &mut self.tokens {
+                *range = range.start.saturating_sub(cut)..range.end - cut;
+            }
+        }
+        self
     }
 
     /// What to color, as in [`Text::fence`]'s info string: `0:0:4:0 0:33:4:2`
