@@ -197,6 +197,8 @@ pub struct Server {
     commentaries: Vec<Bible>,
     /// Whether a commentary's note covers the verses after it up to its next (`stretch-notes`)
     stretch_notes: bool,
+    /// Whether completion offers the chapter or verse already typed (`complete-typed`)
+    complete_typed: bool,
     /// The Strong's dictionaries whose entries hover shows on a Strong's number (`strongs`)
     dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
@@ -223,6 +225,7 @@ impl Server {
             hover_bibles: vec![],
             commentaries: vec![],
             stretch_notes: false,
+            complete_typed: true,
             dictionaries: vec![],
             library: None,
             insertions: vec![],
@@ -251,6 +254,7 @@ impl Server {
             format,
             inlay_hints,
             reference_diagnostics,
+            complete_typed,
             hover,
             extensions,
             bibles,
@@ -268,6 +272,7 @@ impl Server {
         self.hover_bibles = hover_bibles;
         self.commentaries = commentaries;
         self.stretch_notes = stretch_notes;
+        self.complete_typed = complete_typed;
         self.dictionaries = dictionaries;
         self.insertions = insertions;
         self.matcher = Arc::new(matcher);

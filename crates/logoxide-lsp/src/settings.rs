@@ -414,6 +414,9 @@ pub struct Settings {
     pub pdf: bool,
     pub inlay_hints: InlayHints,
     pub reference_diagnostics: ReferenceDiagnostics,
+    /// Completion offers the chapter or verse already typed, first (`Matthew 1` offers
+    /// `Matthew 1`, so its passage shows), like the CLI's `--complete-typed`; on by default
+    pub complete_typed: Option<bool>,
     /// What the hover shows below the reference (`"osis,book"` or a list; `[]` for none)
     pub hover: Option<OneOrMany>,
     /// A Bible's folder (a logoxide package, or USX files, one book each), for passage text in
@@ -462,6 +465,8 @@ pub struct Configured {
     pub format: FormatOptions,
     pub inlay_hints: InlayHints,
     pub reference_diagnostics: ReferenceDiagnostics,
+    /// The `complete-typed` setting
+    pub complete_typed: bool,
     pub hover: Vec<HoverField>,
     pub extensions: Vec<String>,
     pub bibles: Bibles,
@@ -684,6 +689,7 @@ impl Settings {
             format: self.format_options(),
             inlay_hints: self.inlay_hints,
             reference_diagnostics: self.reference_diagnostics,
+            complete_typed: self.complete_typed.unwrap_or(true),
             hover,
             extensions,
             hover_bibles: (self.hover_bibles.values().iter())

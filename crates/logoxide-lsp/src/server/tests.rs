@@ -152,6 +152,31 @@ fn completes_with_utf16_ranges() {
     );
 }
 
+/// `Matthew 1` offers `Matthew 1` first, so its passage shows, unless `complete-typed` is off
+#[test]
+fn completes_what_is_typed_unless_turned_off() {
+    let (mut server, uri) = server("Matthew 1");
+    let labels = |server: &Server| -> Vec<String> {
+        match server.completion(CompletionParams {
+            text_document_position: at(&uri, 0, 9),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            partial_result_params: PartialResultParams::default(),
+            context: None,
+        }) {
+            Some(CompletionResponse::List(list)) => {
+                list.items.into_iter().map(|item| item.label).collect()
+            }
+            _ => vec![],
+        }
+    };
+    server.configure(json!({ "no-config": true })).unwrap();
+    assert_eq!(labels(&server)[..2], ["Matthew 1", "Matthew 10"]);
+    server
+        .configure(json!({ "no-config": true, "complete-typed": false }))
+        .unwrap();
+    assert_eq!(labels(&server)[0], "Matthew 10");
+}
+
 #[test]
 fn diagnostics_for_references_and_missing_verses() {
     let (mut server, uri) = server("Fine: jn 3:16\nBad: John 3:99");

@@ -14,6 +14,7 @@ impl Server {
         let options = CompleteOptions {
             format: self.format.clone(),
             limit: Some(100),
+            include_typed: self.complete_typed,
         };
         let translations = &self.bibles.translations;
         let items = self
