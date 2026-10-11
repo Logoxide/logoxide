@@ -74,7 +74,7 @@ pub fn compare_import(
 }
 
 /// Sets a made package's version in its `logoxide.toml`
-fn set_version(storage: &dyn Storage, version: &semver::Version) -> Result<()> {
+pub fn set_version(storage: &dyn Storage, version: &semver::Version) -> Result<()> {
     let text = storage.read_string(MANIFEST)?;
     let mut doc: toml_edit::DocumentMut =
         (text.parse()).map_err(|e: toml_edit::TomlError| LogoxideError::Import(e.to_string()))?;

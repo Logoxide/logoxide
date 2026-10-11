@@ -17,7 +17,7 @@ cargo install logoxide-cli          # the `lx` command (fetching packages uses `
 cd ~/Notes
 lx init                             # a logoxide.toml here: this folder is now a vault
 lx search "king james"              # eBible.org, fetch.bible, CCEL, and CrossWire's SWORD lists
-lx import ebible:eng-kjv            # a publisher's download, made into a package in imports/
+lx import ebible:eng-kjv            # a publisher's download, made into a package in the library
 lx add github:someone/bsb           # or a package published as a git repository
 lx list                             # what the vault uses, from logoxide.lock
 lx install                          # on another device: exactly what logoxide.lock says
@@ -70,8 +70,9 @@ and 9 (links that follow renumbered verses done, reworded ones not yet) are part
   translations), CCEL's Bibles and commentaries (ThML), and CrossWire's SWORD repository (OSIS, ThML, and GBF
   Bibles and commentaries, and its dictionaries, Strong's among them). `lx import ebible:<id>`,
   `fetch:<id>`, `ccel:<id>`, or
-  `sword:<repository>/<module>` makes a download into a package in `imports/<id>/`, and
-  `lx import --update` brings imports up to date
+  `sword:<repository>/<module>` makes a download into a package kept in the library, shared by
+  every project that locks the same files and pinned by its downloads' hashes (`--vendor` puts
+  it in the project's `imports/<id>/`), and `lx import --update` brings imports up to date
 - Registries: a registry publishes each release as an archive listed with its SHA-256 in a
   `catalog.toml`, so any static host (or GitHub releases) serves thousands of books without a
   repository each. `lx registry init`, `lx publish`, `lx yank`, `lx catalog build`, and
@@ -138,6 +139,8 @@ lx add --registry https://example.org/registry/catalog.toml romans
 lx install                                 # what logoxide.lock says, on a new device
 lx update [id]                             # newer versions the requirements allow
 lx list
+lx add --global github:someone/kjv         # into the library's own logoxide.toml, even in a vault
+lx list --all                              # every version in the library, and who uses it
 
 lx new --from book.epub --license CC0-1.0   # a package from one file: an EPUB's title and authors fill it in
 lx new my-library --kind collection --name "My Library" --language en   # a package of packages

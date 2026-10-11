@@ -1204,16 +1204,22 @@ pub fn install(context: &Context, params: InstallParams) -> Out {
         locked: params.locked,
         offline: false,
     };
-    let lock = (context.app.install(&mut project, Update::Nothing, frozen)).map_err(error)?;
+    let mut warnings = vec![];
+    let lock = (context
+        .app
+        .install(&mut project, Update::Nothing, frozen, &mut |w| {
+            warnings.push(clean(&w, LONG))
+        }))
+    .map_err(error)?;
     let packages: Vec<Value> = (lock.packages.iter())
         .map(|p| json!({ "name": p.dependency_name(), "id": p.id, "version": p.version.to_string() }))
         .collect();
-    Ok(json!({ "installed": packages }))
+    Ok(json!({ "installed": packages, "warnings": warnings }))
 }
 
-/// `import`: makes a package from a publisher's download one of the project's catalogs lists, in
-/// the project's `imports/<id>/`, and adds and installs it. Only the project's catalogs (D14): no
-/// URLs or paths
+/// `import`: makes a package from a publisher's download one of the project's catalogs lists,
+/// and adds it as an `import` dependency, installed in the library. Only the project's catalogs
+/// (D14): no URLs or paths
 pub fn import(context: &Context, params: ImportParams) -> Out {
     writes(context)?;
     logoxide_app::import::check_source(&params.source).map_err(error)?;
@@ -1229,19 +1235,15 @@ pub fn import(context: &Context, params: ImportParams) -> Out {
                 clean(&params.source, SHORT)
             )
         })?;
-    let imported = logoxide_app::import::run(
-        &mut project,
-        context.library(),
-        &entry,
-        context.app.http(),
-        context.app.fetcher(),
-    )
-    .map_err(error)?;
+    let importing = context.app.importing(&project);
+    let imported = logoxide_app::import::run(&mut project, context.library(), &entry, &importing)
+        .map_err(error)?;
     let skipped: Vec<String> = (imported.skipped.iter().take(50))
         .map(|s| s.to_string())
         .collect();
     Ok(json!({
         "id": imported.id,
+        "version": imported.version,
         "dir": clean(&imported.dir.display().to_string(), LONG),
         "untrusted": Untrusted::new(&format!("the import {}", entry.id))
             .text("name", &imported.name, SHORT)

@@ -17,7 +17,7 @@ use crate::{
     error::{LogoxideError, Result},
     git::{Fetcher, GitRef},
     library::open_locked,
-    lock::{LockedPackage, Lockfile},
+    lock::{LockedDownload, LockedPackage, Lockfile},
     manifest::{Dependency, DetailedDependency, Manifest},
     package::{Features, Package},
     storage::{MemoryStorage, Storage},
@@ -41,6 +41,47 @@ pub trait Packages {
     /// Puts an installed version's files back as they were fetched (`files`), where they were
     /// changed: its own files only, so a reader's annotations beside them stay
     fn repair(&self, locked: &LockedPackage, files: &dyn Storage) -> Result<()>;
+}
+
+/**
+What the resolver asks a host to import ([`Fetcher::import`]): the package logoxide-import makes
+from a publisher's downloads. The package manager knows no publisher; the host (logoxide-app,
+the bindings) finds the import in its catalogs and builds it
+*/
+pub struct ImportRequest<'a> {
+    /// The dependency's name, for messages
+    pub name: &'a str,
+    /// The import's name (`ebible:eng-kjv2006`)
+    pub import: &'a str,
+    pub kind: ImportKind<'a>,
+}
+
+/// Which import is asked for
+pub enum ImportKind<'a> {
+    /**
+    The locked one made again: from the same downloads, each checked by its SHA-256, and given
+    the locked version (an import's version is logoxide's label, given when it's locked). The
+    resolver then checks its files against the locked checksum
+    */
+    Pinned(&'a LockedPackage),
+    /**
+    The publisher's text as it is now. With `current` (the version it replaces, and its files),
+    its version is raised by what changed, or is `current`'s own when nothing did; without, it's
+    a new import's
+    */
+    Fresh {
+        current: Option<(&'a LockedPackage, Arc<dyn Storage>)>,
+    },
+}
+
+/// An import's package as a host made it
+pub struct ImportBuild {
+    /// The package's files, `logoxide.toml` among them
+    pub files: MemoryStorage,
+    /// Each file it was made from, and where it was downloaded
+    pub downloads: Vec<LockedDownload>,
+    /// The publisher's version of the text, as its catalog listed it
+    pub upstream_version: Option<String>,
 }
 
 /// Which locked packages may move to newer versions
@@ -247,7 +288,7 @@ impl Resolver<'_> {
                 Dependency::Detailed(d) => d.clone(),
                 Dependency::Version(req) => {
                     return Err(LogoxideError::Resolve(format!(
-                        "{name} = \"{req}\": there's no default registry; give `git`, `registry`, or `path`"
+                        "{name} = \"{req}\": there's no default registry; give `git`, `registry`, `path`, or `import`"
                     )));
                 }
             };
@@ -311,7 +352,7 @@ impl Resolver<'_> {
             for (dep_name, dependency) in &package.manifest().dependencies {
                 let Dependency::Detailed(dependency) = dependency else {
                     return Err(LogoxideError::Resolve(format!(
-                        "{}: dependency `{dep_name}` has no `git` or `path`",
+                        "{}: dependency `{dep_name}` has no `git`, `registry`, `path`, or `import`",
                         locked.name()
                     )));
                 };
@@ -415,6 +456,12 @@ impl Resolver<'_> {
         let mut features: Vec<String> = d.features.clone();
         features.sort();
         features.dedup();
+        if let Some(import) = &d.import {
+            let mut locked = self.import_release(want, import)?;
+            locked.features = features;
+            locked.default_features = d.default_features;
+            return Ok(locked);
+        }
         if let Some(path) = &d.path {
             if want.from_git {
                 return Err(LogoxideError::Resolve(format!(
@@ -436,24 +483,10 @@ impl Resolver<'_> {
             let info = package.info();
             self.check_id(&want.name, d, &info.id)?;
             return Ok(LockedPackage {
-                id: info.id.clone(),
-                rename: None,
-                version: info.version.clone(),
-                git: None,
-                tag: None,
-                branch: None,
-                rev: None,
-                commit: None,
-                folder: None,
                 path: Some(relative),
-                registry: None,
-                archive: None,
-                mirrors: vec![],
-                sha256: None,
-                checksum: None,
                 features,
                 default_features: d.default_features,
-                dependencies: vec![],
+                ..LockedPackage::new(&info.id, info.version.clone())
             });
         }
         if let Some(registry) = &d.registry {
@@ -470,7 +503,7 @@ impl Resolver<'_> {
         }
         let url = d.git.as_deref().ok_or_else(|| {
             LogoxideError::Resolve(format!(
-                "`{}`: give `git`, `registry`, or `path`",
+                "`{}`: give `git`, `registry`, `path`, or `import`",
                 want.name
             ))
         })?;
@@ -522,7 +555,19 @@ impl Resolver<'_> {
     at two versions (a collection's `kjv` 1, the manifest's 2); each keeps its own
     */
     fn kept(&self, want: &Want, fits: impl Fn(&LockedPackage) -> bool) -> Option<&LockedPackage> {
-        let previous = self.previous.filter(|_| !self.update.allows(&want.name))?;
+        match self.update.allows(&want.name) {
+            true => None,
+            false => self.locked_before(want, fits),
+        }
+    }
+
+    /// What the previous lock file had for a dependency that `fits`, updating or not: [`Self::kept`]
+    fn locked_before(
+        &self,
+        want: &Want,
+        fits: impl Fn(&LockedPackage) -> bool,
+    ) -> Option<&LockedPackage> {
+        let previous = self.previous?;
         let asker: Option<&Vec<String>> = match &want.parent_locked {
             None => Some(&previous.dependencies),
             Some((id, rename, name)) => (previous.named(name))
@@ -660,9 +705,6 @@ impl Resolver<'_> {
             });
         }
         let locked = LockedPackage {
-            id: info.id.clone(),
-            rename: None,
-            version: info.version.clone(),
             git: Some(url.to_string()),
             tag: match reference {
                 GitRef::Tag(tag) => Some(tag.clone()),
@@ -675,15 +717,8 @@ impl Resolver<'_> {
             rev: None,
             commit: Some(commit),
             folder: d.folder.as_ref().map(|f| f.trim_matches('/').to_string()),
-            path: None,
-            registry: None,
-            archive: None,
-            mirrors: vec![],
-            sha256: None,
             checksum: Some(checksum),
-            features: vec![],
-            default_features: true,
-            dependencies: vec![],
+            ..LockedPackage::new(&info.id, info.version.clone())
         };
         // Fetched by commit from the lock file: still the release (or branch) it was locked from
         let mut locked = locked;
@@ -769,27 +804,16 @@ impl Resolver<'_> {
                         want.name, release.version
                     ))
                 })?;
+                let version = release.version.parse().map_err(|e| {
+                    LogoxideError::Resolve(format!("{id} {}: {e}", release.version))
+                })?;
                 LockedPackage {
-                    id: id.to_string(),
-                    rename: None,
-                    version: release.version.parse().map_err(|e| {
-                        LogoxideError::Resolve(format!("{id} {}: {e}", release.version))
-                    })?,
-                    git: None,
-                    tag: None,
-                    branch: None,
-                    rev: None,
-                    commit: None,
-                    folder: None,
-                    path: None,
                     registry: Some(registry.to_string()),
                     archive: Some(release.url.clone()),
                     mirrors: release.mirrors.clone(),
                     sha256: Some(release.sha256.clone()),
                     checksum: Some(checksum),
-                    features: vec![],
-                    default_features: true,
-                    dependencies: vec![],
+                    ..LockedPackage::new(id, version)
                 }
             }
         };
@@ -858,6 +882,144 @@ impl Resolver<'_> {
             None => self.packages.install(&locked, &storage)?,
         }
         Ok(locked)
+    }
+
+    /**
+    An import: the version the lock file has (while the manifest allows it and it isn't
+    updating), from the library, else made again from its locked downloads and checked against
+    its checksum; else the publisher's text now, made by the host ([`Fetcher::import`]), against
+    the version it replaces when updating. Kept in the library by its checksum (`+i`), so every
+    project locking the same files shares one folder
+    */
+    fn import_release(&self, want: &Want, import: &str) -> Result<LockedPackage> {
+        let d = &want.dependency;
+        let name = want.name.as_str();
+        let id = d.package_id(name);
+        crate::manifest::check_id("package", id)?;
+        let fits = |p: &LockedPackage| {
+            p.id == id && p.import.as_deref() == Some(import) && p.checksum.is_some()
+        };
+        let kept = self.kept(want, |p| {
+            fits(p) && d.version.as_ref().is_none_or(|req| req.matches(&p.version))
+        });
+        if let Some(kept) = kept {
+            let mut locked = kept.clone();
+            locked.rename = None;
+            locked.dependencies = vec![];
+            let installed = self.packages.installed(&locked)?;
+            if let Some(installed) = &installed {
+                let checksum = crate::package::checksum(installed.as_ref())?;
+                let changed = locked.checksum.as_ref().is_some_and(|c| *c != checksum);
+                if changed && !self.repair {
+                    return Err(LogoxideError::Changed {
+                        id: locked.label(),
+                        dir: crate::library::library_dir(&locked),
+                        expected: locked.checksum.clone().unwrap_or_default(),
+                        actual: checksum,
+                    });
+                }
+                if !changed {
+                    return Ok(locked);
+                }
+            }
+            self.may_fetch(name, &locked.label())?;
+            let build = self.fetcher.import(&ImportRequest {
+                name,
+                import,
+                kind: ImportKind::Pinned(kept),
+            })?;
+            let storage = self.built(name, d, &build)?;
+            let info = Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?;
+            let version = info.package.map(|p| p.version);
+            let checksum = crate::package::checksum(&storage)?;
+            if version.as_ref() != Some(&locked.version)
+                || Some(&checksum) != locked.checksum.as_ref()
+            {
+                return Err(LogoxideError::Resolve(format!(
+                    "`{name}`: {import} made again isn't the locked {} (its files' checksum is \
+                     {checksum}, locked {}): the import has changed since; `lx update {name}` \
+                     locks what it makes now",
+                    locked.label(),
+                    locked.checksum.as_deref().unwrap_or("none"),
+                )));
+            }
+            match installed {
+                Some(_) => self.packages.repair(&locked, &storage)?,
+                None => self.packages.install(&locked, &storage)?,
+            }
+            return Ok(locked);
+        }
+        self.may_choose(name)?;
+        // Updating: the version it replaces, when it's installed, so the new one is versioned
+        // against it
+        let before = self.locked_before(want, fits).cloned();
+        let current = match &before {
+            Some(before) => (self.packages.installed(before)?).map(|files| (before, files)),
+            None => None,
+        };
+        let build = self.fetcher.import(&ImportRequest {
+            name,
+            import,
+            kind: ImportKind::Fresh { current },
+        })?;
+        let storage = self.built(name, d, &build)?;
+        let info = Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?
+            .package
+            .ok_or_else(|| {
+                LogoxideError::Resolve(format!("`{name}`: {import} made no [package]"))
+            })?;
+        if let Some(req) = &d.version
+            && !req.matches(&info.version)
+        {
+            return Err(LogoxideError::Resolve(format!(
+                "`{name}`: {import} is version {} now, which `version = \"{req}\"` doesn't allow",
+                info.version
+            )));
+        }
+        let locked = LockedPackage {
+            import: Some(import.to_string()),
+            upstream_version: build.upstream_version.clone(),
+            downloads: build.downloads.clone(),
+            checksum: Some(crate::package::checksum(&storage)?),
+            ..LockedPackage::new(&info.id, info.version)
+        };
+        // Its folder is named by its checksum: one already there is the same files, unless
+        // they were changed in place
+        match self.packages.installed(&locked)? {
+            Some(installed) => {
+                let checksum = crate::package::checksum(installed.as_ref())?;
+                if Some(&checksum) != locked.checksum.as_ref() {
+                    if !self.repair {
+                        return Err(LogoxideError::Changed {
+                            id: locked.label(),
+                            dir: crate::library::library_dir(&locked),
+                            expected: locked.checksum.clone().unwrap_or_default(),
+                            actual: checksum,
+                        });
+                    }
+                    self.packages.repair(&locked, &storage)?;
+                }
+            }
+            None => self.packages.install(&locked, &storage)?,
+        }
+        Ok(locked)
+    }
+
+    /// An import's files as the host made them: its declared files, the package the dependency
+    /// names
+    fn built(
+        &self,
+        name: &str,
+        d: &DetailedDependency,
+        build: &ImportBuild,
+    ) -> Result<MemoryStorage> {
+        let storage = crate::package::only_declared(&build.files)?;
+        let manifest = Manifest::parse(&storage.read_string(crate::manifest::MANIFEST)?)?;
+        let info = manifest.package.ok_or_else(|| {
+            LogoxideError::Resolve(format!("`{name}`: the import made no [package]"))
+        })?;
+        self.check_id(name, d, &info.id)?;
+        Ok(storage)
     }
 
     /// The package fetched is the one the dependency names (its name, or `package`)

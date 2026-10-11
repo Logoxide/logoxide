@@ -333,7 +333,7 @@ mod tests {
         let entry = &catalog.entries[0];
         let usx = r#"<?xml version="1.0" encoding="utf-8"?><usx version="3.0"><book code="JHN" style="id"/><chapter number="3" style="c" sid="JHN 3"/><para style="p"><verse number="16" style="v" sid="JHN 3:16"/>For God so loved the world.<verse eid="JHN 3:16"/></para></usx>"#;
         let dest = MemoryStorage::new();
-        crate::build(entry, &[("jhn".into(), usx.as_bytes().to_vec())], &dest).unwrap();
+        crate::tests::build_twice(entry, &[("jhn".into(), usx.as_bytes().to_vec())], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             ["COPYRIGHT.txt", "logoxide.toml", "usx/JHN.usx"]

@@ -1,7 +1,7 @@
 /*!
 What every logoxide front end does (lx, the bindings, a language or MCP server), in one place:
 catalogs and registries read over HTTP ([`catalogs`]), packages fetched with or without `git`
-([`fetch`]), imports made and updated ([`import`]), libraries cleaned ([`clean`]), media checked
+([`fetch`]), imports made, kept in the library, and updated ([`import`], [`importer`]), libraries cleaned ([`clean`]), media checked
 ([`media`]), and passages read and compared ([`read`]), behind one [`Logoxide`].
 
 It sits above the package manager (`logoxide`) and the importers (`logoxide-import`), and prints
@@ -27,6 +27,7 @@ pub mod clean;
 pub mod fetch;
 pub mod http;
 pub mod import;
+pub mod importer;
 pub mod media;
 pub mod read;
 
@@ -220,32 +221,75 @@ impl Logoxide {
         catalogs::load_registry(fetch, name, location, project.dir())
     }
 
+    /**
+    The fetcher installs go through: this one's, which also makes imports through the
+    project's catalogs ([`importer::Importing`])
+    */
+    pub fn importing(&self, project: &Project) -> importer::Importing<'_> {
+        let catalogs = importer::ImportCatalogs {
+            fetch: self.catalog_fetch(catalog_cache::Freshness::Fresh),
+            locations: self.config.catalogs(project.manifest()),
+            dir: project.dir().to_path_buf(),
+        };
+        importer::Importing::new(self.fetcher(), self.http(), self.reader(), catalogs)
+            .with_library(&self.library)
+    }
+
     /// Installs what's locked, moving what `update` allows, within what `frozen` allows; the
-    /// lock written
+    /// lock written. Imports not in the library are made again from their locked downloads
     pub fn install(
         &self,
         project: &mut Project,
         update: Update,
         frozen: Frozen,
+        warn: Warn,
+    ) -> Result<Lockfile> {
+        let importing = self.importing(project);
+        let installed = self.install_with(project, &importing, update, frozen);
+        importing.warnings().into_iter().for_each(&mut *warn);
+        installed
+    }
+
+    /// [`Logoxide::install`] through `importing` (with what it was given: an update's builds)
+    pub fn install_with(
+        &self,
+        project: &mut Project,
+        importing: &importer::Importing<'_>,
+        update: Update,
+        frozen: Frozen,
     ) -> Result<Lockfile> {
         let lock = match frozen == Frozen::default() {
-            true => project.install(&self.library, self.fetcher(), update)?,
-            false => project.install_frozen(&self.library, self.fetcher(), frozen)?,
+            true => project.install(&self.library, importing, update)?,
+            false => project.install_frozen(&self.library, importing, frozen)?,
         };
         Ok(lock.clone())
     }
 
-    /// An import (`ebible:eng-kjv2006`) found in the project's catalogs, made in its
-    /// `imports/<id>/`, added, and installed ([`import::find_entry`], [`import::run`])
+    /**
+    An import (`ebible:eng-kjv2006`) found in the project's catalogs, added, and installed: kept
+    in the library ([`import::run`]), or, `vendored`, made in the project's `imports/<id>/`
+    ([`import::run_vendored`])
+    */
     pub fn import(
         &self,
         project: &mut Project,
         source: &str,
+        vendored: bool,
         warn: Warn,
     ) -> Result<import::Imported> {
         let fetch = self.catalog_fetch(catalog_cache::Freshness::Fresh);
-        let entry = import::find_entry(fetch, &self.config, project, source, warn)?;
-        import::run(project, &self.library, &entry, self.http(), self.fetcher())
+        let entry = import::find_entry(fetch, &self.config, project, source, &mut *warn)?;
+        if vendored {
+            let importing = self.importing(project);
+            let imported =
+                import::run_vendored(project, &self.library, &entry, self.http(), &importing);
+            importing.warnings().into_iter().for_each(&mut *warn);
+            return imported;
+        }
+        let importing = self.importing(project);
+        let imported = import::run(project, &self.library, &entry, &importing);
+        importing.warnings().into_iter().for_each(&mut *warn);
+        imported
     }
 
     /// What updating the project's imports (or the one `name` names) would do, the catalogs
@@ -258,7 +302,8 @@ impl Logoxide {
     ) -> Result<Vec<import::UpdatePlan>> {
         let reader = self.reader();
         let fetch = self.catalog_fetch(catalog_cache::Freshness::Refresh);
-        import::plan_updates(fetch, &self.config, project, reader, name, warn)
+        let library = &self.library;
+        import::plan_updates(fetch, &self.config, project, library, reader, name, warn)
     }
 
     /// The library cleaned of what none of `projects` locks and no root keeps
@@ -271,6 +316,12 @@ impl Logoxide {
         said: &mut dyn FnMut(clean::Cleaning),
     ) -> Result<clean::Cleaned> {
         clean::clean(&self.library, projects, remove, prune_roots, said)
+    }
+
+    /// Every version in the library, with the projects (`projects` and the library's roots)
+    /// that use it ([`clean::installed`])
+    pub fn installed(&self, projects: &[Project]) -> Result<Vec<clean::Installed>> {
+        clean::installed(&self.library, projects)
     }
 
     /// A passage from one of the project's Bibles (`John 3:16 KJV`; [`read::read`])

@@ -10,8 +10,10 @@ call these rather than keeping copies.
   (git's smart-HTTP refs and archives of commits) where there's no `git`, and `fetcher` to pick
 - **Catalogs** (`catalogs`): a project's catalogs and registries, from URLs, files, or a folder of
   repositories; `registry_url` resolves `registry:name`
-- **Imports** (`import`): `find_entry`, `run` (download, stage, move into place, add, install, or
-  roll back), `plan_updates` and `apply_update`
+- **Imports** (`import`, `importer`): `find_entry`, `run` (an `import` dependency, made by
+  `importer::Importing` as the resolver asks and kept in the library by its checksum),
+  `run_vendored` (download, stage, move into place in `imports/<id>/`, add, install, or roll
+  back), `plan_updates` and `apply_update`
 - **Cleaning** (`clean`), **media** (`media::verify`, hashing as it downloads)
 - **Reading** (`read`): `read(project, "John 3:16 KJV")` and `compare(passage, bibles)`, mapped
   through the project's versification maps, as logoxide-text's passages

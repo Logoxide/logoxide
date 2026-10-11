@@ -1078,7 +1078,7 @@ mod tests {
             ],
         );
         let dest = MemoryStorage::new();
-        crate::build(&entry, &[("zip".into(), zip)], &dest).unwrap();
+        crate::tests::build_twice(&entry, &[("zip".into(), zip)], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             [
@@ -1199,7 +1199,7 @@ mod tests {
         verses.extend((22..=36).map(|v| ("John", 3, v, last)));
         let dest = MemoryStorage::new();
         let zip = sword_zip(SWORD_CONF, &verses);
-        crate::build(&sword_test_entry(), &[("zip".into(), zip)], &dest).unwrap();
+        crate::tests::build_twice(&sword_test_entry(), &[("zip".into(), zip)], &dest);
         let john = String::from_utf8(dest.read("osis/John.xml").unwrap()).unwrap();
         assert!(
             john.contains("Nicodemus") && john.contains("testimony"),
@@ -1440,7 +1440,7 @@ mod tests {
             ],
         );
         let dest = MemoryStorage::new();
-        crate::build(&entry, &[("zip".into(), zip)], &dest).unwrap();
+        crate::tests::build_twice(&entry, &[("zip".into(), zip)], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             ["COPYRIGHT.txt", "entries/Test.xml", "logoxide.toml"]

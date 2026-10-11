@@ -86,6 +86,16 @@ pub struct LockedPackage {
     pub mirrors: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+    /// The import it was made by (`ebible:eng-kjv2006`), for a package made from another
+    /// publisher's download and kept in the library by its checksum
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import: Option<String>,
+    /// That publisher's version of the text (`2026-10-08`, `3.1`), as the import found it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub upstream_version: Option<String>,
+    /// Each file the import was made from, and its SHA-256, so it can be made again exactly
+    #[serde(default, rename = "download", skip_serializing_if = "Vec::is_empty")]
+    pub downloads: Vec<LockedDownload>,
     /// The checksum of every file (not for path packages, whose files change as they're written)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checksum: Option<String>,
@@ -103,11 +113,54 @@ fn yes() -> bool {
     true
 }
 
+/**
+A file an import was made from: its name in the import (`zip`, `thml`, `JHN`), where it was
+downloaded, and the SHA-256 of its bytes (`sha256:` and hex). An import taken from a copy already
+in the library, which nothing downloaded, has no SHA-256: made again, it's checked by its files'
+checksum alone
+*/
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LockedDownload {
+    pub name: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
 impl LockedPackage {
+    /// `id` at `version`, from nowhere yet: the resolver fills in where it came from
+    pub fn new(id: &str, version: semver::Version) -> Self {
+        Self {
+            id: id.to_string(),
+            rename: None,
+            version,
+            git: None,
+            tag: None,
+            branch: None,
+            rev: None,
+            commit: None,
+            folder: None,
+            path: None,
+            registry: None,
+            archive: None,
+            mirrors: vec![],
+            sha256: None,
+            import: None,
+            upstream_version: None,
+            downloads: vec![],
+            checksum: None,
+            features: vec![],
+            default_features: true,
+            dependencies: vec![],
+        }
+    }
+
     /**
     Its folder's name in the library: the version and its commit (`1.2.0+g3f9c2a1b`), so forks
     of a package at the same version, and a moved branch, never share a folder; a registry
-    archive's, the version and its hash (`1.2.0+a9f86d081`); a path package's, its version
+    archive's, the version and its hash (`1.2.0+a9f86d081`); an import's, the version and its
+    files' checksum (`1.0.0+i44cb8e21`), so two projects' imports share a folder exactly when
+    their files are the same; a path package's, its version
     */
     pub fn key(&self) -> String {
         // Only hex digits name the folder, whatever a lock built elsewhere holds ([`Self::check`])
@@ -123,7 +176,13 @@ impl LockedPackage {
                 let hex = sha256.strip_prefix("sha256:").unwrap_or(sha256);
                 format!("{}+a{}", self.version, short(hex))
             }
-            (None, None) => self.version.to_string(),
+            (None, None) => match (&self.import, &self.checksum) {
+                (Some(_), Some(checksum)) => {
+                    let hex = checksum.strip_prefix("sha256:").unwrap_or(checksum);
+                    format!("{}+i{}", self.version, short(hex))
+                }
+                _ => self.version.to_string(),
+            },
         }
     }
 
@@ -149,6 +208,26 @@ impl LockedPackage {
             let digits = sha256.strip_prefix("sha256:").unwrap_or_default();
             if digits.len() != 64 || !hex(digits) {
                 return bad(format!("{}: sha256 `{sha256}` isn't a SHA-256", self.id));
+            }
+        }
+        if self.import.is_some() {
+            let digits = (self.checksum.as_deref())
+                .and_then(|c| c.strip_prefix("sha256:"))
+                .unwrap_or_default();
+            if digits.len() != 64 || !hex(digits) {
+                return bad(format!("{}: an import needs its files' checksum", self.id));
+            }
+            for download in &self.downloads {
+                let Some(sha256) = &download.sha256 else {
+                    continue;
+                };
+                let digits = sha256.strip_prefix("sha256:").unwrap_or_default();
+                if digits.len() != 64 || !hex(digits) {
+                    return bad(format!(
+                        "{}: download `{}` has no SHA-256",
+                        self.id, download.name
+                    ));
+                }
             }
         }
         if let Some(folder) = &self.folder {
@@ -296,24 +375,13 @@ mod tests {
     #[test]
     fn round_trips_and_names_folders() {
         let package = LockedPackage {
-            id: "bsb".into(),
-            rename: None,
-            version: "1.2.0".parse().unwrap(),
             git: Some("https://example.org/bsb".into()),
             tag: Some("v1.2.0".into()),
-            branch: None,
-            rev: None,
             commit: Some("3f9c2a1b77".into()),
-            folder: None,
-            path: None,
-            registry: None,
-            archive: None,
-            mirrors: vec![],
-            sha256: None,
             checksum: Some("sha256:00".into()),
             features: vec!["sword".into()],
-            default_features: true,
             dependencies: vec!["strongs 2.0.0".into()],
+            ..LockedPackage::new("bsb", "1.2.0".parse().unwrap())
         };
         assert_eq!(package.key(), "1.2.0+g3f9c2a1b");
         assert_eq!(package.name(), "bsb 1.2.0+g3f9c2a1b");
@@ -345,6 +413,32 @@ mod tests {
             ..package.clone()
         };
         assert_eq!(archive.key(), "1.2.0+a9f86d081");
+        let import = LockedPackage {
+            import: Some("ebible:eng-kjv2006".into()),
+            upstream_version: Some("2026-10-08".into()),
+            downloads: vec![LockedDownload {
+                name: "zip".into(),
+                url: "https://ebible.org/Scriptures/eng-kjv2006_usfm.zip".into(),
+                sha256: Some(format!("sha256:{}", "9f".repeat(32))),
+            }],
+            checksum: Some(format!("sha256:44cb8e21{}", "0".repeat(56))),
+            ..LockedPackage::new("ebible-eng-kjv2006", "1.0.0".parse().unwrap())
+        };
+        assert_eq!(import.key(), "1.0.0+i44cb8e21");
+        import.check().unwrap();
+        let unpinned = LockedPackage {
+            checksum: None,
+            ..import.clone()
+        };
+        assert!(unpinned.check().is_err());
+        let import_lock = Lockfile {
+            packages: vec![import],
+            ..Lockfile::default()
+        };
+        assert_eq!(
+            Lockfile::parse(&import_lock.to_toml().unwrap()).unwrap(),
+            import_lock
+        );
         let lock = Lockfile {
             packages: vec![package, branch],
             ..Lockfile::default()

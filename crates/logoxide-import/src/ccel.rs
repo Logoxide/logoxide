@@ -469,7 +469,7 @@ mod tests {
 <ThML.body><div1 title="Obadiah"><p><scripture passage="Obad 1.1" parsed="|Obad|1|1|0|0" osisRef="Bible:Obad.1.1" />
 חֲזוֹן עֹבַדְיָה כֹּה־אָמַר אֲדֹנָי יְהוִה לֶאֱדוֹם</p></div1></ThML.body></ThML>"#;
         let dest = MemoryStorage::new();
-        crate::build(entry, &[("thml".into(), xml.as_bytes().to_vec())], &dest).unwrap();
+        crate::tests::build_twice(entry, &[("thml".into(), xml.as_bytes().to_vec())], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             ["COPYRIGHT.txt", "logoxide.toml", "thml/heot.xml"]
@@ -589,7 +589,7 @@ mod tests {
         assert!(named_catalog("ccel:kjv").is_none());
         assert!(named_catalog("ccel:../x").is_none());
         let dest = MemoryStorage::new();
-        crate::build(entry, &[("thml".into(), HENRY.as_bytes().to_vec())], &dest).unwrap();
+        crate::tests::build_twice(entry, &[("thml".into(), HENRY.as_bytes().to_vec())], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             ["COPYRIGHT.txt", "logoxide.toml", "thml/mhc1.xml"]
@@ -635,7 +635,7 @@ mod tests {
 <p>Without vision the people perish (<scripRef passage="Prov. 29:18" parsed="|Prov|29|18|0|0">Prov. 29:18</scripRef>).</p>
 </div2></div1></ThML.body></ThML>"#;
         let dest = MemoryStorage::new();
-        crate::build(entry, &[("thml".into(), xml.as_bytes().to_vec())], &dest).unwrap();
+        crate::tests::build_twice(entry, &[("thml".into(), xml.as_bytes().to_vec())], &dest);
         let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
         assert_eq!(package.info().kind, PackageKind::Book);
         assert_eq!(

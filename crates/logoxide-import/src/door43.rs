@@ -410,7 +410,7 @@ projects:
             ("media.yaml", "projects: []\n"),
         ]);
         let dest = MemoryStorage::new();
-        crate::build(entry, &[("archive".into(), bytes)], &dest).unwrap();
+        crate::tests::build_twice(entry, &[("archive".into(), bytes)], &dest);
         assert_eq!(
             dest.walk("").unwrap(),
             ["LICENSE.md", "logoxide.toml", "usfm/44-JHN.usfm"]

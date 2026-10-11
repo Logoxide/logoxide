@@ -22,6 +22,9 @@ pub(crate) struct Cli {
     /// The folder with the logoxide.toml to use: the current one if it has one, else the library's
     #[arg(long, global = true)]
     pub(crate) project: Option<PathBuf>,
+    /// Use the library's own logoxide.toml, even in a project (`--project <library>`)
+    #[arg(long, global = true, conflicts_with = "project")]
+    pub(crate) global: bool,
     /// The library (LOGOXIDE_HOME, else ~/.config/logoxide/config.toml's `library`, else
     /// $XDG_DATA_HOME/logoxide)
     #[arg(long, global = true)]
@@ -64,6 +67,7 @@ impl Cli {
     pub(crate) fn project(&self, library: &Library) -> logoxide::Result<Project> {
         let dir = match &self.project {
             Some(dir) => dir.clone(),
+            None if self.global => library.root().to_path_buf(),
             None if std::path::Path::new(MANIFEST).is_file() => PathBuf::from("."),
             None => library.root().to_path_buf(),
         };
@@ -225,7 +229,8 @@ pub(crate) enum Command {
         #[arg(add = ArgValueCompleter::new(complete::dependency))]
         ids: Vec<String>,
     },
-    /// The packages logoxide.toml asks for, as locked (those turned off are marked `(off)`)
+    /// The packages logoxide.toml asks for, as locked (those turned off are marked `(off)`);
+    /// --all: every version in the library, and the projects using it
     List {
         /// Only the packages in use (logoxide.toml's that are on, and what they bring in)
         #[arg(long, conflicts_with = "disabled")]
@@ -233,6 +238,10 @@ pub(crate) enum Command {
         /// Only the packages turned off (and what only they bring in)
         #[arg(long)]
         disabled: bool,
+        /// Every version in the library, whichever project installed it, with the projects that
+        /// use it (those using none are what `lx clean --remove` deletes)
+        #[arg(long, conflicts_with_all = ["enabled", "disabled"])]
+        all: bool,
     },
     /// Whether a package is on: prints `on` or `off`, and exits with 0 if it's on, 1 if it's off,
     /// and 2 on an error (no such dependency, no project)
@@ -299,13 +308,16 @@ pub(crate) enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Makes a package from another publisher's download, puts it in the project's `imports/`,
-    /// and adds it as a path package: `ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or
-    /// `sword:<repository>/<module>` (as `lx search` shows), from the project's catalogs (and
-    /// for SWORD, the repositories CrossWire lists)
+    /// Makes a package from another publisher's download and adds it as a dependency
+    /// (`{ import = "ebible:eng-asv" }`), kept in the library like any installed package and
+    /// shared by every project that locks the same files: `ebible:<id>`, `fetch:<id>`,
+    /// `ccel:<id>`, or `sword:<repository>/<module>` (as `lx search` shows), from the project's
+    /// catalogs (and for SWORD, the repositories CrossWire lists). `--vendor` puts it in the
+    /// project's `imports/` as a path package instead
     ///
     /// `--update` makes the project's imports again from their publishers' downloads and replaces
-    /// the ones that changed (a reader's files beside them stay), saying what changed
+    /// the ones that changed (a new version in the library; a vendored one in place, a reader's
+    /// files beside it kept), saying what changed
     Import {
         /// `ebible:eng-asv`, `fetch:eng_bsb`, `ccel:kjv`, `sword:crosswire/KJV`; with `--update`,
         /// one import (its dependency's name, or this), else all of them
@@ -314,6 +326,10 @@ pub(crate) enum Command {
         /// Update imports: download each again, and replace it if it changed
         #[arg(long)]
         update: bool,
+        /// Put it in the project's `imports/<id>/` as a path package (to edit it by hand, or to
+        /// carry it with the project), not in the library
+        #[arg(long, conflicts_with = "update")]
+        vendor: bool,
         /// With `--update`: say what would change, and change nothing
         #[arg(long, requires = "update")]
         dry_run: bool,

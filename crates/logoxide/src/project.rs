@@ -226,6 +226,7 @@ impl Project {
         put("git", dependency.git.as_deref());
         put("registry", dependency.registry.as_deref());
         put("path", dependency.path.as_deref());
+        put("import", dependency.import.as_deref());
         // `1.2.0` like Cargo writes it (the same requirement as `^1.2.0`)
         let version = (dependency.version.as_ref())
             .map(|v| v.to_string().trim_start_matches('^').to_string());

@@ -417,6 +417,13 @@ pub struct DetailedDependency {
     pub registry: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub path: Option<String>,
+    /**
+    An import from another publisher (`ebible:eng-kjv2006`, `sword:crosswire/KJV`), made by the
+    host's importer and kept in the library like a fetched package, by its files' checksum.
+    `version` is then a requirement on the import's own version
+    */
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub import: Option<String>,
     /// The newest tag matching this requirement (`v1.2.0` matches `1`)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<semver::VersionReq>,
@@ -461,6 +468,7 @@ impl Default for DetailedDependency {
             git: None,
             registry: None,
             path: None,
+            import: None,
             version: None,
             tag: None,
             rev: None,
@@ -821,10 +829,15 @@ impl Manifest {
             let Dependency::Detailed(d) = dependency else {
                 continue;
             };
-            let sources = [d.git.is_some(), d.path.is_some(), d.registry.is_some()];
+            let sources = [
+                d.git.is_some(),
+                d.path.is_some(),
+                d.registry.is_some(),
+                d.import.is_some(),
+            ];
             if sources.iter().filter(|s| **s).count() != 1 {
                 return err(format!(
-                    "dependency `{name}`: give one of `git`, `registry`, or `path`"
+                    "dependency `{name}`: give one of `git`, `registry`, `path`, or `import`"
                 ));
             }
             let pins = [&d.tag, &d.rev, &d.branch]
@@ -964,6 +977,23 @@ pub fn check_rev(rev: &str) -> Result<()> {
 }
 
 /**
+Whether `name` reads as an import's name: a publisher's prefix (lowercase letters and digits), a
+colon, and the publisher's id, with no control characters or spaces
+*/
+pub fn is_import_name(name: &str) -> bool {
+    let Some((prefix, id)) = name.split_once(':') else {
+        return false;
+    };
+    !prefix.is_empty()
+        && prefix
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
+        && !id.is_empty()
+        && !id.starts_with('-')
+        && !id.chars().any(|c| c.is_control() || c.is_whitespace())
+}
+
+/**
 Checks what a dependency gives git and the library: its name and `package` are ids, and nothing
 it hands git could be read as an option (`--upload-pack=…`), so a manifest from anywhere can't run
 commands. A revision is a commit's hex; a folder is a plain relative path
@@ -977,6 +1007,7 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
     for (key, value) in [
         ("git", &d.git),
         ("registry", &d.registry),
+        ("import", &d.import),
         ("tag", &d.tag),
         ("branch", &d.branch),
         ("rev", &d.rev),
@@ -988,6 +1019,13 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
                 "dependency `{name}`: `{key} = \"{value}\"` isn't one"
             ));
         }
+    }
+    if let Some(import) = &d.import
+        && !is_import_name(import)
+    {
+        return err(format!(
+            "dependency `{name}`: `import = \"{import}\"` isn't an import (`ebible:eng-kjv2006`)"
+        ));
     }
     if let Some(rev) = &d.rev {
         check_rev(rev).map_err(|e| LogoxideError::Manifest(format!("dependency `{name}`: {e}")))?;
@@ -1382,9 +1420,24 @@ compare = ["mine"]
         };
         assert!(
             bad("x = { path = \"a\", git = \"b\" }")
-                .contains("give one of `git`, `registry`, or `path`")
+                .contains("give one of `git`, `registry`, `path`, or `import`")
         );
         assert!(bad("y = { path = \"a\", tag = \"v1\" }").contains("with `git`"));
+        assert!(
+            bad("z = { import = \"ebible:eng-asv\", git = \"b\" }")
+                .contains("give one of `git`, `registry`, `path`, or `import`")
+        );
+        assert!(bad("z = { import = \"ebible:eng-asv\", tag = \"v1\" }").contains("with `git`"));
+        for import in ["eng-asv", "Ebible:x", "ebible:", "ebible:-x", "ebible:a b"] {
+            let error = bad(&format!("z = {{ import = \"{import}\" }}"));
+            assert!(error.contains("isn't an import"), "{import}: {error}");
+        }
+        assert!(
+            Manifest::parse(&format!(
+                "{BSB}\nz = {{ import = \"sword:crosswire/KJV\" }}"
+            ))
+            .is_ok()
+        );
         let wrong_dep = BSB.replace("dep:strongs-greek", "dep:tsk");
         assert!(
             Manifest::parse(&wrong_dep)
