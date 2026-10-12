@@ -28,7 +28,7 @@ use logoxide::{
     reader::{DefaultReader, StorageBooks, StorageFiles},
 };
 use logoxide_markup::{Flattener, Kind, Node};
-pub use logoxide_text::passage::{Part, Rendered};
+pub use logoxide_text::passage::{Part, Rendered, Verses};
 use logoxide_text::{
     Book, Note, Source,
     cache::BookCache,
@@ -370,6 +370,23 @@ impl Bible {
         let style = markup.unwrap_or(&self.markup).style();
         let name = self.book_name(passage.book).unwrap_or("");
         let text = passage::text(&book, passage, &style, name, limit)?;
+        Some(Text {
+            tokens: tokens(&text.marks),
+            text: text.text,
+        })
+    }
+
+    /// [`Bible::passage`] with only some of its verses: its first or last few
+    pub fn passage_verses(
+        &self,
+        passage: &Passage,
+        markup: Option<&MarkupSettings>,
+        verses: Verses,
+    ) -> Option<Text> {
+        let book = self.book(passage.book)?;
+        let style = markup.unwrap_or(&self.markup).style();
+        let name = self.book_name(passage.book).unwrap_or("");
+        let text = passage::text_verses(&book, passage, &style, name, verses)?;
         Some(Text {
             tokens: tokens(&text.marks),
             text: text.text,

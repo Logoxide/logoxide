@@ -1,6 +1,6 @@
 //! Code actions: reformatting references, inserting a passage's text, and searching
 
-use super::*;
+use super::{template::TextFill, *};
 
 impl Server {
     /**
@@ -101,10 +101,11 @@ impl Server {
     }
 
     /**
-    `Insert Callout` for each insertion: the passage's text on the lines after the reference, or
-    in place of its line or of the reference itself (`replace`)
+    A code action for each template with an `action`: `Insert callout` (its text on the lines
+    after the reference), `Replace line with callout`, or `Replace with callout` (the reference
+    itself)
     - From the Bible the reference names; else one action per Bible, the default first
-    - With several Bibles, titles name theirs: `Insert Callout (KJV)`
+    - With several Bibles, titles name theirs: `Insert callout (KJV)`
     */
     fn insert_actions(
         &self,
@@ -113,6 +114,47 @@ impl Server {
         translation: Option<&Translation>,
         index: &LineIndex,
     ) -> Vec<CodeActionOrCommand> {
+        let templates: Vec<(&str, &Template)> = (self.templates.iter())
+            .filter(|(_, t)| t.action.is_some())
+            .map(|(name, t)| (name.as_str(), t))
+            .collect();
+        (self
+            .template_choices(uri, &templates, found, translation, index)
+            .into_iter())
+        .filter_map(|choice| {
+            let kind = lsp_types::CodeActionKind::REFACTOR;
+            Some(edit_action(uri, choice.title?, vec![choice.edit?], kind))
+        })
+        .collect()
+    }
+
+    /// [`TEMPLATES_REQUEST`]: each template filled for the reference at a position
+    pub fn templates(&self, params: TextDocumentPositionParams) -> Vec<TemplateChoice> {
+        let uri = &params.text_document.uri;
+        let Some((found, index)) = self.reference_at(uri, params.position) else {
+            return vec![];
+        };
+        let default = Template::default();
+        let templates: Vec<(&str, &Template)> = match self.templates.is_empty() {
+            true => vec![("text", &default)],
+            false => (self.templates.iter())
+                .map(|(name, t)| (name.as_str(), t))
+                .collect(),
+        };
+        let translation = found.translation.as_ref();
+        self.template_choices(uri, &templates, &found.reference, translation, &index)
+    }
+
+    /// Each template for each Bible (the one the reference names, else all, the default first),
+    /// filled for a reference, with its code action's edit if it has an `action`
+    fn template_choices(
+        &self,
+        uri: &Uri,
+        templates: &[(&str, &Template)],
+        found: &BibleMatch,
+        translation: Option<&Translation>,
+        index: &LineIndex,
+    ) -> Vec<TemplateChoice> {
         let Some(text) = self.documents.get(uri) else {
             return vec![];
         };
@@ -129,64 +171,60 @@ impl Server {
         let line_end = text[bytes.end..]
             .find('\n')
             .map_or(text.len(), |i| bytes.end + i);
-        // Titles name the Bible when there are several
+        // Labels name the Bible when there are several
         let several = self.bibles.len() > 1;
-        self.insertions
-            .iter()
-            .flat_map(|insertion| bibles.iter().map(move |bible| (insertion, *bible)))
-            .filter_map(|(insertion, bible)| {
-                let inserted = self.insertion_text(bible, insertion, found, translation)?;
-                let (range, new_text) = match insertion.replace {
-                    None => (line_end..line_end, format!("\n{inserted}")),
-                    Some(Replace::Line) => (line_start..line_end, inserted),
-                    Some(Replace::Inline) => (bytes.start..bytes.end, inserted),
+        (templates.iter())
+            .flat_map(|&(name, template)| bibles.iter().map(move |bible| (name, template, *bible)))
+            .filter_map(|(name, template, bible)| {
+                let written = self.written(bible, template, found, translation)?;
+                let label = match several {
+                    true => format!("{name} ({})", bible.name),
+                    false => name.to_string(),
                 };
-                let at = lsp_range(index, range.start, range.end);
-                let title = match several {
-                    true => format!("Insert {} ({})", insertion.name, bible.name),
-                    false => format!("Insert {}", insertion.name),
-                };
-                let edits = vec![TextEdit::new(at, new_text)];
-                Some(edit_action(
-                    uri,
+                let action = template.action.map(|action| {
+                    let (range, new_text, title) = match action {
+                        TemplateAction::Insert => {
+                            (line_end..line_end, format!("\n{written}"), "Insert")
+                        }
+                        TemplateAction::ReplaceLine => {
+                            (line_start..line_end, written.clone(), "Replace line with")
+                        }
+                        TemplateAction::Replace => {
+                            (bytes.start..bytes.end, written.clone(), "Replace with")
+                        }
+                    };
+                    let at = lsp_range(index, range.start, range.end);
+                    (format!("{title} {label}"), TextEdit::new(at, new_text))
+                });
+                let (title, edit) = action.unzip();
+                Some(TemplateChoice {
+                    name: name.to_string(),
+                    label,
+                    bible: bible.name.clone(),
+                    text: written,
                     title,
-                    edits,
-                    lsp_types::CodeActionKind::REFACTOR,
-                ))
+                    edit,
+                })
             })
             .collect()
     }
 
-    /// What an insertion writes for a reference, or [`None`] if the Bible doesn't have it
-    fn insertion_text(
+    /// What a template writes for a reference, or [`None`] if the Bible doesn't have it
+    fn written(
         &self,
         bible: &Bible,
-        insertion: &Insertion,
+        template: &Template,
         found: &BibleMatch,
         translation: Option<&Translation>,
     ) -> Option<String> {
-        let markup = bible.markup.merged(&insertion.markup);
-        let text = bible.passage(&found.psg, Some(&markup), None)?.text;
-        let text: Vec<String> = text
-            .lines()
-            .map(|line| {
-                format!("{}{line}", insertion.line_prefix)
-                    .trim_end()
-                    .to_string()
-            })
-            .collect();
-        let osis = found
-            .psg
-            .to_osis(self.matcher.data().books())
-            .unwrap_or_default();
-        let named = self.translation_of(bible, translation);
-        Some(
-            settings::fill_translation(&insertion.display, named)
-                .replace("{reference}", &self.reference(found))
-                .replace("{osis}", &osis)
-                .replace("{bible}", &bible.name)
-                .replace("{text}", &text.join("\n")),
-        )
+        let markup = bible.markup.merged(&template.markup);
+        let fill = TextFill {
+            bible: Some(bible),
+            markup: Some(&markup),
+            line_prefix: &template.line_prefix,
+            join: "\n",
+        };
+        self.fill_template(&template.display, found, translation, &fill)
     }
 }
 

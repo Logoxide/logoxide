@@ -1043,18 +1043,20 @@ fn insertions() {
     let (mut server, uri, dir) = with_bible("Read John 3:16-17 today\nnext", json!({}), "insert");
     let mut settings = server.editor.clone();
     settings.insert(
-            "insertions".into(),
-            json!([
-                {
-                    "name": "Callout",
+            "templates".into(),
+            json!({
+                "callout": {
+                    "action": "insert",
                     "display": "> [!bible] {reference}\n{text}",
                     "line_prefix": "> ",
                     "markup": { "headings": { "show": false }, "verse_numbers": { "display": "{verse}" } }
                 },
-                { "name": "Plain", "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } } },
-                { "name": "Line", "replace": "line", "display": "> {reference}: {text}", "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } } },
-                { "name": "Inline", "replace": "inline", "display": "“{text}” ({reference})", "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } } }
-            ]),
+                "plain": { "action": "insert", "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } } },
+                "quoted": { "action": "replace-line", "display": "> {reference}: {text}", "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } } },
+                "inline": { "action": "replace", "display": "“{text}” ({reference})", "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } } },
+                // No action: copied, or named by `inlay-hints`
+                "hint": { "display": "{first:1}" }
+            }),
         );
     server.configure(Value::Object(settings)).unwrap();
     let actions = server
@@ -1069,7 +1071,9 @@ fn insertions() {
     let inserts: Vec<(String, TextEdit)> = actions
         .into_iter()
         .filter_map(|a| match a {
-            CodeActionOrCommand::CodeAction(a) if a.title.starts_with("Insert") => {
+            CodeActionOrCommand::CodeAction(a)
+                if a.title.starts_with("Insert") || a.title.starts_with("Replace") =>
+            {
                 let edit = a.edit?.changes?.into_values().next()?.pop()?;
                 Some((a.title, edit))
             }
@@ -1077,35 +1081,139 @@ fn insertions() {
         })
         .collect();
     let at = Range::new(Position::new(0, 23), Position::new(0, 23));
+    // In the templates' order, by name
     assert_eq!(
             inserts,
             [
                 (
-                    String::from("Insert Callout"),
+                    String::from("Insert callout"),
                     TextEdit::new(at, "\n> [!bible] John 3:16-17\n> 16 For God so loved the world. 17 Jesus said, I did not come to condemn.".into())
-                ),
-                (
-                    String::from("Insert Plain"),
-                    TextEdit::new(at, "\nFor God so loved the world. Jesus said, I did not come to condemn.".into())
-                ),
-                // The whole line
-                (
-                    String::from("Insert Line"),
-                    TextEdit::new(
-                        Range::new(Position::new(0, 0), Position::new(0, 23)),
-                        "> John 3:16-17: For God so loved the world. Jesus said, I did not come to condemn.".into()
-                    )
                 ),
                 // Just the reference: `Read ` and ` today` stay
                 (
-                    String::from("Insert Inline"),
+                    String::from("Replace with inline"),
                     TextEdit::new(
                         Range::new(Position::new(0, 5), Position::new(0, 17)),
                         "“For God so loved the world. Jesus said, I did not come to condemn.” (John 3:16-17)".into()
                     )
                 ),
+                (
+                    String::from("Insert plain"),
+                    TextEdit::new(at, "\nFor God so loved the world. Jesus said, I did not come to condemn.".into())
+                ),
+                // The whole line
+                (
+                    String::from("Replace line with quoted"),
+                    TextEdit::new(
+                        Range::new(Position::new(0, 0), Position::new(0, 23)),
+                        "> John 3:16-17: For God so loved the world. Jesus said, I did not come to condemn.".into()
+                    )
+                ),
             ]
         );
+    // The old `insertions` say what they are now
+    let mut old = server.editor.clone();
+    old.insert("insertions".into(), json!([{ "name": "Plain" }]));
+    let err = server.configure(Value::Object(old)).unwrap_err();
+    assert!(err.contains("now `templates`"), "{err}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Templates: `{first:N}` and `{last:N}`, the templates request (the passage's text without any),
+/// and inlay hints from a template, or a named one with its markup
+#[test]
+fn templates() {
+    let (mut server, uri, dir) = with_bible("Read John 3:16-17 today\nnext", json!({}), "fill");
+    // Without insertions, the request offers the passage's text
+    let choices = server.templates(at(&uri, 0, 6));
+    assert_eq!(choices.len(), 1);
+    assert_eq!(choices[0].name, "text");
+    assert_eq!(choices[0].edit, None);
+    assert!(
+        choices[0].text.ends_with("I did not come to condemn."),
+        "{}",
+        choices[0].text
+    );
+    assert!(server.templates(at(&uri, 1, 1)).is_empty());
+
+    let mut settings = server.editor.clone();
+    settings.insert(
+        "templates".into(),
+        json!({
+            "ends": {
+                "action": "insert",
+                "display": "{first:1} / {last:1} ({osis}, {usfm}) {unknown} {last:x}",
+                "markup": { "verse_numbers": { "show": false }, "headings": { "show": false } }
+            },
+            "verse": { "display": "{first:1}", "markup": { "headings": { "show": false } } }
+        }),
+    );
+    settings.insert("inlay-hints".into(), json!("{bible}: {first:1}"));
+    server.configure(Value::Object(settings)).unwrap();
+    let choices = server.templates(at(&uri, 0, 6));
+    assert_eq!(
+        choices[0].text,
+        "For God so loved the world. / Jesus said, I did not come to condemn. (John.3.16-John.3.17, JHN 3:16-17) {unknown} {last:x}"
+    );
+    assert_eq!(choices[0].title.as_deref(), Some("Insert ends"));
+    let edit = choices[0].edit.as_ref().unwrap();
+    assert_eq!(edit.new_text, format!("\n{}", choices[0].text));
+    // Without an action, only its text
+    assert_eq!(choices[1].name, "verse");
+    assert_eq!((&choices[1].title, &choices[1].edit), (&None, &None));
+    // One line, after the reference, from the Bible's own markup
+    let hints = server
+        .inlay_hints(InlayHintParams {
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            text_document: TextDocumentIdentifier::new(uri.clone()),
+            range: Range::new(Position::new(0, 0), Position::new(2, 0)),
+        })
+        .unwrap();
+    let labels: Vec<_> = (hints.iter())
+        .map(|hint| match &hint.label {
+            InlayHintLabel::String(label) => (hint.position, label.clone()),
+            InlayHintLabel::LabelParts(_) => panic!("parts"),
+        })
+        .collect();
+    assert_eq!(
+        labels,
+        [(
+            Position::new(0, 17),
+            String::from("BSB: Jesus and Nicodemus [16] For God so loved the world.")
+        )]
+    );
+    // A template by name, with its markup: no heading
+    let mut named = server.editor.clone();
+    named.insert("inlay-hints".into(), json!("verse"));
+    server.configure(Value::Object(named)).unwrap();
+    let hints = server
+        .inlay_hints(InlayHintParams {
+            work_done_progress_params: WorkDoneProgressParams::default(),
+            text_document: TextDocumentIdentifier::new(uri.clone()),
+            range: Range::new(Position::new(0, 0), Position::new(2, 0)),
+        })
+        .unwrap();
+    assert!(
+        matches!(&hints[0].label, InlayHintLabel::String(l) if l == "[16] For God so loved the world."),
+        "{:?}",
+        hints[0].label
+    );
+    // Reference diagnostics from a template, by name
+    let mut diagnosed = server.editor.clone();
+    diagnosed.insert("reference-diagnostics-template".into(), json!("verse"));
+    server.configure(Value::Object(diagnosed.clone())).unwrap();
+    let messages: Vec<String> = (server.diagnostics(&uri).diagnostics.into_iter())
+        .map(|d| d.message)
+        .collect();
+    assert_eq!(messages, ["[16] For God so loved the world."]);
+    diagnosed.insert("reference-diagnostics-template".into(), json!("nothing"));
+    let err = server.configure(Value::Object(diagnosed)).unwrap_err();
+    assert!(err.contains("no template is named \"nothing\""), "{err}");
+    // Not a mode, a template's name, or a template
+    let err = server
+        .configure(json!({ "no-config": true, "inlay-hints": "sometimes" }))
+        .unwrap_err();
+    assert!(err.contains("template"), "{err}");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1217,8 +1325,8 @@ fn several_bibles() {
     );
     let plain = json!({ "verse_numbers": { "show": false }, "headings": { "show": false } });
     settings.insert(
-        "insertions".into(),
-        json!([{ "name": "Plain", "markup": plain }]),
+        "templates".into(),
+        json!({ "plain": { "action": "insert", "markup": plain } }),
     );
     server.configure(Value::Object(settings.clone())).unwrap();
 
@@ -1409,17 +1517,17 @@ fn several_bibles() {
             })
             .collect()
     };
-    assert_eq!(inserts(&server, 6), ["Insert Plain (KJV)"]);
+    assert_eq!(inserts(&server, 6), ["Insert plain (KJV)"]);
     assert_eq!(
         inserts(&server, 24),
-        ["Insert Plain (BSB)", "Insert Plain (KJV)"]
+        ["Insert plain (BSB)", "Insert plain (KJV)"]
     );
     // `{translation}`: the Bible named, or another than the default; nothing (nor its
     // parentheses) for the default's
     let mut cited = settings.clone();
     cited.insert(
-        "insertions".into(),
-        json!([{ "name": "Cite", "replace": "inline", "display": "{reference} ({translation})" }]),
+        "templates".into(),
+        json!({ "cite": { "action": "replace", "display": "{reference} ({translation})" } }),
     );
     server.configure(Value::Object(cited)).unwrap();
     #[allow(clippy::mutable_key_type)]
@@ -1435,7 +1543,7 @@ fn several_bibles() {
             .unwrap()
             .into_iter()
             .filter_map(|a| match a {
-                CodeActionOrCommand::CodeAction(a) if a.title.starts_with("Insert") => {
+                CodeActionOrCommand::CodeAction(a) if a.title.starts_with("Replace with") => {
                     let changes = a.edit?.changes?;
                     Some(changes.values().next()?[0].new_text.clone())
                 }

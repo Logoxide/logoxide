@@ -27,8 +27,8 @@ stays references only:
   "John 3:16"`, and `Reformat all N references in this file` when several differ), or search the
   workspace for it: `Search "John 3:16" for explicit overlap`, `... for any overlap`,
   `... for exact overlap`, and `Search inside "John 3"`. With a `bible`, one action per
-  `insertions` entry (`Insert Callout`) writes the passage's text below the reference, or in
-  place of its line or of the reference
+  template with an `action` (`Insert callout`) writes the passage's text below the reference,
+  or in place of its line or of the reference
 - **Diagnostics**, pushed, or pulled when the editor asks for them (`textDocument/diagnostic`, for
   editors that support it): an information diagnostic on each reference with how it's written in your
   format (`John 3:16`, code `reference`), and warnings for references that do not exist, like
@@ -60,8 +60,9 @@ so one file configures both. It uses these keys and ignores the others:
 | `ext` | Extensions searched in the workspace, like `"md,txt"` (all text files by default) |
 | `epub` | Search EPUBs too, whatever `ext` says (`false` by default). Their references are kept in topos's cache, shared with the CLI, and are in `logoxide-file:///…/Gill.epub` documents: the book's text, from the `logoxide/fileText` request (`{ uri }`, giving `{ title, text }`) |
 | `pdf` | Search PDFs the same way (`false` by default; only in a build with `--features pdf`) |
-| `inlay-hints` | `"changed"` (default), `"always"`, `"osis"`, or `"never"` |
+| `inlay-hints` | `"changed"` (default), `"always"`, `"osis"`, `"usfm"`, `"never"`, a template's name in `templates` (with its markup), or a template with their placeholders (`"{first:1}"`, its first verse's text), shown after every reference on one line |
 | `reference-diagnostics` | The diagnostic on each reference: `"info"` (default), `"hint"`, or `"never"` |
+| `reference-diagnostics-template` | Their text, on one line: a template's name in `templates` (with its markup), or a template (`"{first:1}"`); the reference as formatted by default, and when the Bible lacks the passage |
 | `complete-typed` | Completion offers the chapter or verse already typed, first (`Matthew 1` offers `Matthew 1`, then `Matthew 10`, ...), so its passage shows; `true` by default. The CLI's `--complete` uses it too |
 | `hover` | What a hover shows below the reference, in order (a list or `"osis,book"`; `[]` for none): `text` (the passage, from `bible`), `written`, `name`, `abbreviation`, `osis`, `book`, `testament`, `genres`, `verses`, `bcv`, `location`, `translation` (the Bible the reference names, if it names one). The default is every one but `written`, `bcv`, and `translation`. `name` and `abbreviation` are left out when the reference is already written that way |
 | `hover-trim` | Hover and completion documentation leave out the leading whitespace of a passage's text (a note's, an entry's), like the blank line a heading displayed as `"\n{text}"` starts with; `false` by default |
@@ -76,10 +77,10 @@ so one file configures both. It uses these keys and ignores the others:
 | `commentaries` | Commentaries whose notes on the passage hover shows after its text: `true` for every commentary the project uses (`kind = "commentary"`, not those turned off), or their ids (`["mhcc"]`); none by default |
 | `strongs` | Hovering a Strong's number shows its entry in the project's Strong's dictionaries (`kind = "lexicon"` with `keys = "strongs-greek"` or `"strongs-hebrew"`); `false` by default |
 | `markup` | How Bible text is written (see below) |
-| `insertions` | Code actions that insert a passage's text (see below) |
+| `templates` | Named templates: code actions that write a passage's text, forms to copy it in, and `inlay-hints` (see below) |
 
-The CLI skips `inlay-hints`, `reference-diagnostics`, `hover`, `bible`, `bibles`, `project`,
-`library`, `default-bible`, `hover-bibles`, `markup`, and `insertions`, so they can go in the shared `config.toml`.
+The CLI skips `inlay-hints`, `reference-diagnostics`, `reference-diagnostics-template`, `hover`, `bible`, `bibles`, `project`,
+`library`, `default-bible`, `hover-bibles`, `markup`, and `templates`, so they can go in the shared `config.toml`.
 
 `markup` has a table for each kind of element, with `show` and `display` (the defaults are
 shown; other keys, like an editor's `color`, are ignored):
@@ -109,21 +110,36 @@ each kind of line starts with, by its USFM marker: `q1` to `q4` as above unless 
 `para` style you add (`qr`, `qm1`, `pi1`, `li1`; an unnumbered `q` is `q1`; OSIS's `<l level="2">`
 is `q2`). The first line of a hover's passage starts at the margin.
 
-Each insertion has a `name` (the action is `Insert {name}`, or `Insert {name} (KJV)` with several
-Bibles), a `display` (default `{text}`; also `{reference}` as formatted, `{osis}`, `{bible}`, the
-Bible's name, and `{translation}`, its name unless it's the default Bible and the reference names
-none, which leaves out the brackets around it and the space before it: `{reference}
-({translation})`), a `line_prefix` written before each line of `{text}`,
-its own `markup` over the one above, and `replace`: `"line"` (the reference's whole line),
-`"inline"` (just the reference, keeping the rest of its line), or nothing (the lines below):
+`templates` are named templates for a reference. Each has a `display` (default `{text}`, the
+passage; `{first:N}` and `{last:N}`, its first or last N verses; `{reference}` as formatted,
+`{osis}`, `{usfm}`, `{bible}`, the Bible's name, and `{translation}`, its name unless it's the
+default Bible and the reference names none, which leaves out the brackets around it and the space
+before it: `{reference} ({translation})`), a `line_prefix` written before each line of the text,
+its own `markup` over the one above, and an `action`, the code action that writes it: `"insert"`
+(the lines below the reference: `Insert callout`), `"replace-line"` (the reference's whole line:
+`Replace line with callout`), `"replace"` (just the reference, keeping the rest of its line:
+`Replace with callout`), or none (no code action; for copying, or `inlay-hints`). With several
+Bibles, a reference that names none offers one per Bible: `Insert callout (KJV)`.
 
 ```toml
-[[insertions]]
-name = "Callout"
+[templates.callout]
 display = "> [!bible] {reference}\n{text}"
 line_prefix = "> "
 markup = { headings = { show = false } }
+action = "insert"
+
+[templates.verse] # reference-diagnostics-template = "verse": the first verse, without its heading
+display = "{first:1}"
+markup = { headings = { show = false } }
 ```
+
+The old `insertions` list is an error that says how to write it as `templates`.
+
+The `logoxide/templates` request (`{ "textDocument": { "uri": ... }, "position": ... }`) gives each
+template filled for the reference there, by name, per Bible (just the passage's text, named
+`text`, when there are none): `[{ "name": "callout", "label": "callout", "bible": "BSB", "text":
+..., "title": "Insert callout", "edit": { "range": ..., "newText": ... } }]` (`title` and `edit`
+are `null` without an `action`), for an editor to copy a passage in a form or choose an action.
 
 The editor's settings override the file: as initialization options, or as `settings` (changed
 while the server runs, without a restart). They take the same keys, at the top level or under
@@ -145,7 +161,7 @@ other references use `default-bible`. Then:
 - The reference is checked against that Bible's own verse counts, read from its USX markers when
   it loads (with an ESV, `3 John 1:15 ESV` exists, though the default counts, the KJV's, end 3 John
   at verse 14), and diagnostics name it: `3 John 1:16 does not exist in the ESV`
-- Insertions use it; a reference without one offers an insertion per Bible
+- Templates use it; a reference without one offers a template's action per Bible
 
 The `logoxide/bibles` request (no parameters) lists them, the default first: `{ "bibles": [{ "name":
 "BSB", "aliases": [], "books": ["GEN", ...] }] }`. The `logoxide/sameVerse` request (`{ "uri":

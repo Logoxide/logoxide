@@ -34,8 +34,7 @@ use crate::{
 };
 
 /// What inlay hints show after each reference
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum InlayHints {
     /// The reference as formatted, where it is written differently (`jn 3:16` → `John 3:16`)
     #[default]
@@ -47,6 +46,51 @@ pub enum InlayHints {
     /// The USFM reference (`JHN 3:16`)
     Usfm,
     Never,
+    /**
+    A template after every reference, on one line: one written here (anything with a `{`, like
+    `{first:1}`, its first verse's text), or a [`Template`]'s name in `templates` (with its markup)
+    */
+    Template(TemplateRef),
+}
+
+impl<'de> Deserialize<'de> for InlayHints {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        Ok(match value.to_lowercase().as_str() {
+            "changed" => InlayHints::Changed,
+            "always" => InlayHints::Always,
+            "osis" => InlayHints::Osis,
+            "usfm" => InlayHints::Usfm,
+            "never" => InlayHints::Never,
+            _ if value.contains('{') => InlayHints::Template(TemplateRef::Inline(value)),
+            // Checked against `templates` once they're read
+            _ => InlayHints::Template(TemplateRef::Named(value)),
+        })
+    }
+}
+
+/// A template written in a setting (anything with a `{`), or one of `templates` by name
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TemplateRef {
+    Inline(String),
+    Named(String),
+}
+
+impl TemplateRef {
+    /// A setting's value, checked against `templates`
+    fn read(
+        key: &str,
+        value: &str,
+        templates: &BTreeMap<String, Template>,
+    ) -> Result<Self, String> {
+        match value.contains('{') {
+            true => Ok(TemplateRef::Inline(value.to_string())),
+            false if templates.contains_key(value) => Ok(TemplateRef::Named(value.to_string())),
+            false => Err(format!(
+                "{key}: no template is named {value:?} (a template written here needs a {{placeholder}})"
+            )),
+        }
+    }
 }
 
 /// The diagnostic on each reference (alongside the warnings for ones that don't exist)
@@ -112,7 +156,7 @@ impl HoverField {
 }
 
 /**
-How Bible text is written (hover, whole books, and insertions): `markup = { verse_numbers = {
+How Bible text is written (hover, whole books, and templates): `markup = { verse_numbers = {
 show = true, display = "[{verse}]" }, ... }`
 - Labels' `display` (verse and chapter numbers) can use `{verse}`, `{chapter}`, `{book}` (the
   USX code, `JHN`), and `{name}` (`John`)
@@ -260,46 +304,47 @@ impl MarkupElement {
 }
 
 /**
-A way to insert a passage's text, offered as a code action on references (`Insert Callout`):
-`{ name = "Callout", display = "> [!bible] {reference}\n{text}", line_prefix = "> " }`
+A named template for a reference: `templates = { callout = { display = "> [!bible]
+{reference}\n{text}", line_prefix = "> ", action = "insert" } }`. One with an `action` is offered
+as a code action (`Insert callout`); any can be copied (the editor's `logoxide/templates`
+request), and named by `inlay-hints`
 */
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
-pub struct Insertion {
-    /// The action's name: `Insert {name}`
-    pub name: String,
-    /// What is inserted (on the lines after the reference, or in its place with `replace`): `{text}` (the passage), `{reference}`
-    /// (as formatted, like `John 3:16`), `{osis}` (`John.3.16`), `{bible}` (the Bible's name), and
-    /// `{translation}` (its name unless it's the default Bible and the reference names none; see
-    /// [`fill_translation`]); default `{text}`
+pub struct Template {
+    /// What it writes: `{text}` (the passage), `{first:N}` and `{last:N}` (its first or last N
+    /// verses), `{reference}` (as formatted, like `John 3:16`), `{osis}` (`John.3.16`), `{usfm}`
+    /// (`JHN 3:16`), `{bible}` (the Bible's name), and `{translation}` (its name unless it's the
+    /// default Bible and the reference names none; see [`fill_translation`]); default `{text}`
     pub display: String,
-    /// Written before each line of `{text}`, like `> ` for a quote
+    /// Written before each line of the text, like `> ` for a quote
     #[serde(alias = "line-prefix")]
     pub line_prefix: String,
-    /// The `markup` settings for this insertion, over the others
+    /// The `markup` settings for this template, over the others
     pub markup: MarkupSettings,
-    /// What the insertion replaces; nothing (inserted on the lines below) by default
-    pub replace: Option<Replace>,
+    /// Where its code action writes it; none offers no code action
+    pub action: Option<TemplateAction>,
 }
 
-/// What an [`Insertion`] replaces
+/// Where a [`Template`]'s code action writes it
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Replace {
-    /// The reference's whole line
-    Line,
-    /// The reference itself, keeping the rest of its line
-    Inline,
+#[serde(rename_all = "kebab-case")]
+pub enum TemplateAction {
+    /// On the lines after the reference's line: `Insert callout`
+    Insert,
+    /// In place of the reference's whole line: `Replace line with callout`
+    ReplaceLine,
+    /// In place of the reference itself, keeping the rest of its line: `Replace with callout`
+    Replace,
 }
 
-impl Default for Insertion {
+impl Default for Template {
     fn default() -> Self {
-        Insertion {
-            name: String::from("Passage"),
+        Template {
             display: String::from("{text}"),
             line_prefix: String::new(),
             markup: MarkupSettings::default(),
-            replace: None,
+            action: None,
         }
     }
 }
@@ -453,6 +498,9 @@ pub struct Settings {
     pub pdf: bool,
     pub inlay_hints: InlayHints,
     pub reference_diagnostics: ReferenceDiagnostics,
+    /// The reference diagnostics' text: a template's name in `templates` (with its markup), or a
+    /// template (`"{first:1}"`), on one line; the reference as formatted by default
+    pub reference_diagnostics_template: Option<String>,
     /// Completion offers the chapter or verse already typed, first (`Matthew 1` offers
     /// `Matthew 1`, so its passage shows), like the CLI's `--complete-typed`; on by default
     pub complete_typed: Option<bool>,
@@ -503,8 +551,11 @@ pub struct Settings {
     /// Hovering a Strong's number (`G25`, `H430`, `G0025`) shows its entry in the project's
     /// Strong's dictionaries (`keys = "strongs-greek"` or `"strongs-hebrew"`); off by default
     pub strongs: bool,
-    /// Ways to insert a passage's text, offered as code actions (with a `bible`)
-    pub insertions: Vec<Insertion>,
+    /// Named templates for a reference (with a `bible` for their text), offered as code actions
+    /// and to copy, and named by `inlay-hints`
+    pub templates: BTreeMap<String, Template>,
+    /// The old `insertions`, now `templates` (an error, saying so)
+    pub insertions: Option<Value>,
     /// Read this config file instead of `~/.config/topos/config.toml`
     pub config: Option<String>,
     /// Don't read a config file
@@ -517,6 +568,8 @@ pub struct Configured {
     pub format: FormatOptions,
     pub inlay_hints: InlayHints,
     pub reference_diagnostics: ReferenceDiagnostics,
+    /// The `reference-diagnostics-template` setting
+    pub reference_diagnostics_template: Option<TemplateRef>,
     /// The `complete-typed` setting
     pub complete_typed: bool,
     pub hover: Vec<HoverField>,
@@ -536,7 +589,7 @@ pub struct Configured {
     pub stretch_notes: bool,
     /// The `strongs` setting's dictionaries (none when it's off)
     pub dictionaries: Vec<Dictionary>,
-    pub insertions: Vec<Insertion>,
+    pub templates: BTreeMap<String, Template>,
     /// The `epub` and `pdf` settings
     pub epub: bool,
     pub pdf: bool,
@@ -725,6 +778,21 @@ impl Settings {
             .map(|ext| ext.trim().trim_start_matches('.').to_ascii_lowercase())
             .filter(|ext| !ext.is_empty())
             .collect();
+        if self.insertions.is_some() {
+            return Err(String::from(
+                "insertions: now `templates`, by name: `templates = { callout = { display = ..., \
+                 action = \"insert\" } }` (`replace = \"line\"` is `action = \"replace-line\"`, \
+                 `replace = \"inline\"` is `action = \"replace\"`)",
+            ));
+        }
+        if let InlayHints::Template(TemplateRef::Named(name)) = &self.inlay_hints
+            && !self.templates.contains_key(name)
+        {
+            return Err(format!(
+                "inlay-hints: expected changed, always, osis, usfm, never, a template's name, or a \
+                 template with {{placeholders}}, not {name:?}"
+            ));
+        }
         let hover = match &self.hover {
             None => HoverField::DEFAULT.to_vec(),
             Some(fields) => fields
@@ -745,8 +813,13 @@ impl Settings {
                 None => matcher,
             },
             format: self.format_options(),
-            inlay_hints: self.inlay_hints,
+            inlay_hints: self.inlay_hints.clone(),
             reference_diagnostics: self.reference_diagnostics,
+            reference_diagnostics_template: (self.reference_diagnostics_template.as_deref())
+                .map(|value| {
+                    TemplateRef::read("reference-diagnostics-template", value, &self.templates)
+                })
+                .transpose()?,
             complete_typed: self.complete_typed.unwrap_or(true),
             hover,
             hover_trim: self.hover_trim,
@@ -772,7 +845,7 @@ impl Settings {
             commentaries,
             stretch_notes: self.stretch_notes,
             dictionaries,
-            insertions: self.insertions.clone(),
+            templates: self.templates.clone(),
             epub: self.epub,
             pdf: self.pdf,
             fingerprint,
@@ -1082,9 +1155,9 @@ mod tests {
             settings.configure(&[], None).unwrap().extensions,
             ["md", "txt"]
         );
-        let table: toml::Table = "inlay-hints = \"sometimes\"".parse().unwrap();
-        let config = normalize(serde_json::to_value(table).unwrap());
-        assert!(super::settings(config, &Map::new()).is_err());
+        // Not a mode, so a template's name, and there's none by that name
+        let sometimes = parse("inlay-hints = \"sometimes\"", json!({})).configure(&[], None);
+        assert!(sometimes.err().unwrap().contains("a template's name"));
     }
 
     #[test]

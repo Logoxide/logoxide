@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     str::FromStr,
     sync::Arc,
@@ -17,7 +17,7 @@ use lsp_types::{
     PublishDiagnosticsParams, Range, ReferenceParams, SemanticToken, SemanticTokenType,
     SemanticTokens, SemanticTokensFullOptions, SemanticTokensLegend, SemanticTokensOptions,
     SemanticTokensParams, SemanticTokensServerCapabilities, ServerCapabilities, SymbolKind,
-    TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
+    TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -39,6 +39,7 @@ mod completion;
 mod diagnostics;
 mod hover;
 mod search;
+mod template;
 pub use search::Search;
 #[cfg(test)]
 mod tests;
@@ -47,7 +48,8 @@ use crate::{
     bible::{self, Bible, Bibles, Part, Token},
     dictionary::{self, Dictionary},
     settings::{
-        self, Configured, HoverField, InlayHints, Insertion, ReferenceDiagnostics, Replace,
+        self, Configured, HoverField, InlayHints, ReferenceDiagnostics, Template, TemplateAction,
+        TemplateRef,
     },
     workspace,
 };
@@ -102,6 +104,32 @@ pub struct SameVerseParams {
     pub position: Position,
     /// The other Bible's name or alias
     pub bible: String,
+}
+
+/**
+The request for what each template writes at a reference: `{ "textDocument": { "uri": … },
+"position": … }` gives a [`TemplateChoice`] per template and Bible (the one the reference names,
+else each, the default first; just the passage's text, as `text`, when there are no templates), or
+`[]` when no reference is there. Editors use it to copy a passage in a form, or to choose a code
+action's template
+*/
+pub const TEMPLATES_REQUEST: &str = "logoxide/templates";
+
+/// One template, filled for a reference
+#[derive(Debug, Serialize)]
+pub struct TemplateChoice {
+    /// The template's name: `callout`
+    pub name: String,
+    /// Its name with the Bible's, when there are several: `callout (KJV)`
+    pub label: String,
+    /// The Bible its text is from
+    pub bible: String,
+    /// What it writes
+    pub text: String,
+    /// With an `action`: its code action's title (`Insert callout`) and edit (in the document
+    /// as it is)
+    pub title: Option<String>,
+    pub edit: Option<TextEdit>,
 }
 
 /// A whole book, for the editor to show as a read-only document
@@ -175,6 +203,8 @@ pub struct Server {
     format: FormatOptions,
     inlay_hints: InlayHints,
     reference_diagnostics: ReferenceDiagnostics,
+    /// The reference diagnostics' text (`reference-diagnostics-template`): the reference by default
+    reference_diagnostics_template: Option<TemplateRef>,
     /// What the hover shows below the reference
     hover: Vec<HoverField>,
     /// Extensions searched in the workspace (empty for every text file)
@@ -209,8 +239,8 @@ pub struct Server {
     dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
     library: Option<PathBuf>,
-    /// Ways to insert a passage's text (code actions)
-    insertions: Vec<Insertion>,
+    /// The named templates (code actions, copying, and inlay hints)
+    templates: BTreeMap<String, Template>,
 }
 
 impl Server {
@@ -220,6 +250,7 @@ impl Server {
             format: FormatOptions::default(),
             inlay_hints: InlayHints::default(),
             reference_diagnostics: ReferenceDiagnostics::default(),
+            reference_diagnostics_template: None,
             hover: HoverField::DEFAULT.to_vec(),
             extensions: vec![],
             documents: HashMap::new(),
@@ -237,7 +268,7 @@ impl Server {
             hover_title: settings::DEFAULT_HOVER_TITLE.to_string(),
             dictionaries: vec![],
             library: None,
-            insertions: vec![],
+            templates: BTreeMap::new(),
         }
     }
 
@@ -263,6 +294,7 @@ impl Server {
             format,
             inlay_hints,
             reference_diagnostics,
+            reference_diagnostics_template,
             complete_typed,
             hover,
             hover_trim,
@@ -274,7 +306,7 @@ impl Server {
             commentaries,
             stretch_notes,
             dictionaries,
-            insertions,
+            templates,
             epub,
             pdf,
             fingerprint,
@@ -289,11 +321,12 @@ impl Server {
         self.hover_limit = hover_limit;
         self.hover_title = hover_title;
         self.dictionaries = dictionaries;
-        self.insertions = insertions;
+        self.templates = templates;
         self.matcher = Arc::new(matcher);
         self.format = format;
         self.inlay_hints = inlay_hints;
         self.reference_diagnostics = reference_diagnostics;
+        self.reference_diagnostics_template = reference_diagnostics_template;
         self.hover = hover;
         self.extensions = extensions;
         self.editor = editor;

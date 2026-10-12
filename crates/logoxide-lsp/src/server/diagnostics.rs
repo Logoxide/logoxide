@@ -1,13 +1,15 @@
-//! Diagnostics (references that don't exist, and how each is written) and inlay hints
+//! Diagnostics (references that don't exist, and how each is written, or a template) and inlay
+//! hints
 
-use super::*;
+use super::{template::TextFill, *};
 
 impl Server {
     /**
     The document's diagnostics:
     - Warnings for references that do not exist, like `John 3:99` (code `missing`)
     - An information diagnostic on each reference: how it is written in the configured format,
-      like `John 3:16` (code `reference`; a hint, or none, with `reference-diagnostics`)
+      like `John 3:16` (code `reference`; a hint, or none, with `reference-diagnostics`), or its
+      `reference-diagnostics-template` (the reference when the Bible lacks its text)
     */
     pub fn diagnostics(&self, uri: &Uri) -> PublishDiagnosticsParams {
         // Whole books are Bible text, not notes
@@ -44,10 +46,20 @@ impl Server {
                 ReferenceDiagnostics::Never => None,
             };
             if let Some(severity) = severity {
-                for m in self.matcher.search(text) {
+                let found =
+                    (self.matcher).search_with_translations(text, &self.bibles.translations);
+                for TranslatedMatch {
+                    reference: m,
+                    translation,
+                } in found
+                {
                     let bytes = m.location.bytes;
                     let range = lsp_range(&index, bytes.start, bytes.end);
-                    diagnostics.push(diagnostic(range, severity, "reference", self.reference(&m)));
+                    let message = (self.reference_diagnostics_template.as_ref())
+                        .and_then(|t| self.one_line(t, &m, translation.as_ref()))
+                        .filter(|message| !message.trim().is_empty())
+                        .unwrap_or_else(|| self.reference(&m));
+                    diagnostics.push(diagnostic(range, severity, "reference", message));
                 }
                 // In document order, so they read top to bottom
                 diagnostics.sort_by_key(|d| (d.range.start.line, d.range.start.character));
@@ -77,7 +89,8 @@ impl Server {
     }
 
     /// A hint after each reference in the range: how it is written in the configured format
-    /// (where that differs, by default), or its OSIS id
+    /// (where that differs, by default), its OSIS id, or a template (after the Bible the
+    /// reference names, if any)
     pub fn inlay_hints(&self, params: InlayHintParams) -> Option<Vec<InlayHint>> {
         if self.inlay_hints == InlayHints::Never
             || bible::is_book_uri(params.text_document.uri.as_str())
@@ -88,35 +101,78 @@ impl Server {
         let index = LineIndex::new(text);
         let hints = self
             .matcher
-            .search(text)
+            .search_with_translations(text, &self.bibles.translations)
             .into_iter()
-            .filter_map(|m| {
-                let bytes = m.location.bytes;
-                let end = lsp_position(&index, bytes.end);
-                let start = lsp_position(&index, bytes.start);
-                if end < params.range.start || start > params.range.end {
-                    return None;
-                }
-                let label = match self.inlay_hints {
-                    InlayHints::Osis => m.psg.to_osis(self.matcher.data().books())?,
-                    InlayHints::Usfm => m.psg.to_usfm(self.matcher.data().books())?,
-                    InlayHints::Changed if self.reference(&m) == text[bytes.start..bytes.end] => {
+            .filter_map(
+                |TranslatedMatch {
+                     reference: m,
+                     translation,
+                 }| {
+                    let bytes = m.location.bytes;
+                    let after = match &self.inlay_hints {
+                        InlayHints::Template(_) => {
+                            translation.as_ref().map_or(bytes.end, |t| t.span.end)
+                        }
+                        _ => bytes.end,
+                    };
+                    let end = lsp_position(&index, after);
+                    let start = lsp_position(&index, bytes.start);
+                    if end < params.range.start || start > params.range.end {
                         return None;
                     }
-                    _ => self.reference(&m),
-                };
-                Some(InlayHint {
-                    position: end,
-                    label: InlayHintLabel::String(label),
-                    kind: None,
-                    text_edits: None,
-                    tooltip: None,
-                    padding_left: Some(true),
-                    padding_right: None,
-                    data: None,
-                })
-            })
+                    let label = match &self.inlay_hints {
+                        InlayHints::Osis => m.psg.to_osis(self.matcher.data().books())?,
+                        InlayHints::Usfm => m.psg.to_usfm(self.matcher.data().books())?,
+                        InlayHints::Changed
+                            if self.reference(&m) == text[bytes.start..bytes.end] =>
+                        {
+                            return None;
+                        }
+                        InlayHints::Template(template) => {
+                            let label = self.one_line(template, &m, translation.as_ref())?;
+                            (!label.trim().is_empty()).then_some(label)?
+                        }
+                        _ => self.reference(&m),
+                    };
+                    Some(InlayHint {
+                        position: end,
+                        label: InlayHintLabel::String(label),
+                        kind: None,
+                        text_edits: None,
+                        tooltip: None,
+                        padding_left: Some(true),
+                        padding_right: None,
+                        data: None,
+                    })
+                },
+            )
             .collect();
         Some(hints)
+    }
+
+    /// A template filled for a reference, on one line (inlay hints and diagnostics): one written
+    /// in the setting, or a named one with its markup
+    fn one_line(
+        &self,
+        template: &TemplateRef,
+        found: &BibleMatch,
+        translation: Option<&Translation>,
+    ) -> Option<String> {
+        let bible = self.bibles.named(translation);
+        let (display, markup) = match template {
+            TemplateRef::Inline(display) => (display, None),
+            TemplateRef::Named(name) => {
+                let template = self.templates.get(name)?;
+                let merged = bible.map(|b| b.markup.merged(&template.markup));
+                (&template.display, merged)
+            }
+        };
+        let fill = TextFill {
+            bible,
+            markup: markup.as_ref(),
+            line_prefix: "",
+            join: " ",
+        };
+        self.fill_template(display, found, translation, &fill)
     }
 }

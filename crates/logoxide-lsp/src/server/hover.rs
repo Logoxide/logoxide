@@ -35,7 +35,7 @@ impl Server {
     }
 
     /// A `{translation}`'s Bible for a text from `bible`: its name when the reference names it, or
-    /// when it isn't the default Bible (an insertion's from another Bible); else none
+    /// when it isn't the default Bible (a template's from another Bible); else none
     pub(super) fn translation_of<'a>(
         &self,
         bible: &'a Bible,
