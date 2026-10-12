@@ -123,6 +123,54 @@ pub fn text(
     text_in(&book.nodes, &book.spans, passage, style, name, limit)
 }
 
+/// Which of a passage's verses [`text_verses`] writes
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verses {
+    All,
+    /// Its first that many verses (`John 3:16-18` with 2 is `John 3:16-17`)
+    First(usize),
+    /// Its last that many verses
+    Last(usize),
+}
+
+impl Verses {
+    /// The verses kept of `ranges` (indexes into a book's verses), each part still its own
+    fn select(self, ranges: Vec<Range<usize>>) -> Vec<Range<usize>> {
+        let total: usize = ranges.iter().map(ExactSizeIterator::len).sum();
+        let kept = match self {
+            Verses::All => 0..total,
+            Verses::First(n) => 0..n.min(total),
+            Verses::Last(n) => total.saturating_sub(n)..total,
+        };
+        // Each range's place among all the verses, cut to the ones kept
+        let mut before = 0;
+        ranges
+            .into_iter()
+            .filter_map(|r| {
+                let (from, to) = (before, before + r.len());
+                before = to;
+                let (start, end) = (from.max(kept.start), to.min(kept.end));
+                (start < end).then(|| r.start + start - from..r.start + end - from)
+            })
+            .collect()
+    }
+}
+
+/// [`text`], with only some of the passage's verses: its first or last few
+pub fn text_verses(
+    book: &Book,
+    passage: &Passage,
+    style: &Style,
+    name: &str,
+    verses: Verses,
+) -> Option<Text> {
+    if book.id != passage.book {
+        return None;
+    }
+    let ranges = verses.select(passage_ranges(&book.spans, passage));
+    text_ranges(&book.nodes, &book.spans, ranges, style, name, None)
+}
+
 /// [`text`] for a tree and its verses held apart from a [`Book`] (the bindings' books), with
 /// no check that the passage is in this book
 pub fn text_in(
@@ -133,8 +181,27 @@ pub fn text_in(
     name: &str,
     limit: Option<usize>,
 ) -> Option<Text> {
+    text_ranges(
+        nodes,
+        spans,
+        passage_ranges(spans, passage),
+        style,
+        name,
+        limit,
+    )
+}
+
+/// The text of these ranges of verses (indexes into `spans`)
+fn text_ranges(
+    nodes: &[Node],
+    spans: &[VerseSpan],
+    ranges: Vec<Range<usize>>,
+    style: &Style,
+    name: &str,
+    limit: Option<usize>,
+) -> Option<Text> {
     let mut flat = Flattener::new(style.options(name));
-    for r in passage_ranges(spans, passage) {
+    for r in ranges {
         let (first, last) = (&spans[r.start], &spans[r.end - 1]);
         flat.push(&slice(nodes, &first.start, Some(&last.end)));
     }
@@ -489,6 +556,28 @@ mod tests {
             cut.text
         );
         assert!(cut.marks.iter().all(|(r, _)| r.end <= 20));
+        // The first or last verses, each part still a blank line apart
+        let first = |n| {
+            let verses = Verses::First(n);
+            text_verses(&book, &passage("John 3:16-17; 4:1"), &style, "John", verses)
+        };
+        assert_eq!(
+            first(1).unwrap().text,
+            "Nicodemus\n[16] For God so loved the world, that he gave."
+        );
+        assert!(
+            first(3)
+                .unwrap()
+                .text
+                .ends_with("Son.\n\n[1] When therefore the Lord knew.")
+        );
+        let last = Verses::Last(2);
+        let last = text_verses(&book, &passage("John 3:16-17; 4:1"), &style, "John", last).unwrap();
+        assert_eq!(
+            last.text,
+            "[17] For God sent not his Son.\n\n[1] When therefore the Lord knew."
+        );
+        assert!(first(0).is_none());
         // Another book, or a verse the book lacks, is nothing
         assert!(text(&book, &passage("Romans 1:1"), &style, "Romans", None).is_none());
         assert!(text(&book, &passage("John 5:1"), &style, "John", None).is_none());
