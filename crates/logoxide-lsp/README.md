@@ -147,8 +147,9 @@ other references use `default-bible`. Then:
 The `logoxide/bibles` request (no parameters) lists them, the default first: `{ "bibles": [{ "name":
 "BSB", "aliases": [], "books": ["GEN", ...] }] }`. The `logoxide/sameVerse` request (`{ "uri":
 "logoxide://BSB/JHN", "position": { "line": 3, "character": 0 }, "bible": "KJV" }`) gives the
-location of the verse at that position in another Bible's book (else its chapter, else the book's
-start), or `null` if that Bible lacks the book, for showing two Bibles side by side.
+location of the verse at that position in another Bible's book, from its number to its end (else
+its chapter's label, else the book's start), or `null` if that Bible lacks the book, for showing
+two Bibles side by side.
 
 ## Whole books
 

@@ -1311,6 +1311,16 @@ fn several_bibles() {
             .unwrap()
             .map(|l| (l.uri.to_string(), l.range.start))
     };
+    let range = |line, bible: &str| {
+        server
+            .same_verse(SameVerseParams {
+                uri: "logoxide://BSB/JHN".into(),
+                position: Position::new(line, 1),
+                bible: bible.into(),
+            })
+            .unwrap()
+            .map(|l| l.range)
+    };
     let bsb = server
         .book(BookParams {
             uri: "logoxide://BSB/JHN".into(),
@@ -1327,6 +1337,15 @@ fn several_bibles() {
     assert_eq!(
         same(line_of(&bsb.text, "[16]"), "av"),
         Some(("logoxide://KJV/JHN".into(), Position::new(kjv_316, 0)))
+    );
+    // The whole verse, to its end
+    let verse = "[16] For God so loved the world, that he gave his only begotten Son.";
+    assert_eq!(
+        range(line_of(&bsb.text, "[16]"), "KJV"),
+        Some(lsp_types::Range::new(
+            Position::new(kjv_316, 0),
+            Position::new(kjv_316, verse.len() as u32)
+        ))
     );
     // A chapter it lacks (and nothing after it) goes to the book's start
     assert_eq!(

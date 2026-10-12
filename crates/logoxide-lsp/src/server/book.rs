@@ -93,8 +93,8 @@ impl Server {
     }
 
     /// [`SAME_VERSE_REQUEST`]: where the verse at a position in a whole book is in another
-    /// Bible's book (its verse with that number, else its chapter, else the next chapter it has,
-    /// else the book's start)
+    /// Bible's book (its verse with that number, else its chapter's label, else the next chapter
+    /// it has, else the book's start): from its number to its end, so the editor can mark it
     pub fn same_verse(&self, params: SameVerseParams) -> Result<Option<Location>, String> {
         let (from, book) = self
             .bibles
@@ -130,11 +130,14 @@ impl Server {
             })
             .or_else(|| (parts.iter()).find(|(_, part)| *part == Part::Chapter(chapter)))
             .or_else(|| (parts.iter()).find(|(_, part)| chapter_of(part) >= chapter))
-            .map_or(0, |(range, _)| range.start);
+            .map_or(0..0, |(range, _)| range.clone());
         let uri = Uri::from_str(&target.uri(book).ok_or("the book has no USFM code")?)
             .map_err(|e| e.to_string())?;
         let index = LineIndex::new(&other.text);
-        Ok(Some(Location::new(uri, lsp_range(&index, found, found))))
+        Ok(Some(Location::new(
+            uri,
+            lsp_range(&index, found.start, found.end),
+        )))
     }
 
     /// [`BIBLES_REQUEST`]: the Bibles, the default first
