@@ -1232,21 +1232,48 @@ fn several_bibles() {
             _ => panic!("no hover"),
         }
     };
-    // The Bible a reference names, labeled, else the default (the `bible` setting's)
+    // The Bible a reference names, in the title, else the default (the `bible` setting's); one
+    // Bible's text needs no label
     let named = hover(&server, 0, 6);
     assert!(
-        named.starts_with("**John 3:16** (KJV)\n\n*KJV*\n```logoxide"),
+        named.starts_with("**John 3:16** (KJV)\n\n```logoxide"),
         "{named}"
     );
     assert!(
-        named.contains("that he gave") && !named.contains("*BSB*"),
+        named.contains("that he gave") && !named.contains("*BSB*") && !named.contains("*KJV*"),
         "{named}"
     );
     // On the translation's name too
     assert_eq!(hover(&server, 0, 15), named);
     let default = hover(&server, 0, 24);
-    assert!(default.starts_with("**John 3:16**\n\n*BSB*\n"), "{default}");
+    assert!(
+        default.starts_with("**John 3:16**\n\n```logoxide"),
+        "{default}"
+    );
     assert!(!default.contains("that he gave"), "{default}");
+
+    // `hover-title`: no first line, or one with the Bible shown; the `translation` field only
+    // when the reference names one
+    let mut titled = settings.clone();
+    titled.insert("hover-title".into(), json!(""));
+    titled.insert("hover".into(), json!(["translation", "text"]));
+    server.configure(Value::Object(titled.clone())).unwrap();
+    let untitled = hover(&server, 0, 24);
+    assert!(untitled.starts_with("```logoxide"), "{untitled}");
+    let named_untitled = hover(&server, 0, 6);
+    assert!(
+        named_untitled.starts_with("- **Translation**: KJV\n\n```logoxide"),
+        "{named_untitled}"
+    );
+    titled.insert(
+        "hover-title".into(),
+        json!("{reference} [{translation}] from {bible}"),
+    );
+    titled.insert("hover".into(), json!([]));
+    server.configure(Value::Object(titled)).unwrap();
+    assert_eq!(hover(&server, 0, 24), "John 3:16 from BSB");
+    assert_eq!(hover(&server, 0, 6), "John 3:16 [KJV] from KJV");
+    server.configure(Value::Object(settings.clone())).unwrap();
 
     // The KJV's own verse counts (only 3:16 here), with its name in the message
     let messages: Vec<String> = server
@@ -1387,13 +1414,47 @@ fn several_bibles() {
         inserts(&server, 24),
         ["Insert Plain (BSB)", "Insert Plain (KJV)"]
     );
+    // `{translation}`: the Bible named, or another than the default; nothing (nor its
+    // parentheses) for the default's
+    let mut cited = settings.clone();
+    cited.insert(
+        "insertions".into(),
+        json!([{ "name": "Cite", "replace": "inline", "display": "{reference} ({translation})" }]),
+    );
+    server.configure(Value::Object(cited)).unwrap();
+    #[allow(clippy::mutable_key_type)]
+    let inserted = |server: &Server, character| -> Vec<String> {
+        server
+            .code_actions(CodeActionParams {
+                text_document: TextDocumentIdentifier::new(uri.clone()),
+                range: Range::new(Position::new(0, character), Position::new(0, character)),
+                context: lsp_types::CodeActionContext::default(),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+            })
+            .unwrap()
+            .into_iter()
+            .filter_map(|a| match a {
+                CodeActionOrCommand::CodeAction(a) if a.title.starts_with("Insert") => {
+                    let changes = a.edit?.changes?;
+                    Some(changes.values().next()?[0].new_text.clone())
+                }
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(inserted(&server, 6), ["John 3:16 (KJV)"]);
+    assert_eq!(inserted(&server, 24), ["John 3:16", "John 3:16 (KJV)"]);
+    server.configure(Value::Object(settings.clone())).unwrap();
 
     // `hover-bibles` adds Bibles after the named one; `default-bible` changes the default
     settings.insert("hover-bibles".into(), json!(["kjv"]));
     settings.insert("default-bible".into(), json!("AV"));
     server.configure(Value::Object(settings.clone())).unwrap();
+    // (the KJV only once, so unlabeled)
     let both = hover(&server, 0, 24);
-    assert!(both.starts_with("**John 3:16**\n\n*KJV*\n"), "{both}");
+    assert!(both.starts_with("**John 3:16**\n\n```logoxide"), "{both}");
+    assert!(!both.contains("*BSB*"), "{both}");
     settings.insert("hover-bibles".into(), json!(["BSB"]));
     server.configure(Value::Object(settings.clone())).unwrap();
     let both = hover(&server, 0, 24);

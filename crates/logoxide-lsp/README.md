@@ -63,8 +63,9 @@ so one file configures both. It uses these keys and ignores the others:
 | `inlay-hints` | `"changed"` (default), `"always"`, `"osis"`, or `"never"` |
 | `reference-diagnostics` | The diagnostic on each reference: `"info"` (default), `"hint"`, or `"never"` |
 | `complete-typed` | Completion offers the chapter or verse already typed, first (`Matthew 1` offers `Matthew 1`, then `Matthew 10`, ...), so its passage shows; `true` by default. The CLI's `--complete` uses it too |
-| `hover` | What a hover shows below the reference, in order (a list or `"osis,book"`; `[]` for none): `text` (the passage, from `bible`), `written`, `name`, `abbreviation`, `osis`, `book`, `testament`, `genres`, `verses`, `bcv`, `location`. The default is every one but `written` and `bcv`. `name` and `abbreviation` are left out when the reference is already written that way |
+| `hover` | What a hover shows below the reference, in order (a list or `"osis,book"`; `[]` for none): `text` (the passage, from `bible`), `written`, `name`, `abbreviation`, `osis`, `book`, `testament`, `genres`, `verses`, `bcv`, `location`, `translation` (the Bible the reference names, if it names one). The default is every one but `written`, `bcv`, and `translation`. `name` and `abbreviation` are left out when the reference is already written that way |
 | `hover-trim` | Hover and completion documentation leave out the leading whitespace of a passage's text (a note's, an entry's), like the blank line a heading displayed as `"\n{text}"` starts with; `false` by default |
+| `hover-title` | The hover's first line, a template: `{reference}` (as formatted), `{bible}` (the Bible whose text is shown first), `{translation}` (the Bible the reference names; when it names none, nothing, with the brackets around it and the space before it); `""` for no first line. Default `"**{reference}** ({translation})"` |
 | `hover-max` | How many bytes of a passage's text (a note's, an entry's) hover and completion documentation show before cutting it with ` …`: `2000` by default, `0` for no limit |
 | `bible` | A Bible's folder: a logoxide package (with a `logoxide.toml`; USX or USFM, named by its abbreviation), or a folder of USX files, one book each (`JHN.usx`, `44JHNBSB.usx`, or any name with a `<book code>` inside), as Paratext, the Digital Bible Library, and eBible.org publish them, named after the folder. Its files are left out of workspace searches |
 | `bibles` | More Bibles: package ids from the project's `logoxide.lock` (`["bsb", "kjv"]`), or folders by name: `{ KJV = "~/Bibles/KJV" }` or `{ KJV = { path = "~/Bibles/KJV", aliases = ["AV"] } }` (see [Translations](#translations)). Without `bible` or `bibles`, the project's Bibles are used (not those turned off with `lx disable`) |
@@ -109,8 +110,10 @@ each kind of line starts with, by its USFM marker: `q1` to `q4` as above unless 
 is `q2`). The first line of a hover's passage starts at the margin.
 
 Each insertion has a `name` (the action is `Insert {name}`, or `Insert {name} (KJV)` with several
-Bibles), a `display` (default `{text}`; also `{reference}` as formatted, `{osis}`, and `{bible}`,
-the Bible's name), a `line_prefix` written before each line of `{text}`,
+Bibles), a `display` (default `{text}`; also `{reference}` as formatted, `{osis}`, `{bible}`, the
+Bible's name, and `{translation}`, its name unless it's the default Bible and the reference names
+none, which leaves out the brackets around it and the space before it: `{reference}
+({translation})`), a `line_prefix` written before each line of `{text}`,
 its own `markup` over the one above, and `replace`: `"line"` (the reference's whole line),
 `"inline"` (just the reference, keeping the rest of its line), or nothing (the lines below):
 
@@ -135,7 +138,7 @@ reference (`John 3:16 KJV`, `John 3:16, KJV`, `John 3:16 (AV)`) picks it, ignori
 other references use `default-bible`. Then:
 
 - Hover (on the reference or the name) shows that Bible's text, and the `hover-bibles` after it;
-  with several Bibles, each text is labeled with its name
+  when it shows several Bibles' texts, each is labeled with its name
 - Go to definition opens its book (`logoxide://KJV/JHN`)
 - Completion offers the names after a reference (`John 3:16 K` → `KJV`), whose documentation is
   that Bible's text

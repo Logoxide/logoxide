@@ -92,6 +92,8 @@ pub enum HoverField {
     Bcv,
     /// Where the reference is in the document: line and columns
     Location,
+    /// The Bible the reference names (`John 3:16 KJV`); nothing when it names none
+    Translation,
 }
 
 impl HoverField {
@@ -224,6 +226,25 @@ impl MarkupSettings {
     }
 }
 
+/// The hover's first line unless `hover-title` sets it: the reference in bold, and the Bible it
+/// names in parentheses (none when it names none)
+pub const DEFAULT_HOVER_TITLE: &str = "**{reference}** ({translation})";
+
+/**
+A template's `{translation}`: the Bible's name, or when `name` is none, nothing, with the brackets
+around it and the space before it (`John 3:16 ({translation})` is `John 3:16`)
+*/
+pub fn fill_translation(template: &str, name: Option<&str>) -> String {
+    match name {
+        Some(name) => template.replace("{translation}", name),
+        None => ["({translation})", "[{translation}]", "{translation}"]
+            .iter()
+            .fold(template.to_string(), |text, gone| {
+                text.replace(&format!(" {gone}"), "").replace(gone, "")
+            }),
+    }
+}
+
 /// One kind of element in [`MarkupSettings`]
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
@@ -248,7 +269,9 @@ pub struct Insertion {
     /// The action's name: `Insert {name}`
     pub name: String,
     /// What is inserted (on the lines after the reference, or in its place with `replace`): `{text}` (the passage), `{reference}`
-    /// (as formatted, like `John 3:16`), and `{osis}` (`John.3.16`); default `{text}`
+    /// (as formatted, like `John 3:16`), `{osis}` (`John.3.16`), `{bible}` (the Bible's name), and
+    /// `{translation}` (its name unless it's the default Bible and the reference names none; see
+    /// [`fill_translation`]); default `{text}`
     pub display: String,
     /// Written before each line of `{text}`, like `> ` for a quote
     #[serde(alias = "line-prefix")]
@@ -442,6 +465,12 @@ pub struct Settings {
     /// How many bytes of a passage's text (a note's, an entry's) hover and completion
     /// documentation show before cutting it with ` …`: 2000 by default, 0 for no limit
     pub hover_max: Option<usize>,
+    /**
+    The hover's first line, a template: `{reference}` (as formatted), `{bible}` (the Bible whose
+    text is shown first), and `{translation}` (the Bible the reference names; see
+    [`fill_translation`]); `""` for no first line. Default [`DEFAULT_HOVER_TITLE`]
+    */
+    pub hover_title: Option<String>,
     /// A Bible's folder (a logoxide package, or USX files, one book each), for passage text in
     /// hover and go-to-definition
     pub bible: Option<String>,
@@ -495,6 +524,8 @@ pub struct Configured {
     pub hover_trim: bool,
     /// The `hover-max` setting: none for no limit
     pub hover_limit: Option<usize>,
+    /// The `hover-title` setting
+    pub hover_title: String,
     pub extensions: Vec<String>,
     pub bibles: Bibles,
     /// The `hover-bibles` setting, as the Bibles' names
@@ -723,6 +754,8 @@ impl Settings {
                 Some(0) => None,
                 max => Some(max.unwrap_or(crate::bible::MAX_HOVER_TEXT)),
             },
+            hover_title: (self.hover_title.clone())
+                .unwrap_or_else(|| DEFAULT_HOVER_TITLE.to_string()),
             extensions,
             hover_bibles: (self.hover_bibles.values().iter())
                 .flat_map(|names| names.split(','))

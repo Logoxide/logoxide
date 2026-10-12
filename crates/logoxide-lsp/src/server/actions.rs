@@ -135,7 +135,7 @@ impl Server {
             .iter()
             .flat_map(|insertion| bibles.iter().map(move |bible| (insertion, *bible)))
             .filter_map(|(insertion, bible)| {
-                let inserted = self.insertion_text(bible, insertion, found)?;
+                let inserted = self.insertion_text(bible, insertion, found, translation)?;
                 let (range, new_text) = match insertion.replace {
                     None => (line_end..line_end, format!("\n{inserted}")),
                     Some(Replace::Line) => (line_start..line_end, inserted),
@@ -163,6 +163,7 @@ impl Server {
         bible: &Bible,
         insertion: &Insertion,
         found: &BibleMatch,
+        translation: Option<&Translation>,
     ) -> Option<String> {
         let markup = bible.markup.merged(&insertion.markup);
         let text = bible.passage(&found.psg, Some(&markup), None)?.text;
@@ -178,9 +179,9 @@ impl Server {
             .psg
             .to_osis(self.matcher.data().books())
             .unwrap_or_default();
+        let named = self.translation_of(bible, translation);
         Some(
-            insertion
-                .display
+            settings::fill_translation(&insertion.display, named)
                 .replace("{reference}", &self.reference(found))
                 .replace("{osis}", &osis)
                 .replace("{bible}", &bible.name)

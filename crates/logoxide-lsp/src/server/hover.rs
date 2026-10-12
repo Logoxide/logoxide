@@ -34,6 +34,18 @@ impl Server {
         }
     }
 
+    /// A `{translation}`'s Bible for a text from `bible`: its name when the reference names it, or
+    /// when it isn't the default Bible (an insertion's from another Bible); else none
+    pub(super) fn translation_of<'a>(
+        &self,
+        bible: &'a Bible,
+        translation: Option<&Translation>,
+    ) -> Option<&'a str> {
+        let default = self.bibles.default_bible().map(|b| b.name.as_str());
+        (translation.is_some() || default != Some(bible.name.as_str()))
+            .then_some(bible.name.as_str())
+    }
+
     /// The Bibles whose text hover shows for a reference: the one it names (or the default), then
     /// the `hover-bibles` setting's
     fn hover_texts(&self, translation: Option<&Translation>) -> Vec<&Bible> {
@@ -77,19 +89,26 @@ impl Server {
             .and_then(|text| text.get(bytes.start..bytes.end))
             .unwrap_or_default();
         let title = self.reference(&found);
-        let mut value = match &translation {
-            Some(translation) => format!("**{title}** ({})", translation.name),
-            None => format!("**{title}**"),
-        };
+        let named = self.bibles.named(translation.as_ref());
+        let named_name = named.and_then(|bible| self.translation_of(bible, translation.as_ref()));
+        // The first line (`hover-title`), if any
+        let mut value = settings::fill_translation(&self.hover_title, named_name)
+            .replace("{reference}", &title)
+            .replace("{bible}", named.map_or("", |bible| bible.name.as_str()));
         // Lists of lines, and the passage's text between them
         let mut sections: Vec<String> = vec![];
         let mut lines: Vec<String> = vec![];
         for &field in &self.hover {
+            if field == HoverField::Translation {
+                if let Some(name) = named_name {
+                    lines.push(format!("- **Translation**: {name}"));
+                }
+                continue;
+            }
             if field == HoverField::Text {
                 let bibles = self.hover_texts(translation.as_ref());
-                // Each Bible's name labels its text when there are several
-                let labeled = self.bibles.len() > 1;
-                let named = self.bibles.named(translation.as_ref());
+                // Each Bible's name labels its text when several Bibles' texts are shown
+                let mut shown: Vec<(String, String, bool)> = vec![];
                 for bible in bibles {
                     // Another Bible numbered differently reads the passage as it numbers it,
                     // when the project's maps say how, and its label says where
@@ -110,15 +129,17 @@ impl Server {
                         .filter_map(|p| bible.passage(p, None, self.hover_limit))
                         .map(|text| self.hover_shown(text).fence(true))
                         .collect();
-                    if texts.is_empty() {
-                        continue;
+                    if !texts.is_empty() {
+                        shown.push((label, texts.join("\n\n"), mapped.is_some()));
                     }
-                    if !lines.is_empty() {
-                        sections.push(lines.join("\n"));
-                        lines.clear();
-                    }
-                    let text = texts.join("\n\n");
-                    sections.push(match labeled || mapped.is_some() {
+                }
+                if !shown.is_empty() && !lines.is_empty() {
+                    sections.push(lines.join("\n"));
+                    lines.clear();
+                }
+                let several = shown.len() > 1;
+                for (label, text, mapped) in shown {
+                    sections.push(match several || mapped {
                         true => format!("{label}\n{text}"),
                         false => text,
                     });
@@ -146,8 +167,13 @@ impl Server {
             sections.push(lines.join("\n"));
         }
         for section in sections {
-            value.push_str("\n\n");
+            if !value.is_empty() {
+                value.push_str("\n\n");
+            }
             value.push_str(&section);
+        }
+        if value.is_empty() {
+            return None;
         }
         Some(Hover {
             contents: HoverContents::Markup(MarkupContent {
@@ -254,7 +280,7 @@ impl Server {
         };
         let versification = data.chapter_verses().get_chapter_verses(&psg.book);
         Some(match field {
-            HoverField::Text => return None,
+            HoverField::Text | HoverField::Translation => return None,
             HoverField::Written => ("Written", format!("`{written}`")),
             HoverField::Name => ("Name", styled(BookStyle::Name)?),
             HoverField::Abbreviation => ("Abbreviation", styled(BookStyle::Abbreviation)?),

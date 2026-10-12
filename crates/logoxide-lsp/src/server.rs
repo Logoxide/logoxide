@@ -203,6 +203,8 @@ pub struct Server {
     hover_trim: bool,
     /// How many bytes of a text hover shows (`hover-max`; none for no limit)
     hover_limit: Option<usize>,
+    /// The hover's first line (`hover-title`; empty for none)
+    hover_title: String,
     /// The Strong's dictionaries whose entries hover shows on a Strong's number (`strongs`)
     dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
@@ -232,6 +234,7 @@ impl Server {
             complete_typed: true,
             hover_trim: false,
             hover_limit: Some(bible::MAX_HOVER_TEXT),
+            hover_title: settings::DEFAULT_HOVER_TITLE.to_string(),
             dictionaries: vec![],
             library: None,
             insertions: vec![],
@@ -264,6 +267,7 @@ impl Server {
             hover,
             hover_trim,
             hover_limit,
+            hover_title,
             extensions,
             bibles,
             hover_bibles,
@@ -283,6 +287,7 @@ impl Server {
         self.complete_typed = complete_typed;
         self.hover_trim = hover_trim;
         self.hover_limit = hover_limit;
+        self.hover_title = hover_title;
         self.dictionaries = dictionaries;
         self.insertions = insertions;
         self.matcher = Arc::new(matcher);
