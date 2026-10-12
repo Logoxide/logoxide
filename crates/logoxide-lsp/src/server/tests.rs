@@ -1141,6 +1141,61 @@ fn width_wraps_at_spaces() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// A psalm's poetry: two lines of a verse, a stanza break, and the next verse
+const PSA: &str = r#"<usx version="3.0"><book code="PSA" style="id">x</book>
+<chapter number="1" style="c" sid="PSA 1"/>
+<para style="q1"><verse number="1" style="v" sid="PSA 1:1"/>Blessed is the man</para>
+<para style="q2">who does not walk in the counsel of the wicked.<verse eid="PSA 1:1"/></para>
+<para style="b"/>
+<para style="q1"><verse number="2" style="v" sid="PSA 1:2"/>But his delight</para>
+<para style="q2">is in the Law of the LORD.<verse eid="PSA 1:2"/></para>
+<chapter eid="PSA 1"/></usx>"#;
+
+/// Poetry: a line each, a blank line between stanzas, and `markup.indent`'s spaces (`q2` two by
+/// default)
+#[test]
+fn poetry_lines_and_indents() {
+    let lines = |markup: Value, name: &str| {
+        let (mut server, uri, dir) = workspace("See Psalm 1:1-2", name);
+        let bible = dir.join("Bibles/BSB");
+        std::fs::create_dir_all(&bible).unwrap();
+        std::fs::write(bible.join("PSA.usx"), PSA).unwrap();
+        let settings =
+            json!({ "no-config": true, "bible": bible.to_str().unwrap(), "markup": markup });
+        server.configure(settings).unwrap();
+        let book = server
+            .book(BookParams {
+                uri: String::from("logoxide://BSB/PSA"),
+            })
+            .unwrap();
+        let hover = server
+            .hover(HoverParams {
+                text_document_position_params: at(&uri, 0, 6),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let HoverContents::Markup(hover) = hover.contents else {
+            panic!("no markup");
+        };
+        (book.text, hover.value)
+    };
+    let (book, hover) = lines(json!({}), "poetry");
+    assert_eq!(
+        book,
+        "Psalm 1\n[1] Blessed is the man\n  who does not walk in the counsel of the wicked.\n\n[2] But his delight\n  is in the Law of the LORD."
+    );
+    assert!(
+        hover.contains("[1] Blessed is the man\n  who does not walk"),
+        "{hover}"
+    );
+    let (book, _) = lines(json!({ "indent": { "q1": 1, "q2": 4 } }), "indents");
+    assert!(
+        book.contains("\n [1] Blessed is the man\n    who does not walk"),
+        "{book}"
+    );
+}
+
 /// A Bible's `JHN.usx` with only John 3:16, worded like the KJV
 const KJV_JHN: &str = r#"<usx version="3.0"><book code="JHN" style="id">John</book>
 <chapter number="3" style="c" sid="JHN 3"/>

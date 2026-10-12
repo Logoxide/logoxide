@@ -94,6 +94,7 @@ added = { show = true, display = "{text}" }        # translators' additions (KJV
 divine_name = { show = true, display = "{text}" }  # LORD in small capitals
 quotes = { show = true, display = "{text}" }       # quotations other than words of Jesus
 width = 80 # break lines longer than this at a space (none by default)
+indent = { q1 = 0, q2 = 2, q3 = 4, q4 = 6 } # spaces before each line of poetry, by USFM marker
 ```
 
 Labels (verse and chapter numbers) can use `{verse}` (`16`, or `4-5` for a bridge),
@@ -101,6 +102,11 @@ Labels (verse and chapter numbers) can use `{verse}` (`16`, or `4-5` for a bridg
 is a template with `{text}` (and `{name}`), like `## {text}` or `“{text}”`, glued to the element's
 words. Headings and notes that aren't shown are left out; other elements that aren't shown are
 plain text, without their template or color.
+
+Poetry is a line each, with a blank line between stanzas (USX's `b`). `indent` sets the spaces
+each kind of line starts with, by its USFM marker: `q1` to `q4` as above unless set, and any other
+`para` style you add (`qr`, `qm1`, `pi1`, `li1`; an unnumbered `q` is `q1`; OSIS's `<l level="2">`
+is `q2`). The first line of a hover's passage starts at the margin.
 
 Each insertion has a `name` (the action is `Insert {name}`, or `Insert {name} (KJV)` with several
 Bibles), a `display` (default `{text}`; also `{reference}` as formatted, `{osis}`, and `{bible}`,

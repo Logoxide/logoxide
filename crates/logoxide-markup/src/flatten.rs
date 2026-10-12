@@ -181,6 +181,9 @@ pub struct Flattener {
     /// The book and chapter of the last chapter marker, for labels
     book: Option<String>,
     chapter: Option<String>,
+    /// Spaces to write after the pending line break (an indented line's, see
+    /// [`TextOptions::indents`])
+    indent: usize,
 }
 
 /// A marker's id read as book, chapter, and verse
@@ -272,6 +275,7 @@ impl Flattener {
             words: None,
             book: None,
             chapter: None,
+            indent: 0,
         }
     }
 
@@ -361,6 +365,20 @@ impl Flattener {
             Separator::None | Separator::Space => Separator::Breaks(1),
             Separator::Breaks(n) => Separator::Breaks(n.saturating_add(1)),
         };
+        self.indent = 0;
+    }
+
+    /// A line break, then the spaces an indented paragraph or poetic line starts with
+    fn indented_break(&mut self, e: &Element) {
+        self.line_break();
+        if self.opts.line_breaks {
+            self.indent = indent_key(e)
+                .and_then(|(key, alias)| {
+                    (self.opts.indents.get(&key)).or_else(|| self.opts.indents.get(alias?))
+                })
+                .copied()
+                .unwrap_or(0);
+        }
     }
 
     /// Records that text from `start` to the end was written in the current entry
@@ -390,8 +408,12 @@ impl Flattener {
                 Separator::Breaks(1 | 2) => self.text.push('\n'),
                 Separator::Breaks(_) => self.text.push_str("\n\n"),
             }
+            if matches!(self.separator, Separator::Breaks(_)) {
+                self.text.extend(std::iter::repeat_n(' ', self.indent));
+            }
         }
         self.separator = Separator::None;
+        self.indent = 0;
         self.glued = false;
         let start = self.text.len();
         self.text.push_str(piece);
@@ -535,8 +557,14 @@ impl Flattener {
             }
             Kind::Paragraph | Kind::LineGroup | Kind::Entry => {
                 if !e.children.is_empty() || e.milestone == Some(Milestone::Start) {
-                    self.line_break();
+                    self.indented_break(e);
                 }
+                true
+            }
+            // On a line of its own: after the line before it ends (a single line break), or a
+            // stanza break (`b`, a blank line)
+            Kind::Line if e.milestone != Some(Milestone::End) => {
+                self.indented_break(e);
                 true
             }
             Kind::Line | Kind::Word => true,
@@ -682,6 +710,27 @@ impl Flattener {
             self.space();
         }
     }
+}
+
+/**
+What indents an element's lines, for [`TextOptions::indents`]: USX's `para` style (`q2`), or
+OSIS's `<l>` as `q` and its level (`q2`); and the key to try without one (`q` as `q1`)
+*/
+fn indent_key(e: &Element) -> Option<(String, Option<&'static str>)> {
+    if e.kind == Kind::Line && e.name == "l" {
+        let level = e.attr("level").unwrap_or("1");
+        return Some((format!("q{level}"), None));
+    }
+    let style = e.attr("style").filter(|_| e.name == "para")?;
+    let alias = match style {
+        "q" => Some("q1"),
+        "qm" => Some("qm1"),
+        "pi" => Some("pi1"),
+        "li" => Some("li1"),
+        "ph" => Some("ph1"),
+        _ => None,
+    };
+    Some((style.to_string(), alias))
 }
 
 /// Whether an end milestone ends the open words of Jesus

@@ -38,6 +38,14 @@ pub struct TextOptions {
     - Not for verse and chapter markers (see the labels), paragraphs, lines, or line breaks
     */
     pub templates: BTreeMap<Kind, String>,
+    /**
+    Spaces written before each line of a kind of indented paragraph or poetic line, by its
+    USFM marker: `{ q1 = 0, q2 = 2 }`; default: none (every line starts at the margin)
+    - USX's `para` styles (`q1`, `q2`, `qm1`, `pi1`, `li1`, ...; `q` is `q1`), and OSIS's
+      `<l level="2">` as `q2` (`<l>` as `q1`)
+    - Only after a line break: the first line of the text isn't indented
+    */
+    pub indents: BTreeMap<String, usize>,
 }
 
 impl Default for TextOptions {
@@ -49,6 +57,7 @@ impl Default for TextOptions {
             verse_label: None,
             chapter_label: None,
             templates: BTreeMap::new(),
+            indents: BTreeMap::new(),
         }
     }
 }

@@ -152,6 +152,10 @@ fn rich_options() -> TextOptions {
         .into_iter()
         .map(|(k, t)| (k, t.to_string()))
         .collect(),
+        indents: [("q1", 2), ("q2", 4), ("pi1", 2)]
+            .into_iter()
+            .map(|(k, n)| (k.to_string(), n))
+            .collect(),
     }
 }
 

@@ -35,6 +35,8 @@ How a passage is written as text
 - `templates` write a shown element's text in a form: `## {text}` for a title, `“{text}”` for
   words of Jesus, with `{name}` as in the labels
 - `width` breaks lines longer than that many characters at a space ([`wrap`])
+- `indents` are the spaces each kind of poetic line or indented paragraph starts with, by its
+  USFM marker (`q1`, `q2`, `pi1`; see `TextOptions::indents`)
 */
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Style {
@@ -43,6 +45,7 @@ pub struct Style {
     pub hidden: Vec<Kind>,
     pub templates: BTreeMap<Kind, String>,
     pub width: Option<usize>,
+    pub indents: BTreeMap<String, usize>,
 }
 
 impl Style {
@@ -55,6 +58,7 @@ impl Style {
             hidden: vec![Kind::Note],
             templates: BTreeMap::new(),
             width: None,
+            indents: BTreeMap::new(),
         }
     }
 
@@ -76,6 +80,7 @@ impl Style {
                 .filter(|(kind, _)| !self.hidden.contains(kind))
                 .map(|(kind, template)| (*kind, with_name(template)))
                 .collect(),
+            indents: self.indents.clone(),
             ..TextOptions::default()
         }
     }

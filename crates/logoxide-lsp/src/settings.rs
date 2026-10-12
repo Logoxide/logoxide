@@ -117,6 +117,9 @@ show = true, display = "[{verse}]" }, ... }`
 - Other elements' `display` is a template with `{text}` for their text (and `{name}`), like
   `## {text}` for headings or `“{text}”` for words of Jesus
 - Headings and notes that aren't shown are left out; the others are plain text
+- `indent` is how many spaces each kind of poetic line (or indented paragraph) starts with, by
+  its USFM marker: `indent = { q1 = 0, q2 = 2 }` (see [`DEFAULT_INDENTS`]; the keys it sets
+  replace those)
 - Other keys, like the editor's `color`, are for the editor
 */
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -144,7 +147,13 @@ pub struct MarkupSettings {
     pub quotes: MarkupElement,
     /// Lines longer than this many characters break at a space (none by default)
     pub width: Option<usize>,
+    /// Spaces before each line of a kind of poetry or indented paragraph, by USFM marker
+    pub indent: BTreeMap<String, usize>,
 }
+
+/// Poetry's indents unless `indent` sets them: a verse's first line at the margin and the lines
+/// that continue it two spaces further in each level (`q1` 0, `q2` 2, `q3` 4, `q4` 6)
+pub const DEFAULT_INDENTS: [(&str, usize); 4] = [("q1", 0), ("q2", 2), ("q3", 4), ("q4", 6)];
 
 impl MarkupSettings {
     /// The elements with a `{text}` template: their kind, settings, and whether they're shown by
@@ -176,6 +185,10 @@ impl MarkupSettings {
             verse_label: label(&self.verse_numbers, "[{verse}]"),
             chapter_label: label(&self.chapter_numbers, "{name} {chapter}"),
             width: self.width,
+            indents: (DEFAULT_INDENTS.iter())
+                .map(|(marker, spaces)| (marker.to_string(), *spaces))
+                .chain(self.indent.clone())
+                .collect(),
             ..Default::default()
         };
         for (kind, element, default) in self.elements() {
@@ -204,6 +217,9 @@ impl MarkupSettings {
             divine_name: merge(&self.divine_name, &over.divine_name),
             quotes: merge(&self.quotes, &over.quotes),
             width: over.width.or(self.width),
+            indent: (self.indent.clone().into_iter())
+                .chain(over.indent.clone())
+                .collect(),
         }
     }
 }

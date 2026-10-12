@@ -70,6 +70,7 @@ fn shapes() {
         verse_label: None,
         chapter_label: None,
         templates: BTreeMap::new(),
+        indents: BTreeMap::new(),
     };
     let _ = TextOptions {
         line_breaks: false,

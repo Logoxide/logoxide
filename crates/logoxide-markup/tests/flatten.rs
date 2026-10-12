@@ -213,3 +213,57 @@ fn templates_across_entries() {
     flat.push(&parse(Markup::Osis, r#"<q who="Jesus">never closed"#));
     assert_eq!(flat.finish().text, "“never closed”");
 }
+
+#[test]
+fn poetry_lines_stanzas_and_indents() {
+    let usx = r#"<usx version="3.0"><para style="p">Prose, then a psalm:</para><para style="q1"><verse number="1" style="v" sid="PSA 1:1"/>Blessed is the man</para><para style="q2">who does not walk</para><para style="b"/><para style="q">Not so</para><para style="qr">Selah</para><para style="pi">Indented prose</para></usx>"#;
+    let nodes = parse(Markup::Usx, usx);
+    let opts = TextOptions {
+        verse_label: Some("[{verse}]".into()),
+        ..TextOptions::default()
+    };
+    // Each line on its own line, and a blank line at the stanza break
+    assert_eq!(
+        flatten(&nodes, &opts).text,
+        "Prose, then a psalm:\n[1] Blessed is the man\nwho does not walk\n\nNot so\nSelah\nIndented prose"
+    );
+    // Spaces by marker (`q` is `q1`, `pi` is `pi1`); the spans leave them out
+    let opts = TextOptions {
+        indents: [("q1", 2), ("q2", 4), ("qr", 6), ("pi1", 1)]
+            .into_iter()
+            .map(|(k, n)| (k.to_string(), n))
+            .collect(),
+        ..opts
+    };
+    let flat = flatten(&nodes, &opts);
+    assert_eq!(
+        flat.text,
+        "Prose, then a psalm:\n  [1] Blessed is the man\n    who does not walk\n\n  Not so\n      Selah\n Indented prose"
+    );
+    let lines: Vec<&str> = (flat.spans.iter())
+        .filter(|s| s.kind == Kind::Line)
+        .map(|s| &flat.text[s.range.clone()])
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "[1] Blessed is the man",
+            "who does not walk",
+            "Not so",
+            "Selah"
+        ]
+    );
+    // OSIS lines by level; the first line of the text isn't indented
+    let osis = parse(
+        Markup::Osis,
+        r#"<lg><l level="1">The LORD is my shepherd;</l><l level="2">I shall not want.</l></lg>"#,
+    );
+    let opts = TextOptions {
+        indents: [("q2".to_string(), 3)].into(),
+        ..TextOptions::default()
+    };
+    assert_eq!(
+        flatten(&osis, &opts).text,
+        "The LORD is my shepherd;\n   I shall not want."
+    );
+}

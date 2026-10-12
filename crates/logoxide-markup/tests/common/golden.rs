@@ -95,6 +95,7 @@ pub fn all_options() -> TextOptions {
         .into_iter()
         .map(|(kind, template)| (kind, template.to_string()))
         .collect::<BTreeMap<_, _>>(),
+        indents: BTreeMap::new(),
     }
 }
 

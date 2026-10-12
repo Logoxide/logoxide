@@ -217,6 +217,7 @@ impl From<&BookTextStyle> for Style {
                 .filter_map(|t| Some((template_kind(t.kind)?, t.template.clone())))
                 .collect(),
             width: style.width.map(|w| w as usize),
+            ..Style::default()
         }
     }
 }

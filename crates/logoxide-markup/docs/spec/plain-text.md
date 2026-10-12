@@ -14,6 +14,7 @@ the spans, entries, sources, and what carries from one entry to the next.
 | `verse_label` | `None` | Template written where a verse marker is |
 | `chapter_label` | `None` | Template written on its own line where a chapter marker is |
 | `templates` | empty | Per kind, a template written around a kept element |
+| `indents` | empty | Spaces written after the break before a paragraph or poetic line, by its marker (Indents) |
 
 ## Words and separators
 
@@ -72,7 +73,7 @@ milestone), the contents, and a break after (only if it has children).
 | `LineBreak` | a break (its children, if any, are not written) |
 | `Verse`, `Chapter` with children | the label, then the contents (no template) |
 | `Paragraph`, `LineGroup`, `Entry` | block |
-| `Line` | the contents, then a break unless it is a `Start` milestone |
+| `Line` | a break unless it is an `End` milestone, the contents, then a break unless it is a `Start` milestone |
 | `Word` | the contents; then, when `strongs` is on and the word has Strong's numbers, a space and `[` + the numbers as displayed, joined by single spaces, + `]` (`beginning [H7225]`, `a [H7225 H853]`) |
 | anything else (`Quote`, `Added`, `DivineName`, `Highlight`, `Foreign`, `Reference`, `Division`, `Image`, `Metadata`, `Other`, `WordsOfJesus` without a milestone, `Milestone` with children) | templated contents |
 
@@ -85,6 +86,20 @@ Consequences worth stating:
   (`<div type="x-p" sID="…"/>`) requests one break; a paragraph `End` milestone requests none.
 - An `End` milestone `Line` (`<l eID="…"/>`) requests a break; a `Start` milestone line does not.
 - `Word` elements ignore templates.
+- A line ends the one before it with one newline (its break after and the next one's before);
+  a stanza break between them (USX `<para style="b"/>`, a third break) makes a blank line.
+
+## Indents
+
+`indents` maps a marker to a number of spaces, written after the newline before a `Paragraph` or
+`Line` (`{ q1 = 2, q2 = 4 }`). The marker is a USX `para`'s `style` (`q1`, `q2`, `qr`, `pi1`,
+`li1`, ...; an unnumbered `q`, `qm`, `pi`, `li`, or `ph` falls back to its `1`), or an OSIS `<l>`'s
+`q` and `level` (`q1` without one). Other elements and markups are not indented.
+
+- The spaces come only after a newline: the first line of the text, and every line with
+  `line_breaks` false, has none.
+- Any other break request (a title, a `LineBreak`) before the next piece cancels the indent.
+- The spaces have no source and are outside every span (spans are trimmed).
 
 ## Templates
 
