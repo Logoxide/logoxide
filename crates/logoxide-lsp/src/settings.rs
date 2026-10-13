@@ -166,6 +166,8 @@ show = true, display = "[{verse}]" }, ... }`
 - `indent` is how many spaces each kind of poetic line (or indented paragraph) starts with, by
   its USFM marker: `indent = { q1 = 0, q2 = 2 }` (see [`DEFAULT_INDENTS`]; the keys it sets
   replace those)
+- `verse_lines = true` starts each verse on a line of its own, and `paragraph_gaps = true` puts
+  a blank line between paragraphs (both off by default)
 - Other keys, like the editor's `color`, are for the editor
 */
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -195,6 +197,12 @@ pub struct MarkupSettings {
     pub width: Option<usize>,
     /// Spaces before each line of a kind of poetry or indented paragraph, by USFM marker
     pub indent: BTreeMap<String, usize>,
+    /// Each verse on a line of its own (off by default)
+    #[serde(alias = "verse-lines")]
+    pub verse_lines: Option<bool>,
+    /// A blank line between paragraphs (off by default)
+    #[serde(alias = "paragraph-gaps")]
+    pub paragraph_gaps: Option<bool>,
 }
 
 /// Poetry's indents unless `indent` sets them: a verse's first line at the margin and the lines
@@ -235,6 +243,8 @@ impl MarkupSettings {
                 .map(|(marker, spaces)| (marker.to_string(), *spaces))
                 .chain(self.indent.clone())
                 .collect(),
+            verse_lines: self.verse_lines.unwrap_or(false),
+            paragraph_gaps: self.paragraph_gaps.unwrap_or(false),
             ..Default::default()
         };
         for (kind, element, default) in self.elements() {
@@ -266,6 +276,8 @@ impl MarkupSettings {
             indent: (self.indent.clone().into_iter())
                 .chain(over.indent.clone())
                 .collect(),
+            verse_lines: over.verse_lines.or(self.verse_lines),
+            paragraph_gaps: over.paragraph_gaps.or(self.paragraph_gaps),
         }
     }
 }

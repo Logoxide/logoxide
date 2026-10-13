@@ -46,6 +46,19 @@ pub struct TextOptions {
     - Only after a line break: the first line of the text isn't indented
     */
     pub indents: BTreeMap<String, usize>,
+    /**
+    Start each verse on a line of its own; default: false (verses run on within a paragraph)
+    - A verse that already starts a line (a paragraph's or a poetic line's first) keeps its indent
+    - Only with `line_breaks`
+    */
+    pub verse_lines: bool,
+    /**
+    A blank line between paragraphs (and between a paragraph and the poetry or heading next to
+    it); default: false (a paragraph starts on the next line)
+    - Not after a title or chapter label: the paragraph under a heading follows it directly
+    - Only with `line_breaks`
+    */
+    pub paragraph_gaps: bool,
 }
 
 impl Default for TextOptions {
@@ -58,6 +71,8 @@ impl Default for TextOptions {
             chapter_label: None,
             templates: BTreeMap::new(),
             indents: BTreeMap::new(),
+            verse_lines: false,
+            paragraph_gaps: false,
         }
     }
 }

@@ -267,3 +267,71 @@ fn poetry_lines_stanzas_and_indents() {
         "The LORD is my shepherd;\n   I shall not want."
     );
 }
+
+#[test]
+fn verse_lines_and_paragraph_gaps() {
+    let usx = r#"<usx version="3.0"><chapter number="1" style="c" sid="JHN 1"/><para style="s1">The Word</para><para style="p"><verse number="1" style="v" sid="JHN 1:1"/>In the beginning was the Word. <verse number="2" style="v" sid="JHN 1:2"/>He was with God.</para><para style="p"><verse number="3" style="v" sid="JHN 1:3"/>All things were made.</para><para style="q2"><verse number="4" style="v" sid="JHN 1:4"/>In him was life,</para><para style="q2">and the life <verse number="5" style="v" sid="JHN 1:5"/>was light.</para><para style="p">The end.</para></usx>"#;
+    let nodes = parse(Markup::Usx, usx);
+    let base = TextOptions {
+        filter: logoxide_markup::Filter::all(),
+        verse_label: Some("[{verse}]".into()),
+        chapter_label: Some("Chapter {chapter}".into()),
+        indents: [("q2".to_string(), 2)].into(),
+        ..TextOptions::default()
+    };
+    assert_eq!(
+        flatten(&nodes, &base).text,
+        "Chapter 1\nThe Word\n[1] In the beginning was the Word. [2] He was with God.\n[3] All things were made.\n  [4] In him was life,\n  and the life [5] was light.\nThe end."
+    );
+    // Each verse on a line of its own; one that starts a poetic line keeps its indent
+    let verses = TextOptions {
+        verse_lines: true,
+        ..base.clone()
+    };
+    assert_eq!(
+        flatten(&nodes, &verses).text,
+        "Chapter 1\nThe Word\n[1] In the beginning was the Word.\n[2] He was with God.\n[3] All things were made.\n  [4] In him was life,\n  and the life\n[5] was light.\nThe end."
+    );
+    // A blank line between paragraphs and around poetry, not under the heading
+    let gaps = TextOptions {
+        paragraph_gaps: true,
+        ..base.clone()
+    };
+    assert_eq!(
+        flatten(&nodes, &gaps).text,
+        "Chapter 1\nThe Word\n[1] In the beginning was the Word. [2] He was with God.\n\n[3] All things were made.\n\n  [4] In him was life,\n  and the life [5] was light.\n\nThe end."
+    );
+    // Both, and neither without line breaks
+    let both = TextOptions {
+        verse_lines: true,
+        paragraph_gaps: true,
+        ..base.clone()
+    };
+    assert_eq!(
+        flatten(&nodes, &both).text,
+        "Chapter 1\nThe Word\n[1] In the beginning was the Word.\n[2] He was with God.\n\n[3] All things were made.\n\n  [4] In him was life,\n  and the life\n[5] was light.\n\nThe end."
+    );
+    let flat = TextOptions {
+        line_breaks: false,
+        ..both
+    };
+    assert_eq!(
+        flatten(&nodes, &flat).text,
+        "Chapter 1 The Word [1] In the beginning was the Word. [2] He was with God. [3] All things were made. [4] In him was life, and the life [5] was light. The end."
+    );
+    // OSIS verses as containers and paragraph milestones
+    let osis = parse(
+        Markup::Osis,
+        r#"<div type="paragraph" sID="p1"/><verse osisID="Gen.1.1">In the beginning.</verse><verse osisID="Gen.1.2">And the earth.</verse><div type="paragraph" eID="p1"/><div type="paragraph" sID="p2"/><verse osisID="Gen.1.3">Let there be light.</verse><div type="paragraph" eID="p2"/>"#,
+    );
+    let both = TextOptions {
+        verse_lines: true,
+        paragraph_gaps: true,
+        verse_label: Some("{verse}".into()),
+        ..TextOptions::default()
+    };
+    assert_eq!(
+        flatten(&osis, &both).text,
+        "1 In the beginning.\n2 And the earth.\n\n3 Let there be light."
+    );
+}

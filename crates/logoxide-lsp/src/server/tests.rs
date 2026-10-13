@@ -1304,6 +1304,73 @@ fn poetry_lines_and_indents() {
     );
 }
 
+/// Two paragraphs of prose under a heading
+const GEN: &str = r#"<usx version="3.0"><book code="GEN" style="id">x</book>
+<chapter number="1" style="c" sid="GEN 1"/>
+<para style="s1">Creation</para>
+<para style="p"><verse number="1" style="v" sid="GEN 1:1"/>In the beginning.<verse eid="GEN 1:1"/> <verse number="2" style="v" sid="GEN 1:2"/>The earth was formless.<verse eid="GEN 1:2"/></para>
+<para style="p"><verse number="3" style="v" sid="GEN 1:3"/>Let there be light.<verse eid="GEN 1:3"/></para>
+<chapter eid="GEN 1"/></usx>"#;
+
+/// `markup.verse_lines` puts each verse on a line, and `paragraph_gaps` a blank line between
+/// paragraphs, in whole books and hover; a template's `markup` can turn them on alone
+#[test]
+fn verse_lines_and_paragraph_gaps() {
+    let text = |markup: Value, name: &str| {
+        let (mut server, uri, dir) = workspace("See Genesis 1:1-3", name);
+        let bible = dir.join("Bibles/BSB");
+        std::fs::create_dir_all(&bible).unwrap();
+        std::fs::write(bible.join("GEN.usx"), GEN).unwrap();
+        let settings =
+            json!({ "no-config": true, "bible": bible.to_str().unwrap(), "markup": markup });
+        server.configure(settings).unwrap();
+        let book = server
+            .book(BookParams {
+                uri: String::from("logoxide://BSB/GEN"),
+            })
+            .unwrap();
+        let hover = server
+            .hover(HoverParams {
+                text_document_position_params: at(&uri, 0, 6),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            })
+            .unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        let HoverContents::Markup(hover) = hover.contents else {
+            panic!("no markup");
+        };
+        (book.text, hover.value)
+    };
+    let (book, _) = text(json!({}), "verse-lines-off");
+    assert_eq!(
+        book,
+        "Genesis 1\nCreation\n[1] In the beginning. [2] The earth was formless.\n[3] Let there be light."
+    );
+    let (book, hover) = text(
+        json!({ "verse_lines": true, "paragraph_gaps": true }),
+        "verse-lines-on",
+    );
+    assert_eq!(
+        book,
+        "Genesis 1\nCreation\n[1] In the beginning.\n[2] The earth was formless.\n\n[3] Let there be light."
+    );
+    assert!(
+        hover.contains("[1] In the beginning.\n[2] The earth was formless.\n\n[3] Let there"),
+        "{hover}"
+    );
+    use crate::settings::MarkupSettings;
+    let gaps = MarkupSettings {
+        paragraph_gaps: Some(true),
+        ..MarkupSettings::default()
+    };
+    let over = MarkupSettings {
+        verse_lines: Some(true),
+        ..MarkupSettings::default()
+    };
+    let style = gaps.merged(&over).style();
+    assert!(style.verse_lines && style.paragraph_gaps);
+}
+
 /// A Bible's `JHN.usx` with only John 3:16, worded like the KJV
 const KJV_JHN: &str = r#"<usx version="3.0"><book code="JHN" style="id">John</book>
 <chapter number="3" style="c" sid="JHN 3"/>

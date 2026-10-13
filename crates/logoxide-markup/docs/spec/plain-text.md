@@ -15,6 +15,8 @@ the spans, entries, sources, and what carries from one entry to the next.
 | `chapter_label` | `None` | Template written on its own line where a chapter marker is |
 | `templates` | empty | Per kind, a template written around a kept element |
 | `indents` | empty | Spaces written after the break before a paragraph or poetic line, by its marker (Indents) |
+| `verse_lines` | `false` | A break before each verse (Verse lines and paragraph gaps) |
+| `paragraph_gaps` | `false` | A blank line before and after each paragraph (Verse lines and paragraph gaps) |
 
 ## Words and separators
 
@@ -100,6 +102,18 @@ Consequences worth stating:
   `line_breaks` false, has none.
 - Any other break request (a title, a `LineBreak`) before the next piece cancels the indent.
 - The spaces have no source and are outside every span (spans are trimmed).
+
+## Verse lines and paragraph gaps
+
+Both apply only with `line_breaks`.
+
+- `verse_lines`: a `Verse` that isn't an `End` milestone requests a break before its label,
+  unless a break is already pending (a verse that starts a paragraph or poetic line keeps that
+  line's indent).
+- `paragraph_gaps`: a `Paragraph`'s break before and after (not a `LineGroup`'s or an `Entry`'s)
+  becomes at least three breaks, a blank line, unless the last thing written was a `Title` or a
+  chapter label (a heading's paragraph follows it directly). An `End` milestone paragraph
+  requests nothing, as before.
 
 ## Templates
 

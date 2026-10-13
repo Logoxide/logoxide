@@ -97,6 +97,8 @@ divine_name = { show = true, display = "{text}" }  # LORD in small capitals
 quotes = { show = true, display = "{text}" }       # quotations other than words of Jesus
 width = 80 # break lines longer than this at a space (none by default)
 indent = { q1 = 0, q2 = 2, q3 = 4, q4 = 6 } # spaces before each line of poetry, by USFM marker
+verse_lines = false    # each verse on a line of its own
+paragraph_gaps = false # a blank line between paragraphs
 ```
 
 Labels (verse and chapter numbers) can use `{verse}` (`16`, or `4-5` for a bridge),
@@ -109,6 +111,10 @@ Poetry is a line each, with a blank line between stanzas (USX's `b`). `indent` s
 each kind of line starts with, by its USFM marker: `q1` to `q4` as above unless set, and any other
 `para` style you add (`qr`, `qm1`, `pi1`, `li1`; an unnumbered `q` is `q1`; OSIS's `<l level="2">`
 is `q2`). The first line of a hover's passage starts at the margin.
+
+`verse_lines` starts each verse on a new line (a verse that starts a line of poetry keeps its
+indent). `paragraph_gaps` puts a blank line between paragraphs, and between a paragraph and the
+poetry before or after it, but not between a heading or chapter label and its first paragraph.
 
 `templates` are named templates for a reference. Each has a `display` (default `{text}`, the
 passage; `{first:N}` and `{last:N}`, its first or last N verses; `{reference}` as formatted,

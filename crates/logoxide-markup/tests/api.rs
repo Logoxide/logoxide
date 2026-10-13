@@ -71,6 +71,8 @@ fn shapes() {
         chapter_label: None,
         templates: BTreeMap::new(),
         indents: BTreeMap::new(),
+        verse_lines: false,
+        paragraph_gaps: false,
     };
     let _ = TextOptions {
         line_breaks: false,

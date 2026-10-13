@@ -37,6 +37,8 @@ How a passage is written as text
 - `width` breaks lines longer than that many characters at a space ([`wrap`])
 - `indents` are the spaces each kind of poetic line or indented paragraph starts with, by its
   USFM marker (`q1`, `q2`, `pi1`; see `TextOptions::indents`)
+- `verse_lines` starts each verse on a line of its own, and `paragraph_gaps` puts a blank line
+  between paragraphs (see `TextOptions::verse_lines` and `paragraph_gaps`)
 */
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Style {
@@ -46,6 +48,8 @@ pub struct Style {
     pub templates: BTreeMap<Kind, String>,
     pub width: Option<usize>,
     pub indents: BTreeMap<String, usize>,
+    pub verse_lines: bool,
+    pub paragraph_gaps: bool,
 }
 
 impl Style {
@@ -59,6 +63,8 @@ impl Style {
             templates: BTreeMap::new(),
             width: None,
             indents: BTreeMap::new(),
+            verse_lines: false,
+            paragraph_gaps: false,
         }
     }
 
@@ -81,6 +87,8 @@ impl Style {
                 .map(|(kind, template)| (*kind, with_name(template)))
                 .collect(),
             indents: self.indents.clone(),
+            verse_lines: self.verse_lines,
+            paragraph_gaps: self.paragraph_gaps,
             ..TextOptions::default()
         }
     }

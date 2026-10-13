@@ -504,7 +504,7 @@ before changing the design. `PLAN-NEXT.md` is what remains (decisions N1–N8, p
   book's file), the one format the core's `Cache`, the LSP, and the bindings share.
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
   label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
-  templates, `width` to `wrap` at, `indents` by USFM marker for poetry), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
+  templates, `width` to `wrap` at, `indents` by USFM marker for poetry, `verse_lines`, `paragraph_gaps`), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
   `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats, and a ThML book's (`is_thml`: `.xml`, `.thml`): parsed by logoxide-markup, its text nodes joined with `\n` as topos's XML search does (the head left out), searched by `BibleMatcher::search`, each `Citation` with no CFI, spine 0, UTF-16 offsets and line and column in that text, and the innermost titled `divN`'s title as its chapter. `versification::system(name)`:
   SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
   chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's

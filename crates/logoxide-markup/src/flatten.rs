@@ -184,6 +184,9 @@ pub struct Flattener {
     /// Spaces to write after the pending line break (an indented line's, see
     /// [`TextOptions::indents`])
     indent: usize,
+    /// A title or chapter label was the last thing written, so a paragraph after it has no gap
+    /// (see [`TextOptions::paragraph_gaps`])
+    after_heading: bool,
 }
 
 /// A marker's id read as book, chapter, and verse
@@ -276,6 +279,7 @@ impl Flattener {
             book: None,
             chapter: None,
             indent: 0,
+            after_heading: false,
         }
     }
 
@@ -368,6 +372,30 @@ impl Flattener {
         self.indent = 0;
     }
 
+    /// A blank line, for a paragraph's start or end with [`TextOptions::paragraph_gaps`]
+    fn paragraph_gap(&mut self) {
+        if !self.opts.paragraph_gaps || !self.opts.line_breaks || self.after_heading {
+            return;
+        }
+        if let Separator::Breaks(n) = self.separator {
+            self.separator = Separator::Breaks(n.max(3));
+        } else {
+            self.separator = Separator::Breaks(3);
+            self.indent = 0;
+        }
+    }
+
+    /// A line break before a verse with [`TextOptions::verse_lines`], unless one is pending (so a
+    /// poetic line's indent is kept)
+    fn verse_line(&mut self, e: &Element) {
+        if self.opts.verse_lines
+            && e.milestone != Some(Milestone::End)
+            && !matches!(self.separator, Separator::Breaks(_))
+        {
+            self.line_break();
+        }
+    }
+
     /// A line break, then the spaces an indented paragraph or poetic line starts with
     fn indented_break(&mut self, e: &Element) {
         self.line_break();
@@ -415,6 +443,7 @@ impl Flattener {
         self.separator = Separator::None;
         self.indent = 0;
         self.glued = false;
+        self.after_heading = false;
         let start = self.text.len();
         self.text.push_str(piece);
         self.wrote(start);
@@ -528,6 +557,9 @@ impl Flattener {
                 false
             }
             Kind::Verse | Kind::Chapter | Kind::Milestone if e.children.is_empty() => {
+                if e.kind == Kind::Verse {
+                    self.verse_line(e);
+                }
                 if e.kind != Kind::Milestone && e.milestone != Some(Milestone::End) {
                     self.label(e);
                 }
@@ -550,6 +582,9 @@ impl Flattener {
                 true
             }
             Kind::Verse | Kind::Chapter => {
+                if e.kind == Kind::Verse {
+                    self.verse_line(e);
+                }
                 if e.milestone != Some(Milestone::End) {
                     self.label(e);
                 }
@@ -558,6 +593,9 @@ impl Flattener {
             Kind::Paragraph | Kind::LineGroup | Kind::Entry => {
                 if !e.children.is_empty() || e.milestone == Some(Milestone::Start) {
                     self.indented_break(e);
+                    if e.kind == Kind::Paragraph {
+                        self.paragraph_gap();
+                    }
                 }
                 true
             }
@@ -583,11 +621,15 @@ impl Flattener {
             Kind::Title => {
                 self.close_template(e.kind);
                 self.line_break();
+                self.after_heading = true;
             }
             Kind::Verse | Kind::Chapter => {}
             Kind::Paragraph | Kind::LineGroup | Kind::Entry => {
                 if !e.children.is_empty() {
                     self.line_break();
+                    if e.kind == Kind::Paragraph {
+                        self.paragraph_gap();
+                    }
                 }
             }
             Kind::Line => {
@@ -704,6 +746,7 @@ impl Flattener {
             self.line_break();
             self.piece(&label, None);
             self.line_break();
+            self.after_heading = true;
         } else {
             self.space();
             self.piece(&label, None);

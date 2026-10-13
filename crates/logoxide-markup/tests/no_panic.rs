@@ -156,6 +156,9 @@ fn rich_options() -> TextOptions {
             .into_iter()
             .map(|(k, n)| (k.to_string(), n))
             .collect(),
+
+        verse_lines: true,
+        paragraph_gaps: true,
     }
 }
 

@@ -96,6 +96,8 @@ pub fn all_options() -> TextOptions {
         .map(|(kind, template)| (kind, template.to_string()))
         .collect::<BTreeMap<_, _>>(),
         indents: BTreeMap::new(),
+        verse_lines: false,
+        paragraph_gaps: false,
     }
 }
 
