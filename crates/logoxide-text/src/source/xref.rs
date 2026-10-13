@@ -4,7 +4,10 @@ weight, tab-separated, as OSIS references. Every file is read when opened; a ver
 cross-references are the lines whose `from` covers it.
 */
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    sync::Arc,
+};
 
 use logoxide_markup::Node;
 use topos_bible::{data::books::BookId, segments::Passage};
@@ -27,6 +30,12 @@ pub struct XrefSource {
     lines: Vec<Line>,
     /// Each distinct `from` in normal form, in file and line order
     froms: Vec<String>,
+    /// The lines of each `from` (normal form), in order
+    by_from: HashMap<String, Vec<usize>>,
+    /// The lines whose `from` is in each book, in order
+    by_book: BTreeMap<BookId, Vec<usize>>,
+    /// Each `from` and `to` pair read, for lines listed twice
+    pairs: HashSet<(String, String)>,
     no_books: BTreeMap<BookId, String>,
 }
 
@@ -38,6 +47,9 @@ impl XrefSource {
         let mut source = Self {
             lines: vec![],
             froms: vec![],
+            by_from: HashMap::new(),
+            by_book: BTreeMap::new(),
+            pairs: HashSet::new(),
             no_books: BTreeMap::new(),
         };
         for name in names {
@@ -83,14 +95,16 @@ impl XrefSource {
                 ),
                 None => None,
             };
-            let twice =
-                (self.lines.iter()).any(|l| l.from_osis == from_osis && l.to_osis == to_osis);
-            if twice {
+            if !self.pairs.insert((from_osis.clone(), to_osis.clone())) {
                 return Err(bad(format!("{from_osis} to {to_osis} is listed twice")));
             }
-            if !self.froms.contains(&from_osis) {
+            let index = self.lines.len();
+            let of_from = self.by_from.entry(from_osis.clone()).or_default();
+            if of_from.is_empty() {
                 self.froms.push(from_osis.clone());
             }
+            of_from.push(index);
+            self.by_book.entry(from.book).or_default().push(index);
             self.lines.push(Line {
                 from,
                 from_osis,
@@ -166,8 +180,9 @@ impl Source for XrefSource {
         let Some((_, from)) = parse_reference(key) else {
             return Ok(None);
         };
-        let targets: Vec<String> = (self.lines.iter())
-            .filter(|l| l.from_osis == from)
+        let lines = self.by_from.get(&from).map(Vec::as_slice).unwrap_or_default();
+        let targets: Vec<String> = (lines.iter())
+            .map(|&i| &self.lines[i])
             .map(|l| match l.weight {
                 Some(weight) => format!("{}={weight}", l.to_osis),
                 None => l.to_osis.clone(),
@@ -187,7 +202,9 @@ impl Source for XrefSource {
         let Some((passage, _)) = parse_reference(verse) else {
             return Ok(vec![]);
         };
-        Ok((self.lines.iter())
+        let lines = self.by_book.get(&passage.book).map(Vec::as_slice).unwrap_or_default();
+        Ok((lines.iter())
+            .map(|&i| &self.lines[i])
             .filter(|l| overlap(&l.from, &passage))
             .map(|l| CrossReference {
                 from: l.from_osis.clone(),
