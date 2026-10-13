@@ -357,6 +357,49 @@ fn books_are_searched_when_asked() {
 }
 
 #[test]
+fn search_folders_are_searched_too() {
+    let (mut server, uri, dir) = workspace("See John 3:16 here", "search-folders");
+    let vault = dir.with_file_name(format!("{}-vault", dir.file_name().unwrap().display()));
+    let _ = std::fs::remove_dir_all(&vault);
+    std::fs::create_dir_all(&vault).unwrap();
+    std::fs::write(vault.join("v.md"), "John 3:16 in the vault\n").unwrap();
+    let references = |server: &Server| {
+        server
+            .references(ReferenceParams {
+                text_document_position: at(&uri, 0, 6),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+                partial_result_params: PartialResultParams::default(),
+                context: lsp_types::ReferenceContext {
+                    include_declaration: true,
+                },
+            })
+            .unwrap()
+            .into_iter()
+            .map(|location| workspace::uri_to_path(&location.uri).unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert!(!references(&server).contains(&vault.join("v.md")));
+    // Another folder, and the workspace's own subfolder (relative), whose files count once (in
+    // URI order)
+    server
+        .configure(serde_json::json!({
+            "no-config": true,
+            "search-folders": [vault.display().to_string(), "My Notes"],
+        }))
+        .unwrap();
+    assert_eq!(
+        references(&server),
+        [
+            vault.join("v.md"),
+            dir.join("My Notes/a.md"),
+            dir.join("open.md")
+        ]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    let _ = std::fs::remove_dir_all(&vault);
+}
+
+#[test]
 fn searches_the_workspace() {
     let (server, uri, dir) = workspace("See John 3:16 here", "search");
     // Go to references: exactly John 3:16, however it is written

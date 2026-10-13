@@ -212,6 +212,8 @@ pub struct Server {
     documents: HashMap<Uri, String>,
     /// The workspace folders, for workspace-wide searches
     roots: Vec<PathBuf>,
+    /// More folders those searches cover (`search-folders`)
+    search_folders: Vec<PathBuf>,
     /// The editor's settings (initialization options, then the latest configuration)
     editor: Map<String, Value>,
     /// Each workspace file's references, reused while it is unchanged
@@ -255,6 +257,7 @@ impl Server {
             extensions: vec![],
             documents: HashMap::new(),
             roots: vec![],
+            search_folders: vec![],
             editor: Map::new(),
             cache: Arc::default(),
             books: None,
@@ -301,6 +304,7 @@ impl Server {
             hover_limit,
             hover_title,
             extensions,
+            search_folders,
             bibles,
             hover_bibles,
             commentaries,
@@ -311,6 +315,7 @@ impl Server {
             pdf,
             fingerprint,
         } = settings::settings(config, &editor)?.configure(&self.roots, self.library.as_deref())?;
+        self.search_folders = search_folders;
         self.books = workspace::BookSearch::new(epub, pdf, &fingerprint).map(Arc::new);
         self.bibles = bibles;
         self.hover_bibles = hover_bibles;

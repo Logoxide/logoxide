@@ -34,7 +34,7 @@ stays references only:
   format (`John 3:16`, code `reference`), and warnings for references that do not exist, like
   `John 3:99` (code `missing`)
 
-Workspace searches cover every text file in the workspace folders, skipping hidden, binary, and
+Workspace searches cover every text file in the workspace folders (and `search-folders`), skipping hidden, binary, and
 ignored files (`.gitignore`, `.ignore`, `.toposignore`), like the CLI. Open files are searched
 as they are in the editor, including unsaved changes. With `epub` (and `pdf`), books are searched
 too: each is read once, then its references come from topos's cache (the CLI's), and a result
@@ -58,6 +58,7 @@ so one file configures both. It uses these keys and ignores the others:
 | `data`, `merge-data`, `remove-data` | Custom book data |
 | `context-book`, `context-heading` | References without a book (`3:16`) |
 | `ext` | Extensions searched in the workspace, like `"md,txt"` (all text files by default) |
+| `search-folders` | More folders that go-to-references and the search command cover, beside the workspace folders: `"~/Obsidian"` or a list (relative ones are in the first workspace folder). They are only searched: a `logoxide.toml` in one doesn't make it the project |
 | `epub` | Search EPUBs too, whatever `ext` says (`false` by default). Their references are kept in topos's cache, shared with the CLI, and are in `logoxide-file:///…/Gill.epub` documents: the book's text, from the `logoxide/fileText` request (`{ uri }`, giving `{ title, text }`) |
 | `pdf` | Search PDFs the same way (`false` by default; only in a build with `--features pdf`) |
 | `inlay-hints` | `"changed"` (default), `"always"`, `"osis"`, `"usfm"`, `"never"`, a template's name in `templates` (with its markup), or a template with their placeholders (`"{first:1}"`, its first verse's text), shown after every reference on one line |

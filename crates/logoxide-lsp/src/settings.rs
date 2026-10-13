@@ -502,6 +502,10 @@ pub struct Settings {
     /// Extensions searched for workspace references (`"md,txt"` or a list; empty means every
     /// text file)
     pub ext: OneOrMany,
+    /// More folders for workspace searches (go-to-references and the search command), beside
+    /// the workspace folders: `"~/Obsidian"` or a list (relative ones are in the first workspace
+    /// folder). Only searched: a project (`logoxide.toml`) in one isn't used
+    pub search_folders: OneOrMany,
     /// Search EPUBs for workspace references too, whatever `ext` says: off by default, since a
     /// book takes a while to read the first time. Their references are kept in topos's cache (the
     /// CLI's, shared with it), and they open as `logoxide-file://` documents of the book's text
@@ -592,6 +596,8 @@ pub struct Configured {
     /// The `hover-title` setting
     pub hover_title: String,
     pub extensions: Vec<String>,
+    /// The `search-folders` setting, `~` expanded and relative ones in the first root
+    pub search_folders: Vec<PathBuf>,
     pub bibles: Bibles,
     /// The `hover-bibles` setting, as the Bibles' names
     pub hover_bibles: Vec<String>,
@@ -842,6 +848,14 @@ impl Settings {
             hover_title: (self.hover_title.clone())
                 .unwrap_or_else(|| DEFAULT_HOVER_TITLE.to_string()),
             extensions,
+            search_folders: (self.search_folders.values().iter())
+                .map(|folder| folder.trim())
+                .filter(|folder| !folder.is_empty())
+                .map(|folder| match (expand_home(folder), roots.first()) {
+                    (path, Some(root)) if path.is_relative() => root.join(path),
+                    (path, _) => path,
+                })
+                .collect(),
             hover_bibles: (self.hover_bibles.values().iter())
                 .flat_map(|names| names.split(','))
                 .map(str::trim)

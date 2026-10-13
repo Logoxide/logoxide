@@ -162,7 +162,11 @@ impl Server {
             mode,
             passage,
             matcher: self.matcher.clone(),
-            roots: self.roots.clone(),
+            // The workspace folders, then `search-folders` (a file in both is searched once)
+            roots: (self.roots.iter())
+                .chain(&self.search_folders)
+                .cloned()
+                .collect(),
             documents: self.documents.clone(),
             extensions: self.extensions.clone(),
             books: self.books.clone(),

@@ -385,8 +385,11 @@ pub fn references(
             let (Some(uri), Ok(meta)) = (uri, entry.metadata()) else {
                 return WalkState::Continue;
             };
-            if let Ok(mut seen) = seen.lock() {
-                seen.insert(path.to_path_buf());
+            // A file under two roots (one inside another) is searched once
+            if let Ok(mut seen) = seen.lock()
+                && !seen.insert(path.to_path_buf())
+            {
+                return WalkState::Continue;
             }
             let (size, modified) = (meta.len(), meta.modified().ok());
             let found = match cache.get(path, size, modified) {
