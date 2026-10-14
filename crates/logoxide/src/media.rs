@@ -15,7 +15,7 @@ path = "audio/JHN.mp3"           # what timings name it by
 url = "https://example.org/audio/JHN.mp3"
 mirrors = ["https://archive.org/download/bsb-audio/JHN.mp3"]  # tried in order when it fails
 size = 31457280
-sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+sha256 = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 book = "JHN"                     # the book it reads, if one
 # timings = "subtitles/john.vtt" # its timings, if not in the timings folder
 ```
@@ -95,7 +95,8 @@ pub struct MediaFile {
     pub mirrors: Vec<String>,
     /// In bytes
     pub size: u64,
-    /// 64 hex digits (lowercase as written; either case is read)
+    /// `sha256:` and 64 hex digits, the form every other hash in logoxide takes (written
+    /// lowercase; either case is read, and the bare 64 digits too: [`sha256_digits`])
     #[serde(deserialize_with = "sha256_field")]
     pub sha256: String,
     /// The book it reads (a USFM code), if one
@@ -134,13 +135,20 @@ impl MediaFile {
     }
 }
 
-/// Whether a listed SHA-256 is one: 64 hex digits. It names where the file is kept
-/// ([`store_path`]), so nothing else is allowed
+/// The hex digits of a listed SHA-256, with or without its `sha256:` prefix (the prefix is what
+/// logoxide writes; the bare digits are read too)
+pub fn sha256_digits(sha256: &str) -> &str {
+    sha256.strip_prefix("sha256:").unwrap_or(sha256)
+}
+
+/// Whether a listed SHA-256 is one: `sha256:` and 64 hex digits, or the 64 digits alone. It
+/// names where the file is kept ([`store_path`]), so nothing else is allowed
 pub fn check_sha256(sha256: &str) -> Result<()> {
-    match sha256.len() == 64 && sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+    let digits = sha256_digits(sha256);
+    match digits.len() == 64 && digits.bytes().all(|b| b.is_ascii_hexdigit()) {
         true => Ok(()),
         false => Err(LogoxideError::Media(format!(
-            "sha256 `{sha256}` isn't a SHA-256 (64 hex digits)"
+            "sha256 `{sha256}` isn't a SHA-256 (`sha256:` and 64 hex digits)"
         ))),
     }
 }
@@ -151,12 +159,19 @@ fn sha256_field<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<S
     Ok(sha256)
 }
 
-/// A file's SHA-256, as lowercase hex
+/// A file's SHA-256 as logoxide lists it: `sha256:` and lowercase hex
 pub fn sha256_hex(bytes: &[u8]) -> String {
-    Sha256::digest(bytes)
+    let hex: String = Sha256::digest(bytes)
         .iter()
         .map(|b| format!("{b:02x}"))
-        .collect()
+        .collect();
+    format!("sha256:{hex}")
+}
+
+/// Whether `actual`, a hash's lowercase hex digits, is the SHA-256 `listed` (in either form,
+/// either case)
+pub fn sha256_matches(listed: &str, actual_digits: &str) -> bool {
+    sha256_digits(listed).eq_ignore_ascii_case(actual_digits)
 }
 
 /// Whether downloaded bytes are the file listed: its size, then its hash
@@ -173,7 +188,7 @@ pub fn verify(file: &MediaFile, bytes: &[u8]) -> Result<()> {
         )));
     }
     let actual = sha256_hex(bytes);
-    if !actual.eq_ignore_ascii_case(&file.sha256) {
+    if !sha256_matches(&file.sha256, sha256_digits(&actual)) {
         return Err(fail(format!(
             "its SHA-256 is {actual}, not the {} listed",
             file.sha256
@@ -335,8 +350,9 @@ enum Verses<'a> {
 /// Where a host keeps a media file, by its hash: `media/9f/9f86…` (relative to its cache), so
 /// every version that lists it shares one copy
 pub fn store_path(file: &MediaFile) -> String {
-    // Only hex digits, even from a file listed without reading a manifest
-    let hash: String = (file.sha256.chars())
+    // Only hex digits, even from a file listed without reading a manifest (the prefix's own
+    // `a256` would pass the filter, so it goes first)
+    let hash: String = (sha256_digits(&file.sha256).chars())
         .filter(char::is_ascii_hexdigit)
         .map(|c| c.to_ascii_lowercase())
         .collect();
@@ -403,11 +419,20 @@ book = "JHN"
         assert!(bad("../../etc"));
         assert!(bad("e3b0"));
         assert!(bad(&"g".repeat(64)));
+        assert!(bad(&format!("sha256:{}", "e".repeat(63))));
+        assert!(bad(&format!("md5:{}", "e".repeat(64))));
+        // Both forms are read: the bare digits (above), and the prefixed form logoxide writes
         assert!(!bad(&"e".repeat(64)));
+        assert!(!bad(&format!("sha256:{}", "e".repeat(64))));
+        // What's written is the prefixed form, which verifies and is kept at the same place
+        let written = MediaFile::of("a.mp3", "u", b"hello");
         assert_eq!(
-            MediaFile::of("a.mp3", "u", b"hello").sha256,
-            file.sha256.to_lowercase()
+            written.sha256,
+            format!("sha256:{}", file.sha256.to_lowercase())
         );
+        assert!(verify(&written, b"hello").is_ok());
+        assert_eq!(store_path(&written), store_path(file));
+        assert_eq!(sha256_digits(&written.sha256), file.sha256.to_lowercase());
         assert_eq!(
             timings_path(&media, file).as_deref(),
             Some("timings/JHN.vtt")

@@ -219,7 +219,8 @@ the other files in this folder.
     `newest_release`, read with `git show`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
     `mirrors` (tried in order after it: `MediaFile::urls`), size, SHA-256, and book, never
-    stored in the package (its `sha256` must be 64 hex digits); `verify` checks a download
+    stored in the package (its `sha256` is `sha256:` and 64 hex digits, as every hash is written;
+    the bare digits are read too: `sha256_digits`, `sha256_matches`); `verify` checks a download
     (`LogoxideError::Mismatch` when it isn't the one listed); `Project::add_media` lists one,
     `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
     by the text. Timings (audio Bibles: where each verse is) are WebVTT, a file's own `timings`, else

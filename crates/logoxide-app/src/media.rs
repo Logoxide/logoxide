@@ -37,7 +37,7 @@ pub fn verify(http: &dyn Http, url: &str, file: &MediaFile) -> Result<()> {
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect();
-    if !actual.eq_ignore_ascii_case(&file.sha256) {
+    if !logoxide::media::sha256_matches(&file.sha256, &actual) {
         return Err(fail(format!(
             "its SHA-256 is {actual}, not the {} listed",
             file.sha256

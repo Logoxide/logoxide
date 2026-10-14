@@ -320,7 +320,7 @@ path = "audio/JHN.mp3"
 url = "https://example.org/audio/JHN.mp3"
 mirrors = ["https://archive.org/download/bsb-audio/JHN.mp3"]
 size = 31457280
-sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+sha256 = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 book = "JHN"
 # timings = "subtitles/john.vtt"
 ```
@@ -335,14 +335,14 @@ book = "JHN"
 | `files.url` | string | Where it is served |
 | `files.mirrors` | array of strings | Other places serving the same bytes, tried in order after `url` |
 | `files.size` | integer | Its length in bytes |
-| `files.sha256` | string | Its SHA-256 as lowercase hex (no prefix) |
+| `files.sha256` | string | Its SHA-256: `sha256:` and 64 lowercase hex digits, the form every hash in logoxide takes ([catalog.md](catalog.md#checksums)). Readers also accept the 64 digits alone, in either case |
 | `files.book` | string | The book it reads (a USFM code), if one |
 | `files.timings` | string | Its timings' path in the package, in place of the timings folder's |
 
-A download is good when its length is `size` and its SHA-256 is `sha256` (compared
-case-insensitively); since the hash says which bytes are meant, any copy is as good as the first.
-Hosts keep files by hash, at `media/<first two hex digits>/<hex>` in their cache, so versions that
-list the same file share it.
+A download is good when its length is `size` and its SHA-256's digits are `sha256`'s (compared
+case-insensitively, the prefix aside); since the hash says which bytes are meant, any copy is as
+good as the first. Hosts keep files by hash, at `media/<first two hex digits>/<hex>` in their
+cache (the digits alone, never the prefix), so versions that list the same file share it.
 
 **Timings** are WebVTT, one file per media file: its own `timings` when it has one, else
 `<timings>/<stem>.vtt`, where `<stem>` is the media file's `path` (folders kept) without its last
