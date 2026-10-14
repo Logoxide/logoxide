@@ -2,7 +2,7 @@
 
 Two formats of logoxide's own for what isn't verse text: a dictionary's entries (a lexicon's,
 Strong's numbers or headwords) and cross-references between passages. This describes them as
-logoxide 0.1 reads them, for anyone writing another implementation; the reference is
+logoxide reads them, for anyone writing another implementation; the reference is
 `crates/logoxide-text/src/source/dictionary.rs` and `xref.rs`. Commentaries need no format of
 their own: they are OSIS or ThML files whose verse markers say which verses each note is on
 ([manifest.md](manifest.md#formats), and `Source::notes` in logoxide-text reads them by passage).
@@ -40,8 +40,10 @@ xref = { path = "xref/" }
 
 Every `*.xml` file under the format's `path` is a file of entries. A package's entries are those
 of all its files, in path order; a key found in two files is an error naming both. The file is
-UTF-8 XML in form, but its entries' bodies are read verbatim, not as XML (so GBF and plain text
-fit too):
+well-formed UTF-8 XML: an entry's body is the entry's own markup, written as an XML fragment
+when that markup is XML (TEI, OSIS, ThML) and inside CDATA sections when it isn't (GBF, plain
+text), so any XML tool opens the file, while a reader takes each body as the text it is, not
+as XML:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -49,6 +51,12 @@ fit too):
 <entry key="G25" headword="ἀγαπάω"><entryFree n="25"><orth>ἀγαπάω</orth> … </entryFree></entry>
 <entry key="G26" headword="ἀγάπη">…</entry>
 <entry key="G25a" link="G25"/>
+</entries>
+```
+
+```xml
+<entries keys="headword" markup="plain">
+<entry key="Aaron" headword="Aaron"><![CDATA[brother of Moses <see Exodus 4> & Miriam]]></entry>
 </entries>
 ```
 
@@ -74,11 +82,19 @@ Attribute values are XML attribute values: `&amp;`, `&lt;`, `&gt;`, `&quot;`, `&
 numeric character references are decoded; the delimiter is `"` or `'`.
 
 The **body** is everything between the end of the `<entry …>` tag and the first `</entry>` after
-it, taken as written: the entry's markup as its source gives it, parsed with logoxide-markup as
-the root's `markup` says. So a body may not contain the text `</entry>`, and an XML body's own
-entities are the markup's business (a TEI body's `&amp;` is decoded by the TEI parser; a plain
-body's isn't, since plain text decodes nothing). An empty element (`<entry key="…"/>`) has an
-empty body.
+it that isn't inside a CDATA section, taken as written: the entry's markup as its source gives
+it, parsed with logoxide-markup as the root's `markup` says. An XML body's own entities are the
+markup's business (a TEI body's `&amp;` is decoded by the TEI parser), and it may not contain the
+text `</entry>` (write `&lt;/entry>`). An empty element (`<entry key="…"/>`) has an empty body.
+
+A body whose markup isn't XML (`gbf`, `plain`) is written inside CDATA: `<![CDATA[` … `]]>`,
+so its `<`, `&`, and even `</entry>` leave the file well-formed. Where the text itself contains
+`]]>`, it is written as two sections split there (`]]]]><![CDATA[>`, the usual way). A reader
+that finds a body made of CDATA sections and nothing else (whitespace around them allowed)
+takes their text joined as the body; any other body is read as written. The text is what's
+parsed and hashed, so an entry hashes the same whether or not it was wrapped, and plain text
+inside CDATA still decodes nothing (`&amp;` stays `&amp;`). Writers may wrap an XML body too,
+but shouldn't: the fragment is XML already.
 
 ### Keys
 

@@ -413,7 +413,8 @@ the other files in this folder.
   which logoxide-markup reads as one span to `last_chapter`), and leaving out introductions
   stored at an earlier verse's entry (`EntryLocation`); a dictionary (`Module::Dictionary`) is
   `entries/<module>.xml` in `doc/entries.md`'s form (`entries_file`: the root's `markup` is the
-  conf's `SourceType`; `keys` from `Feature=GreekDef`/`HebrewDef`, else headword
+  conf's `SourceType`; a GBF or plain entry's body inside CDATA sections, `]]>` in it split
+  into two, so the file is well-formed XML; `keys` from `Feature=GreekDef`/`HebrewDef`, else headword
   (`dictionary_keys`); stored keys in normal form, `00025` → `G25` (`import_key`); a TEI entry's
   first `<orth>` as its headword; `@LINK` aliases as `link` entries), `Made.keys` writes the
   manifest's `keys`, and `finish` refuses one with no entries as it refuses a Bible with no
@@ -475,8 +476,10 @@ the other files in this folder.
   the next: the owner's 2026-10-10 call, a reader's setting, off by default). Two
   formats hold no verses and open as sources with no books, so `open` returns one `Box<dyn
   Source>` for any format: `dictionary.rs` (`TextFormat::Dictionary`, `entries/*.xml` as
-  `doc/entries.md` specifies: the root's `markup` names the bodies' markup; files indexed once,
-  bodies parsed on `Source::entry(key)`; `keys()` in file order; an `<entry link=…/>` alias
+  `doc/entries.md` specifies: the root's `markup` names the bodies' markup; a body ends at the
+  first `</entry>` outside a CDATA section (`entry_end`), and one that is CDATA sections alone
+  reads as their text joined (`cdata_text`), so GBF and plain bodies sit in well-formed XML;
+  files indexed once, bodies parsed on `Source::entry(key)`; `keys()` in file order; an `<entry link=…/>` alias
   reads as its target, one step) and `xref.rs` (`TextFormat::Xref`, `xref/*.tsv` lines parsed
   by topos's `parse_osis`; `Source::cross_references(verse)` is every line whose `from` covers
   it; `keys()` the distinct `from`s and `entry(from)` their targets as one text, which is what
