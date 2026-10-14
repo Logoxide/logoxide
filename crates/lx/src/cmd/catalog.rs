@@ -534,7 +534,7 @@ pub(crate) fn search(
         let edition = edition_words(entry);
         outln!(
             "{indent}{} ({}): {}{edition}, {language}, {}",
-            entry.abbreviation,
+            entry.short_name(),
             entry.id,
             entry.name,
             entry.license.as_deref().unwrap_or("no license given"),
@@ -670,7 +670,7 @@ pub(crate) fn works(
                 let edition = edition_words(entry);
                 outln!(
                     "    {} ({}): {}{edition}",
-                    entry.abbreviation,
+                    entry.short_name(),
                     entry.id,
                     entry.name
                 );

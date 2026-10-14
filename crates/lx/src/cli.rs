@@ -636,7 +636,8 @@ pub(crate) struct NewArgs {
     /// Its title (an EPUB's own by default)
     #[arg(long)]
     pub(crate) name: Option<String>,
-    /// What references name it by (by default its name's initials: `TDP`)
+    /// What references name it by: for a Bible or a commentary, by default its name's initials
+    /// (`BSB`); the other kinds have one only when it's given
     #[arg(long)]
     pub(crate) abbreviation: Option<String>,
     /// An author (repeat for more, in order; an EPUB's own by default)
@@ -652,7 +653,7 @@ pub(crate) struct NewArgs {
     /// book)
     #[arg(long)]
     pub(crate) kind: Option<String>,
-    /// BCP 47 (`en`; an EPUB's own by default)
+    /// BCP 47 (`en`; an EPUB's own by default; a collection needs none)
     #[arg(long)]
     pub(crate) language: Option<String>,
     /// An SPDX expression (`CC0-1.0`); shown, never enforced

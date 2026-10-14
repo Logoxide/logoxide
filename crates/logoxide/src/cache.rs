@@ -335,7 +335,7 @@ impl CachedPackage {
     /// verse counts (references naming it are checked against them)
     pub fn add_to(&self, translations: Translations) -> Translations {
         let info = self.package.info();
-        self.add_as(translations, &info.abbreviation, &info.aliases)
+        self.add_as(translations, info.short_name(), &info.aliases)
     }
 
     /// `translations` with this package added by another abbreviation and aliases (a project's

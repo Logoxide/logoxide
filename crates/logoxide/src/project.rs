@@ -806,7 +806,7 @@ impl Project {
             _ => None,
         };
         let abbreviation = (detailed.and_then(|d| d.abbreviation.clone()))
-            .unwrap_or_else(|| info.abbreviation.clone());
+            .unwrap_or_else(|| info.short_name().to_string());
         let aliases =
             (detailed.and_then(|d| d.aliases.clone())).unwrap_or_else(|| info.aliases.clone());
         (abbreviation, aliases)

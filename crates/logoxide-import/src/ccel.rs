@@ -62,7 +62,7 @@ fn entry(id: &str, title: String, kind: PackageKind, description: Option<String>
     CatalogEntry {
         id: format!("ccel-{}", package_id(&id.replace('/', "-"))),
         name: title,
-        abbreviation: work.to_uppercase(),
+        abbreviation: Some(work.to_uppercase()),
         aliases: vec![],
         language: String::from("und"),
         language_name: None,
@@ -449,7 +449,7 @@ mod tests {
         assert_eq!(catalog.entries.len(), 1);
         let entry = catalog.find_import("ccel:heot").unwrap();
         assert_eq!(
-            (entry.name.as_str(), entry.abbreviation.as_str()),
+            (entry.name.as_str(), entry.short_name()),
             ("Holy Bible: Hebrew & Old Testament", "HEOT")
         );
         assert_eq!(
@@ -559,7 +559,7 @@ mod tests {
         );
         let henry = catalog.find_import("ccel:henry/mhc1").unwrap();
         assert_eq!(henry.id, "ccel-henry-mhc1");
-        assert_eq!(henry.abbreviation, "MHC1");
+        assert_eq!(henry.abbreviation.as_deref(), Some("MHC1"));
         assert_eq!(henry.description.as_deref(), Some("Matthew Henry"));
         assert_eq!(
             henry.source.downloads()[0].urls,

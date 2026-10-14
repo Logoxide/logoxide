@@ -78,10 +78,12 @@ fn a_book_from_an_epub() {
     };
     let manifest = new_from_file("Freely-Given.epub", &epub(), &given, &files).unwrap();
     let info = manifest.package.unwrap();
+    // A book gets no abbreviation unless given one: references never name it
     assert_eq!(
-        (info.id.as_str(), info.abbreviation.as_str(), info.kind),
-        ("freely-given", "FG", PackageKind::Book)
+        (info.id.as_str(), info.abbreviation.as_deref(), info.kind),
+        ("freely-given", None, PackageKind::Book)
     );
+    assert_eq!(info.short_name(), "freely-given");
     // The editor isn't an author
     assert_eq!(info.authors, ["First Author", "Second Author"]);
     assert_eq!(

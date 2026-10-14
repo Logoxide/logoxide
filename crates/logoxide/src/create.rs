@@ -129,9 +129,13 @@ pub fn new_from_file(
     let language = (given.language.clone())
         .or(metadata.language.clone())
         .ok_or_else(|| missing(file_name, "a language (--language, BCP 47: en)"))?;
+    let kind = given.kind.unwrap_or(kind);
     let info = Info {
         id: given.id.clone().unwrap_or_else(|| id_from(&name)),
-        abbreviation: (given.abbreviation.clone()).unwrap_or_else(|| abbreviation_from(&name)),
+        // What references name: given, else the name's initials; the other kinds get one only
+        // when it's given
+        abbreviation: (given.abbreviation.clone())
+            .or_else(|| kind.needs_abbreviation().then(|| abbreviation_from(&name))),
         name,
         authors: match given.authors.is_empty() {
             true => metadata.authors.clone(),
@@ -140,7 +144,7 @@ pub fn new_from_file(
         description: given.description.clone().or(metadata.subtitle.clone()),
         aliases: vec![],
         version: (given.version.clone()).unwrap_or_else(|| semver::Version::new(0, 1, 0)),
-        kind: given.kind.unwrap_or(kind),
+        kind,
         language,
         language_name: None,
         script: None,
@@ -191,11 +195,12 @@ pub fn new_from_file(
 /// as its dependencies (`lx add --project <its folder>`)
 pub fn new_collection(given: &NewPackage, dest: &dyn Storage) -> Result<Manifest> {
     let name = (given.name.clone()).ok_or_else(|| missing("a collection", "a name (--name)"))?;
-    let language = (given.language.clone())
-        .ok_or_else(|| missing("a collection", "a language (--language, BCP 47: en)"))?;
+    // A collection has no language or abbreviation of its own unless given one: left out, its
+    // manifest reads with `und`
+    let language = given.language.clone().unwrap_or_default();
     let info = Info {
         id: given.id.clone().unwrap_or_else(|| id_from(&name)),
-        abbreviation: (given.abbreviation.clone()).unwrap_or_else(|| abbreviation_from(&name)),
+        abbreviation: given.abbreviation.clone(),
         name,
         authors: given.authors.clone(),
         description: given.description.clone(),
@@ -296,7 +301,30 @@ mod tests {
 
         let collection = crate::MemoryStorage::new();
         let made = new_collection(&given, &collection).unwrap();
-        assert_eq!(made.package.unwrap().kind, PackageKind::Collection);
+        let info = made.package.unwrap();
+        assert_eq!(info.kind, PackageKind::Collection);
         assert!(made.formats.is_empty());
+        // A collection has no language or abbreviation of its own unless given one: neither is
+        // written, and what's written reads back (the language as `und`)
+        let unnamed = NewPackage {
+            name: Some("My Library".into()),
+            ..NewPackage::default()
+        };
+        let made = new_collection(&unnamed, &collection).unwrap();
+        let info = made.package.unwrap();
+        assert_eq!(
+            (info.abbreviation.as_deref(), info.language.as_str()),
+            (None, "")
+        );
+        let written = collection.read_string(MANIFEST).unwrap();
+        assert!(
+            !written.contains("language") && !written.contains("abbreviation"),
+            "{written}"
+        );
+        let read = Manifest::parse(&written).unwrap().package.unwrap();
+        assert_eq!(
+            (read.abbreviation.as_deref(), read.language.as_str()),
+            (None, "und")
+        );
     }
 }

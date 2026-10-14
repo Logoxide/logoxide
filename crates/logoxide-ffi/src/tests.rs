@@ -59,8 +59,8 @@ fn a_package_from_its_files() {
         .unwrap();
     let info = package.info();
     assert_eq!(
-        (info.id.as_str(), info.abbreviation.as_str(), info.kind),
-        ("test", "TB", PackageKind::Bible)
+        (info.id.as_str(), info.abbreviation.as_deref(), info.kind),
+        ("test", Some("TB"), PackageKind::Bible)
     );
     assert!(info.right_to_left);
     assert_eq!(info.license.as_deref(), Some("CC0-1.0"));
@@ -765,8 +765,8 @@ fn catalogs_and_ebible_imports() {
     assert_eq!(paths, ["logoxide.toml", "usfm/73-JHNeng-asv.usfm"]);
     let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
     assert_eq!(
-        (package.info().abbreviation.as_str(), package.books()),
-        ("ASV", vec![43])
+        (package.info().abbreviation.as_deref(), package.books()),
+        (Some("ASV"), vec![43])
     );
 
     let project = logoxide.parse_project(None, None).unwrap();
@@ -1183,8 +1183,8 @@ fn making_packages() {
     let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
     let info = package.info();
     assert_eq!(
-        (info.id.as_str(), info.abbreviation.as_str(), info.kind),
-        ("my-gospel", "MG", PackageKind::Bible)
+        (info.id.as_str(), info.abbreviation.as_deref(), info.kind),
+        ("my-gospel", Some("MG"), PackageKind::Bible)
     );
     assert_eq!(info.authors, ["Me", "You"]);
     assert!(package.references().unwrap().is_empty());

@@ -136,7 +136,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
         entries.push(CatalogEntry {
             id: format!("door43-{}", package_id(&repository.replace('/', "-"))),
             name: listed.title.unwrap_or_else(|| listed.name.clone()),
-            abbreviation,
+            abbreviation: Some(abbreviation),
             aliases: vec![],
             language,
             language_name,
@@ -383,10 +383,7 @@ projects:
             ]
         );
         let irv = catalog.find_import("door43:Door43-Catalog/hi_irv").unwrap();
-        assert_eq!(
-            (irv.abbreviation.as_str(), irv.language.as_str()),
-            ("IRV", "hi")
-        );
+        assert_eq!((irv.short_name(), irv.language.as_str()), ("IRV", "hi"));
         assert_eq!(irv.version.as_deref(), Some("v2"));
         assert!(irv.source.versions_track_updates());
         assert_eq!(

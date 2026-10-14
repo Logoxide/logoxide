@@ -96,10 +96,11 @@ impl From<CatalogRelease> for CoreRelease {
 pub struct CatalogEntry {
     pub id: String,
     pub name: String,
-    /// What references name it by (`BSB`)
-    pub abbreviation: String,
+    /// What references name it by (`BSB`): a Bible or a commentary always has one; a book, a
+    /// collection, or another kind may not
+    pub abbreviation: Option<String>,
     pub aliases: Vec<String>,
-    /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it
+    /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it; `und` when unknown
     pub language: String,
     /// The language's name: the catalog's (`Español`), else its English name where logoxide
     /// knows it (`Korean`)

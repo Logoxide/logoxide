@@ -73,8 +73,8 @@ size = 1834201
 |---|---|---|---|
 | `id` | string | yes | The package's id (`[package] id`): lowercase ASCII letters, digits, `-`, and `_` |
 | `name` | string | yes | Its name |
-| `abbreviation` | string | yes | What references name it by |
-| `language` | string | yes | BCP 47, canonical as in the manifest (`en`, not `eng`). Searches match a language by any of its codes: `eng` finds `en`, and `en` an entry that says `eng` |
+| `abbreviation` | string | for a `bible` or `commentary` | What references name it by, as in the manifest: the other kinds may leave it out (searches then match the id where they'd match it) |
+| `language` | string | unless a `collection` or `versification-map` | BCP 47, canonical as in the manifest (`en`, not `eng`); left out of a collection's or a map's, it reads as `und`. Searches match a language by any of its codes: `eng` finds `en`, and `en` an entry that says `eng` |
 | `aliases` | array of strings | no | |
 | `language-name` | string | no | The language's name (`English`) |
 | `script` | string | no | ISO 15924 (`Latn`, `Hebr`). Absent, the language tag's script subtag, if any |
@@ -92,9 +92,10 @@ size = 1834201
 | `path` | string | no | Its path in the folder the catalog was built from (`books/romans`), which names it there as its id does |
 | `commit` | string | no | Written by `lx catalog build` (the commit of the newest release); informational |
 
-An entry must have `git` or at least one `release`. Unknown keys in an entry are ignored. An
-entry whose `id` isn't one (`../kjv`, `KJV`, empty) is passed over with a warning, and the rest
-of the catalog read: an id names a folder in the library. Searches match without regard to case
+An entry must have `git` or at least one `release`. An entry whose `id` isn't one (`../kjv`,
+`KJV`, empty), or that lacks what its kind requires (a Bible's abbreviation, a book's language),
+is passed over with a warning, and the rest of the catalog read: an id names a folder in the
+library. Searches match without regard to case
 or combining marks (both sides are lowercased, decomposed to NFD, stripped of every mark,
 Unicode's `General_Category=Mark`, and a final sigma read as `σ`), so `ιησους` finds `Ἰησοῦς`,
 `בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. A search for a language (`lx search

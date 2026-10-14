@@ -191,7 +191,7 @@ pub fn entry(
     CatalogEntry {
         id,
         name: text("Description").unwrap_or_else(|| module.clone()),
-        abbreviation: text("Abbreviation").unwrap_or_else(|| module.clone()),
+        abbreviation: Some(text("Abbreviation").unwrap_or_else(|| module.clone())),
         aliases: vec![],
         script: language::script_of_tag(&language),
         language,

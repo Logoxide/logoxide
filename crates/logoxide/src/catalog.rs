@@ -194,10 +194,12 @@ pub struct CatalogEntry {
     /// The package's id (`bsb`, `eng-asv`)
     pub id: String,
     pub name: String,
-    /// What references name it by (`BSB`)
-    pub abbreviation: String,
+    /// What references name it by (`BSB`): a Bible or a commentary always has one; the other
+    /// kinds may not ([`CatalogEntry::short_name`])
+    pub abbreviation: Option<String>,
     pub aliases: Vec<String>,
-    /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it
+    /// BCP 47 (`en`), or ISO 639-3 (`eng`) as eBible.org gives it; `und` for a kind with no
+    /// language of its own that gives none
     pub language: String,
     /// The language's name, when the catalog gives it (`English`), or the publisher's own text
     /// for a language that isn't a tag (`und`)
@@ -262,6 +264,12 @@ impl CatalogEntry {
                 .any(|name| fold(name) == wanted)
     }
 
+    /// What to call it in short: its abbreviation, else its id (a book or a collection, which
+    /// references never name, may have none)
+    pub fn short_name(&self) -> &str {
+        self.abbreviation.as_deref().unwrap_or(&self.id)
+    }
+
     /**
     Its language's name to show: the catalog's (`Español`), else its English name
     ([`crate::language::language_name`]), else its tag
@@ -300,10 +308,14 @@ impl CatalogEntry {
 struct TomlEntry {
     id: String,
     name: String,
-    abbreviation: String,
+    /// Required for a Bible or a commentary, as in a manifest
+    #[serde(default)]
+    abbreviation: Option<String>,
     #[serde(default)]
     aliases: Vec<String>,
-    language: String,
+    /// Required unless the kind has no language of its own, as in a manifest
+    #[serde(default)]
+    language: Option<String>,
     #[serde(default)]
     language_name: Option<String>,
     #[serde(default)]
@@ -417,11 +429,35 @@ impl Catalog {
         for e in catalog.packages {
             // An id names a folder in the library and a lock entry: one that isn't is passed
             // over, not the whole catalog
+            let at = || location.map(|l| format!("{l}: ")).unwrap_or_default();
             if let Err(LogoxideError::Manifest(why)) = crate::manifest::check_id("package", &e.id) {
-                let at = location.map(|l| format!("{l}: ")).unwrap_or_default();
-                warnings.push(format!("{at}passed over {why}"));
+                warnings.push(format!("{}passed over {why}", at()));
                 continue;
             }
+            // What a manifest requires of the kind, a catalog's entry does too; one without is
+            // passed over, not the whole catalog
+            if e.abbreviation.is_none() && e.kind.needs_abbreviation() {
+                warnings.push(format!(
+                    "{}passed over {}: a {} needs an abbreviation",
+                    at(),
+                    e.id,
+                    e.kind.name()
+                ));
+                continue;
+            }
+            let language = match e.language {
+                Some(language) => language,
+                None if !e.kind.needs_language() => String::from(crate::language::UNDETERMINED),
+                None => {
+                    warnings.push(format!(
+                        "{}passed over {}: a {} needs a language",
+                        at(),
+                        e.id,
+                        e.kind.name()
+                    ));
+                    continue;
+                }
+            };
             if let Some(git) = &e.git {
                 check(&e.id, git)?;
             }
@@ -458,13 +494,13 @@ impl Catalog {
                     check(&e.id, url)?;
                 }
             }
-            let script = (e.script.clone()).or_else(|| crate::language::script_of_tag(&e.language));
+            let script = (e.script.clone()).or_else(|| crate::language::script_of_tag(&language));
             entries.push(CatalogEntry {
                 id: e.id,
                 name: e.name,
                 abbreviation: e.abbreviation,
                 aliases: e.aliases,
-                language: e.language,
+                language,
                 language_name: e.language_name,
                 direction: (e.direction)
                     .unwrap_or_else(|| crate::language::script_direction(script.as_deref())),
@@ -835,7 +871,9 @@ impl Catalog {
         let mut table = toml_edit::Table::new();
         table.insert("id", toml_edit::value(&info.id));
         table.insert("name", toml_edit::value(&info.name));
-        table.insert("abbreviation", toml_edit::value(&info.abbreviation));
+        if let Some(abbreviation) = &info.abbreviation {
+            table.insert("abbreviation", toml_edit::value(abbreviation));
+        }
         if !info.aliases.is_empty() {
             let aliases: toml_edit::Array = info.aliases.iter().map(String::as_str).collect();
             table.insert("aliases", toml_edit::value(aliases));
@@ -1034,7 +1072,7 @@ fn score(
     if words.is_empty() {
         return Some(0);
     }
-    let exact = [fold(&entry.abbreviation), fold(&entry.id)];
+    let exact = [fold(entry.short_name()), fold(&entry.id)];
     // Its work's names (`Authorized Version` finds every edition of the KJV)
     let names: Vec<String> = [&entry.name]
         .into_iter()
@@ -1086,7 +1124,7 @@ mod tests {
             CatalogEntry {
                 id: format!("ebible-{id}"),
                 name: name.into(),
-                abbreviation: abbreviation.into(),
+                abbreviation: Some(abbreviation.into()),
                 aliases: vec![],
                 language: language.into(),
                 language_name: Some(name_of.into()),
@@ -1707,6 +1745,28 @@ usx = { path = "usx/" }
         // Merging keeps every catalog's warnings
         let merged = Catalog::default().merge(catalog);
         assert_eq!(merged.warnings.len(), 3);
+    }
+
+    #[test]
+    fn entries_follow_the_manifests_rules_by_kind() {
+        let text = "[[package]]\nid = \"tdp\"\nname = \"The Dorean Principle\"\nlanguage = \"en\"\n\
+                    kind = \"book\"\ngit = \"https://example.com/tdp\"\n\n\
+                    [[package]]\nid = \"shelf\"\nname = \"A Shelf\"\nkind = \"collection\"\n\
+                    git = \"https://example.com/shelf\"\n\n\
+                    [[package]]\nid = \"kjv\"\nname = \"King James\"\nlanguage = \"en\"\n\
+                    git = \"https://example.com/kjv\"\n\n\
+                    [[package]]\nid = \"gill\"\nname = \"Gill\"\nabbreviation = \"GILL\"\n\
+                    kind = \"commentary\"\ngit = \"https://example.com/gill\"\n";
+        let catalog = Catalog::parse_toml(text).unwrap();
+        let ids: Vec<&str> = catalog.entries.iter().map(|e| e.id.as_str()).collect();
+        // A book needs no abbreviation, a collection no language; a Bible without an
+        // abbreviation and a commentary without a language are passed over
+        assert_eq!(ids, ["tdp", "shelf"]);
+        assert_eq!(catalog.entries[0].short_name(), "tdp");
+        assert_eq!(catalog.entries[1].language, "und");
+        assert_eq!(catalog.warnings.len(), 2, "{:?}", catalog.warnings);
+        assert!(catalog.warnings[0].contains("kjv: a bible needs an abbreviation"));
+        assert!(catalog.warnings[1].contains("gill: a commentary needs a language"));
     }
 
     #[test]

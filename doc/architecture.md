@@ -196,7 +196,10 @@ the other files in this folder.
     publisher, only what an entry says of itself (`prefix`, `import_id`, `import_name`,
     `upstream_url`, `downloads`, `versions_track_updates`). Ids are prefixed
     (`ebible-eng-kjv2006`, `fetch-eng_kjv`, `ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
-    first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
+    first of an id wins when catalogs merge. An entry follows the manifest's rules by kind
+    (`abbreviation` for a Bible or a commentary, `language` unless a collection or a map, else
+    `und`): one that lacks what its kind needs is passed over, warned of. `search` ranks exact
+    abbreviations (`CatalogEntry::short_name`: else the id) and ids first,
     and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
     sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
     `[settings] catalogs`, then those five (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
