@@ -180,7 +180,11 @@ impl Source for XrefSource {
         let Some((_, from)) = parse_reference(key) else {
             return Ok(None);
         };
-        let lines = self.by_from.get(&from).map(Vec::as_slice).unwrap_or_default();
+        let lines = self
+            .by_from
+            .get(&from)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
         let targets: Vec<String> = (lines.iter())
             .map(|&i| &self.lines[i])
             .map(|l| match l.weight {
@@ -202,7 +206,11 @@ impl Source for XrefSource {
         let Some((passage, _)) = parse_reference(verse) else {
             return Ok(vec![]);
         };
-        let lines = self.by_book.get(&passage.book).map(Vec::as_slice).unwrap_or_default();
+        let lines = self
+            .by_book
+            .get(&passage.book)
+            .map(Vec::as_slice)
+            .unwrap_or_default();
         Ok((lines.iter())
             .map(|&i| &self.lines[i])
             .filter(|l| overlap(&l.from, &passage))
