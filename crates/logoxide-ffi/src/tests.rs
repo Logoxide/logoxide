@@ -254,14 +254,14 @@ compare = ["mine"]
 "#;
     let lock = r#"
 version = 1
-dependencies = ["bsb 1.2.0", "mine 0.1.0"]
+dependencies = ["bsb 1.2.0+g3f9c2a1b", "mine 0.1.0"]
 
 [[package]]
 id = "bsb"
 version = "1.2.0"
 git = "https://example.org/bsb"
 tag = "v1.2.0"
-commit = "3f9c2a1b77"
+commit = "3f9c2a1b770123456789abcdef0123456789abcd"
 checksum = "sha256:00"
 features = ["sword"]
 

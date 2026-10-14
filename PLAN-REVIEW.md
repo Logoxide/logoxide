@@ -92,6 +92,36 @@ passes, README's quick start isn't true (topos 0.6 and sword-modules 0.1 aren't 
 - Left for R-C: `lx --help` grouped by clap help headings (Reading / Vault / Publishing), so 29
   subcommands read as three small tools.
 
+### R-S: the formats before shipping (done 2026-10-14)
+
+A pass over `doc/manifest.md`, `catalog.md`, `lock.md`, `summaries.md`, and `entries.md` asking
+what would be changed after 1.0 if it could be, done while nothing is published and no reader
+has to be kept working. Three forks in worktrees, merged into main (`3a3d51c`):
+
+- **A.1** one hash form: `[media] files.sha256` is written `sha256:<hex>` like every other hash,
+  both forms read (`5746f98`)
+- **A.2** the pre-release compatibility paths are gone: a lock names packages one way
+  (`<id> <key>`, `<rename> (<id>) <key>`; an older form is an error saying to delete the lock
+  and install again), `LXV1` isn't read, `verse-hash` and `files-checksum` are required
+  (`ad3bfda`, `78c91cd`)
+- **A.3** a lock's `commit` is a whole object id, 40 or 64 hex digits (`ad3bfda`)
+- **A.4** `abbreviation` required only for `bible` and `commentary` (`Package::short_name`
+  falls back on the id; the FFI's `abbreviation` fields are optional), `language` optional for
+  `collection` and `versification-map` (read as `und`) (`a6ded57`)
+- **A.5** `entries/*.xml` is well-formed XML: GBF and plain bodies inside CDATA, split at `]]>`;
+  the reader joins sections and hashes the body as read (`fea5db2`)
+- **A.6** the registry-by-name rule is in `manifest.md` (a value shaped like an id is a name,
+  resolved through `[settings.registries]` and the config; refused in a fetched package; the
+  lock keeps the URL); logoxide 0.2 refuses a name with "doesn't resolve yet" so no reader ever
+  fetches `https://dorean`; resolving is R-F (`7d291da`)
+- **B.7–B.11** the stale sentences (imports by the publisher's date, "three" summary files,
+  "is also gaining checks", "as logoxide 0.1 reads it", unknown keys at every catalog level)
+  (`7d291da`, `78c91cd`, `ad3bfda`, `fea5db2`)
+
+Checks on the merged tree: fmt, clippy, the no-`read` build, 427 workspace tests, the FFI's 23
+(one fixture had a short commit and an old lock name: fixed), KJV and BSB verify. The KJV and
+BSB test packages weren't re-tagged: their v1.0.3 is `LXV2`.
+
 ### R-C: small code changes
 
 1. **Parallel downloads** (finding 4): `importer::download` through a bounded
@@ -147,6 +177,6 @@ either form. `doc/lock.md` says a version alone doesn't name an import's text.
 
 ## Order
 
-R-A is the owner's and gates everything that matters; R-B is done; R-C and R-D can be done by
-an agent now, in worktrees; R-E is slow and interruptible; R-F and R-G after R-A, since they
-touch formats that are better changed before a release than after.
+R-A is the owner's and gates everything that matters; R-B and R-S are done, so the formats are
+as they should be at a first release; R-C and R-D can be done by an agent now, in worktrees;
+R-E is slow and interruptible; R-F (its rule already in the docs) and R-G after R-A.
