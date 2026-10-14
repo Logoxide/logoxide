@@ -197,7 +197,7 @@ mod tests {
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(project.join(MANIFEST), "[dependencies]\n").unwrap();
         let lock = Lockfile::parse(
-            "version = 1\ndependencies = [\"kjv 1.0.0+gabcdef12\", \"own 1.0.0\"]\n\n[[package]]\nid = \"kjv\"\nversion = \"1.0.0\"\ngit = \"https://example.org/kjv\"\ncommit = \"abcdef1234567890\"\n\n[[package]]\nid = \"own\"\nversion = \"1.0.0\"\npath = \"own\"\n",
+            "version = 1\ndependencies = [\"kjv 1.0.0+gabcdef12\", \"own 1.0.0\"]\n\n[[package]]\nid = \"kjv\"\nversion = \"1.0.0\"\ngit = \"https://example.org/kjv\"\ncommit = \"abcdef1234567890abcdef1234567890abcdef12\"\n\n[[package]]\nid = \"own\"\nversion = \"1.0.0\"\npath = \"own\"\n",
         )
         .unwrap();
         let root = Root::of(&project, &lock);
