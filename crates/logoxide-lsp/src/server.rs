@@ -48,8 +48,8 @@ use crate::{
     bible::{self, Bible, Bibles, Part, Token},
     dictionary::{self, Dictionary},
     settings::{
-        self, Configured, HoverField, InlayHints, ReferenceDiagnostics, Template, TemplateAction,
-        TemplateRef,
+        self, BookHoverField, Configured, HoverField, InlayHints, ReferenceDiagnostics, Template,
+        TemplateAction, TemplateRef,
     },
     workspace,
 };
@@ -237,6 +237,8 @@ pub struct Server {
     hover_limit: Option<usize>,
     /// The hover's first line (`hover-title`; empty for none)
     hover_title: String,
+    /// What hovering a verse in a whole book shows (`book-hover`)
+    book_hover: Vec<BookHoverField>,
     /// The Strong's dictionaries whose entries hover shows on a Strong's number (`strongs`)
     dictionaries: Vec<Dictionary>,
     /// This machine's logoxide library, where projects' packages are installed (none in tests)
@@ -269,6 +271,7 @@ impl Server {
             hover_trim: false,
             hover_limit: Some(bible::MAX_HOVER_TEXT),
             hover_title: settings::DEFAULT_HOVER_TITLE.to_string(),
+            book_hover: vec![BookHoverField::References],
             dictionaries: vec![],
             library: None,
             templates: BTreeMap::new(),
@@ -303,6 +306,7 @@ impl Server {
             hover_trim,
             hover_limit,
             hover_title,
+            book_hover,
             extensions,
             search_folders,
             bibles,
@@ -325,6 +329,7 @@ impl Server {
         self.hover_trim = hover_trim;
         self.hover_limit = hover_limit;
         self.hover_title = hover_title;
+        self.book_hover = book_hover;
         self.dictionaries = dictionaries;
         self.templates = templates;
         self.matcher = Arc::new(matcher);

@@ -108,31 +108,9 @@ impl Server {
             if field == HoverField::Text {
                 let bibles = self.hover_texts(translation.as_ref());
                 // Each Bible's name labels its text when several Bibles' texts are shown
-                let mut shown: Vec<(String, String, bool)> = vec![];
-                for bible in bibles {
-                    // Another Bible numbered differently reads the passage as it numbers it,
-                    // when the project's maps say how, and its label says where
-                    let mapped = named
-                        .filter(|from| from.name != bible.name)
-                        .and_then(|from| self.bibles.mapped(&found.psg, from, bible));
-                    let (passages, label) = match &mapped {
-                        Some(mapped) => {
-                            let mut label = format!("*{}* ({})", bible.name, mapped.text());
-                            if !mapped.missing.is_empty() {
-                                label.push_str(&format!(" (not in it: {})", mapped.missing_text()));
-                            }
-                            (mapped.passages(), label)
-                        }
-                        None => (vec![found.psg.clone()], format!("*{}*", bible.name)),
-                    };
-                    let texts: Vec<String> = (passages.iter())
-                        .filter_map(|p| bible.passage(p, None, self.hover_limit))
-                        .map(|text| self.hover_shown(text).fence(true))
-                        .collect();
-                    if !texts.is_empty() {
-                        shown.push((label, texts.join("\n\n"), mapped.is_some()));
-                    }
-                }
+                let shown: Vec<(String, String, bool)> = (bibles.into_iter())
+                    .filter_map(|bible| self.bible_text(&found.psg, named, bible))
+                    .collect();
                 if !shown.is_empty() && !lines.is_empty() {
                     sections.push(lines.join("\n"));
                     lines.clear();
@@ -182,6 +160,38 @@ impl Server {
             }),
             range: Some(lsp_range(&index, bytes.start, bytes.end)),
         })
+    }
+
+    /**
+    A passage's text in `bible` as hover shows it, fenced, with its label (`*KJV*`) and whether
+    it was mapped: a Bible numbered differently from `from` reads the passage as it numbers it,
+    when the project's maps say how, and its label says where (`*LXX* (Psalm 9:22)`); none when
+    `bible` has no text for it
+    */
+    fn bible_text(
+        &self,
+        passage: &Passage,
+        from: Option<&Bible>,
+        bible: &Bible,
+    ) -> Option<(String, String, bool)> {
+        let mapped = from
+            .filter(|from| from.name != bible.name)
+            .and_then(|from| self.bibles.mapped(passage, from, bible));
+        let (passages, label) = match &mapped {
+            Some(mapped) => {
+                let mut label = format!("*{}* ({})", bible.name, mapped.text());
+                if !mapped.missing.is_empty() {
+                    label.push_str(&format!(" (not in it: {})", mapped.missing_text()));
+                }
+                (mapped.passages(), label)
+            }
+            None => (vec![passage.clone()], format!("*{}*", bible.name)),
+        };
+        let texts: Vec<String> = (passages.iter())
+            .filter_map(|p| bible.passage(p, None, self.hover_limit))
+            .map(|text| self.hover_shown(text).fence(true))
+            .collect();
+        (!texts.is_empty()).then(|| (label, texts.join("\n\n"), mapped.is_some()))
     }
 
     /**
@@ -402,14 +412,51 @@ impl Server {
     }
 
     /**
-    Hovering a verse in a whole book (not on a reference): how many references name it, and in
-    how many files, or `???` if searching takes longer than [`HOVER_SEARCH_TIME`] (files read
-    until then are cached, so the next hover gets further)
+    Hovering a verse in a whole book (not on a reference): what `book-hover` lists, under the
+    verse in bold
+    - `references`: how many references name it, and in how many files, or `???` if searching
+      takes longer than [`HOVER_SEARCH_TIME`] (files read until then are cached, so the next
+      hover gets further)
+    - `translations`: the verse in the other Bibles (`hover-bibles`', else every other), each
+      labeled; a chapter label has none
+    - `current`: the verse in the book's own Bible, labeled the same way
     */
     fn verse_hover(&self, uri: &Uri, position: Position) -> Option<Hover> {
+        if self.book_hover.is_empty() {
+            return None;
+        }
         let (mode, passage) = self.verse_at(uri, position)?;
+        let mut value = format!("**{passage}**");
+        for field in &self.book_hover {
+            let section = match field {
+                BookHoverField::References => self.reference_count(mode, &passage),
+                BookHoverField::Translations | BookHoverField::Current
+                    if mode == SearchMode::ExplicitOverlap =>
+                {
+                    let texts = self.verse_texts(uri, &passage, *field == BookHoverField::Current);
+                    if texts.is_empty() {
+                        continue;
+                    }
+                    texts.join("\n\n")
+                }
+                BookHoverField::Translations | BookHoverField::Current => continue,
+            };
+            value.push_str("\n\n");
+            value.push_str(&section);
+        }
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            }),
+            range: None,
+        })
+    }
+
+    /// How many references name `passage`, and in how many files: `4 references in 3 files`
+    fn reference_count(&self, mode: SearchMode, passage: &str) -> String {
         let stop = workspace::Stop::at(Instant::now() + HOVER_SEARCH_TIME);
-        let count = match self.search_until(mode, &passage, &stop) {
+        match self.search_until(mode, passage, &stop) {
             Ok((locations, true)) => {
                 let files: HashSet<&str> = locations.iter().map(|l| l.uri.as_str()).collect();
                 let plural = |n: usize| if n == 1 { "" } else { "s" };
@@ -422,13 +469,29 @@ impl Server {
                 )
             }
             _ => String::from("??? references (searching took too long)"),
+        }
+    }
+
+    /// `passage` (a verse of the whole book `uri`) in the book's own Bible (`current`), else in
+    /// the other Bibles, `hover-bibles`' (else every other); each labeled with its name
+    fn verse_texts(&self, uri: &Uri, passage: &str, current: bool) -> Vec<String> {
+        let Some((own, _)) = self.book_document(uri) else {
+            return vec![];
         };
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value: format!("**{passage}**\n\n{count}"),
-            }),
-            range: None,
-        })
+        let Some(psg) = self.matcher.data().parse(passage) else {
+            return vec![];
+        };
+        let others: Vec<&Bible> = match self.hover_bibles.is_empty() {
+            _ if current => vec![own],
+            true => self.bibles.iter().collect(),
+            false => (self.hover_bibles.iter())
+                .filter_map(|name| self.bibles.get(name))
+                .collect(),
+        };
+        (others.into_iter())
+            .filter(|bible| current || bible.name != own.name)
+            .filter_map(|bible| self.bible_text(&psg, Some(own), bible))
+            .map(|(label, text, _)| format!("{label}\n{text}"))
+            .collect()
     }
 }

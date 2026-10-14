@@ -1420,6 +1420,63 @@ const KJV_JHN: &str = r#"<usx version="3.0"><book code="JHN" style="id">John</bo
 <para style="p"><verse number="16" style="v" sid="JHN 3:16"/>For God so loved the world, that he gave his only begotten Son.<verse eid="JHN 3:16"/></para>
 <chapter eid="JHN 3"/></usx>"#;
 
+/// `book-hover`: hovering a verse in a whole book shows the same verse in the other Bibles
+/// (`translations`) and its own (`current`), the references (`references`), any of them, or
+/// nothing; a chapter label has no texts
+#[test]
+fn book_hover_translations() {
+    let (mut server, _, dir) = with_bible("See John 3:16", json!({}), "book-hover");
+    let kjv = dir.join("Bibles/KJV");
+    std::fs::create_dir_all(&kjv).unwrap();
+    std::fs::write(kjv.join("JHN.usx"), KJV_JHN).unwrap();
+    let mut configure = |book_hover: Value| {
+        let mut settings = server.editor.clone();
+        settings.insert("bibles".into(), json!({ "KJV": kjv.to_str().unwrap() }));
+        if !book_hover.is_null() {
+            settings.insert("book-hover".into(), book_hover);
+        }
+        server.configure(Value::Object(settings)).unwrap();
+        let hover = |line, character| {
+            let hover = server.hover(HoverParams {
+                text_document_position_params: at(&book_uri(), line, character),
+                work_done_progress_params: WorkDoneProgressParams::default(),
+            });
+            hover.map(|h| match h.contents {
+                HoverContents::Markup(markup) => markup.value,
+                _ => panic!("not markdown"),
+            })
+        };
+        (hover(3, 10), hover(1, 1))
+    };
+    let kjv_text = "*KJV*\n```logoxide 0:0:4:0\n[16] For God so loved the world, that he gave his only begotten Son.\n```";
+    let (verse, _) = configure(Value::Null);
+    assert_eq!(verse.unwrap(), "**John 3:16**\n\n4 references in 3 files");
+    let (verse, chapter) = configure(json!("translations"));
+    assert_eq!(verse.unwrap(), format!("**John 3:16**\n\n{kjv_text}"));
+    assert_eq!(chapter.unwrap(), "**John 3**");
+    let (verse, _) = configure(json!(["translations", "references"]));
+    assert_eq!(
+        verse.unwrap(),
+        format!("**John 3:16**\n\n{kjv_text}\n\n4 references in 3 files")
+    );
+    // The book's own Bible too, where it's listed
+    let bsb_text = "*BSB*\n```logoxide 0:0:19:3 1:0:4:0\nJesus and Nicodemus\n[16] For God so loved the world.\n```";
+    let (verse, chapter) = configure(json!("translations, current"));
+    assert_eq!(
+        verse.unwrap(),
+        format!("**John 3:16**\n\n{kjv_text}\n\n{bsb_text}")
+    );
+    assert_eq!(chapter.unwrap(), "**John 3**");
+    let (verse, _) = configure(json!([]));
+    assert_eq!(verse, None);
+    assert!(
+        (server.configure(json!({ "no-config": true, "book-hover": "verses" })))
+            .unwrap_err()
+            .contains("book-hover: expected references, translations, or current")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Several Bibles: a reference followed by one's name or alias uses it, others the default
 #[test]
 fn several_bibles() {

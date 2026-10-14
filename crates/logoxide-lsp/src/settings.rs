@@ -155,6 +155,23 @@ impl HoverField {
     ];
 }
 
+/// What hovering a verse (or chapter label) in a whole book shows, in the order the
+/// `book-hover` setting lists them
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BookHoverField {
+    /// How many references name it, and in how many files: `4 references in 3 files`
+    #[serde(alias = "refs")]
+    References,
+    /// The same verse in the other Bibles (`hover-bibles`', else every other), each labeled
+    /// with its name; a chapter label has none
+    #[serde(alias = "translation", alias = "bibles")]
+    Translations,
+    /// The verse in the book's own Bible, labeled with its name; a chapter label has none
+    #[serde(alias = "text", alias = "own")]
+    Current,
+}
+
 /**
 How Bible text is written (hover, whole books, and templates): `markup = { verse_numbers = {
 show = true, display = "[{verse}]" }, ... }`
@@ -535,6 +552,9 @@ pub struct Settings {
     [`fill_translation`]); `""` for no first line. Default [`DEFAULT_HOVER_TITLE`]
     */
     pub hover_title: Option<String>,
+    /// What hovering a verse in a whole book shows: `"current,translations,references"` or a list
+    /// ([`BookHoverField`]; `[]` for no hover); `references` by default
+    pub book_hover: Option<OneOrMany>,
     /// A Bible's folder (a logoxide package, or USX files, one book each), for passage text in
     /// hover and go-to-definition
     pub bible: Option<String>,
@@ -595,6 +615,8 @@ pub struct Configured {
     pub hover_limit: Option<usize>,
     /// The `hover-title` setting
     pub hover_title: String,
+    /// The `book-hover` setting
+    pub book_hover: Vec<BookHoverField>,
     pub extensions: Vec<String>,
     /// The `search-folders` setting, `~` expanded and relative ones in the first root
     pub search_folders: Vec<PathBuf>,
@@ -847,6 +869,24 @@ impl Settings {
             },
             hover_title: (self.hover_title.clone())
                 .unwrap_or_else(|| DEFAULT_HOVER_TITLE.to_string()),
+            book_hover: match &self.book_hover {
+                None => vec![BookHoverField::References],
+                Some(fields) => (fields.values().iter())
+                    .flat_map(|field| field.split(','))
+                    .map(str::trim)
+                    .filter(|field| !field.is_empty())
+                    .map(|field| {
+                        serde_json::from_value(Value::String(field.to_ascii_lowercase())).map_err(
+                            |_| {
+                                format!(
+                                    "book-hover: expected references, translations, or current, not \
+                                     `{field}`"
+                                )
+                            },
+                        )
+                    })
+                    .collect::<Result<_, _>>()?,
+            },
             extensions,
             search_folders: (self.search_folders.values().iter())
                 .map(|folder| folder.trim())
