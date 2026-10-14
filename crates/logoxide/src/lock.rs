@@ -30,8 +30,8 @@ const LOCK_VERSION: u32 = 1;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Lockfile {
     pub version: u32,
-    /// What the manifest asks for, as `id key` (`kjv 1.0.1+ga7ff59b2`; the rest are their
-    /// dependencies). Lock files from before forks name them `id version`, still read
+    /// What the manifest asks for, as `id key` (`kjv 1.0.1+ga7ff59b2`), or `rename (id) key`
+    /// when the manifest calls it something else; the rest are their dependencies
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dependencies: Vec<String>,
     #[serde(default, rename = "package")]
@@ -187,8 +187,9 @@ impl LockedPackage {
     }
 
     /**
-    Checks what names its folder in the library: its id is an id, its commit lowercase hex (7 to
-    64 digits), its archive's hash `sha256:` and 64 of them, its folder a plain relative path
+    Checks what names its folder in the library: its id is an id, its commit a whole object id
+    (40 lowercase hex digits, or 64 in a SHA-256 repository), its archive's hash `sha256:` and 64
+    of them, its folder a plain relative path
     */
     pub fn check(&self) -> Result<()> {
         let bad = |message: String| Err(LogoxideError::Lock(message));
@@ -200,9 +201,12 @@ impl LockedPackage {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         };
         if let Some(commit) = &self.commit
-            && !((7..=64).contains(&commit.len()) && hex(commit))
+            && !((commit.len() == 40 || commit.len() == 64) && hex(commit))
         {
-            return bad(format!("{}: commit `{commit}` isn't a commit", self.id));
+            return bad(format!(
+                "{}: commit `{commit}` isn't a whole commit id (40 or 64 hex digits)",
+                self.id
+            ));
         }
         if let Some(sha256) = &self.sha256 {
             let digits = sha256.strip_prefix("sha256:").unwrap_or_default();
@@ -337,6 +341,17 @@ impl Lockfile {
         for package in &lock.packages {
             package.check()?;
         }
+        // Every name must be a package here in the one form written (`id key`, or
+        // `rename (id) key`): a lock in an older form is remade, not read
+        let names = (lock.dependencies.iter())
+            .chain(lock.packages.iter().flat_map(|p| p.dependencies.iter()));
+        for name in names {
+            if lock.named(name).is_none() {
+                return Err(LogoxideError::Lock(format!(
+                    "`{name}` names no package here (a lock written by an older lx?): delete {LOCKFILE} and run `lx install`"
+                )));
+            }
+        }
         Ok(lock)
     }
 
@@ -352,14 +367,9 @@ impl Lockfile {
         self.roots().find(|p| p.dependency_name() == name)
     }
 
-    /**
-    A package by its name in `dependencies` (`id key`, or `rename (id) key`); older lock files'
-    `id key` for a renamed package, and `id version`, are still found
-    */
+    /// A package by its name in `dependencies` (`id key`, or `rename (id) key`)
     pub fn named(&self, name: &str) -> Option<&LockedPackage> {
-        (self.packages.iter().find(|p| p.name() == name))
-            .or_else(|| (self.packages.iter()).find(|p| format!("{} {}", p.id, p.key()) == name))
-            .or_else(|| (self.packages.iter()).find(|p| format!("{} {}", p.id, p.version) == name))
+        self.packages.iter().find(|p| p.name() == name)
     }
 
     /// The packages the manifest asks for (not their dependencies)
@@ -377,10 +387,10 @@ mod tests {
         let package = LockedPackage {
             git: Some("https://example.org/bsb".into()),
             tag: Some("v1.2.0".into()),
-            commit: Some("3f9c2a1b77".into()),
+            commit: Some(format!("3f9c2a1b{}", "7".repeat(32))),
             checksum: Some("sha256:00".into()),
             features: vec!["sword".into()],
-            dependencies: vec!["strongs 2.0.0".into()],
+            dependencies: vec!["strongs 2.0.0+g01234567".into()],
             ..LockedPackage::new("bsb", "1.2.0".parse().unwrap())
         };
         assert_eq!(package.key(), "1.2.0+g3f9c2a1b");
@@ -439,25 +449,45 @@ mod tests {
             Lockfile::parse(&import_lock.to_toml().unwrap()).unwrap(),
             import_lock
         );
+        let strongs = LockedPackage {
+            git: Some("https://example.org/strongs".into()),
+            commit: Some(format!("01234567{}", "8".repeat(32))),
+            ..LockedPackage::new("strongs", "2.0.0".parse().unwrap())
+        };
         let lock = Lockfile {
-            packages: vec![package, branch],
+            dependencies: vec![package.name()],
+            packages: vec![package.clone(), branch.clone(), strongs],
             ..Lockfile::default()
         };
         assert_eq!(Lockfile::parse(&lock.to_toml().unwrap()).unwrap(), lock);
         assert!(Lockfile::parse("version = 9").is_err());
+        // A name in another form (an older lock's `id version`) names no package: refused
+        let old = Lockfile {
+            dependencies: vec!["bsb 1.2.0".into()],
+            packages: vec![package, branch],
+            ..Lockfile::default()
+        };
+        let error = Lockfile::parse(&old.to_toml().unwrap())
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("`bsb 1.2.0` names no package"), "{error}");
     }
 
     #[test]
     fn moved_releases_are_found() {
         let lock = |entries: &str| Lockfile::parse(&format!("version = 1\n{entries}")).unwrap();
+        // Whole commit ids, as a lock must have them
+        let full = |prefix: &str| format!("{prefix}{}", "0".repeat(32));
         let tagged = |commit: &str, checksum: &str| {
             format!(
-                "[[package]]\nid = \"tb\"\nversion = \"1.0.0\"\ngit = \"https://e.org/tb\"\ntag = \"v1.0.0\"\ncommit = \"{commit}\"\nchecksum = \"sha256:{checksum}\"\n"
+                "[[package]]\nid = \"tb\"\nversion = \"1.0.0\"\ngit = \"https://e.org/tb\"\ntag = \"v1.0.0\"\ncommit = \"{}\"\nchecksum = \"sha256:{checksum}\"\n",
+                full(commit)
             )
         };
         let branch = |commit: &str| {
             format!(
-                "[[package]]\nid = \"nb\"\nversion = \"1.0.0\"\ngit = \"https://e.org/nb\"\nbranch = \"main\"\ncommit = \"{commit}\"\n"
+                "[[package]]\nid = \"nb\"\nversion = \"1.0.0\"\ngit = \"https://e.org/nb\"\nbranch = \"main\"\ncommit = \"{}\"\n",
+                full(commit)
             )
         };
         let before = lock(&format!(
@@ -478,8 +508,8 @@ mod tests {
             [Moved {
                 label: "tb 1.0.0".into(),
                 release: "v1.0.0".into(),
-                before: "aaaa1111".into(),
-                after: "bbbb2222".into(),
+                before: full("aaaa1111"),
+                after: full("bbbb2222"),
             }]
         );
         // Another version isn't the same release

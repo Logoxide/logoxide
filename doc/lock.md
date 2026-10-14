@@ -3,8 +3,8 @@
 The exact text a vault (or a machine's library) uses, like `Cargo.lock`: each package's version
 and where it came from, pinned by commit or archive hash and by checksum, so every device installs
 the same text and links mean the same thing everywhere. It sits beside `logoxide.toml`; commit or
-sync both. This describes the format as logoxide 0.1 reads and writes it; the reference is
-`crates/logoxide/src/lock.rs` and `crates/logoxide/src/resolve.rs`.
+sync both. This describes the format as this version of logoxide reads and writes it; the
+reference is `crates/logoxide/src/lock.rs` and `crates/logoxide/src/resolve.rs`.
 
 ```toml
 # Written by lx: the exact text this uses. Commit it with logoxide.toml.
@@ -60,7 +60,7 @@ sha256 = "sha256:c8517c52166d…"
 | `version` | string | Its version |
 | `git` | string | The repository it came from (the full URL, never a `github:` short form) |
 | `tag`, `branch`, `rev` | string | How it was asked for (the commit is what is used) |
-| `commit` | string | The commit installed (git packages): 7 to 64 lowercase hex digits |
+| `commit` | string | The commit installed (git packages): its whole object id, 40 lowercase hex digits (64 in a SHA-256 repository); a shorter prefix is refused, as the manifest's `rev` is |
 | `folder` | string | The package's folder in its repository, when it isn't at the top |
 | `path` | string | A folder used in place, relative to the manifest (path packages). An absolute path is read, but warned of: the lock isn't portable |
 | `registry` | string | The registry's catalog it was chosen from |
@@ -91,9 +91,9 @@ A locked package's **key** is its version with what pins it, as semver build met
 Its **name** is `<id> <key>`, which `dependencies` lists; a package the manifest calls something
 else (`rename`) is `<rename> (<id>) <key>` (`kjv-two (kjv) 1.0.0+g3f9c2a1b`). Two names for one
 commit are two entries, each turned on and off and named in references apart, sharing one folder.
-Lock files from before forks were supported name packages `<id> <version>`, and those from before
-renames had their own names `<id> <key>`; readers should still accept both, matching by id and
-key, then by id and version. The key is also the package's folder in the library
+Every name in `dependencies` (the file's, and each package's) must be the name of a package in
+the file, in this one form; a lock that names a package otherwise is refused, saying to delete it
+and install again. The key is also the package's folder in the library
 (`packages/<id>/<key>/`), so forks of a package at one version, or two registries' releases of it,
 never share a folder.
 

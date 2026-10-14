@@ -40,8 +40,6 @@ pub const ENTRIES: &str = "logoxide.entries.bin";
 /// The summary format's version
 const SUMMARY_VERSION: u32 = 1;
 const MAGIC: &[u8; 4] = b"LXV2";
-/// The magic of the layout before hash rules (8 bytes of hash, no header, no parts)
-const OLD_MAGIC: &[u8; 4] = b"LXV1";
 /// Bytes before the first record: magic, rule, record length, reserved
 const HEADER: usize = 8;
 /// Bytes of a record as this logoxide writes it; a reader takes the fields it knows and skips the
@@ -124,17 +122,15 @@ fn newer_rule(file: &str, number: u16) -> LogoxideError {
 #[serde(rename_all = "kebab-case")]
 pub struct Summary {
     pub summary: u32,
-    /// The [`HashRule`] its verse hashes were made with (0: from before rules, in the old layout)
-    #[serde(default)]
+    /// The [`HashRule`] its verse hashes were made with (the `.bin` files' header names it too)
     pub verse_hash: u16,
     pub id: String,
     pub version: semver::Version,
-    /// The checksum of every file but the summary's own two
+    /// The checksum of every declared file but the summary's own
     pub text_checksum: String,
     /// The checksum of the formats' files alone (not `logoxide.toml`): for a package without
     /// verses (a book), what says whether its text changed
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub files_checksum: Option<String>,
+    pub files_checksum: String,
     /// How many verses (verse markers: a bridge like 4-5 is one)
     pub verses: u64,
     /// Bytes per format, so a phone can choose
@@ -277,10 +273,7 @@ pub fn summarize_facts(package: &Package, facts: TextFacts) -> Result<(Summary, 
         id: info.id.clone(),
         version: info.version.clone(),
         text_checksum: crate::package::checksum_of(storage.as_ref(), &text_files)?,
-        files_checksum: Some(crate::package::checksum_of(
-            storage.as_ref(),
-            &format_files,
-        )?),
+        files_checksum: crate::package::checksum_of(storage.as_ref(), &format_files)?,
         verses: facts.verses.len() as u64,
         sizes,
         books: facts.books,
@@ -311,7 +304,7 @@ impl Summary {
                 summary.summary
             )));
         }
-        if HashRule::from_number(summary.verse_hash).is_none() && summary.verse_hash != 0 {
+        if HashRule::from_number(summary.verse_hash).is_none() {
             return Err(newer_rule(SUMMARY, summary.verse_hash));
         }
         Ok(summary)
@@ -329,7 +322,7 @@ impl Summary {
     Reads a package's published summary and verse hashes, which must name one hash rule. An older
     rule's are read (`verse_hash` says which; comparing them with this rule's would see every
     verse reworded, so [`crate::release::summary_in`] builds them again from the text); a newer
-    one's, or the layout from before rules, are an error
+    one's are an error
     */
     pub fn read(storage: &dyn Storage) -> Result<(Summary, Vec<VerseHash>)> {
         let mut summary = Summary::parse(&storage.read_string(SUMMARY)?)?;
@@ -441,9 +434,6 @@ pub fn encode_verses(rule: HashRule, verses: &[VerseHash]) -> Vec<u8> {
 /// fields it doesn't know at their end, which are skipped
 pub fn decode_verses(bytes: &[u8]) -> Result<(HashRule, Vec<VerseHash>)> {
     let bad = |why: &str| LogoxideError::Manifest(format!("{VERSES}: {why}"));
-    if bytes.starts_with(OLD_MAGIC) {
-        return Err(bad("in the layout from before verse-hash rules (LXV1)"));
-    }
     let (header, body) = (bytes.split_at_checked(HEADER))
         .filter(|(h, _)| h.starts_with(MAGIC))
         .ok_or_else(|| bad("not a verse hash file"))?;
@@ -525,8 +515,7 @@ pub fn diff_summaries(old: (&Summary, &[VerseHash]), new: (&Summary, &[VerseHash
         && new.1.is_empty()
         && old.0.entry_hashes.is_empty()
         && new.0.entry_hashes.is_empty()
-        && (old.0.files_checksum.as_ref())
-            .is_some_and(|c| Some(c) != new.0.files_checksum.as_ref());
+        && old.0.files_checksum != new.0.files_checksum;
     // Summaries from before titles have none: nothing to compare
     d.retitled = (old.0.titles.iter())
         .filter_map(|(path, old)| {
@@ -944,7 +933,7 @@ mod tests {
             id: "b".into(),
             version: "1.0.0".parse().unwrap(),
             text_checksum: "sha256:00".into(),
-            files_checksum: Some("sha256:00".into()),
+            files_checksum: "sha256:00".into(),
             verses: 0,
             sizes: BTreeMap::new(),
             books: IndexMap::new(),

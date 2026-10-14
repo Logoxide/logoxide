@@ -45,8 +45,8 @@ pub fn summary_in(
     let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
     let fetched = MemoryStorage::new();
     fetcher.fetch_files(url, &reference, &paths, &fetched)?;
-    // Hashes made by another rule (or in the layout from before rules) would differ in every
-    // verse: built again from the text, as for a release without them
+    // Hashes made by another rule would differ in every verse: built again from the text, as for
+    // a release without them, or whose summary files can't be read
     if let Ok(published) = Summary::read(&within(&fetched, prefix)?)
         && published.0.verse_hash == HashRule::CURRENT.number()
     {
