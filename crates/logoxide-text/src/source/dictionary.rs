@@ -1,8 +1,10 @@
 /*!
 A dictionary's entries (`entries/` and its `.xml` files, `doc/entries.md`): a root `<entries markup="tei">`
 holding `<entry key="G25" headword="ἀγαπάω">…</entry>` elements, each body the entry's markup
-as its source gives it. The files are indexed once when opened (each entry's key, headword,
-link, and where its body is); a body is parsed when its entry is asked for.
+as its source gives it; a body that isn't XML (GBF, plain text) is inside CDATA sections, so
+the file is well-formed XML whatever it holds. The files are indexed once when opened (each
+entry's key, headword, link, and where its body is); a body is parsed when its entry is asked
+for.
 */
 
 use std::{
@@ -110,13 +112,14 @@ impl DictionarySource {
                 return Err(bad(String::from("an <entry> with an empty key")));
             }
             // `<entry key="…"/>` has no body; else the body runs to the first `</entry>`
+            // outside a CDATA section
             let empty = tag_text.trim_end_matches('>').ends_with('/');
             let body = match empty {
                 true => tag.end..tag.end,
                 false => {
-                    let end = (text[tag.end..].find("</entry>"))
+                    let end = entry_end(text, tag.end)
                         .ok_or_else(|| bad(format!("entry `{key}` has no </entry>")))?;
-                    tag.end..tag.end + end
+                    tag.end..end
                 }
             };
             from = match empty {
@@ -160,7 +163,10 @@ impl DictionarySource {
             .ok_or_else(|| {
                 TextError::Entries(format!("{}: changed since it was indexed", file.path))
             })?;
-        Ok(parse(file.markup, body))
+        Ok(match cdata_text(body) {
+            Some(text) => parse(file.markup, &text),
+            None => parse(file.markup, body),
+        })
     }
 
     /// How many entries the files have
@@ -234,6 +240,43 @@ fn find_tag(text: &str, from: usize, name: &str) -> Option<Range<usize>> {
         at = end;
     }
     None
+}
+
+/// Where the body that starts at `from` ends: the first `</entry>` not inside a CDATA section
+/// (`<![CDATA[ … ]]>`, which may hold one); `None` when there is none, or a section never ends
+fn entry_end(text: &str, from: usize) -> Option<usize> {
+    const OPEN: &str = "<![CDATA[";
+    let mut at = from;
+    loop {
+        let rest = text.get(at..)?;
+        let close = rest.find("</entry>")?;
+        match rest.find(OPEN).filter(|&cdata| cdata < close) {
+            Some(cdata) => {
+                let inner = at + cdata + OPEN.len();
+                at = inner + text.get(inner..)?.find("]]>")? + "]]>".len();
+            }
+            None => return Some(at + close),
+        }
+    }
+}
+
+/// A body that is CDATA sections and nothing else (whitespace around them allowed): their
+/// text joined, so a GBF or plain body can hold `<`, `&`, and `</entry>` in a well-formed file
+/// (`]]>` in the text is written as two sections, `]]]]><![CDATA[>`). `None` for any other body,
+/// which is read as written
+fn cdata_text(body: &str) -> Option<String> {
+    let mut rest = body.trim();
+    if rest.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    while !rest.is_empty() {
+        let inner = rest.strip_prefix("<![CDATA[")?;
+        let end = inner.find("]]>")?;
+        out.push_str(&inner[..end]);
+        rest = &inner[end + "]]>".len()..];
+    }
+    Some(out)
 }
 
 /// An attribute's value in a tag, decoded (`&amp;`, `&#x3b1;`), in either quote
@@ -342,6 +385,58 @@ mod tests {
         assert_eq!(text("mary"), Some("the mother".into()));
         // Plain text decodes nothing
         assert_eq!(text("a"), Some("one &amp; <b>two</b>".into()));
+    }
+
+    /// A body that isn't XML is inside CDATA, so the file is well-formed whatever it holds;
+    /// what's read, and so hashed, is the text inside, the same as a bare body's
+    #[test]
+    fn cdata_bodies_read_as_their_text() {
+        let bare = r#"<entries markup="plain">
+<entry key="a">one &amp; <b>two</b></entry>
+<entry key="b">ends here</entry>
+<entry key="c">x</entry>
+</entries>"#;
+        let wrapped = r#"<entries markup="plain">
+<entry key="a">
+  <![CDATA[one &amp; <b>two</b>]]>
+</entry>
+<entry key="b"><![CDATA[ends ]]]]><![CDATA[> here </entry> too]]></entry>
+<entry key="c"><![CDATA[x]]></entry>
+<entry key="d"><![CDATA[not only]]> cdata</entry>
+<entry key="e"><![CDATA[]]></entry>
+</entries>"#;
+        let gbf = r#"<entries markup="gbf">
+<entry key="g"><![CDATA[<FI>words<Fi> & <RF>a note<Rf> more]]></entry>
+</entries>"#;
+        let files = Arc::new(MemoryFiles::with([
+            ("d/a.xml", bare),
+            ("e/a.xml", wrapped),
+            ("f/a.xml", gbf),
+        ]));
+        let text = |dir: &str, key: &str| {
+            let source = DictionarySource::open(files.clone(), dir).unwrap();
+            (source.entry(key).unwrap()).map(|e| verse_text(&e.nodes, HashRule::CURRENT))
+        };
+        assert_eq!(text("e", "a"), text("d", "a"));
+        assert_eq!(text("e", "a"), Some("one &amp; <b>two</b>".into()));
+        // `]]>` split over two sections, and `</entry>` inside, are the text
+        assert_eq!(text("e", "b"), Some("ends ]]> here </entry> too".into()));
+        assert_eq!(text("e", "c"), text("d", "c"));
+        // A body that isn't CDATA alone is read as written
+        assert_eq!(text("e", "d"), Some("<![CDATA[not only]]> cdata".into()));
+        assert_eq!(text("e", "e"), Some("".into()));
+        assert_eq!(DictionarySource::open(files.clone(), "e").unwrap().len(), 5);
+        assert_eq!(text("f", "g"), Some("words & more".into()));
+        // A section that never ends leaves the entry without its end
+        let unended = "<entries markup=\"plain\"><entry key=\"x\"><![CDATA[a</entry></entries>";
+        let files = Arc::new(MemoryFiles::with([("d/a.xml", unended)]));
+        let error = DictionarySource::open(files, "d")
+            .err()
+            .expect("refused")
+            .to_string();
+        assert!(error.contains("no </entry>"), "{error}");
+        assert_eq!(cdata_text("  "), None);
+        assert_eq!(entry_end("<![CDATA[</entry>]]></entry>", 0), Some(20));
     }
 
     #[test]

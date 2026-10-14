@@ -516,8 +516,8 @@ fn headword(markup: Markup, raw: &str, stored: &str, keys: Keys) -> Option<Strin
 }
 
 /// A dictionary module as an `entries/` file (`doc/entries.md`): the root declaring the
-/// module's markup, then each entry in key order with its text as stored, an `@LINK` alias
-/// as a `link` entry
+/// module's markup, then each entry in key order with its text as stored (a GBF or plain
+/// entry's inside CDATA, so the file is XML), an `@LINK` alias as a `link` entry
 pub fn entries_file(dictionary: &DictionaryModule, keys: Keys) -> Result<String> {
     let module = dictionary.name().to_string();
     let failed = |e: sword_modules::Error| LogoxideError::Import(format!("{module}: {e}"));
@@ -556,8 +556,17 @@ pub fn entries_file(dictionary: &DictionaryModule, keys: Keys) -> Result<String>
         let headword = (headword(markup, &entry.raw, &stored, keys))
             .map(|h| format!(" headword=\"{}\"", attr(&h)))
             .unwrap_or_default();
-        // A body ends at the first `</entry>`, so one in the text is written as an entity
-        let body = entry.raw.replace("</entry>", "&lt;/entry>");
+        let body = match markup {
+            // GBF and plain text aren't XML: inside CDATA sections the file is well-formed
+            // whatever they hold; `]]>` in the text ends one section and starts the next
+            Markup::Gbf | Markup::Plaintext => format!(
+                "<![CDATA[{}]]>",
+                entry.raw.replace("]]>", "]]]]><![CDATA[>")
+            ),
+            // An XML body ends at the first `</entry>`, so one in the text is written as an
+            // entity
+            _ => entry.raw.replace("</entry>", "&lt;/entry>"),
+        };
         out.push_str(&format!(
             "<entry key=\"{}\"{headword}>{body}</entry>\n",
             attr(&key)
@@ -1414,6 +1423,49 @@ mod tests {
     }
 
     const STRONGS_CONF: &str = "[Test]\nDataPath=./modules/lexdict/rawld/test/test\nModDrv=RawLD\nSourceType=TEI\nEncoding=UTF-8\nLang=grc\nVersion=1.2\nFeature=GreekDef\nDescription=A Test Lexicon\nDistributionLicense=Public Domain\n";
+
+    /// A plain-text dictionary's entries go inside CDATA, so `<`, `&`, `</entry>`, and even
+    /// `]]>` in them leave the file well-formed XML, and read back as the text they are
+    #[test]
+    fn plain_dictionary_entries_are_cdata() {
+        let plain_conf = STRONGS_CONF
+            .replace("SourceType=TEI", "SourceType=Plaintext")
+            .replace("Feature=GreekDef\n", "");
+        let conf = ModuleConf::parse(&plain_conf).unwrap();
+        assert_eq!(dictionary_keys(&conf), Keys::Headword);
+        let repository = "https://crosswire.org/ftpmirror/pub/sword/raw/";
+        let entry = entry(&conf, PackageKind::Lexicon, "crosswire", repository);
+        let zip = rawld_zip(
+            &plain_conf,
+            &[
+                ("Aaron", "brother of Moses <see Exodus 4> & Miriam"),
+                ("Bad", "ends ]]> here </entry> too"),
+            ],
+        );
+        let dest = MemoryStorage::new();
+        crate::tests::build_twice(&entry, &[("zip".into(), zip)], &dest);
+        let file = String::from_utf8(dest.read("entries/Test.xml").unwrap()).unwrap();
+        assert!(file.contains("markup=\"plain\""), "{file}");
+        assert!(
+            file.contains(
+                "<entry key=\"Aaron\" headword=\"Aaron\"><![CDATA[brother of Moses <see Exodus 4> & Miriam]]></entry>"
+            ),
+            "{file}"
+        );
+        assert!(
+            file.contains("<![CDATA[ends ]]]]><![CDATA[> here </entry> too]]></entry>"),
+            "{file}"
+        );
+        let package = Package::open(std::sync::Arc::new(dest), Features::default()).unwrap();
+        let source = package.source();
+        assert_eq!(source.keys(), ["Aaron", "Bad"]);
+        let text = |key: &str| {
+            let entry = source.entry(key).unwrap().unwrap();
+            logoxide_text::hash::verse_text(&entry.nodes, logoxide_text::hash::HashRule::CURRENT)
+        };
+        assert_eq!(text("Aaron"), "brother of Moses <see Exodus 4> & Miriam");
+        assert_eq!(text("Bad"), "ends ]]> here </entry> too");
+    }
 
     #[test]
     fn imports_a_sword_dictionary() {
