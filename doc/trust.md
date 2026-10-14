@@ -65,7 +65,8 @@ Path packages (`path = "…"`) are the project's own files and aren't checksumme
 A package's own `[dependencies]` are resolved too, so a package from the internet names further
 sources. To keep a fetched manifest from reaching into the machine it is installed on:
 
-- a git or registry package **can't have `path` dependencies** (refused today)
+- a git or registry package **can't have `path` dependencies** (refused today), nor name a
+  registry by its name (`registry = "dorean"`, which only the user's own settings could resolve)
 - its dependencies **can't name local paths or `file://` URLs** in `git` or `registry` either,
   and a catalog fetched from the web can't list a local path or `file://` URL for a release
 - its dependencies **can't use `git://`**, git's unencrypted protocol (your own manifest may,

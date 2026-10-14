@@ -1095,6 +1095,17 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
             "dependency `{name}`: `import = \"{import}\"` isn't an import (`ebible:eng-kjv2006`)"
         ));
     }
+    // A registry by name (`doc/manifest.md`) is read as the rule says, but not resolved yet:
+    // refused here, so no reader ever fetches `https://dorean`
+    if let Some(registry) = &d.registry
+        && is_registry_name(registry)
+    {
+        return err(format!(
+            "dependency `{name}`: `registry = \"{registry}\"` names a registry by name, which \
+             this logoxide doesn't resolve yet: give its catalog's URL or path (lx add \
+             --registry <URL> {name})"
+        ));
+    }
     if let Some(rev) = &d.rev {
         check_rev(rev).map_err(|e| LogoxideError::Manifest(format!("dependency `{name}`: {e}")))?;
     }
@@ -1118,6 +1129,13 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Whether a dependency's `registry` is a registry's name (`dorean`: an id, resolved through
+/// `[settings.registries]` and the config) rather than its catalog's URL or path, which has a
+/// `/`, a `:`, or a `.` (`doc/manifest.md`)
+pub fn is_registry_name(registry: &str) -> bool {
+    !registry.contains(['/', ':', '.'])
 }
 
 /// The field names serde reads for a struct: its `deserialize_struct` hands them to the
@@ -1590,6 +1608,9 @@ compare = ["mine"]
                 "isn't a full commit id",
             ),
             ("x = { registry = \"-r\" }", "isn't one"),
+            // A registry by name is the format's rule, not resolved yet
+            ("x = { registry = \"dorean\" }", "by name"),
+            ("x = { registry = \"dorean_local\" }", "by name"),
             ("\"../x\" = { git = \"https://e.org/x\" }", "lowercase"),
             (
                 "x = { git = \"https://e.org/x\", package = \"../x\" }",

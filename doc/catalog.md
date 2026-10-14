@@ -4,7 +4,7 @@ A catalog lists packages, so they can be found by name, abbreviation, or languag
 URL. It holds what each package is and where it comes from, never its text, so anyone can host
 one: a file in a git repository or on any static host is enough. A **registry** is a catalog
 whose packages are published as release archives (`[[package.release]]`), so thousands of books
-need no repository each. This describes the format as logoxide 0.1 reads and writes it; the
+need no repository each. This describes the format as logoxide reads and writes it; the
 reference is `crates/logoxide/src/catalog.rs` and `crates/logoxide/src/publish.rs`.
 
 logoxide's `logoxide-import` crate (and so lx and the bindings) also reads other publishers' own
@@ -62,7 +62,7 @@ size = 1834201
 
 | Key | Type | Meaning |
 |---|---|---|
-| `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed |
+| `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed. Within a format, **unknown keys at every level** (the top level, `[[package]]`, `[[package.release]]`, `[works.*]`) are ignored, so a format-1 reader reads a catalog that gained keys; only a change it would misread needs a new number |
 | `name` | string | The catalog's name, shown in search results |
 | `package` | array of tables | Its packages |
 | `works` | table of tables | Works its packages may be editions of, beside logoxide's own table ([below](#works)) |
@@ -171,8 +171,9 @@ folder's root names its works, in the form of a catalog's `[works]` without the 
 (`[gill]`); `lx catalog build` writes it into the catalog as `[works]` (with no `works.toml`, the
 previous catalog's `[works]` are kept, so they can be written there by hand).
 
-A dependency `{ registry = "<catalog URL>", version = "1" }` downloads only the chosen release's
-archive. Installing:
+A dependency `{ registry = "<catalog URL>", version = "1" }` (or, in a project's own manifest,
+`registry = "<name>"`, resolved through its registries: [manifest.md](manifest.md#dependencies))
+downloads only the chosen release's archive. Installing:
 
 1. Read the catalog, find the entry by id (or path), choose the release.
 2. Download `url`, else each mirror in turn, until one's bytes hash to `sha256`; bytes that don't

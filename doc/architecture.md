@@ -53,7 +53,9 @@ the other files in this folder.
     (topos's `BibleFilter`: testaments, genres, books, and exclusions) gives the codes kept;
     `lx search -t/--nt/--ot/-g/-b/--exclude-*` keeps packages with any about-book among them. A dependency is one of `git`,
     `registry`, `path`, or `import` (`{ import = "ebible:eng-asv" }`, `is_import_name`: a
-    lowercase prefix, a colon, an id). A dependency can name another package
+    lowercase prefix, a colon, an id). A `registry` shaped like a name (`is_registry_name`: no
+    `/`, `:`, or `.`) is a registry's name by `doc/manifest.md`'s rule, refused until phase R-F
+    resolves it (PLAN-REVIEW.md), so it's never fetched as a URL. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
     `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
     locked and installed, so `lx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and
