@@ -6,7 +6,7 @@ format is, a short hash of every verse, for books, the passages they cite, and f
 and cross-references, a hash of every entry. Two versions' summaries say what changed between
 them, which says how the version number must change. `lx release` writes them, `lx verify` builds
 them again and compares, `lx show --git` reads them from a tag alone. This describes the formats
-as logoxide 0.1 writes them; the reference is `crates/logoxide/src/summary.rs` and
+as this version of logoxide writes them; the reference is `crates/logoxide/src/summary.rs` and
 `crates/logoxide/src/references.rs`.
 
 All four files are part of the package (declared), but are left out of `text-checksum`, which
@@ -52,11 +52,11 @@ words-of-jesus = 2038
 | Key | Type | Meaning |
 |---|---|---|
 | `summary` | integer | The summary format's version: `1`. A reader must refuse any other |
-| `verse-hash` | integer | The [hash rule](#the-verses-text-hash-rules) `logoxide.verses.bin` was made with, which its header names too: the two must agree. A reader refuses a rule it doesn't know (written by a newer lx). Absent in summaries from before rules, whose verse file is `LXV1` |
+| `verse-hash` | integer | The [hash rule](#the-verses-text-hash-rules) `logoxide.verses.bin` was made with, which its header names too: the two must agree. Required. A reader refuses a rule it doesn't know (written by a newer lx) |
 | `id` | string | The package's id |
 | `version` | string | The package's version |
-| `text-checksum` | string | The [checksum](catalog.md#checksums) of the package's declared files other than the three summary files |
-| `files-checksum` | string | The same hash over the formats' files alone (not `logoxide.toml` or the license): for a package without verses, what says its text changed. Absent in summaries from before it existed |
+| `text-checksum` | string | The [checksum](catalog.md#checksums) of the package's declared files other than the four summary files |
+| `files-checksum` | string | The same hash over the formats' files alone (not `logoxide.toml` or the license): for a package without verses, what says its text changed. Required |
 | `verses` | integer | How many verse markers the text has (a bridge like `4-5` is one) |
 | `sizes` | table of integers | Bytes of each format's files, by format name (every format in `[formats]`, 0 if empty) |
 | `books` | table of arrays | Each book's verse count per chapter, by USFM code, in the text's book order: the translation's own versification. A chapter's count is the highest verse number its markers give (a bridge `4-5` counts to 5); a chapter without verses is 0 |
@@ -100,10 +100,6 @@ The verse is found by book, chapter, verse, and part: `20a` and `20b` are two ve
 A verse across chapters (a commentary's note marked `osisID="John.3.36-John.4.2"`) is two
 records with the same hash: its first verse (`3:36`, `last` 36), and the verses it covers in its
 last chapter (`4:1` with `last` 2).
-
-`LXV1` was the layout before hash rules (no header, no part, 8 bytes of a hash of text that
-wasn't normalized). It's recognized only to be built again: a reader comparing versions builds an
-`LXV1` release's hashes from its text, as for a release without a summary.
 
 **Book numbers** are logoxide's own, fixed for good: a number is never changed or given to
 another book, and new books take reserved numbers. They're matched to a book by its USFM code,
@@ -150,8 +146,8 @@ A rule never changes once published. Anything that would change the text a rule 
 normalization, or a logoxide-markup that renders markup differently, which golden tests in
 `crates/logoxide/tests/verse_hash.rs` catch) is a new rule with the next number. Hashes are
 compared only when made by one rule: `lx diff` and `lx release` build an older rule's side again
-from its tag's text, so a rule change is never reported as rewording, and `lx verify` says to
-release again. Another implementation that renders text differently will compute different
+from its tag's text (as they do a release's whose summary files can't be read), so a rule change
+is never reported as rewording, and `lx verify` says to release again. Another implementation that renders text differently will compute different
 hashes, so it should compare hashes only with its own, or with logoxide's files.
 
 Hosts put a verse's hash in links (`&ver=1.0.2&vh=9f86d081`: the version, and the first verse's
@@ -236,10 +232,9 @@ that much bigger (`lx release` refuses a smaller one):
   incompatible with the others: any change needs 0.0.(z+1).
 - For packages without verses or entries (books, collections, maps), any change to their files
   is minor.
-- Imported packages whose version is the publisher's date (eBible.org's `2026.10.8`) or its own
-  numbering (a SWORD module's) are an exception: their numbers say when, not what. An update
-  still compares the summaries, and when the publisher's version isn't newer it takes the next
-  version the change calls for.
+- Imported packages follow the same rules: a new import is `1.0.0`, whatever the publisher
+  numbers its releases, and each update raises it by what changed
+  ([manifest.md](manifest.md#imports)).
 
 A release from before summaries existed is compared by building its summary from its text at
 the tag.

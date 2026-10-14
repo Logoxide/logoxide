@@ -151,11 +151,11 @@ fn releases_follow_what_changed() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
-/// A release whose verse hashes are in the layout from before hash rules (`LXV1`, no
-/// `verse-hash` in its summary) is built again from its text: hashes made another way are never
-/// taken for rewording
+/// A release whose summary files can't be read as this lx writes them (here a verse file in no
+/// known layout, and a summary with no `verse-hash`) is built again from its text, as a release
+/// made by another rule would be: hashes made another way are never taken for rewording
 #[test]
-fn an_older_hash_rule_is_built_again() {
+fn an_unreadable_summary_is_built_again() {
     let root = std::env::temp_dir().join(format!("logoxide-rule-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let repo = root.join("tb");
@@ -169,7 +169,7 @@ fn an_older_hash_rule_is_built_again() {
     git(&repo, &["init", "-q", "-b", "main"]);
     let first = plan(&repo, &cli, &DefaultReader).unwrap();
     release(&repo, &first, &cli).unwrap();
-    // Made as an older lx would have: 8 bytes of another hash a verse, no header
+    // Summary files in no layout this lx reads: 8 bytes of some hash a verse, no header
     let summary = std::fs::read_to_string(repo.join(SUMMARY)).unwrap();
     assert!(summary.contains("verse-hash = 1"), "{summary}");
     let old: String = (summary.lines())
@@ -177,16 +177,16 @@ fn an_older_hash_rule_is_built_again() {
         .map(|l| format!("{l}\n"))
         .collect();
     std::fs::write(repo.join(SUMMARY), old).unwrap();
-    let mut bin = b"LXV1".to_vec();
+    let mut bin = b"XXXX".to_vec();
     for verse in [16u8, 17] {
         bin.extend_from_slice(&[43, 3, verse, verse, 1, 2, 3, 4, 5, 6, 7, 8]);
     }
     std::fs::write(repo.join(VERSES), bin).unwrap();
-    git(&repo, &["commit", "-qam", "old layout"]);
+    git(&repo, &["commit", "-qam", "unreadable summary"]);
     git(&repo, &["tag", "-f", "v1.0.0"]);
     assert!(Summary::read(&FsStorage::new(&repo)).is_err());
 
-    // Nothing but the layout changed: a patch, not every verse reworded
+    // Nothing but the summary files changed: a patch, not every verse reworded
     write(
         &repo,
         "1.0.1",

@@ -151,15 +151,16 @@ the other files in this folder.
   - `lock.rs`: `logoxide.lock` (each package's version, commit, checksum, features, and
     dependencies; `dependencies` at the top are what the manifest asks for, each named
     `id version+g<commit>`, or `rename (id) version+g<commit>` when renamed, so two names for one
-    commit are two entries sharing a folder; older lock files' `id version` still read; `rename`
+    commit are two entries sharing a folder; a name in another form is refused by `parse`, which
+    says to delete the lock and install again; `rename`
     is the manifest's name when it isn't the id; `get` finds by that name; `LockedPackage::new`
     fills in nothing; an import's entry has `import`, `upstream-version`, `[[package.download]]`s
     (`LockedDownload`: name, url, optional sha256) and a required checksum, its key
     `<version>+i<8 hex of the checksum>`). `moved_since` finds
     releases that came back changed (a moved tag), which `lx install`/`lx update` warn of; a kept
     commit that can't be fetched says it may be gone from the host. `LockedPackage::check`
-    refuses a commit or sha256 that isn't hex and an id that isn't one, so a lock can't name a
-    folder outside the library
+    refuses a commit that isn't a whole object id (40 or 64 hex digits), a sha256 that isn't 64,
+    and an id that isn't one, so a lock can't name a folder outside the library
   - `git.rs`: `Fetcher` (a repository's tags; its files at a commit, into any `Storage`).
     `GitCli` runs `git`. `expand_url`: `github:owner/repo` (also `gitlab:`, `codeberg:`) to its
     URL, wherever a URL is taken; manifests and locks keep the full URL. `GitCli` refuses
@@ -298,8 +299,8 @@ the other files in this folder.
     changes (`tests/verse_hash.rs` pins topos's text on USFM, USX, and OSIS: if a topos upgrade
     breaks it, add rule 2). `Summary::read` checks the summary and the `.bin` agree and refuses a
     newer rule (`LogoxideError::Newer`, which `lx verify` passes on); `release::summary_in`
-    builds an older rule's side (or an `LXV1` one) again from its tag's text, so a rule change
-    is never rewording. `diff` (removed, renumbered: old text at another number,
+    builds an older rule's side (or one whose summary files can't be read) again from its tag's
+    text, so a rule change is never rewording; `files-checksum` and `verse-hash` are required. `diff` (removed, renumbered: old text at another number,
     joined: a number now inside another verse's bridge, or parts made whole, split: a bridge
     narrowed with each number still there, or a verse cut into parts (minor), bridged: one that
     lost a number, reworded, added; ranges are compared before hashes, the owner's D2) and
