@@ -34,86 +34,65 @@ right to: many translations are under copyright and allow only personal use.
 
 ## What works
 
-The plan is `doc/logoxide.md` in topos. Its steps 1 to 6 (packages, `lx` with git and path
-dependencies, summaries, the language server, the bindings, versioning tools), 10 (collections
-and books), 11 (versification maps), and 12 (registries) are done; 7 (importers: eBible.org,
-fetch.bible, CCEL, and SWORD done, Door43 not yet), 8 (media: listing, timings, and checks done),
-and 9 (links that follow renumbered verses done, reworded ones not yet) are partly done.
+For someone with notes (a vault, an editor, Obsidian) who wants `John 3:16 KJV` to resolve, show
+its text, and still point at the same words after the translation is re-edited:
 
-- `logoxide.toml` for packages and vaults (a manifest without `[package]`): formats, Cargo-style
-  features (including `dep:` and `name/feature`), dependencies (`git =` with `version`, `tag`,
-  `rev`, or `branch`; `registry =`; or `path =`), forks side by side (`package =`, with their own
-  abbreviation), and dependencies turned off without removing them (`enabled = false`). There's
-  no default registry
-- Sources: USX and USFM (through [`usfm3`](https://crates.io/crates/usfm3)) a book a file, and OSIS
-  and ThML Bibles (a book a file, or the whole Bible in one, as open-bibles' OSIS and CCEL's ThML
-  are). Books are kept as EPUBs, and topos finds the Bible references in them
-- Kinds: Bibles, commentaries (OSIS or ThML, their notes by passage: `lx show --notes`),
-  dictionaries (`entries/*.xml`, Strong's or headwords: `lx show --entry G25`, `--keys`),
-  cross-references (`xref/*.tsv`: `lx show --xref "John 3:16"`), books, **collections**
-  (packages of packages), and **versification maps** (Paratext `.vrs` lines; `lx map "Psalm
-  51:1" --from English --to Original`)
-- `Storage`: a folder, memory, or a host's files, so the same code runs in WebAssembly
-- A cache of verse counts and parsed books, per package version and checksum
-- The library: installed versions side by side, as plain files; `logoxide.lock` pins each
-  package's commit (or archive hash) and checksum, so another device installs the same text and a
-  changed file is caught. A package is only what its manifest declares, so a reader's notes
-  beside a book never change it
-- Summaries: `lx release` writes `logoxide.summary.toml` (verse counts, sizes, what the text holds,
-  titles) and `logoxide.verses.bin` (a hash of every verse's words), checks the version against
-  what changed since the last release (patch: notes and markup; minor: wording, additions, split
-  bridges, or titles; major: verses removed, renumbered, or joined), then commits and tags it. `lx diff`,
-  `lx verify`, and `lx show --git URL` (a release's summary, without downloading its text)
-- Catalogs and imports: `lx search` finds packages by name, abbreviation, language, keyword,
-  category, the books they're about, or the work they're an edition of (`lx works` lists the
-  works logoxide and your registries name), in your own catalogs (`catalog.toml`, anyone can host
-  one) and five publishers' lists searched by default: eBible.org's and fetch.bible's (about 2,900
-  translations), CCEL's Bibles and commentaries (ThML), and CrossWire's SWORD repository (OSIS, ThML, and GBF
-  Bibles and commentaries, and its dictionaries, Strong's among them). `lx import ebible:<id>`,
-  `fetch:<id>`, `ccel:<id>`, or
-  `sword:<repository>/<module>` makes a download into a package kept in the library, shared by
-  every project that locks the same files and pinned by its downloads' hashes (`--vendor` puts
-  it in the project's `imports/<id>/`), and `lx import --update` brings imports up to date
-- Registries: a registry publishes each release as an archive listed with its SHA-256 in a
-  `catalog.toml`, so any static host (or GitHub releases) serves thousands of books without a
-  repository each. `lx registry init`, `lx publish`, `lx yank`, `lx catalog build`, and
-  `lx add --registry`; a folder of package repositories works as a registry too
-  (`lx catalog add <folder> --name <registry>`, then `lx add <registry>:<id>`)
-- Media: audio and video are listed in `[media]` by URL, size, and SHA-256, never stored in the
-  package (`lx media add <file> --url <URL>`). An audio Bible's timings say where each verse is: a
-  WebVTT file per recording (`timings/JHN.vtt`), each cue named by its verse (`JHN 3:16`).
-  `lx media check` checks the timings against the text and downloads and checks every file
-- Reading: `lx read "John 3:16 KJV"` prints a passage from the vault's Bible it names (else the
-  first), and `lx compare "Psalm 51:1" --bibles KJV,BSB` the passage in each, numbered as each
-  numbers it (through the vault's versification maps), saying what one lacks; text or JSON
-- `lx init`, `new`, `add`, `remove`, `enable`, `disable`, `install`, `update`, `list`, `show`,
-  `check`, `release`, `diff`, `verify`, `info`, `clean`, `search`, `import`, `catalog`,
-  `registry`, `publish`, `yank`, `media`, `map`, `read`, `compare`, with completion
-  (`source <(COMPLETE=bash lx)`)
+- **A vault**: `lx init` writes a `logoxide.toml` (a manifest without `[package]`); `lx import
+  ebible:<id>`, `fetch:<id>`, `ccel:<id>`, or `sword:<repository>/<module>` makes a publisher's
+  download into a package kept in the shared library, and `lx add github:owner/repo` adds one
+  published as a git repository. `logoxide.lock` pins each package's exact text (its commit or
+  archive hash, and a checksum of every file), so `lx install` on another device gets the same
+  bytes or fails. Forks sit side by side (`package =`, their own abbreviation); a package can be
+  turned off without removing it (`enabled = false`)
+- **Finding texts**: `lx search` looks through your own catalogs and five publishers' lists by
+  default: eBible.org's and fetch.bible's (about 2,900 translations), CCEL's Bibles and
+  commentaries (ThML), and CrossWire's SWORD repository (Bibles, commentaries, and dictionaries,
+  Strong's among them), grouped by the work each is an edition of. Catalogs are kept in the cache
+  for a week (`--refresh`, `--offline`); `lx import --update` brings imports up to date
+- **Reading**: `lx read "John 3:16 KJV"`, and `lx compare "Psalm 51:1" --bibles KJV,BSB` with each
+  Bible in its own numbering through the vault's versification maps, saying what one lacks.
+  Commentaries' notes on a passage (`lx show --notes`), a dictionary's entry (`--entry G25`),
+  and a verse's cross-references (`--xref`); text or JSON
+- **Links that survive updates**: every release ships `logoxide.verses.bin`, a hash of each verse's
+  words, so a link made against one version (`&ver=1.0.2&vh=9f86d081`) finds its verse again after
+  a renumbering and says when the words changed. `lx diff` and `lx verify` read the same hashes
+- **Formats read**: USX, USFM, OSIS, ThML, GBF (a book a file, or a whole Bible in one);
+  dictionaries (`entries/*.xml`) and cross-references (`xref/*.tsv`); books as EPUBs, with the
+  references topos finds in them; Paratext `.vrs` versification maps (`lx map "Psalm 51:1" --from
+  English --to Original`)
+- **Front ends on the same code**: `logoxide-lsp` (hover, completion, references, and whole books
+  in any editor; `crates/logoxide-lsp/README.md`), `logoxide-mcp` (an MCP server: catalogs,
+  passages with their licenses, notes, entries; read-only unless `--allow-writes`;
+  `crates/logoxide-mcp/README.md`), `logoxide-ffi` (npm and PyPI `logoxide`, with topos's API in
+  the same package; packages opened from bytes and installed without git, so WebAssembly and
+  Obsidian too; `crates/logoxide-ffi/README.md`), and the Obsidian plugin `obsidian-logoxide`,
+  whose Bibles live in its vault's `Logoxide/` folder. All of them are argument parsing and
+  display on `logoxide-app` (`crates/logoxide-app/README.md`)
+- **Licenses are shown with every text**, never enforced: each package's SPDX license and rights
+  as its publisher states them, and the MCP server attaches them to every passage
 
-- `logoxide-app`: what every front end does, written once (catalogs over HTTP, imports and their
-  updates, installs with or without `git`, cleaning, media checks, reading and comparing
-  passages) behind one `Logoxide` facade; lx is argument parsing and printing on top of it. See
-  `crates/logoxide-app/README.md`
+### Also: publishing
 
-- `logoxide-mcp`: an MCP server over stdio (`claude mcp add logoxide -- logoxide-mcp --project
-  ~/notes`): catalogs searched, passages read and compared with their licenses, references
-  mapped, summaries and diffs, commentaries' notes, dictionary entries, and cross-references;
-  read-only unless `--allow-writes`. See `crates/logoxide-mcp/README.md`
+For someone making or hosting packages. These work and are specified in `doc/`, but nobody hosts
+one yet, so they're kept as they are until someone asks (`PLAN-REVIEW.md` R1):
 
-- `logoxide-lsp`: the language server for Bible references and text (topos's `topos-lsp` until
-  October 2026). Its Bibles are packages from the workspace's `logoxide.toml` (a vault), else the
-  library's own, or folders (`bible`, `bibles`); see `crates/logoxide-lsp/README.md`
-
-- `logoxide-ffi`: bindings for TypeScript/WebAssembly and Python (npm and PyPI `logoxide`), with
-  topos's whole API in the same package: packages opened from the bytes the host reads, their
-  cache handed back to save, a vault's manifest and lock, catalogs and imports, and installing
-  without `git`, the host downloading refs, archives, and catalogs over HTTP (logoxide-app's,
-  with the host as its `Http`); natively, passages read and compared as `lx read` and
-  `lx compare` do; see `crates/logoxide-ffi/README.md`
-
-The Obsidian plugin (`obsidian-logoxide`) uses logoxide-ffi: Bibles in its vault's `Logoxide/`
-folder, added from its settings by searching the catalogs or by git URL.
+- **Packages**: `lx new` (`--from book.epub` fills `[package]` from the file; `--kind collection`
+  for a package of packages), `lx release` (writes the summary, checks the version against what
+  changed since the last release: patch for notes and markup, minor for wording, additions, or
+  titles, major for verses removed, renumbered, or joined; then commits and tags), `lx check`,
+  `lx show --git URL` (a release's summary without its text)
+- **Registries**: each release as an archive listed with its SHA-256 in a `catalog.toml`, so any
+  static host or GitHub's releases serves thousands of books without a repository each: `lx
+  registry init`, `lx publish`, `lx yank`, `lx catalog build`, `lx add --registry`; a folder of
+  package repositories works as a registry too (`lx catalog add <folder> --name <registry>`)
+- **Works** (`work = "kjv"`): editions of one work are grouped in search; `lx works` lists what
+  logoxide's table and your catalogs name
+- **Media**: audio and video listed in `[media]` by URL, size, and SHA-256, never stored; WebVTT
+  timings per recording name where each verse is; `lx media add`, `lx media check`
+- Every command: `init`, `new`, `add`, `remove`, `enable`, `disable`, `install`, `update`,
+  `list`, `show`, `check`, `release`, `diff`, `verify`, `info`, `clean`, `search`, `works`,
+  `import`, `catalog`, `registry`, `publish`, `yank`, `media`, `map`, `read`, `compare`, with
+  completion (`source <(COMPLETE=bash lx)`)
 
 ## Specifications
 
@@ -200,7 +179,8 @@ cargo install logoxide-lsp    # the language server
 npm install logoxide          # or: pip install logoxide (the bindings, with topos's API)
 ```
 
-Rust 1.89 or later.
+Rust 1.89 or later. Until the crates are published (`PLAN-REVIEW.md` R-A), build from this
+repository with topos and sword-modules checked out beside it (see Development).
 
 ## Development
 

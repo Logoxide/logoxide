@@ -6,6 +6,11 @@ an order where each step builds, tests, and lints clean on its own. It takes the
 decisions as made (D1–D16, C1–C8) and asks only what's new. Written 2026-10-11 against logoxide
 303a7cf, topos d9e6c2f, sword-modules f4ff4e3.
 
+**2026-10-14**: everything here but the owner's items (G.1, G.2, G.5, K.2, Door43 live) is done.
+`PLAN-REVIEW.md` is the plan now: a review of what was built, its decisions R1–R7, and the work
+left (shipping first; then audience A's docs, live checks, the crate map into the crates,
+registries by name, import keys shown). Nothing below is reopened by it.
+
 The layers now (arrows point down; `logoxide` never reads text):
 
 ```
@@ -292,9 +297,9 @@ edition's). The owner, 2026-10-10: not important; a claim stays only what its au
 
 ## Later (not planned; the owner's deferrals, N8)
 
-- **Catalogs of catalogs** (`[[catalog]]` entries a search follows). To settle first: cycles and
-  depth, whether a followed catalog's registries are usable, who wins when ids collide across
-  levels, caching, and how `lx catalog list` shows them.
+- **Catalogs of catalogs** (`[[catalog]]` entries a search follows): planned in
+  `PLAN-CATALOGS.md` (2026-10-14), its decisions CC1–CC9 recommended; deferred whole by the
+  review (`PLAN-REVIEW.md` R2) until a second catalog exists anywhere.
 - **Translations of works** (`translation-of`; the owner, 2026-10-10: to consider later). A
   translation is its own work, and the work says what it was translated from:
   `[works.institutes-beveridge] translation-of = "institutes"`, with the work's `language`, in
@@ -452,7 +457,7 @@ Then the pieces of M left: none beyond item 4.
 - G first (days, mostly the owner's); H.2–H.3 and C6 in worktrees beside I.1–I.2 (they touch
   different files); I in order; J after I (the facade should see the final readers); K after J;
   L and M whenever an item is ready, except M.1–M.2 which can go any time.
-- Each item is a commit with its docs (`doc/*.md`, CLAUDE.md's crate block, the crate's
+- Each item is a commit with its docs (`doc/*.md`, `doc/architecture.md`'s crate block (CLAUDE.md's until 2026-10-14), the crate's
   README) and the checks of `PLAN.md`'s "Checking each step" plus
   `cargo check -p logoxide --no-default-features --all-targets`.
 - Worktree agents can't build logoxide-ffi in place (its `../../../topos` paths): run its
