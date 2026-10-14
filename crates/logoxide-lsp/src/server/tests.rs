@@ -694,6 +694,42 @@ fn hover_lines_follow_the_setting() {
     assert_eq!(hover("Gen 1:1", settings), "**Genesis 1:1**");
 }
 
+/// `hover-line`: hovering a line away from any reference shows each reference on it, between
+/// rules; off by default, and a reference itself still hovers alone
+#[test]
+fn hover_line_shows_the_line_references() {
+    let (mut server, uri) = server("Read Gen 1:1 and Ex 2:3 today\nOnly Ps 23 here\n\nnone");
+    let settings = json!({ "no-config": true, "hover": [] });
+    server.configure(settings).unwrap();
+    assert_eq!(hover_text(&server, &uri, 0, 1), None);
+    let settings = json!({ "no-config": true, "hover": [], "hover-line": true });
+    server.configure(settings).unwrap();
+    assert_eq!(
+        hover_text(&server, &uri, 0, 1).as_deref(),
+        Some("**Genesis 1:1**\n\n---\n\n**Exodus 2:3**")
+    );
+    assert_eq!(
+        hover_text(&server, &uri, 0, 7).as_deref(),
+        Some("**Genesis 1:1**")
+    );
+    assert_eq!(
+        hover_text(&server, &uri, 1, 14).as_deref(),
+        Some("**Psalm 23**")
+    );
+    assert_eq!(hover_text(&server, &uri, 2, 0), None);
+    assert_eq!(hover_text(&server, &uri, 3, 2), None);
+    let hover = server
+        .hover(HoverParams {
+            text_document_position_params: at(&uri, 0, 26),
+            work_done_progress_params: WorkDoneProgressParams::default(),
+        })
+        .unwrap();
+    assert_eq!(
+        hover.range,
+        Some(Range::new(Position::new(0, 5), Position::new(0, 23)))
+    );
+}
+
 const JHN: &str = r#"<?xml version="1.0" encoding="utf-8"?>
 <usx version="3.0"><book code="JHN" style="id">x</book><para style="usfm">3.1</para>
 <para style="mt1">John</para>

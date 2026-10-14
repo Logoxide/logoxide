@@ -233,6 +233,8 @@ pub struct Server {
     complete_typed: bool,
     /// Whether hover leaves out a text's leading whitespace (`hover-trim`)
     hover_trim: bool,
+    /// Whether hovering a line away from any reference shows every reference on it (`hover-line`)
+    hover_line: bool,
     /// How many bytes of a text hover shows (`hover-max`; none for no limit)
     hover_limit: Option<usize>,
     /// The hover's first line (`hover-title`; empty for none)
@@ -269,6 +271,7 @@ impl Server {
             stretch_notes: false,
             complete_typed: true,
             hover_trim: false,
+            hover_line: false,
             hover_limit: Some(bible::MAX_HOVER_TEXT),
             hover_title: settings::DEFAULT_HOVER_TITLE.to_string(),
             book_hover: vec![BookHoverField::References],
@@ -304,6 +307,7 @@ impl Server {
             complete_typed,
             hover,
             hover_trim,
+            hover_line,
             hover_limit,
             hover_title,
             book_hover,
@@ -327,6 +331,7 @@ impl Server {
         self.stretch_notes = stretch_notes;
         self.complete_typed = complete_typed;
         self.hover_trim = hover_trim;
+        self.hover_line = hover_line;
         self.hover_limit = hover_limit;
         self.hover_title = hover_title;
         self.book_hover = book_hover;

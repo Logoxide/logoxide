@@ -543,6 +543,9 @@ pub struct Settings {
     /// text, a note's, or an entry's (a chapter label or heading displayed after a line break);
     /// off by default
     pub hover_trim: bool,
+    /// Hovering a line away from any reference shows every reference on it, one after another
+    /// (so a line's only reference hovers from anywhere on it); off by default
+    pub hover_line: bool,
     /// How many bytes of a passage's text (a note's, an entry's) hover and completion
     /// documentation show before cutting it with ` …`: 2000 by default, 0 for no limit
     pub hover_max: Option<usize>,
@@ -611,6 +614,8 @@ pub struct Configured {
     pub hover: Vec<HoverField>,
     /// The `hover-trim` setting
     pub hover_trim: bool,
+    /// The `hover-line` setting
+    pub hover_line: bool,
     /// The `hover-max` setting: none for no limit
     pub hover_limit: Option<usize>,
     /// The `hover-title` setting
@@ -863,6 +868,7 @@ impl Settings {
             complete_typed: self.complete_typed.unwrap_or(true),
             hover,
             hover_trim: self.hover_trim,
+            hover_line: self.hover_line,
             hover_limit: match self.hover_max {
                 Some(0) => None,
                 max => Some(max.unwrap_or(crate::bible::MAX_HOVER_TEXT)),

@@ -71,17 +71,68 @@ impl Server {
         if let Some(hover) = self.problem_hover(uri, position.position) {
             return Some(hover);
         }
-        let Some((
-            TranslatedMatch {
-                reference: found,
-                translation,
-            },
-            index,
-        )) = self.reference_at(uri, position.position)
-        else {
+        let Some((found, index)) = self.reference_at(uri, position.position) else {
             return (self.strongs_hover(uri, position.position))
-                .or_else(|| self.verse_hover(uri, position.position));
+                .or_else(|| self.verse_hover(uri, position.position))
+                .or_else(|| self.line_hover(uri, position.position));
         };
+        let bytes = found.reference.location.bytes;
+        let value = self.reference_hover(uri, found)?;
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value,
+            }),
+            range: Some(lsp_range(&index, bytes.start, bytes.end)),
+        })
+    }
+
+    /**
+    Hovering a line away from any reference with `hover-line`: each reference on it, as hovering
+    it shows it, one after another between rules (a line's only reference hovers from anywhere on
+    it); the range spans them
+    */
+    fn line_hover(&self, uri: &Uri, position: Position) -> Option<Hover> {
+        if !self.hover_line {
+            return None;
+        }
+        let text = self.documents.get(uri)?;
+        let index = LineIndex::new(text);
+        let line_start = index.offset_of_utf16(position.line as usize, 0)?;
+        let line_end = text[line_start..]
+            .find('\n')
+            .map_or(text.len(), |n| line_start + n);
+        let found: Vec<TranslatedMatch> = (self.matcher)
+            .search_with_translations(text, &self.bibles.translations)
+            .into_iter()
+            .filter(|m| {
+                let bytes = m.reference.location.bytes;
+                bytes.start < line_end && line_start < bytes.end
+            })
+            .collect();
+        let start = found.first()?.reference.location.bytes.start;
+        let end = found.last()?.reference.location.bytes.end;
+        let values: Vec<String> = (found.into_iter())
+            .filter_map(|m| self.reference_hover(uri, m))
+            .collect();
+        if values.is_empty() {
+            return None;
+        }
+        Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: values.join("\n\n---\n\n"),
+            }),
+            range: Some(lsp_range(&index, start, end)),
+        })
+    }
+
+    /// What hovering a reference in `uri` shows, or none when there's nothing to show
+    fn reference_hover(&self, uri: &Uri, found: TranslatedMatch) -> Option<String> {
+        let TranslatedMatch {
+            reference: found,
+            translation,
+        } = found;
         let bytes = found.location.bytes;
         let written = self
             .documents
@@ -150,16 +201,7 @@ impl Server {
             }
             value.push_str(&section);
         }
-        if value.is_empty() {
-            return None;
-        }
-        Some(Hover {
-            contents: HoverContents::Markup(MarkupContent {
-                kind: MarkupKind::Markdown,
-                value,
-            }),
-            range: Some(lsp_range(&index, bytes.start, bytes.end)),
-        })
+        (!value.is_empty()).then_some(value)
     }
 
     /**
