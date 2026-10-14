@@ -32,7 +32,7 @@ fn main() -> logoxide::Result<()> {
     // A package's folder: its logoxide.toml and its text
     let package = Package::open(Arc::new(FsStorage::new("bibles/kjv")), Features::default())?;
     let info = package.info();
-    println!("{} {}: {}", info.abbreviation, info.version, package.checksum()?);
+    println!("{} {}: {}", info.short_name(), info.version, package.checksum()?);
 
     // Parsed books and verse counts are kept in a cache folder, by version and checksum
     let cache = Cache::new(Arc::new(FsStorage::new("cache")));

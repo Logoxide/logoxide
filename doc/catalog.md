@@ -4,7 +4,7 @@ A catalog lists packages, so they can be found by name, abbreviation, or languag
 URL. It holds what each package is and where it comes from, never its text, so anyone can host
 one: a file in a git repository or on any static host is enough. A **registry** is a catalog
 whose packages are published as release archives (`[[package.release]]`), so thousands of books
-need no repository each. This describes the format as logoxide 0.1 reads and writes it; the
+need no repository each. This describes the format as logoxide reads and writes it; the
 reference is `crates/logoxide/src/catalog.rs` and `crates/logoxide/src/publish.rs`.
 
 logoxide's `logoxide-import` crate (and so lx and the bindings) also reads other publishers' own
@@ -62,7 +62,7 @@ size = 1834201
 
 | Key | Type | Meaning |
 |---|---|---|
-| `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed |
+| `format` | integer | The catalog format's version. Absent means `1`. A reader that finds a higher number than it knows must refuse the catalog and say a newer logoxide is needed. Within a format, **unknown keys at every level** (the top level, `[[package]]`, `[[package.release]]`, `[works.*]`) are ignored, so a format-1 reader reads a catalog that gained keys; only a change it would misread needs a new number |
 | `name` | string | The catalog's name, shown in search results |
 | `package` | array of tables | Its packages |
 | `works` | table of tables | Works its packages may be editions of, beside logoxide's own table ([below](#works)) |
@@ -73,8 +73,8 @@ size = 1834201
 |---|---|---|---|
 | `id` | string | yes | The package's id (`[package] id`): lowercase ASCII letters, digits, `-`, and `_` |
 | `name` | string | yes | Its name |
-| `abbreviation` | string | yes | What references name it by |
-| `language` | string | yes | BCP 47, canonical as in the manifest (`en`, not `eng`). Searches match a language by any of its codes: `eng` finds `en`, and `en` an entry that says `eng` |
+| `abbreviation` | string | for a `bible` or `commentary` | What references name it by, as in the manifest: the other kinds may leave it out (searches then match the id where they'd match it) |
+| `language` | string | unless a `collection` or `versification-map` | BCP 47, canonical as in the manifest (`en`, not `eng`); left out of a collection's or a map's, it reads as `und`. Searches match a language by any of its codes: `eng` finds `en`, and `en` an entry that says `eng` |
 | `aliases` | array of strings | no | |
 | `language-name` | string | no | The language's name (`English`) |
 | `script` | string | no | ISO 15924 (`Latn`, `Hebr`). Absent, the language tag's script subtag, if any |
@@ -92,9 +92,10 @@ size = 1834201
 | `path` | string | no | Its path in the folder the catalog was built from (`books/romans`), which names it there as its id does |
 | `commit` | string | no | Written by `lx catalog build` (the commit of the newest release); informational |
 
-An entry must have `git` or at least one `release`. Unknown keys in an entry are ignored. An
-entry whose `id` isn't one (`../kjv`, `KJV`, empty) is passed over with a warning, and the rest
-of the catalog read: an id names a folder in the library. Searches match without regard to case
+An entry must have `git` or at least one `release`. An entry whose `id` isn't one (`../kjv`,
+`KJV`, empty), or that lacks what its kind requires (a Bible's abbreviation, a book's language),
+is passed over with a warning, and the rest of the catalog read: an id names a folder in the
+library. Searches match without regard to case
 or combining marks (both sides are lowercased, decomposed to NFD, stripped of every mark,
 Unicode's `General_Category=Mark`, and a final sigma read as `σ`), so `ιησους` finds `Ἰησοῦς`,
 `בראשית` finds `בְּרֵאשִׁית`, and `jose` finds `José`. A search for a language (`lx search
@@ -170,8 +171,9 @@ folder's root names its works, in the form of a catalog's `[works]` without the 
 (`[gill]`); `lx catalog build` writes it into the catalog as `[works]` (with no `works.toml`, the
 previous catalog's `[works]` are kept, so they can be written there by hand).
 
-A dependency `{ registry = "<catalog URL>", version = "1" }` downloads only the chosen release's
-archive. Installing:
+A dependency `{ registry = "<catalog URL>", version = "1" }` (or, in a project's own manifest,
+`registry = "<name>"`, resolved through its registries: [manifest.md](manifest.md#dependencies))
+downloads only the chosen release's archive. Installing:
 
 1. Read the catalog, find the entry by id (or path), choose the release.
 2. Download `url`, else each mirror in turn, until one's bytes hash to `sha256`; bytes that don't

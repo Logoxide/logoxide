@@ -69,8 +69,8 @@ pub(crate) fn add(cli: &Cli, args: &AddArgs) -> logoxide::Result<()> {
             }
             dependency.registry = Some(catalog);
             Named {
+                abbreviation: entry.short_name().to_string(),
                 id: entry.id,
-                abbreviation: entry.abbreviation,
                 aliases: entry.aliases,
             }
         }
@@ -315,7 +315,7 @@ pub(crate) fn warn_of_same_works(project: &Project, library: &logoxide::Library)
     }
 }
 
-/// What a package being added is called: its id, abbreviation, and aliases
+/// What a package being added is called: its id, abbreviation (else its id), and aliases
 struct Named {
     id: String,
     abbreviation: String,
@@ -325,8 +325,8 @@ struct Named {
 impl From<logoxide::manifest::Package> for Named {
     fn from(info: logoxide::manifest::Package) -> Named {
         Named {
+            abbreviation: info.short_name().to_string(),
             id: info.id,
-            abbreviation: info.abbreviation,
             aliases: info.aliases,
         }
     }
@@ -562,7 +562,7 @@ pub(crate) fn list_all(cli: &Cli) -> logoxide::Result<()> {
                 version: v.version().to_string(),
                 key: v.key.clone(),
                 dir: v.dir.display().to_string(),
-                abbreviation: v.package.as_ref().map(|p| p.abbreviation.clone()),
+                abbreviation: v.package.as_ref().and_then(|p| p.abbreviation.clone()),
                 title: v.package.as_ref().map(|p| p.name.clone()),
                 license: v.package.as_ref().and_then(|p| p.license.clone()),
                 used_by: (v.used_by.into_iter())
@@ -587,8 +587,8 @@ pub(crate) fn list_all(cli: &Cli) -> logoxide::Result<()> {
     for v in &installed {
         let about = match &v.package {
             Some(p) => match &p.license {
-                Some(license) => format!("{} ({}), {license}", p.abbreviation, p.name),
-                None => format!("{} ({})", p.abbreviation, p.name),
+                Some(license) => format!("{} ({}), {license}", p.short_name(), p.name),
+                None => format!("{} ({})", p.short_name(), p.name),
             },
             None => String::from("(its logoxide.toml doesn't read)"),
         };

@@ -109,7 +109,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
             // Prefixed: eBible.org's ids (`eng-web`) could be other catalogs' too, and the
             // first of an id wins when catalogs merge
             id: format!("ebible-{}", package_id(&ebible_id)),
-            abbreviation: abbreviation(&ebible_id, &code),
+            abbreviation: Some(abbreviation(&ebible_id, &code)),
             name,
             aliases: vec![],
             language_name: get(&row, language_name).filter(|n| !n.is_empty()).or(raw),
@@ -257,11 +257,7 @@ pub(crate) mod tests {
         assert_eq!(catalog.entries.len(), 2);
         let asv = &catalog.entries[0];
         assert_eq!(
-            (
-                asv.id.as_str(),
-                asv.abbreviation.as_str(),
-                asv.language.as_str()
-            ),
+            (asv.id.as_str(), asv.short_name(), asv.language.as_str()),
             ("ebible-eng-asv", "ASV", "en")
         );
         assert_eq!(asv.license.as_deref(), Some("LicenseRef-PublicDomain"));
@@ -281,7 +277,7 @@ pub(crate) mod tests {
         // The work logoxide's table knows the import to be
         assert_eq!(asv.work.as_deref(), Some("asv"));
         let wlc = &catalog.entries[1];
-        assert_eq!(wlc.abbreviation, "WLC");
+        assert_eq!(wlc.abbreviation.as_deref(), Some("WLC"));
         assert_eq!(wlc.direction, Direction::Rtl);
         // The list's script, by name
         assert_eq!(
@@ -338,7 +334,7 @@ pub(crate) mod tests {
         assert_eq!(
             (
                 info.id.as_str(),
-                info.abbreviation.as_str(),
+                info.short_name(),
                 info.version.to_string()
             ),
             ("ebible-eng-asv", "ASV", "1.0.0".to_string())

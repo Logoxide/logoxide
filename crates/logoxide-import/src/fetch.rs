@@ -119,7 +119,7 @@ pub fn catalog(text: &str) -> Result<Catalog> {
                 .filter(|l| Some(l) != english.as_ref())
                 .into_iter()
                 .collect(),
-            abbreviation,
+            abbreviation: Some(abbreviation),
             language_name: text_of(language_entry.and_then(|l| l.get("english"))).or(raw),
             script: language::script_of_tag(&tag),
             language: tag,
@@ -270,11 +270,7 @@ mod tests {
         );
         let bsb = &catalog.entries[0];
         assert_eq!(
-            (
-                bsb.id.as_str(),
-                bsb.abbreviation.as_str(),
-                bsb.language.as_str()
-            ),
+            (bsb.id.as_str(), bsb.short_name(), bsb.language.as_str()),
             ("fetch-eng_bsb", "BSB", "en")
         );
         assert_eq!(bsb.license.as_deref(), Some("LicenseRef-PublicDomain"));

@@ -21,6 +21,10 @@ use crate::{
 };
 
 /// Checks a language tag: well-formed BCP 47 (`en`, `eng`, `pt-BR`, `zh-Hant-TW`, `und`)
+/// BCP 47's tag for a language that isn't known (`und`): what an import writes for a publisher's
+/// language that isn't a tag, and what a package with no language of its own reads as
+pub const UNDETERMINED: &str = "und";
+
 pub fn check_language(tag: &str) -> Result<()> {
     match language_tags::LanguageTag::parse(tag) {
         Ok(_) => Ok(()),
@@ -197,7 +201,7 @@ pub fn normalize_language(raw: &str) -> (String, Option<String>) {
     match plain && language_tags::LanguageTag::parse(&tag).is_ok() {
         true => (canonical(&tag), None),
         false => (
-            String::from("und"),
+            String::from(UNDETERMINED),
             (!given.is_empty()).then(|| given.to_string()),
         ),
     }

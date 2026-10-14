@@ -66,8 +66,9 @@ pub struct PackageInfo {
     /// What dependencies call it (`bsb`)
     pub id: String,
     pub name: String,
-    /// What references name it by (`John 3:16 BSB`)
-    pub abbreviation: String,
+    /// What references name it by (`John 3:16 BSB`): a Bible or a commentary always has one; a
+    /// book, a collection, or another kind may not (show the id then)
+    pub abbreviation: Option<String>,
     /// Who wrote it, in order
     pub authors: Vec<String>,
     pub description: Option<String>,
@@ -509,7 +510,7 @@ with `Logoxide::open_package` (or `open_package_dir`)
 // The host reads the files (every one under the package's folder) and saves what the cache wrote
 const pkg = logoxide.openPackage(files, entry.features, cacheFiles);
 for (const file of pkg.cacheWrites()) await save(`${cacheDir}/${file.path}`, file.bytes);
-pkg.info().abbreviation; // "BSB"
+pkg.info().abbreviation; // "BSB" (null for a book or a collection without one)
 translations = pkg.addTo(translations); // references naming it use its verse counts
 const john = pkg.book(43); // a LogoxideBook, for passages as HTML or text
 ```

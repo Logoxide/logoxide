@@ -491,7 +491,7 @@ fn catalog_entry(catalog: &str, entry: &CatalogEntry) -> Value {
         "work": entry.work,
         "untrusted": Untrusted::new(&format!("the catalog {catalog}"))
             .text("name", &entry.name, SHORT)
-            .text("abbreviation", &entry.abbreviation, SHORT)
+            .maybe("abbreviation", entry.abbreviation.as_deref(), SHORT)
             .text("language", &entry.language, SHORT)
             .text("languageName", entry.language_shown(), SHORT)
             .maybe("version", entry.version.as_deref(), SHORT)

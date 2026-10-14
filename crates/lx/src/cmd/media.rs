@@ -38,7 +38,7 @@ pub(crate) fn media_add(
         "listed {} ({:.1} MB, sha256 {}) in {}",
         entry.path,
         entry.size as f64 / 1e6,
-        &entry.sha256[..16],
+        &logoxide::media::sha256_digits(&entry.sha256)[..16],
         path.display()
     );
     Ok(())

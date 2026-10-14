@@ -26,7 +26,7 @@ pub(crate) fn show(
         "{} {} ({}), {}",
         info.id,
         info.version,
-        info.abbreviation,
+        info.short_name(),
         info.name
     );
     if let Some(description) = &info.description {
@@ -837,7 +837,7 @@ pub(crate) fn show_remote(
     if let Some(info) = &manifest.package {
         outln!(
             "{} ({}), {}",
-            info.abbreviation,
+            info.short_name(),
             info.name,
             info.license.as_deref().unwrap_or("no license given")
         );

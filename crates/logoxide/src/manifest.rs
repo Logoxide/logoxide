@@ -72,8 +72,11 @@ pub struct Package {
     /// What dependencies call it: lowercase letters, digits, `-`, and `_`
     pub id: String,
     pub name: String,
-    /// What references name it by (`John 3:16 BSB`)
-    pub abbreviation: String,
+    /// What references name it by (`John 3:16 BSB`): required for a Bible or a commentary
+    /// ([`PackageKind::needs_abbreviation`]), optional for the kinds references never name
+    /// ([`Package::short_name`] falls back on the id)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abbreviation: Option<String>,
     /// Who wrote it (a book's authors, a translation's translators), in order
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub authors: Vec<String>,
@@ -85,7 +88,10 @@ pub struct Package {
     pub version: semver::Version,
     #[serde(default)]
     pub kind: PackageKind,
-    /// BCP 47: `en`, `grc`, `sr-Latn` ([`crate::language`])
+    /// BCP 47: `en`, `grc`, `sr-Latn` ([`crate::language`]). Required unless the kind has no
+    /// language of its own ([`PackageKind::needs_language`]: a collection, a versification map),
+    /// where it may be left out and reads as `und` ([`Manifest::parse`] fills it in)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub language: String,
     /// The language's name (`English`), when the tag doesn't say enough: an import keeps the
     /// publisher's own here when it isn't a tag (`und`)
@@ -233,6 +239,44 @@ pub enum PackageKind {
     /// Other packages, as its dependencies (a library: a feature can turn on each one), and no
     /// text of its own
     Collection,
+}
+
+impl PackageKind {
+    /// Its name as manifests give it (`cross-references`)
+    pub fn name(self) -> &'static str {
+        match self {
+            PackageKind::Bible => "bible",
+            PackageKind::Commentary => "commentary",
+            PackageKind::Lexicon => "lexicon",
+            PackageKind::CrossReferences => "cross-references",
+            PackageKind::VersificationMap => "versification-map",
+            PackageKind::Book => "book",
+            PackageKind::Collection => "collection",
+        }
+    }
+
+    /// Whether references name packages of this kind (`John 3:16 BSB`, a commentary's note
+    /// labeled `MHCC`), so `abbreviation` is required
+    pub fn needs_abbreviation(self) -> bool {
+        matches!(self, PackageKind::Bible | PackageKind::Commentary)
+    }
+
+    /// Whether a package of this kind has a language of its own: a collection of packages and a
+    /// versification map don't, so `language` may be left out of theirs (read as `und`)
+    pub fn needs_language(self) -> bool {
+        !matches!(
+            self,
+            PackageKind::Collection | PackageKind::VersificationMap
+        )
+    }
+}
+
+impl Package {
+    /// What to call it in short: its abbreviation, else its id (a book or a collection, which
+    /// references never name, may have none)
+    pub fn short_name(&self) -> &str {
+        self.abbreviation.as_deref().unwrap_or(&self.id)
+    }
 }
 
 /**
@@ -706,8 +750,15 @@ pub struct Enabled {
 impl Manifest {
     /// Reads and checks a manifest
     pub fn parse(text: &str) -> Result<Manifest> {
-        let manifest: Manifest =
+        let mut manifest: Manifest =
             toml::from_str(text).map_err(|e| LogoxideError::Manifest(e.to_string()))?;
+        // A kind with no language of its own may leave `language` out: it reads as `und`
+        if let Some(package) = &mut manifest.package
+            && package.language.is_empty()
+            && !package.kind.needs_language()
+        {
+            package.language = String::from(crate::language::UNDETERMINED);
+        }
         manifest.validate()?;
         Ok(manifest)
     }
@@ -727,7 +778,24 @@ impl Manifest {
                 ));
             }
             check_metadata(package)?;
-            crate::language::check_language(&package.language)?;
+            if package.abbreviation.is_none() && package.kind.needs_abbreviation() {
+                return err(format!(
+                    "a {} needs an abbreviation (what references name it by: `BSB`)",
+                    package.kind.name()
+                ));
+            }
+            // Empty only in a manifest built in code for a kind that may leave it out (parsed,
+            // it's `und`)
+            match (package.language.is_empty(), package.kind.needs_language()) {
+                (true, true) => {
+                    return err(format!(
+                        "a {} needs a language (BCP 47: `en`; `und` when unknown)",
+                        package.kind.name()
+                    ));
+                }
+                (true, false) => {}
+                (false, _) => crate::language::check_language(&package.language)?,
+            }
             if let Some(script) = &package.script {
                 crate::language::check_script(script)?;
             }
@@ -1027,6 +1095,17 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
             "dependency `{name}`: `import = \"{import}\"` isn't an import (`ebible:eng-kjv2006`)"
         ));
     }
+    // A registry by name (`doc/manifest.md`) is read as the rule says, but not resolved yet:
+    // refused here, so no reader ever fetches `https://dorean`
+    if let Some(registry) = &d.registry
+        && is_registry_name(registry)
+    {
+        return err(format!(
+            "dependency `{name}`: `registry = \"{registry}\"` names a registry by name, which \
+             this logoxide doesn't resolve yet: give its catalog's URL or path (lx add \
+             --registry <URL> {name})"
+        ));
+    }
     if let Some(rev) = &d.rev {
         check_rev(rev).map_err(|e| LogoxideError::Manifest(format!("dependency `{name}`: {e}")))?;
     }
@@ -1050,6 +1129,13 @@ fn check_dependency(name: &str, d: &DetailedDependency) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Whether a dependency's `registry` is a registry's name (`dorean`: an id, resolved through
+/// `[settings.registries]` and the config) rather than its catalog's URL or path, which has a
+/// `/`, a `:`, or a `.` (`doc/manifest.md`)
+pub fn is_registry_name(registry: &str) -> bool {
+    !registry.contains(['/', ':', '.'])
 }
 
 /// The field names serde reads for a struct: its `deserialize_struct` hands them to the
@@ -1154,6 +1240,53 @@ mod tests {
              version = \"1.0.0\"\nlanguage = \"en\"\nkind = \"commentary\"\n{lines}\n\
              [formats]\nusx = {{ path = \"usx/\" }}\n"
         ))
+    }
+
+    #[test]
+    fn abbreviation_and_language_by_kind() {
+        let package = |kind: &str, lines: &str| {
+            Manifest::parse(&format!(
+                "[package]\nid = \"x\"\nname = \"X\"\nversion = \"1.0.0\"\nkind = \"{kind}\"\n\
+                 {lines}\n[formats]\nepub = {{ path = \"books/\" }}\n"
+            ))
+        };
+        let collection = |lines: &str| {
+            Manifest::parse(&format!(
+                "[package]\nid = \"x\"\nname = \"X\"\nversion = \"1.0.0\"\nkind = \"collection\"\n{lines}\n"
+            ))
+        };
+        // References name Bibles and commentaries, so those need an abbreviation
+        for kind in ["bible", "commentary"] {
+            let error = package(kind, "language = \"en\"").unwrap_err().to_string();
+            assert!(error.contains("needs an abbreviation"), "{kind}: {error}");
+        }
+        // The other kinds don't; `short_name` is then the id
+        let book = package("book", "language = \"en\"").unwrap();
+        let info = book.package.as_ref().unwrap();
+        assert_eq!(
+            (info.abbreviation.as_deref(), info.short_name()),
+            (None, "x")
+        );
+        assert!(!book.to_toml().unwrap().contains("abbreviation"));
+        let named = package("book", "language = \"en\"\nabbreviation = \"TDP\"").unwrap();
+        assert_eq!(named.package.unwrap().short_name(), "TDP");
+        // A collection or a map has no language of its own: left out, it reads as `und`
+        let info = collection("").unwrap().package.unwrap();
+        assert_eq!(info.language, "und");
+        let map = package(
+            "versification-map",
+            "versification = \"English\"\nmaps-to = \"Original\"",
+        );
+        assert_eq!(map.unwrap().package.unwrap().language, "und");
+        // Everything else still needs one
+        let error = package("book", "").unwrap_err().to_string();
+        assert!(error.contains("needs a language"), "{error}");
+        let error = package("lexicon", "keys = \"headword\"")
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("needs a language"), "{error}");
+        // What's said is still checked
+        assert!(collection("language = \"en_US\"").is_err());
     }
 
     #[test]
@@ -1475,6 +1608,9 @@ compare = ["mine"]
                 "isn't a full commit id",
             ),
             ("x = { registry = \"-r\" }", "isn't one"),
+            // A registry by name is the format's rule, not resolved yet
+            ("x = { registry = \"dorean\" }", "by name"),
+            ("x = { registry = \"dorean_local\" }", "by name"),
             ("\"../x\" = { git = \"https://e.org/x\" }", "lowercase"),
             (
                 "x = { git = \"https://e.org/x\", package = \"../x\" }",

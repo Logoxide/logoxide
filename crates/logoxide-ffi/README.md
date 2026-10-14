@@ -134,8 +134,11 @@ for (const file of files) await write(`${folder}/${file.path}`, file.bytes);
 const manifest = logoxide.newCollection({ ...given, name: "My Library", language: "en" });
 ```
 
-- What's given wins over the file; the id comes from the name (`the-dorean-principle`), the
-  abbreviation from its initials (`TDP`), the version is 0.1.0 unless given
+- What's given wins over the file; the id comes from the name (`the-dorean-principle`), a Bible's
+  or commentary's abbreviation from its initials (`BSB`; the other kinds have one only when
+  given, so `PackageInfo.abbreviation` and `CatalogEntry.abbreviation` are `null` for a book or
+  a collection without one: show the id then), the version is 0.1.0 unless given. A collection
+  needs no `language` (its manifest reads as `und` without one)
 - A book (`kind: Book`) has no verse text: `pkg.references()` reads its EPUBs for the Bible
   references in them (each a `passage` in OSIS, the `file`, its `chapter`, a `cfi` EPUB readers
   open, and its UTF-16 range, line, column, spine item, and paragraph: what

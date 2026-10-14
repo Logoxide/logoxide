@@ -53,7 +53,9 @@ the other files in this folder.
     (topos's `BibleFilter`: testaments, genres, books, and exclusions) gives the codes kept;
     `lx search -t/--nt/--ot/-g/-b/--exclude-*` keeps packages with any about-book among them. A dependency is one of `git`,
     `registry`, `path`, or `import` (`{ import = "ebible:eng-asv" }`, `is_import_name`: a
-    lowercase prefix, a colon, an id). A dependency can name another package
+    lowercase prefix, a colon, an id). A `registry` shaped like a name (`is_registry_name`: no
+    `/`, `:`, or `.`) is a registry's name by `doc/manifest.md`'s rule, refused until phase R-F
+    resolves it (PLAN-REVIEW.md), so it's never fetched as a URL. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
     `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
     locked and installed, so `lx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and
@@ -197,7 +199,10 @@ the other files in this folder.
     publisher, only what an entry says of itself (`prefix`, `import_id`, `import_name`,
     `upstream_url`, `downloads`, `versions_track_updates`). Ids are prefixed
     (`ebible-eng-kjv2006`, `fetch-eng_kjv`, `ccel-kjv`, `sword-kjv`, `sword-<repo>-<module>` outside CrossWire's main one), since the
-    first of an id wins when catalogs merge. `search` ranks exact abbreviations and ids first,
+    first of an id wins when catalogs merge. An entry follows the manifest's rules by kind
+    (`abbreviation` for a Bible or a commentary, `language` unless a collection or a map, else
+    `und`): one that lacks what its kind needs is passed over, warned of. `search` ranks exact
+    abbreviations (`CatalogEntry::short_name`: else the id) and ids first,
     and folds case, every combining mark (NFD: accents, breathings, Hebrew points), and final
     sigma away (`fold`, with `unicode-normalization`), so `ιησους` finds `Ἰησοῦς`; a vault's
     `[settings] catalogs`, then those five (`DEFAULT_CATALOGS`: eBible.org, fetch.bible,
@@ -220,7 +225,8 @@ the other files in this folder.
     `newest_release`, read with `git show`)
   - `media.rs`: `[media]` in a package's `logoxide.toml`: each audio or video file's path, URL,
     `mirrors` (tried in order after it: `MediaFile::urls`), size, SHA-256, and book, never
-    stored in the package (its `sha256` must be 64 hex digits); `verify` checks a download
+    stored in the package (its `sha256` is `sha256:` and 64 hex digits, as every hash is written;
+    the bare digits are read too: `sha256_digits`, `sha256_matches`); `verify` checks a download
     (`LogoxideError::Mismatch` when it isn't the one listed); `Project::add_media` lists one,
     `store_path` keeps it by hash (`media/9f/9f86…`). Summaries count media; releases are judged
     by the text. Timings (audio Bibles: where each verse is) are WebVTT, a file's own `timings`, else

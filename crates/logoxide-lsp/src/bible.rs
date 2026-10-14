@@ -274,7 +274,7 @@ impl Bible {
         cache: Option<&Path>,
     ) -> Result<Bible, String> {
         let info = package.info();
-        let (abbreviation, aliases) = (info.abbreviation.clone(), info.aliases.clone());
+        let (abbreviation, aliases) = (info.short_name().to_string(), info.aliases.clone());
         let versification = info.versification.clone();
         let cached = Cache::new(store(cache, "books"))
             .open(package, &DefaultReader)

@@ -1,7 +1,7 @@
 # `logoxide.toml`
 
 The manifest of a package, and of a vault (a project that uses packages without being one), like
-`Cargo.toml`. This describes format as logoxide 0.1 reads it, for anyone writing another
+`Cargo.toml`. This describes the format as logoxide reads it, for anyone writing another
 implementation; the reference is `crates/logoxide/src/manifest.rs`.
 
 The file is TOML 1.0, UTF-8, at the root of the package's folder (or repository). Keys are
@@ -41,9 +41,9 @@ strongs-greek = { git = "https://example.org/strongs-greek", version = "2", opti
 |---|---|---|---|
 | `id` | string | yes | What dependencies and lock files call it. Only `a`-`z`, `0`-`9`, `-`, and `_`, not empty |
 | `name` | string | yes | Its full name |
-| `abbreviation` | string | yes | What references name it by (`John 3:16 BSB`) |
+| `abbreviation` | string | for a `bible` or `commentary` | What references name it by (`John 3:16 BSB`; a commentary's note is labeled by it). The other kinds, which references never name, may leave it out; readers show the id then |
 | `version` | string | yes | A [semantic version](https://semver.org); see [Versions](#versions) |
-| `language` | string | yes | A BCP 47 tag (`en`, `grc`, `pt-BR`, `sr-Latn`; `und` when unknown), well-formed by RFC 5646's grammar (`en_US` is refused). It should be canonical, as BCP 47 asks: the language by its shortest ISO 639 code (`en`, not ISO 639-3's `eng` or 639-2/B's `ger` for `de`; `grc` and `hbo`, without a two-letter code, stay), deprecated subtags replaced as the IANA registry says (`iw` is `he`), and each subtag in its case (language lowercase, script title case, region uppercase: `en-Latn-US`). A tag that isn't canonical is read, and warned of (`lx check` says what it should be). Imports write canonical tags |
+| `language` | string | unless a `collection` or `versification-map` | A BCP 47 tag (`en`, `grc`, `pt-BR`, `sr-Latn`; `und` when unknown), well-formed by RFC 5646's grammar (`en_US` is refused). It should be canonical, as BCP 47 asks: the language by its shortest ISO 639 code (`en`, not ISO 639-3's `eng` or 639-2/B's `ger` for `de`; `grc` and `hbo`, without a two-letter code, stay), deprecated subtags replaced as the IANA registry says (`iw` is `he`), and each subtag in its case (language lowercase, script title case, region uppercase: `en-Latn-US`). A tag that isn't canonical is read, and warned of (`lx check` says what it should be). Imports write canonical tags. A collection of packages and a versification map have no language of their own, so theirs may be left out and reads as `und` |
 | `language-name` | string | no | The language's name (`English`); an import keeps the publisher's own text here when it isn't a tag, and says `und` |
 | `script` | string | no | Its script, an ISO 15924 code (`Latn`, `Hebr`, `Grek`: four letters, the first a capital). Without it, the language tag's script subtag (`sr-Latn`), if any |
 | `kind` | string | no | One of the [kinds](#kinds); `bible` when absent |
@@ -267,7 +267,7 @@ strongs = { git = "https://example.org/strongs", optional = true, enabled = fals
 | Key | Type | Meaning |
 |---|---|---|
 | `git` | string | A git repository's URL (never starting with `-`). `github:owner/repo`, `gitlab:owner/repo`, and `codeberg:owner/repo` are short for the hosts' HTTPS URLs |
-| `registry` | string | A registry's catalog (its URL, or a file's path), whose releases are archives ([catalog.md](catalog.md)) |
+| `registry` | string | A registry whose releases are archives ([catalog.md](catalog.md)): its catalog's URL or a file's path, or the registry's **name**. The two are told apart by shape: a name is an id (`a`–`z`, `0`–`9`, `-`, `_`; no `/`, `:`, or `.`), and anything else is a URL or path. A name is resolved through the project's `[settings.registries]`, then the machine's config's `[registries]`; a name neither defines is an error naming both places. The lock records the URL the name resolved to, never the name ([lock.md](lock.md)), so a locked install needs no settings. A manifest fetched from git or a registry can't use a name (it has no settings to resolve against; refused, as a `path` dependency is), so a published package depends on registry packages by URL. logoxide 0.2 reads the rule but doesn't resolve a name yet: it refuses one, saying so, rather than fetching it as a URL; once it does, `lx add <name>:<id>` writes the name |
 | `path` | string | A folder, relative to this manifest, used in place. `lx add --path` writes it relative even when given absolute; an absolute one is warned of, since the lock file names it too and another machine won't have it |
 | `import` | string | An [import](#imports) (`ebible:eng-asv`, `sword:crosswire/KJV`): a package made from its publisher's download as it installs, found in the project's catalogs, and kept in the library like a fetched one. The name is a publisher's prefix (lowercase letters and digits), a colon, and its id. `version` is then a requirement on the import's own version |
 | `version` | string | A semver requirement (`1`, `^1.2`, `>=1, <3`): the newest release matching it. For git, releases are tags `v<version>` with a whole semver version (`v1.0.0`; `v1.0` is no release, and is named when nothing matches) |
@@ -288,9 +288,9 @@ Exactly one of `git`, `registry`, `path`, and `import` must be given, and at mos
 registry, so installing it is an error.
 
 A package fetched from git or a registry can't have `path` dependencies (they would name files
-on the publisher's machine). The resolver is also gaining checks that a fetched package's
-dependencies don't name local paths or `file://` URLs, and that git URLs and refs that would be
-read as command-line options (starting with `-`) are refused; see [trust.md](trust.md).
+on the publisher's machine), nor dependencies naming a local path or `file://` URL in `git` or
+`registry`, a registry by name, or `git://`; and in any manifest, a git URL or ref that git would
+read as a command-line option (starting with `-`) is refused; see [trust.md](trust.md).
 
 ## `[settings]`
 
@@ -302,10 +302,12 @@ A vault's choices (also allowed in a package, where they mean nothing to its use
 | `compare` | array of strings | Bibles shown after the named one |
 | `catalogs` | array of strings | Catalogs to search (URLs or paths), before the default ones |
 | `default-catalogs` | boolean | Whether the five default catalogs (eBible.org, fetch.bible, CCEL's Bibles and commentaries, CrossWire) are searched after these. Default `true` |
-| `registries` | table of strings | Registries by name: `dorean-local = "~/logoxide-packages"` lets `dorean-local:kjv` name a package. Each is a catalog's URL or path, or a folder of package repositories |
+| `registries` | table of strings | Registries by name: `dorean-local = "~/logoxide-packages"` lets `dorean-local:kjv` name a package, and a dependency's `registry = "dorean-local"` name the registry. Each is a catalog's URL or path, or a folder of package repositories |
 
 Registry names are `a`-`z`, `0`-`9`, `-`, and `_`, and can't be `github`, `gitlab`, `codeberg`,
-`ebible`, `fetch`, `ccel`, `sword`, `door43`, `http`, `https`, `file`, `ssh`, or `git`.
+`ebible`, `fetch`, `ccel`, `sword`, `door43`, `http`, `https`, `file`, `ssh`, or `git`. A
+machine's config (`~/.config/logoxide/config.toml`, `[registries]`) names registries for every
+project the same way; a project's name wins over the config's.
 
 ## `[media]`
 
@@ -320,7 +322,7 @@ path = "audio/JHN.mp3"
 url = "https://example.org/audio/JHN.mp3"
 mirrors = ["https://archive.org/download/bsb-audio/JHN.mp3"]
 size = 31457280
-sha256 = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+sha256 = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
 book = "JHN"
 # timings = "subtitles/john.vtt"
 ```
@@ -335,14 +337,14 @@ book = "JHN"
 | `files.url` | string | Where it is served |
 | `files.mirrors` | array of strings | Other places serving the same bytes, tried in order after `url` |
 | `files.size` | integer | Its length in bytes |
-| `files.sha256` | string | Its SHA-256 as lowercase hex (no prefix) |
+| `files.sha256` | string | Its SHA-256: `sha256:` and 64 lowercase hex digits, the form every hash in logoxide takes ([catalog.md](catalog.md#checksums)). Readers also accept the 64 digits alone, in either case |
 | `files.book` | string | The book it reads (a USFM code), if one |
 | `files.timings` | string | Its timings' path in the package, in place of the timings folder's |
 
-A download is good when its length is `size` and its SHA-256 is `sha256` (compared
-case-insensitively); since the hash says which bytes are meant, any copy is as good as the first.
-Hosts keep files by hash, at `media/<first two hex digits>/<hex>` in their cache, so versions that
-list the same file share it.
+A download is good when its length is `size` and its SHA-256's digits are `sha256`'s (compared
+case-insensitively, the prefix aside); since the hash says which bytes are meant, any copy is as
+good as the first. Hosts keep files by hash, at `media/<first two hex digits>/<hex>` in their
+cache (the digits alone, never the prefix), so versions that list the same file share it.
 
 **Timings** are WebVTT, one file per media file: its own `timings` when it has one, else
 `<timings>/<stem>.vtt`, where `<stem>` is the media file's `path` (folders kept) without its last
