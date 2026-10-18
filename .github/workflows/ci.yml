@@ -5,6 +5,8 @@ on:
   pull_request:
 
 env:
+  # release.yml's, which builds the packages with it
+  BOLTFFI_VERSION: 0.31.0
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
   # The topos tag the bindings build against comes from topos-bible's version in Cargo.toml
@@ -70,3 +72,21 @@ jobs:
           cargo fmt --check
           cargo test
           cargo clippy --all-targets -- -D warnings
+      # README.md's examples and names checked against the bindings, generated but not built (the
+      # pack scripts check them the same way against the packages, writing their READMEs)
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/boltffi*
+          key: boltffi-${{ env.BOLTFFI_VERSION }}-ubuntu
+      - name: Install BoltFFI
+        run: command -v boltffi || cargo install boltffi_cli --version "$BOLTFFI_VERSION" --locked
+      - name: The README's examples
+        working-directory: logoxide/crates/logoxide-ffi
+        run: |
+          npm install
+          boltffi generate typescript -o dist/api/ts
+          boltffi generate python -o dist/api/python
+          python3 scripts/readme.py check --wasm dist/api/ts --python dist/api/python/logoxide

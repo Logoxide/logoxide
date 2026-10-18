@@ -1554,7 +1554,9 @@ Each pack script writes its package's README with `scripts/readme.py`, which fir
 one, without running anything: its marks, its examples in pairs (TypeScript, then Python), the
 links to its headings, each language's examples against the package just built (TypeScript's by
 `tsc`, Python's against its `__init__.pyi`), and the API's names in the prose. A problem stops
-the build, with README.md's line.
+the build, with README.md's line. CI checks them too, against the bindings generated rather than
+built (`boltffi generate typescript -o dist/api/ts`, `python -o dist/api/python`, then `check
+--wasm dist/api/ts --python dist/api/python/logoxide`).
 
 The examples run against the KJV and BSB packages (git repositories with release tags; the
 owner's are in `~/Development/logoxide-packages`, the default) and `examples/fixtures`: a made-up

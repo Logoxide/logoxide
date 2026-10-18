@@ -3,6 +3,8 @@ TypeScript (`ts`), PyPI's in Python (`python`), after checking them.
 
     python scripts/readme.py ts|python [-o README.md] [--api BINDINGS]
     python scripts/readme.py check [--wasm dist/wasm/pkg] [--python dist/python/logoxide]
+    (or, with only the bindings generated: boltffi generate typescript -o dist/api/ts, then
+    python -o dist/api/python, and check --wasm dist/api/ts --python dist/api/python/logoxide)
 
 README.md is the repository's, read on GitHub, and the source of both (examples/node/readme.ts
 and examples/python/readme.py run its examples). For a language, the other language's code blocks
@@ -233,7 +235,9 @@ def check_prose_names(text: str, api: str, language: str) -> list[str]:
 
 def check_typescript(source: str, dts: Path) -> list[str]:
     """README.md's TypeScript examples as one program (as examples/node/readme.ts runs them),
-    type-checked by `tsc` against the bindings' types"""
+    type-checked by `tsc` against the bindings' types: the package's `logoxide.d.ts`, or the
+    `logoxide.ts` that `boltffi generate typescript` writes (under the package's folder, so
+    `@boltffi/runtime` is found)"""
     tsc = ROOT / "node_modules" / ".bin" / "tsc"
     if not tsc.exists():
         return [f"no {tsc.relative_to(ROOT)}: run `npm install` to check the TypeScript examples"]
@@ -285,6 +289,10 @@ def check_typescript(source: str, dts: Path) -> list[str]:
         if m:
             at = origin[int(m[1]) - 1]
             problems.append(f"README.md:{at}: {m[3]}" if at else f"the examples' imports: {m[3]}")
+        elif re.match(r".*\.ts\(\d+,\d+\): ", line) and not dts.name.endswith(".d.ts"):
+            # The bindings as source (`boltffi generate typescript`, no package built): their
+            # own code isn't held to the examples' strictness
+            continue
         elif line.strip() and run.returncode:
             problems.append(f"tsc: {line}")
     return problems
@@ -641,9 +649,16 @@ def main() -> None:
     source = (ROOT / "README.md").read_text(encoding="utf-8")
     if args.command == "check":
         problems = []
-        for language, api in [("ts", args.wasm / "logoxide.d.ts"), ("python", args.python / "__init__.pyi")]:
+        # The package built (dist/wasm/pkg), or only its bindings generated (`boltffi generate
+        # typescript -o …`, no logoxide.d.ts but logoxide.ts)
+        types = args.wasm / "logoxide.d.ts"
+        types = types if types.exists() else args.wasm / "logoxide.ts"
+        for language, api in [("ts", types), ("python", args.python / "__init__.pyi")]:
             if not api.exists():
-                problems.append(f"no {api}: build the package first (npm run pack:wasm, pack:python)")
+                problems.append(
+                    f"no {api}: build the package (npm run pack:wasm, pack:python) or generate its"
+                    " bindings (boltffi generate typescript|python -o …)"
+                )
                 continue
             problems += checked(source, language, api)[1]
         fail(sorted(set(problems), key=problems.index))

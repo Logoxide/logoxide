@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Checks that the versions that must agree do: the workspace's (the crates'), the `logoxide`,
 # `logoxide-markup`, `logoxide-text`, `logoxide-import`, and `logoxide-app` workspace dependencies', and logoxide-ffi's (the npm and PyPI packages'; a workspace of its own,
-# so it can't inherit the version). With a tag (`v0.1.0`), it must be `v` and that version.
+# so it can't inherit the version), and BoltFFI's in the two workflows. With a tag (`v0.1.0`), it must be `v` and that version.
 #   scripts/check-versions.sh            # in CI
 #   scripts/check-versions.sh v0.1.0     # before releasing
 set -euo pipefail
@@ -32,6 +32,13 @@ for crate in markup text import app; do
 done
 if [[ "$ffi" != "$workspace" ]]; then
   echo "crates/logoxide-ffi/Cargo.toml: version ${ffi:-missing}, the workspace $workspace" >&2
+  status=1
+fi
+# BoltFFI's, which CI generates the bindings with and the release builds the packages with
+boltffi_ci=$(sed -n 's/^  BOLTFFI_VERSION: \(.*\)$/\1/p' "$root/.github/workflows/ci.yml")
+boltffi_release=$(sed -n 's/^  BOLTFFI_VERSION: \(.*\)$/\1/p' "$root/.github/workflows/release.yml")
+if [[ -z "$boltffi_ci" || "$boltffi_ci" != "$boltffi_release" ]]; then
+  echo ".github/workflows: BoltFFI ${boltffi_ci:-missing} in ci.yml, ${boltffi_release:-missing} in release.yml" >&2
   status=1
 fi
 if [[ $# -gt 0 && "$1" != "v$workspace" ]]; then
