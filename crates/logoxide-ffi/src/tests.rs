@@ -79,6 +79,11 @@ fn a_package_from_its_files() {
         .usfm_to_usx("\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n".into())
         .unwrap();
     assert!(usx.contains("<verse number=\"16\""), "{usx}");
+    let usfm = Logoxide::new().usx_to_usfm(usx).unwrap();
+    assert_eq!(
+        usfm,
+        "\\id JHN\n\\c 3\n\\p \\v 16 For God so loved the world.\n"
+    );
     assert_eq!(package.chapter_verses(43), [0, 0, 18]);
     // Each verse's words hashed: what links record to find a verse again
     let hashes = package.verse_hashes(43).unwrap();

@@ -227,6 +227,12 @@ impl Logoxide {
         Ok(logoxide_text::source::usfm_to_usx(&usfm)?)
     }
 
+    /// A USX book as USFM (normalized: usfm3's layout, not the publisher's), for tools that take
+    /// USFM
+    pub fn usx_to_usfm(&self, usx: String) -> Result<String, LogoxideError> {
+        Ok(logoxide_text::source::usx_to_usfm(&usx)?)
+    }
+
     /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`; one of
     /// `default_catalog_urls`)
     pub fn ebible_catalog_url(&self) -> String {

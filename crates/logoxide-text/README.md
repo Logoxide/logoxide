@@ -6,6 +6,8 @@ What's in a Bible or a book: verses, hashes, titles, numbering. It knows no pack
   [logoxide-markup](../logoxide-markup)'s tree (`source::open`, `Source`, `Book`), from any
   `Files` (a folder, memory, or a host's files, so WebAssembly too). Peripherals, books topos
   doesn't know, and lettered chapters are passed over and said (`Skipped`)
+- **Conversion**: a USFM book as USX and a USX book as USFM (`source::usfm_to_usx`,
+  `usx_to_usfm`, both through usfm3; the USFM written is normalized, not the publisher's layout)
 - **Hashes**: each verse's words hashed by a rule that never changes (`hash::HashRule`,
   `book_hashes`), so a verse can be found again in a later version of its text
 - **Titles**: a file's own title (`\toc2`, `\h`, `\toc1`; an EPUB's `dc:title`)

@@ -465,7 +465,12 @@ specifications of the formats are the other files in this folder.
   are `TextError`. `source/`: one `Source` per `TextFormat` (`source::open`), each giving
   logoxide-markup's tree (`Book`: nodes and verse spans). USX, and USFM through `usfm3` (chosen
   over usfm-onion, whose USX drops the space between adjacent `\w` words; both gave the KJV's
-  31,102 verses). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
+  31,102 verses). The other way, `usx_to_usfm` (`to_usfm.rs`) reads USX into usfm3's document and has
+  usfm3 write it: whitespace runs one space, end milestones left out, a character style inside
+  another `\+`, a note's `category` a `\cat`. Checked by round trip (`tests/verse_hash.rs`): the
+  pinned fixture, and (ignored, on the real packages) the KJV through USX and back and the BSB,
+  whose only differences are Psalm 119's 21 acrostic headings (USX's reader gives one after a
+  verse's end to the next verse, USFM's to the verse before it). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
   book; it's scanned for the books its verse markers name, cut into books, and its last parse
   kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) and `<scripCom parsed=…/>` (CCEL's commentaries) become verse markers; a chapter's own (`|Gen|1|0|0|0`) is verse 0 (chapter introductions are notes on it), and a `div1`–`div6` whose first marker is in another chapter ends the verse before it (an End milestone naming nothing), or starts that chapter's verse 0 when its first marker is one (`mark_verses`).
   GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM

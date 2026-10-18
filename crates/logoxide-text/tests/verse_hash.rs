@@ -14,10 +14,11 @@ again from their text when compared.
 use std::sync::Arc;
 
 use logoxide_text::markup::verses::slice;
+use logoxide_text::topos_bible::data::books::BookId;
 use logoxide_text::{
     MemoryFiles, Source,
     hash::{HashRule, VerseRecord, book_hashes, verse_text},
-    source::{TextFormat, open},
+    source::{TextFormat, open, usfm_to_usx, usx_to_usfm},
 };
 
 /// One format's files, read by its source
@@ -118,9 +119,8 @@ fn usfm_verses() {
     assert_eq!(nfc, typed);
 }
 
-#[test]
-fn usx_verses() {
-    let usx = format!(
+fn usx() -> String {
+    format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
 <usx version="3.0"><book code="JHN" style="id"/>
 <chapter number="3" style="c" sid="JHN 3"/>
@@ -131,7 +131,24 @@ fn usx_verses() {
 <verse number="20b" style="v" sid="JHN 3:20b"/>and the second.<verse eid="JHN 3:20b"/></para>
 <chapter eid="JHN 3"/>
 </usx>"#
+    )
+}
+
+#[test]
+fn usx_verses() {
+    assert_eq!(hashed(&*package("usx", &[("JHN.usx", &usx())])), expected());
+}
+
+#[test]
+fn usx_as_usfm_verses() {
+    // USX into USFM keeps every verse's words: read as USFM, they hash as the USX does
+    let usfm = usx_to_usfm(&usx()).unwrap();
+    assert_eq!(
+        hashed(&*package("usfm", &[("JHN.usfm", &usfm)])),
+        expected()
     );
+    // and back into USX again
+    let usx = usfm_to_usx(&usfm).unwrap();
     assert_eq!(hashed(&*package("usx", &[("JHN.usx", &usx)])), expected());
 }
 
@@ -163,13 +180,7 @@ fn osis_verses() {
 fn the_bsb_in_nfd_hashes_the_same() {
     use unicode_normalization::UnicodeNormalization;
 
-    let root = std::env::var("LOGOXIDE_PACKAGES").unwrap_or_else(|_| {
-        format!(
-            "{}/Development/logoxide-packages",
-            std::env::var("HOME").unwrap()
-        )
-    });
-    let dir = std::path::PathBuf::from(format!("{root}/bsb/usx"));
+    let dir = std::path::PathBuf::from(format!("{}/bsb/usx", packages()));
     let (mut nfc, mut nfd) = (vec![], vec![]);
     let mut changed = 0;
     for entry in std::fs::read_dir(&dir).unwrap() {
@@ -194,4 +205,87 @@ fn the_bsb_in_nfd_hashes_the_same() {
     let (nfc, nfd) = (hashes(nfc), hashes(nfd));
     assert_eq!(nfc.len(), 31_086);
     assert_eq!(nfc, nfd);
+}
+
+/// `LOGOXIDE_PACKAGES`, by default `~/Development/logoxide-packages`
+fn packages() -> String {
+    std::env::var("LOGOXIDE_PACKAGES").unwrap_or_else(|_| {
+        format!(
+            "{}/Development/logoxide-packages",
+            std::env::var("HOME").unwrap()
+        )
+    })
+}
+
+/// Every verse's hash in one format's folder of a package, read with `files` changed by `convert`
+/// into `to`'s files
+fn converted_hashes(
+    dir: &str,
+    from: TextFormat,
+    to: TextFormat,
+    convert: impl Fn(&str) -> String,
+) -> (Vec<VerseRecord>, Vec<VerseRecord>) {
+    let (mut before, mut after) = (vec![], vec![]);
+    let (from_name, to_name) = (from.name(), to.name());
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let file = path.file_stem().unwrap().to_string_lossy().to_string();
+        let text = std::fs::read_to_string(&path).unwrap();
+        after.push((format!("{to_name}/{file}.{to_name}"), convert(&text)));
+        before.push((format!("{from_name}/{file}.{from_name}"), text));
+    }
+    let hashes = |files: Vec<(String, String)>, format: TextFormat| {
+        let source = open(Arc::new(MemoryFiles::with(files)), format, format.name()).unwrap();
+        (source.books().into_iter())
+            .flat_map(|id| book_hashes(&source.book(id).unwrap(), HashRule::One))
+            .collect::<Vec<_>>()
+    };
+    (hashes(before, from), hashes(after, to))
+}
+
+/// The BSB's USX made USFM, and the KJV's USFM made USX and USFM again, hash as they did. Reads
+/// `LOGOXIDE_PACKAGES` (by default `~/Development/logoxide-packages`)
+#[test]
+#[ignore]
+fn real_bibles_through_usx_to_usfm() {
+    let root = packages();
+    let (usx, usfm) = converted_hashes(
+        &format!("{root}/bsb/usx"),
+        TextFormat::Usx,
+        TextFormat::Usfm,
+        |text| usx_to_usfm(text).unwrap(),
+    );
+    assert_eq!(usx.len(), 31_086);
+    // But for Psalm 119's 21 acrostic headings (`<para style="qa">ב</para>`): USX's reader gives
+    // one after a verse's end milestone to the next verse, and USFM, which has no end, to the
+    // verse before it, so the heading's words move from the second verse to the first
+    let headings: Vec<u8> = (1..=21u8).flat_map(|k| [8 * k, 8 * k + 1]).collect();
+    let moved =
+        |r: &VerseRecord| r.book == BookId(19) && r.chapter == 119 && headings.contains(&r.verse);
+    let keep = |all: Vec<VerseRecord>| all.into_iter().filter(|r| !moved(r)).collect::<Vec<_>>();
+    let differ = (usx.iter().zip(&usfm)).filter(|(a, b)| a != b).count();
+    assert_eq!(differ, headings.len());
+    same(&keep(usx), &keep(usfm));
+    let (usfm, again) = converted_hashes(
+        &format!("{root}/kjv/usfm"),
+        TextFormat::Usfm,
+        TextFormat::Usfm,
+        |text| usx_to_usfm(&usfm_to_usx(text).unwrap()).unwrap(),
+    );
+    assert_eq!(usfm.len(), 31_102);
+    same(&usfm, &again);
+}
+
+/// The same verses, or the first few that differ
+fn same(before: &[VerseRecord], after: &[VerseRecord]) {
+    let differ: Vec<_> = (before.iter().zip(after))
+        .filter(|(b, a)| b != a)
+        .map(|(b, a)| format!("{} → {}", reference(b), reference(a)))
+        .collect();
+    assert!(
+        differ.is_empty(),
+        "{} verses differ: {differ:?}",
+        differ.len()
+    );
+    assert_eq!(before.len(), after.len());
 }

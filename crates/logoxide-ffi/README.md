@@ -391,10 +391,10 @@ words = [n for n in nodes[at.start : at.end] if n.kind == NodeKind.TEXT and not 
 print("".join(n.text for n in words))  # → For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.
 ```
 
-A book file of your own: `usfmToUsx` turns USFM into USX, `LogoxideBook.parse` reads `usx` or
-`osis` (an unknown markup is `InvalidMarkup`, which is `null` in TypeScript), and
-`LogoxideBook.usxChapterVerses` counts a USX book's verses from its markers alone, fast enough
-for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
+A book file of your own: `usfmToUsx` turns USFM into USX (`usxToUsfm` the other way, as
+normalized USFM), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
+`InvalidMarkup`, which is `null` in TypeScript), and `LogoxideBook.usxChapterVerses` counts a USX
+book's verses from its markers alone, fast enough for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
 whose words changed a little since, by byte offsets.
 
 ```ts
@@ -404,6 +404,7 @@ const usx = logoxide.usfmToUsx(readFileSync("kjv/usfm/3jn.usfm", "utf8"));
 const thirdJohn = LogoxideBook.parse(topos, "usx", usx)!;
 console.log(thirdJohn.bookId(), [...thirdJohn.chapterVerses()], [...LogoxideBook.usxChapterVerses(usx)]); // → 64 [ 14 ] [ 14 ]
 console.log(LogoxideBook.parse(topos, "rtf", usx)); // → null
+console.log(logoxide.usxToUsfm(usx).startsWith("\\id 3JN")); // → true
 console.log(LogoxideBook.findFragment("For God so greatly loved the world", "so loved the world")); // → { start: 8, end: 34 }
 ```
 
@@ -417,6 +418,7 @@ try:
     LogoxideBook.parse(topos, "rtf", usx)
 except LogoxideErrorException as error:
     print(error.error)  # → LogoxideErrorInvalidMarkup(message='unknown markup "rtf" (usx, osis)')
+print(logoxide.usx_to_usfm(usx).startswith("\\id 3JN"))  # → True
 print(LogoxideBook.find_fragment("For God so greatly loved the world", "so loved the world"))  # → TextRange(start=8, end=34)
 ```
 
@@ -1407,7 +1409,7 @@ topos](#references-with-topos).
 |---|---|
 | `Logoxide.new`, `version` | [Loading](#loading) |
 | `Logoxide.openPackage`, `openPackageDir`, `readPackageInfo` | [Opening a package](#opening-a-package) |
-| `Logoxide.usfmToUsx` | [A book's text](#a-books-text) |
+| `Logoxide.usfmToUsx`, `usxToUsfm` | [A book's text](#a-books-text) |
 | `Logoxide.parseTimings`, `verifyMedia`, `mediaStorePath` | [Audio and video](#audio-and-video) |
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
 | `Logoxide.parseProject` | [A vault's project](#a-vaults-project) |
