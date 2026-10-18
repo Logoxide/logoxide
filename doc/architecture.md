@@ -720,8 +720,9 @@ specifications of the formats are the other files in this folder.
   HTML or text (`BookTextOptions`), `styledText(passage, BookTextStyle, name)` (logoxide-text's
   `passage::text_in`, the text the language server shows, with `TextMark`s by `NodeKind` for a
   host that colors it), and the tree itself: `nodes()` (`BookNode`: the list in document order,
-  each naming its parent, with kind, tag name, attributes, text, milestone; the owner's N6: typed records, not JSON) and `verseNodes()` (each verse's marker, first, and
-  last node by index), so a host renders with its own engine without parsing the formats;
+  each naming its parent, with kind, tag name, attributes, text, milestone; the owner's N6: typed records, not JSON) and `verseNodes()` (each verse's marker, first
+  node, and first node after it, by index; a place past an element's last child is the first
+  node after the element), so a host renders with its own engine without parsing the formats;
   `LogoxidePackage.book` gives one through `from_tree` (Rust-only). Commentaries,
   dictionaries, and cross-references: `LogoxidePackage.notes(passage,
   BookTextOptions, stretch)` (`Note`: chapter, verse, last, lastChapter, part, text, html; logoxide-text's

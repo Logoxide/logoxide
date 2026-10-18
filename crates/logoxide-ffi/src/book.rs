@@ -116,9 +116,9 @@ pub struct BookNode {
 }
 
 /// Where a verse is in the book's nodes ([`LogoxideBook::verse_nodes`]): its marker, and the
-/// nodes it runs over, from `start` to `end` (both indices into [`LogoxideBook::nodes`]; a
-/// verse runs from the end of the one before it to its own end, so a heading belongs to the
-/// verse after it)
+/// nodes it runs over, `start` up to but not including `end` (indices into
+/// [`LogoxideBook::nodes`]; `end` is the list's length for the book's last verse). A verse runs
+/// from the end of the one before it to its own end, so a heading belongs to the verse after it
 #[data]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VerseNodes {
@@ -427,10 +427,10 @@ impl LogoxideBook {
         out
     }
 
-    /// Where each verse is in `nodes`: its marker, and the first and last node it runs over
+    /// Where each verse is in `nodes`: its marker, its first node, and the first node after it
     pub fn verse_nodes(&self) -> Vec<VerseNodes> {
         let mut indices = HashMap::new();
-        index_paths(&self.nodes, &mut NodePath::default(), &mut indices);
+        index_paths(&self.nodes, &mut NodePath::default(), &mut 0, &mut indices);
         let at = |path: &NodePath| indices.get(path).copied().unwrap_or(0);
         (self.spans.iter())
             .map(|s| VerseNodes {
@@ -569,15 +569,27 @@ fn flatten_nodes(nodes: &[Node], parent: Option<u32>, out: &mut Vec<BookNode>) {
 }
 
 /// Each node's path and its index in the flattened list (the same order as `flatten_nodes`)
-fn index_paths(nodes: &[Node], path: &mut NodePath, indices: &mut HashMap<NodePath, u32>) {
+/// Each place in the tree as an index into the flat list: a node's place is its own index, and
+/// the place past a list's last node (where a verse can start or end) is the index of the first
+/// node after that list, or the list's length at the end
+fn index_paths(
+    nodes: &[Node],
+    path: &mut NodePath,
+    next: &mut u32,
+    indices: &mut HashMap<NodePath, u32>,
+) {
     for (i, node) in nodes.iter().enumerate() {
         path.0.push(i);
-        indices.insert(path.clone(), indices.len() as u32);
+        indices.insert(path.clone(), *next);
+        *next += 1;
         if let Node::Element(element) = node {
-            index_paths(&element.children, path, indices);
+            index_paths(&element.children, path, next, indices);
         }
         path.0.pop();
     }
+    path.0.push(nodes.len());
+    indices.insert(path.clone(), *next);
+    path.0.pop();
 }
 
 #[cfg(test)]
@@ -612,6 +624,31 @@ mod tests {
         assert_eq!(parts, [(20, 1), (20, 2)]);
         let passage = topos.parse("Genesis 1:20".into(), BookStyle::Name).unwrap();
         assert_eq!(book.text(passage, options(false, false)), ["firstsecond"]);
+    }
+
+    #[test]
+    fn verse_nodes_across_paragraphs() {
+        // Verse 2 starts right after the first paragraph ends: a place past its last child, not
+        // a node, which once came out as 0
+        let topos = Topos::new();
+        let usx = r#"<usx><book code="GEN"/><chapter number="1" sid="GEN 1"/><para style="p"><verse number="1" sid="GEN 1:1"/>one<verse eid="GEN 1:1"/></para><para style="p"><verse number="2" sid="GEN 1:2"/>two<verse eid="GEN 1:2"/></para><chapter eid="GEN 1"/></usx>"#;
+        let book = LogoxideBook::parse(&topos, "usx".into(), usx.into()).unwrap();
+        let nodes = book.nodes();
+        let verses = book.verse_nodes();
+        let text = |v: &VerseNodes| -> String {
+            let range = v.start as usize..v.end as usize;
+            (nodes[range].iter())
+                .filter(|n| n.kind == NodeKind::Text)
+                .map(|n| n.text.as_str())
+                .collect()
+        };
+        assert_eq!(verses.len(), 2);
+        assert_eq!(text(&verses[0]), "one");
+        assert_eq!(text(&verses[1]), "two");
+        // It starts at the second paragraph, the first node after the first one
+        assert_eq!(nodes[verses[1].start as usize].name, "para");
+        assert!(verses[1].start < verses[1].marker && verses[1].marker < verses[1].end);
+        assert!(verses[0].end <= verses[1].start);
     }
 
     #[test]

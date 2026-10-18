@@ -363,8 +363,9 @@ print(kjv_john.styled_text(topos.parse("John 2:25-3:1", BookStyle.NAME), datacla
 
 The tree itself, for a host that renders with its own engine: `nodes()` lists every node in
 document order, each naming its parent by index, with its kind, tag name, attributes, and text;
-`verseNodes()` says where each verse is in that list (its marker, and the first and last node it
-runs over). A milestone (a USX verse marker, an OSIS `sID`/`eID` pair) is a `Start` or an `End`.
+`verseNodes()` says where each verse is in that list (its marker; `start`, its first
+node; and `end`, the first node after it, so `nodes.slice(start, end)` is the verse: a heading
+before it belongs to it). A milestone (a USX verse marker, an OSIS `sID`/`eID` pair) is a `Start` or an `End`.
 
 ```ts
 import { MilestoneKind, type BookNode } from "logoxide";
@@ -374,7 +375,7 @@ const at = bsb.book(43).verseNodes().find((v) => v.chapter === 3 && v.verse === 
 const marker = nodes[at.marker];
 console.log(marker.kind === NodeKind.Verse, marker.name, marker.milestone === MilestoneKind.Start, marker.attributes[0]); // → true verse true { name: 'number', value: '16' }
 const inNote = (n: BookNode): boolean => n.parent !== null && (nodes[n.parent].kind === NodeKind.Note || inNote(nodes[n.parent]));
-const words = nodes.slice(at.marker, at.end + 1).filter((n) => n.kind === NodeKind.Text && !inNote(n));
+const words = nodes.slice(at.start, at.end).filter((n) => n.kind === NodeKind.Text && !inNote(n));
 console.log(words.map((n) => n.text).join("")); // → For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.
 ```
 
@@ -386,7 +387,7 @@ at = next(v for v in bsb.book(43).verse_nodes() if (v.chapter, v.verse) == (3, 1
 marker = nodes[at.marker]
 print(marker.kind == NodeKind.VERSE, marker.name, marker.milestone == MilestoneKind.START, marker.attributes[0])  # → True verse True NodeAttribute(name='number', value='16')
 in_note = lambda n: n.parent is not None and (nodes[n.parent].kind == NodeKind.NOTE or in_note(nodes[n.parent]))
-words = [n for n in nodes[at.marker : at.end + 1] if n.kind == NodeKind.TEXT and not in_note(n)]
+words = [n for n in nodes[at.start : at.end] if n.kind == NodeKind.TEXT and not in_note(n)]
 print("".join(n.text for n in words))  # → For God so loved the world that He gave His one and only Son, that everyone who believes in Him shall not perish but have eternal life.
 ```
 
