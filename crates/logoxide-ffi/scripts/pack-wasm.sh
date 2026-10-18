@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Builds the npm package (logoxide) into dist/wasm/pkg, with its README (README.md in TypeScript
-# alone: scripts/readme.py), license, and the notices of the crates compiled into it
-# (THIRD-PARTY-NOTICES).
+# alone, its examples type-checked against the package: scripts/readme.py, which needs `npm
+# install`), license, and the notices of the crates compiled into it (THIRD-PARTY-NOTICES).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 python=$(command -v python3 || command -v python)
 boltffi pack wasm --release
-"$python" scripts/readme.py ts -o dist/wasm/pkg/README.md
+"$python" scripts/readme.py ts --api dist/wasm/pkg/logoxide.d.ts -o dist/wasm/pkg/README.md
 cp ../../LICENSE dist/wasm/pkg/LICENSE
 # web.js, bundler.js, and node.js export `initialized`, which BoltFFI's types leave out
 types=dist/wasm/pkg/logoxide.d.ts

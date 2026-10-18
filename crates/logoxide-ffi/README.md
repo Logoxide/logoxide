@@ -1547,7 +1547,14 @@ the package and run them).
 ```sh
 npm install && npm run pack:wasm   # dist/wasm/pkg (npm: logoxide)
 npm run pack:python                # dist/python/wheelhouse (PyPI: logoxide)
+python scripts/readme.py check     # this README's examples and names, against both builds
 ```
+
+Each pack script writes its package's README with `scripts/readme.py`, which first checks this
+one, without running anything: its marks, its examples in pairs (TypeScript, then Python), the
+links to its headings, each language's examples against the package just built (TypeScript's by
+`tsc`, Python's against its `__init__.pyi`), and the API's names in the prose. A problem stops
+the build, with README.md's line.
 
 The examples run against the KJV and BSB packages (git repositories with release tags; the
 owner's are in `~/Development/logoxide-packages`, the default) and `examples/fixtures`: a made-up

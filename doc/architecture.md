@@ -795,7 +795,11 @@ specifications of the formats are the other files in this folder.
   their own language (`scripts/readme.py`, run by the pack scripts): the other language's code
   blocks left out, `<!-- source -->` passages (building, the checks) too, `<!-- ts: … -->` and
   `<!-- python: … -->` comments shown in theirs, and Python's prose names in snake_case (`null`
-  as `None`). The npm package is WebAssembly in Node
+  as `None`). Writing one checks it first, failing the pack (`readme.py check` does both): its
+  marks whole, its examples in ts-then-python pairs, its links to headings real, the examples
+  against the package built (TypeScript type-checked by `tsc` against `logoxide.d.ts`; Python
+  parsed and its imports, attributes, arguments, and record fields checked against
+  `__init__.pyi`, following what each variable holds), and the API's names in the prose. The npm package is WebAssembly in Node
   too, so `openPackageDir`, `readPassage`, and `comparePassage` are Python's (and Swift's and
   Kotlin's) alone
 
