@@ -678,7 +678,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn links_lead_nowhere() {
-        let root = std::env::temp_dir().join(format!("logoxide-links-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("logoxide-git-links-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let (repo, outside) = (root.join("repo"), root.join("outside"));
         std::fs::create_dir_all(&repo).unwrap();
