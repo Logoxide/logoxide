@@ -8,10 +8,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
   # The topos tag the bindings build against comes from topos-bible's version in Cargo.toml
-  # (scripts/topos-ref.sh), so it's written in one place. sword-modules has no public repository
-  # yet: until it's on crates.io, set the SWORD_MODULES_REPO repository variable to a git URL
-  # CI can clone (see scripts/patch-unpublished.sh), or the jobs that build it fail saying so.
-  SWORD_MODULES_REPO: ${{ vars.SWORD_MODULES_REPO }}
+  # (scripts/topos-ref.sh), so it's written in one place
 
 jobs:
   versions:
@@ -28,10 +25,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
-      # Until topos 0.6 and sword-modules 0.1 are on crates.io, build against checkouts of them
-      # (a generated .cargo/config.toml, in CI only). Does nothing once they're published.
-      - name: Patch in unpublished dependencies
-        run: scripts/patch-unpublished.sh . topos sword-modules
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --check
       - run: cargo test --workspace
@@ -49,8 +42,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.MSRV }}
-      - name: Patch in unpublished dependencies
-        run: scripts/patch-unpublished.sh . topos sword-modules
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace
 
@@ -71,8 +62,6 @@ jobs:
         with:
           components: clippy, rustfmt
       # The bindings patch topos in their own Cargo.toml; sword-modules still comes from crates.io
-      - name: Patch in unpublished dependencies
-        run: logoxide/scripts/patch-unpublished.sh logoxide sword-modules
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: logoxide/crates/logoxide-ffi

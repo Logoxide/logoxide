@@ -17,10 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   # The topos tag the bindings build against (BoltFFI only exports path dependencies' items, so
   # logoxide-ffi needs a checkout of topos beside logoxide) is topos-bible's version in
-  # Cargo.toml, read by scripts/topos-ref.sh in each job, so it's written in one place. Until
-  # sword-modules is on crates.io, the SWORD_MODULES_REPO repository variable names a git URL to
-  # build it from (scripts/patch-unpublished.sh).
-  SWORD_MODULES_REPO: ${{ vars.SWORD_MODULES_REPO }}
+  # Cargo.toml, read by scripts/topos-ref.sh in each job, so it's written in one place
 
 jobs:
   check-version:
@@ -50,16 +47,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: The workspace's tests
         working-directory: logoxide
-        run: |
-          scripts/patch-unpublished.sh . topos sword-modules
-          cargo test --workspace
-      # The bindings patch topos in their own Cargo.toml, so only sword-modules is patched here
+        run: cargo test --workspace
       - name: The bindings' tests
-        working-directory: logoxide
-        run: |
-          rm -rf .cargo
-          scripts/patch-unpublished.sh . sword-modules
-          cd crates/logoxide-ffi && cargo test
+        working-directory: logoxide/crates/logoxide-ffi
+        run: cargo test
 
   # manylinux containers make wheels that run on any Linux with glibc 2.28 or later
   wheels-linux:
@@ -90,8 +81,6 @@ jobs:
           curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           "$HOME/.cargo/bin/cargo" install boltffi_cli --version "$BOLTFFI_VERSION" --locked
-      - name: Patch in unpublished dependencies
-        run: logoxide/scripts/patch-unpublished.sh logoxide sword-modules
       - name: Build wheels for Python 3.10 to 3.14
         working-directory: logoxide/crates/logoxide-ffi
         run: |
@@ -154,9 +143,6 @@ jobs:
       - name: Install BoltFFI
         shell: bash
         run: command -v boltffi || cargo install boltffi_cli --version "$BOLTFFI_VERSION" --locked
-      - name: Patch in unpublished dependencies
-        shell: bash
-        run: logoxide/scripts/patch-unpublished.sh logoxide sword-modules
       - name: Build the wheel
         shell: bash
         working-directory: logoxide/crates/logoxide-ffi
@@ -210,8 +196,6 @@ jobs:
       # wasm-opt comes from the binaryen npm package (Ubuntu's is too old)
       - name: Install BoltFFI
         run: command -v boltffi || cargo install boltffi_cli --version "$BOLTFFI_VERSION" --locked
-      - name: Patch in unpublished dependencies
-        run: logoxide/scripts/patch-unpublished.sh logoxide sword-modules
       - name: Build the package and run the example against it
         working-directory: logoxide/crates/logoxide-ffi
         run: |

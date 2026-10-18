@@ -194,10 +194,6 @@ topos's API.
   the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.1.0.
 - **topos**: the topos tag the bindings build against is `v` and topos-bible's version in
   `Cargo.toml` (`scripts/topos-ref.sh`); both workflows read it from there.
-- **Unpublished dependencies**: until topos 0.6 and sword-modules 0.1 are on crates.io, CI builds
-  against checkouts of them (`scripts/patch-unpublished.sh` writes a `[patch.crates-io]` into an
-  ignored `.cargo/config.toml`). sword-modules has no public repository yet, so CI needs the
-  `SWORD_MODULES_REPO` repository variable (a git URL it can clone) until it is published.
 - **Releases**: `cargo publish --workspace` for the crates. Pushing a `v*` tag runs
   `.github/workflows/release.yml`: it checks the versions against the tag, runs the workspace's and
   the bindings' tests, builds the wheels and the npm package, installs a wheel in a fresh
