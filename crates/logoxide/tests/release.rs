@@ -35,6 +35,20 @@ fn git(dir: &Path, args: &[&str]) {
     );
 }
 
+/// A repository whose own config names its author, as a user's does: `lx release` commits and
+/// tags in it, and a machine with no global identity (CI's) would refuse
+fn init(repo: &Path) {
+    git(repo, &["init", "-q", "-b", "main"]);
+    for (key, value) in [
+        ("user.name", "t"),
+        ("user.email", "t@t"),
+        ("commit.gpgsign", "false"),
+        ("tag.gpgsign", "false"),
+    ] {
+        git(repo, &["config", key, value]);
+    }
+}
+
 fn write(repo: &Path, version: &str, verses: &[(u8, &str)]) {
     let body: String = verses
         .iter()
@@ -66,7 +80,7 @@ fn releases_follow_what_changed() {
         "1.0.0",
         &[(16, "For God so loved"), (17, "For God sent")],
     );
-    git(&repo, &["init", "-q", "-b", "main"]);
+    init(&repo);
     // The first release: nothing to compare with
     let first = plan(&repo, &cli, &DefaultReader).unwrap();
     assert!(first.previous.is_none());
@@ -166,7 +180,7 @@ fn an_unreadable_summary_is_built_again() {
         "1.0.0",
         &[(16, "For God so lo\u{AD}ved"), (17, "For God sent")],
     );
-    git(&repo, &["init", "-q", "-b", "main"]);
+    init(&repo);
     let first = plan(&repo, &cli, &DefaultReader).unwrap();
     release(&repo, &first, &cli).unwrap();
     // Summary files in no layout this lx reads: 8 bytes of some hash a verse, no header
@@ -226,7 +240,7 @@ fn a_dictionarys_entries_are_released_and_compared() {
     std::fs::create_dir_all(&repo).unwrap();
     let cli = GitCli::default();
     write_dictionary(&repo, "1.0.0", &[("G0025", "to love"), ("G26", "love")]);
-    git(&repo, &["init", "-q", "-b", "main"]);
+    init(&repo);
     let first = plan(&repo, &cli, &DefaultReader).unwrap();
     assert_eq!((first.summary.entries, first.verses.len()), (2, 0));
     release(&repo, &first, &cli).unwrap();
