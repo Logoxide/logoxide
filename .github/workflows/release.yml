@@ -259,4 +259,13 @@ jobs:
         with:
           name: npm-package
           path: pkg
-      - run: npm publish ./pkg --access public --provenance
+      # A version already on npm (0.1.0 was published by hand, since npm only trusts a publisher
+      # for a package that exists) is left alone, so the rest of the release can go on
+      - name: Publish, unless this version is on npm already
+        run: |
+          version=$(node -p 'require("./pkg/package.json").version')
+          if [ "$(npm view "logoxide@$version" version 2>/dev/null)" = "$version" ]; then
+            echo "logoxide $version is on npm already"
+          else
+            npm publish ./pkg --access public --provenance
+          fi
