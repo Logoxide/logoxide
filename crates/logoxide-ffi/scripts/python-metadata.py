@@ -15,7 +15,12 @@ if not (package / "setup.py").is_file():
 if not (package / "THIRD-PARTY-NOTICES").is_file():
     sys.exit(f"{package} has no THIRD-PARTY-NOTICES; run scripts/third-party-notices.py first")
 
-shutil.copy(root / "README.md", package / "README.md")
+# README.md in Python alone
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(root / "scripts"))
+from readme import readme  # noqa: E402
+
+(package / "README.md").write_text(readme((root / "README.md").read_text(), "python"))
 shutil.copy(root.parent.parent / "LICENSE", package / "LICENSE")
 (package / "setup.cfg").write_text(
     """[metadata]

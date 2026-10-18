@@ -791,7 +791,11 @@ specifications of the formats are the other files in this folder.
   real packages (`examples/node/install.ts`, whose lock and library `lx install` accepts), and
   `examples/node/readme.ts` and `examples/python/readme.py` run every example in its README (one
   per export, in TypeScript and Python) against the KJV and BSB and `examples/fixtures`, answering
-  their downloads offline, and check what each prints. The npm package is WebAssembly in Node
+  their downloads offline, and check what each prints. npm's and PyPI's READMEs are that one in
+  their own language (`scripts/readme.py`, run by the pack scripts): the other language's code
+  blocks left out, `<!-- source -->` passages (building, the checks) too, `<!-- ts: … -->` and
+  `<!-- python: … -->` comments shown in theirs, and Python's prose names in snake_case (`null`
+  as `None`). The npm package is WebAssembly in Node
   too, so `openPackageDir`, `readPassage`, and `comparePassage` are Python's (and Swift's and
   Kotlin's) alone
 

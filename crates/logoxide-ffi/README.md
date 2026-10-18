@@ -1,26 +1,50 @@
+<!-- source -->
 # logoxide (bindings)
+<!-- /source -->
+<!-- ts:
+# logoxide for TypeScript and JavaScript
+-->
+<!-- python:
+# logoxide for Python
+-->
 
-logoxide's packages with topos's whole API, in one package for TypeScript/WebAssembly, Python,
-Swift, and Kotlin (through [BoltFFI](https://github.com/boltffi/boltffi)). `Topos`,
-`ToposTranslations`, and the rest are the same as in topos's own package (`topos-bible`). A book's
-text is logoxide's own `LogoxideBook` (`pkg.book(id)`, or `LogoxideBook.parse(topos, "usx", text)`
-for a file of your own): its verses, and passages as HTML or plain text. It was topos's
-`ToposBook`, with the same methods; its `BookVerse` and `BookTextOptions` keep their names.
+Bibles, commentaries, lexicons, books, and media as versioned packages, from
+[logoxide](https://github.com/Logoxide/logoxide) (its source, its issues, and `lx`, its command
+line), with topos's whole API. These bindings are its
+[`crates/logoxide-ffi`](https://github.com/Logoxide/logoxide/tree/main/crates/logoxide-ffi), made
+through [BoltFFI](https://github.com/boltffi/boltffi): one API for <!-- source -->TypeScript/WebAssembly (npm: `logoxide`), Python (PyPI: `logoxide`), Swift, and Kotlin. npm's and PyPI's READMEs are this one in their own language (`scripts/readme.py` writes them).<!-- /source --><!-- ts: TypeScript and JavaScript (this package, WebAssembly in browsers, Node, and Bun), Python (PyPI: `logoxide`), Swift, and Kotlin. --><!-- python: Python (this package, a native module), TypeScript and JavaScript (npm: `logoxide`), Swift, and Kotlin. -->
+
+`Topos`, `ToposTranslations`, and the rest are the same as in topos's own package
+(`topos-bible`). A book's text is logoxide's own `LogoxideBook` (`pkg.book(id)`, or
+`LogoxideBook.parse(topos, "usx", text)` for a file of your own): its verses, and passages as HTML
+or plain text. It was topos's `ToposBook`, with the same methods; its `BookVerse` and
+`BookTextOptions` keep their names.
 
 The host reads and writes the files: an app's file API is often asynchronous (Obsidian's vault),
 and WebAssembly has none. logoxide reads the text from the bytes it's given, and hands back the
-cache files it wrote for the host to save. Only the Python (and Swift and Kotlin) packages are
-native, so only they have `openPackageDir`, `readPassage`, and `comparePassage`, which read
-folders themselves; the npm package is WebAssembly in Node too.
+cache files it wrote for the host to save.
+<!-- source -->
+Only the Python (and Swift and Kotlin) packages are native, so only they have `openPackageDir`,
+`readPassage`, and `comparePassage`, which read folders themselves; the npm package is
+WebAssembly in Node too.
+<!-- /source -->
+<!-- ts:
+This package is WebAssembly in Node too, so `openPackageDir`, `readPassage`, and
+`comparePassage`, which read folders themselves, are only in the native packages (Python, Swift,
+and Kotlin): here, open each package from its files.
+-->
+<!-- python:
+This package is native, so it also has `openPackageDir`, `readPassage`, and `comparePassage`,
+which read folders themselves (WebAssembly, npm's package, can't).
+-->
 
 ## The examples
 
-Each feature below has an example in TypeScript and in Python. They run in order, as one program:
-each uses what the ones before it made (`kjv`, `bsb`, `project`, `installer`, ...). What a line
+Each feature below has an example in <!-- source -->TypeScript and in Python<!-- /source --><!-- ts: TypeScript --><!-- python: Python -->. They run in order, as one program: each uses what the ones before it made (`kjv`, `bsb`, `project`, `installer`, ...). What a line
 prints is written after it, following `→` (`…` stands for text left out).
 
-They're checked: `examples/node/readme.ts` and `examples/python/readme.py` run every example here
-and compare what it prints with its `→` comments. They run in a folder holding the KJV and BSB
+They're checked: <!-- source -->`examples/node/readme.ts` and `examples/python/readme.py` run every example here and compare what it prints with its `→` comments.<!-- /source --><!-- ts: [`examples/node/readme.ts`](https://github.com/Logoxide/logoxide/blob/main/crates/logoxide-ffi/examples/node/readme.ts) runs every example here and compares what it prints with its `→` comments. --><!-- python: [`examples/python/readme.py`](https://github.com/Logoxide/logoxide/blob/main/crates/logoxide-ffi/examples/python/readme.py) runs every example here and compares what it prints with its `→` comments. -->
+They run in a folder holding the KJV and BSB
 packages (`kjv/` and `bsb/`) and the files in `examples/fixtures`, and answer the downloads the
 examples make offline: `https://example.org/kjv` and `https://example.org/bsb` are those packages'
 repositories, and `https://example.org/catalog.toml` and eBible.org's list and zip are fixtures,
@@ -42,10 +66,11 @@ so what's printed is theirs. With real URLs the code is the same.
 - [Reading natively](#reading-natively)
 - [Errors](#errors)
 - [Every export](#every-export)
-- [Building](#building)
+- <!-- source -->[Building](#building)<!-- /source --><!-- ts: [Source and building](#source-and-building) --><!-- python: [Source and building](#source-and-building) -->
 
 ## Loading
 
+<!-- source -->
 In Node and Bun the WebAssembly module is ready on import (in a browser, `await initialized`
 first). Names are camelCase in TypeScript and snake_case in Python. Records are plain objects in
 TypeScript and frozen dataclasses in Python, every field given; enums without data are numbers in
@@ -55,6 +80,21 @@ data are `{ tag: "Library", dir }` objects in TypeScript and a class each in Pyt
 TypeScript and `import_` in Python, and `from` is `from_` in Python. Bytes are `Uint8Array` and
 `bytes`, and so are lists of small numbers (`books()`, verse counts); 64-bit numbers (a file's
 `size`) are `bigint`s in TypeScript.
+<!-- /source -->
+<!-- ts:
+In Node and Bun the WebAssembly module is ready on import (in a browser, `await initialized`
+first). Names are camelCase. Records are plain objects, every field given; enums without data are
+numbers (`PackageKind.Bible` is `0`), and enums with data are `{ tag: "Library", dir }` objects. A
+field or argument named `import` is `_import`. Bytes are `Uint8Array`s, and so are lists of small
+numbers (`books()`, verse counts); 64-bit numbers (a file's `size`) are `bigint`s.
+-->
+<!-- python:
+The module is ready on import. Names are snake_case. Records are frozen dataclasses, every field
+given; enums without data are `IntEnum`s (`PackageKind.BIBLE`), and enums with data are a class
+each (`PackageLocationLibrary(dir=...)`, a subclass of `PackageLocation`). A field or argument
+named `import` is `import_`, and one named `from` is `from_`. Bytes are `bytes`, and so are lists
+of small numbers (`books()`, verse counts).
+-->
 
 The host's own helpers, used by the examples below: a folder's files, writing files, and HTTP.
 
@@ -221,9 +261,20 @@ hashes = kjv.verse_hashes(43)
 print(len(hashes), next(v for v in hashes if (v.chapter, v.verse) == (3, 16)))  # → 879 VerseHashEntry(chapter=3, verse=16, last=16, part=0, hash='…')
 ```
 
+<!-- source -->
 Natively, `openPackageDir` reads a folder itself and keeps its cache in a folder of its own (so
-`cacheWrites()` is empty); in WebAssembly it's an `Io` error. `readPackageInfo` reads a
-package's `logoxide.toml` alone, without its text (to name a package that's turned off).
+`cacheWrites()` is empty); in WebAssembly it's an `Io` error.
+<!-- /source -->
+<!-- ts:
+`openPackageDir`, which reads a folder itself in the native packages, is an `Io` error in
+WebAssembly.
+-->
+<!-- python:
+`openPackageDir` reads a folder itself and keeps its cache in a folder of its own (so
+`cacheWrites()` is empty).
+-->
+`readPackageInfo` reads a package's `logoxide.toml` alone, without its text (to name a package
+that's turned off).
 
 ```ts
 import { LogoxideErrorException } from "logoxide";
@@ -364,8 +415,8 @@ print(kjv_john.styled_text(topos.parse("John 2:25-3:1", BookStyle.NAME), datacla
 The tree itself, for a host that renders with its own engine: `nodes()` lists every node in
 document order, each naming its parent by index, with its kind, tag name, attributes, and text;
 `verseNodes()` says where each verse is in that list (its marker; `start`, its first
-node; and `end`, the first node after it, so `nodes.slice(start, end)` is the verse: a heading
-before it belongs to it). A milestone (a USX verse marker, an OSIS `sID`/`eID` pair) is a `Start` or an `End`.
+node; and `end`, the first node after it, so <!-- source -->`nodes.slice(start, end)`<!-- /source --><!-- ts: `nodes.slice(start, end)` --><!-- python: `nodes[start:end]` --> is the verse: a heading
+before it belongs to it). A milestone (a USX verse marker, an OSIS `sID`/`eID` pair) is <!-- source -->a `Start` or an `End`<!-- /source --><!-- ts: a `Start` or an `End` --><!-- python: `MilestoneKind.START` or `MilestoneKind.END` -->.
 
 ```ts
 import { MilestoneKind, type BookNode } from "logoxide";
@@ -393,7 +444,7 @@ print("".join(n.text for n in words))  # → For God so loved the world that He 
 
 A book file of your own: `usfmToUsx` turns USFM into USX (`usxToUsfm` the other way, as
 normalized USFM), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
-`InvalidMarkup`, which is `null` in TypeScript), and `LogoxideBook.usxChapterVerses` counts a USX
+`InvalidMarkup`<!-- ts: , which is `null` here -->), and `LogoxideBook.usxChapterVerses` counts a USX
 book's verses from its markers alone, fast enough for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
 whose words changed a little since, by byte offsets.
 
@@ -833,8 +884,19 @@ A catalog lists packages to find by name or language: a `catalog.toml` anyone ho
 publisher's own list (eBible.org's `translations.csv`, fetch.bible's `manifest.json`, CCEL's page,
 a SWORD repository's `mods.d.tar.gz`, which is read as bytes). `parseCatalog` reads one's text and
 `parseCatalogBytes` its bytes, by its location; catalogs `merge`, so one search covers them all.
+<!-- source -->
 Each entry's `source` says how to get it: a `Git` repository, a `Registry` of release archives
 (its `releases`), or an `External` publisher's download to import.
+<!-- /source -->
+<!-- ts:
+Each entry's `source` says how to get it: a `Git` repository, a `Registry` of release archives
+(its `releases`), or an `External` publisher's download to import.
+-->
+<!-- python:
+Each entry's `source` says how to get it: a git repository (`CatalogSourceGit`), a registry of
+release archives (`CatalogSourceRegistry`, its `releases`), or another publisher's download to
+import (`CatalogSourceExternal`).
+-->
 
 ```ts
 import { type LogoxideCatalog } from "logoxide";
@@ -1007,7 +1069,8 @@ print(found.id, found.version, tag, len(commit))  # → bsb 1.0.3 v1.0.3 40
 ```
 
 `install(project, update)` resolves the project's dependencies, keeping its lock file's versions
-(`{ tag: "Nothing" }`), or moving all of them (`All`) or some (`Only`) to the newest their
+<!-- source -->(`{ tag: "Nothing" }`), or moving all of them (`All`) or some (`Only`)<!-- /source --><!-- ts: (`{ tag: "Nothing" }`), or moving all of them (`All`) or some (`Only`) --><!-- python: (`UpdateModeNothing()`), or moving all of them (`UpdateModeAll()`) or some (`UpdateModeOnly(ids)`) -->
+to the newest their
 requirements allow, and says what it needs until it's done: then write `files` into the library
 and `lock` as the vault's `logoxide.lock`. A book from a registry is added by the registry's
 catalog.
@@ -1064,7 +1127,7 @@ print(install(logoxide.installer(), project, UpdateModeOnly(ids=["bsb"])))  # �
 
 A package is what its manifest declares, so files a reader adds beside it (annotations) don't
 change its checksum, but changing its own files does: installed versions are checked against the
-lock file's checksum, and `{ tag: "Repair" }` hands back the files of any whose own files changed,
+lock file's checksum, and <!-- source -->`{ tag: "Repair" }`<!-- /source --><!-- ts: `{ tag: "Repair" }` --><!-- python: `UpdateModeRepair()` --> hands back the files of any whose own files changed,
 to write over them.
 
 ```ts
@@ -1156,7 +1219,7 @@ print(project.name_clashes([
 Another publisher's download is made into a package the same way for every publisher:
 `importDownloads(entry)` says what to fetch (each from the first of its `urls` that answers),
 and `importDownloaded(entry, files)` makes the package's files from their bytes, by name. Write
-them into a folder in the vault and add it as a path package, or add `{ _import }` and let
+them into a folder in the vault and add it as a path package, or add <!-- source -->`{ _import }`<!-- /source --><!-- ts: `{ _import }` --><!-- python: a `Dependency` with `import_` --> and let
 installing make it (kept in the library by its checksum, as `lx import` does).
 
 ```ts
@@ -1338,11 +1401,19 @@ print('kind = "collection"' in collection[0].bytes.decode())  # → True
 
 ## Reading natively
 
-In Python (and Swift and Kotlin), `readPassage` and `comparePassage` read a project's Bibles from
-its folder and the library's, as `lx read` and `lx compare` do: a passage in the Bible the
-reference names (else the project's first), and a passage in several Bibles, each in its own
-numbering through the project's versification maps, with what of it one lacks. In WebAssembly
-(the npm package, in Node too) they're an `Io` error: open each package and read its book instead.
+<!-- source -->In Python (and Swift and Kotlin),<!-- /source --><!-- ts: In the native packages (Python, Swift, and Kotlin), --><!-- python: In this package (and in Swift and Kotlin), -->
+`readPassage` and `comparePassage` read a project's Bibles from its folder and the library's, as
+`lx read` and `lx compare` do: a passage in the Bible the reference names (else the project's
+first), and a passage in several Bibles, each in its own numbering through the project's
+versification maps, with what of it one lacks.
+<!-- source -->
+In WebAssembly (the npm package, in Node too) they're an `Io` error: open each package and read
+its book instead.
+<!-- /source -->
+<!-- ts:
+In WebAssembly (this package, in Node too) they're an `Io` error: open each package and read its
+book instead.
+-->
 
 ```ts
 const plain: BookTextStyle = { verseLabel: "[{verse}]", chapterLabel: null, notes: false, headings: false, templates: [], width: null, limit: null };
@@ -1373,11 +1444,20 @@ for c in logoxide.compare_passage("vault", "library", "cache", "John 3:16", ["KJ
 
 ## Errors
 
+<!-- source -->
 Errors are thrown as `LogoxideErrorException` in TypeScript (`error.value` is `{ tag, message }`)
 and raised as `LogoxideErrorException` in Python (`error.error` is a `LogoxideErrorNotFound`,
-`LogoxideErrorIo`, and so on, with its `message`). The tag is the core's kind: `NotFound`, `Io`,
-`Invalid`, `InvalidMarkup`, `Network`, `Git`, `Archive`, `Integrity`, `Resolve`, `Busy`, and
-`Conflict`.
+`LogoxideErrorIo`, and so on, with its `message`).
+<!-- /source -->
+<!-- ts:
+Errors are thrown as `LogoxideErrorException` (`error.value` is `{ tag, message }`).
+-->
+<!-- python:
+Errors are raised as `LogoxideErrorException` (`error.error` is a `LogoxideErrorNotFound`,
+`LogoxideErrorIo`, and so on, with its `message`).
+-->
+The <!-- source -->tag<!-- /source --><!-- ts: tag --><!-- python: kind --> is the core's kind: `NotFound`, `Io`, `Invalid`, `InvalidMarkup`, `Network`,
+`Git`, `Archive`, `Integrity`, `Resolve`, `Busy`, and `Conflict`.
 
 ```ts
 try {
@@ -1399,7 +1479,7 @@ except LogoxideErrorException as error:
 
 ## Every export
 
-Each of logoxide's classes, functions, records, and enums (by their TypeScript names), and where
+Each of logoxide's classes, functions, records, and enums <!-- source -->(by their TypeScript names)<!-- /source --><!-- ts: (by their TypeScript names) --><!-- python: (each enum with data a class for each of its variants, like `PackageLocationLibrary`) -->, and where
 an example uses it. The rest
 (`Topos`, `ToposTranslations`, `ToposQuery`, `ToposFormat`, `ToposOptions`, `ToposIndex`,
 `ToposFiles`, `Passage`, and their records and enums) are topos's: see [References, with
@@ -1445,6 +1525,23 @@ topos](#references-with-topos).
 | `ReadPassage`, `ComparedPassage` | [Reading natively](#reading-natively) |
 | `LogoxideError`, `LogoxideErrorException` | [Errors](#errors) |
 
+<!-- ts:
+## Source and building
+
+This package is built from logoxide's repository,
+[github.com/Logoxide/logoxide](https://github.com/Logoxide/logoxide), where its source, its
+issues, and the checks of these examples are (`crates/logoxide-ffi`; its README says how to build
+the package and run them).
+-->
+<!-- python:
+## Source and building
+
+This package is built from logoxide's repository,
+[github.com/Logoxide/logoxide](https://github.com/Logoxide/logoxide), where its source, its
+issues, and the checks of these examples are (`crates/logoxide-ffi`; its README says how to build
+the package and run them).
+-->
+<!-- source -->
 ## Building
 
 ```sh
@@ -1470,3 +1567,4 @@ python examples/python/packages.py ~/Development/logoxide-packages/bsb ~/Develop
 ```
 
 topos's crate is a path dependency (`../topos`), as for the rest of logoxide.
+<!-- /source -->
