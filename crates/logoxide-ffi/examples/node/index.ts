@@ -49,7 +49,7 @@ for (const pkg of packages) {
 // A vault's manifest and lock file say which packages to read, and from where
 const project = logoxide.parseProject(
   `[dependencies]\nbsb = { git = "https://example.org/bsb", version = "1" }\n\n[settings]\ndefault = "bsb"\n`,
-  `version = 1\ndependencies = ["bsb 1.0.1"]\n\n[[package]]\nid = "bsb"\nversion = "1.0.1"\ngit = "https://example.org/bsb"\ntag = "v1.0.1"\ncommit = "0123456789"\n`,
+  `version = 1\ndependencies = ["bsb 1.0.1+g01234567"]\n\n[[package]]\nid = "bsb"\nversion = "1.0.1"\ngit = "https://example.org/bsb"\ntag = "v1.0.1"\ncommit = "0123456789abcdef0123456789abcdef01234567"\n`,
 );
 console.log(project.defaultBible(), project.packages().map((p) => p.location));
 

@@ -100,7 +100,7 @@ impl TryFrom<NewPackage> for core::NewPackage {
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CitedPassage {
-    /// An OSIS reference (`Matt.10.8`): `Topos.parseOsis`
+    /// An OSIS reference (`Matt.10.8`), which `Topos.parse` reads
     pub passage: String,
     pub count: u32,
 }
@@ -118,7 +118,8 @@ impl From<core_references::Cited> for CitedPassage {
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FoundReference {
-    /// The passage, as an OSIS reference (`John.3.16`, `John.3.16-John.3.18`): `Topos.parseOsis`
+    /// The passage, as an OSIS reference (`John.3.16`, `John.3.16-John.3.18`), which `Topos.parse`
+    /// reads
     pub passage: String,
     /// The file it's in, in the package (`epub/the-dorean-principle.epub`)
     pub file: String,

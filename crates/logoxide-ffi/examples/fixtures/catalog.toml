@@ -1,0 +1,40 @@
+format = 1
+name = "Example Bibles"
+
+[[package]]
+id = "kjv"
+name = "King James Version (1769)"
+abbreviation = "KJV"
+aliases = ["AV", "King James"]
+language = "en"
+version = "1.0.3"
+license = "LicenseRef-PublicDomain"
+work = "kjv"
+git = "https://example.org/kjv"
+
+[[package]]
+id = "bsb"
+name = "Berean Standard Bible"
+abbreviation = "BSB"
+aliases = ["Berean"]
+language = "en"
+version = "1.0.3"
+license = "LicenseRef-PublicDomain"
+work = "bsb"
+git = "https://example.org/bsb"
+
+[[package]]
+id = "sermons-on-love"
+name = "Sermons on Love"
+language = "en"
+version = "1.0.0"
+kind = "book"
+license = "CC0-1.0"
+path = "sermons-on-love"
+
+[[package.release]]
+version = "1.0.0"
+url = "sermons-on-love/sermons-on-love-1.0.0.tar.gz"
+sha256 = "sha256:333cabb75482a103b93a3dcef95605d18a583f25d9e560a993a266e9c1827e16"
+checksum = "sha256:cdd98e6e2e02f6240fe4da7fb8a17481c065419ff09994046efdea7673e3f9a2"
+size = 2504

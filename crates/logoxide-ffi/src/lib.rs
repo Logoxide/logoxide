@@ -248,7 +248,7 @@ impl Logoxide {
     }
 
     /// The publishers packages can be imported from, as import names prefix them (`ebible`,
-    /// `fetch`, `ccel`, `sword`: `ebible:eng-asv`)
+    /// `fetch`, `ccel`, `sword`, `door43`: `ebible:eng-asv`)
     pub fn import_prefixes(&self) -> Vec<String> {
         logoxide_import::PREFIXES
             .iter()

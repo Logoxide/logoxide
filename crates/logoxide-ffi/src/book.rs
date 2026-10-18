@@ -140,7 +140,8 @@ pub struct BookTextStyle {
     /// Written where each verse starts (`[{verse}]`; `{chapter}`, `{book}`, `{name}` too), or
     /// none for no verse numbers
     pub verse_label: Option<String>,
-    /// Written on its own line where each chapter starts (`{name} {chapter}`), or none
+    /// Written on its own line where a chapter starts inside the passage (`{name} {chapter}`), or
+    /// none
     pub chapter_label: Option<String>,
     /// Footnotes and cross references, in brackets when shown
     pub notes: bool,

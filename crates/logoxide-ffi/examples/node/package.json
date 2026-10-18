@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.ts"
+    "start": "node index.ts",
+    "readme": "node readme.ts"
   },
   "dependencies": {
     "logoxide": "file:../../dist/wasm/pkg"

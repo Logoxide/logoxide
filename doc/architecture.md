@@ -742,7 +742,7 @@ specifications of the formats are the other files in this folder.
   (phase D: `importEbible`, `importFetchBible`, `importCcel`, and `importSword` are gone);
   `Logoxide.unzip(bytes)` gives a zip's files (logoxide-text's `archive::unzip`, its limits
   kept), so a host reads a zip of book files without a zip library or a made-up import;
-  `importPrefixes` (`ebible`, `fetch`, `ccel`, `sword`), `swordCatalogUrl(name)` (a
+  `importPrefixes` (`ebible`, `fetch`, `ccel`, `sword`, `door43`), `swordCatalogUrl(name)` (a
   CrossWire-listed repository's `mods.d.tar.gz`), `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
   `Files`; `PackageInfo` and `CatalogEntry` carry `rights` (said and derived),
@@ -782,5 +782,10 @@ specifications of the formats are the other files in this folder.
   It depends on logoxide-app without `ureq`. Its tests are unit tests
   (`src/tests.rs`): an rlib would collide with the core's `liblogoxide.rlib`. Build with
   `npm install && npm run pack:wasm` or `npm run pack:python`; the examples open and install the
-  real packages (`examples/node/install.ts`, whose lock and library `lx install` accepts)
+  real packages (`examples/node/install.ts`, whose lock and library `lx install` accepts), and
+  `examples/node/readme.ts` and `examples/python/readme.py` run every example in its README (one
+  per export, in TypeScript and Python) against the KJV and BSB and `examples/fixtures`, answering
+  their downloads offline, and check what each prints. The npm package is WebAssembly in Node
+  too, so `openPackageDir`, `readPassage`, and `comparePassage` are Python's (and Swift's and
+  Kotlin's) alone
 

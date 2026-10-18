@@ -20,7 +20,8 @@ console.log(`by ${metadata.authors.join(", ")} (${metadata.language})`);
 let start = performance.now();
 const files = logoxide.newPackage(basename(path), bytes, {
   id: null, name: null, abbreviation: null, authors: [], description: null, version: "1.0.0",
-  kind: null, language: null, license, publisher: null, homepage: null,
+  kind: null, language: null, license, publisher: null, homepage: null, repository: null,
+  keywords: [], categories: [], aboutBooks: [],
 });
 console.log(`made ${files.map((f) => f.path).join(", ")} in ${(performance.now() - start).toFixed(0)} ms`);
 console.log(new TextDecoder().decode(files.find((f) => f.path === "logoxide.toml")!.bytes));

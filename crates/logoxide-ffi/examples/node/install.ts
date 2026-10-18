@@ -84,7 +84,7 @@ for (const url of process.argv.slice(2)) {
   while (step.tag === "Fetch") { await answer(installer, step.request); step = installer.inspect(url, null, null, null); }
   const { info, tag } = step.inspected;
   console.log(`${info.abbreviation} ${info.version} (${info.license}) at ${tag}`);
-  project = project.addDependency(info.id, { git: url, registry: null, path: null, version: info.version, tag: null, branch: null, rev: null, features: [], defaultFeatures: true, packageId: null, abbreviation: null, aliases: null });
+  project = project.addDependency(info.id, { git: url, registry: null, path: null, _import: null, version: info.version, tag: null, branch: null, rev: null, features: [], defaultFeatures: true, packageId: null, abbreviation: null, aliases: null });
 }
 writeFileSync(join(vault, "logoxide.toml"), project.manifestText());
 
