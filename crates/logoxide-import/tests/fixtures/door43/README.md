@@ -1,4 +1,4 @@
-# Door43 fixtures (PLAN-NEXT.md L.2)
+# Door43 fixtures
 
 git.door43.org didn't answer from the owner's machine on 2026-10-10 or 2026-10-11 (its catalog
 API, swagger, and archive URLs all timed out; `api.door43.org` doesn't resolve), so:

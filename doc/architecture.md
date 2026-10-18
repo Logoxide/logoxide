@@ -1,18 +1,16 @@
 # Architecture: the crates, module by module
 
-The crate map that was CLAUDE.md until 2026-10-14 (`PLAN-REVIEW.md` R3), moved here whole so
-nothing is lost while it is folded into each crate's rustdoc and README (phase R-E), after
-which this file goes. Until then it is kept current: a change to a module changes its paragraph
-here. The decisions and conventions stayed in CLAUDE.md; the specifications of the formats are
-the other files in this folder.
+A paragraph per module, kept current: a change to a module changes its paragraph here. It is
+being folded into each crate's rustdoc and README, after which this file goes. The
+specifications of the formats are the other files in this folder.
 
 ## Layout
 
 - `crates/logoxide`: the library. The package manager never reads text (the owner's decision of
-  2026-10-10; `PLAN-CRATES.md` has the phases): everything that parses a format is behind the
+  2026-10-10): everything that parses a format is behind the
   `read` feature (on by default; `cargo check -p logoxide --no-default-features --all-targets`
   must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs.
-  Its exports (PLAN-NEXT.md J.3): the formats, `storage`, `reader`, `error`, and the
+  Its exports: the formats, `storage`, `reader`, `error`, and the
   package manager's modules stay public (each is used by lx, the import, the app, the LSP, or
   the FFI); `archive` is `net::archive`, `registry_build` is `publish::registry_build`, and
   `stamps` and `package::glob` are crate-private. No re-exports under the old paths
@@ -54,8 +52,8 @@ the other files in this folder.
     `lx search -t/--nt/--ot/-g/-b/--exclude-*` keeps packages with any about-book among them. A dependency is one of `git`,
     `registry`, `path`, or `import` (`{ import = "ebible:eng-asv" }`, `is_import_name`: a
     lowercase prefix, a colon, an id). A `registry` shaped like a name (`is_registry_name`: no
-    `/`, `:`, or `.`) is a registry's name by `doc/manifest.md`'s rule, refused until phase R-F
-    resolves it (PLAN-REVIEW.md), so it's never fetched as a URL. A dependency can name another package
+    `/`, `:`, or `.`) is a registry's name by `doc/manifest.md`'s rule, refused until names are
+    resolved, so it's never fetched as a URL. A dependency can name another package
     (`kjv-bob = { package = "kjv", … }`, for forks) and give its own `abbreviation` and
     `aliases` (`Project::names`), and `enabled = false` turns it off without removing it (still
     locked and installed, so `lx clean` keeps it; `Project::set_enabled`, `is_enabled`, `dependencies_enabled`, and
@@ -380,8 +378,7 @@ the other files in this folder.
     package: `crates/logoxide/tests/fixtures/english-original` (lines from Paratext's eng.vrs).
     The BSB's DBL `versification.vrs` (`~/Downloads/bsb-usx/…/release/`) loads whole (2424
     verses; its `S3Y = DAG` lines map), with two lines past its counts warned of
-- `crates/logoxide-import`: packages from other publishers' downloads (PLAN-CRATES.md phase D,
-  October 2026; logoxide's `import.rs`, its catalog parsers, and `license_from_text` until
+- `crates/logoxide-import`: packages from other publishers' downloads (October 2026; logoxide's `import.rs`, its catalog parsers, and `license_from_text` until
   then). Above the core, as lx and the bindings are: it depends on `logoxide` with its `read`
   feature (an import is checked by reading it), logoxide-text, and sword-modules, which the
   core no longer does. `catalog::parse(location, bytes)` (and `parse_text`) reads any
@@ -461,8 +458,8 @@ the other files in this folder.
   `import_is_current(entry, upstream.version)` (compares the publisher's versions,
   `compare_publisher_versions`, never the package's, and only where `tracks_versions`, so `lx`
   can skip downloading)
-- `crates/logoxide-text`: what's in a Bible or a book, knowing no packages (PLAN-CRATES.md phase
-  C, October 2026; logoxide's `source/`, `versification.rs`, and the parsing halves of `summary`,
+- `crates/logoxide-text`: what's in a Bible or a book, knowing no packages (October
+  2026; logoxide's `source/`, `versification.rs`, and the parsing halves of `summary`,
   `titles`, `media`, `references`, `create`, and `language` until then). Files come through its
   read-only `Files` (`MemoryFiles`; the core's `reader::StorageFiles` wraps a `Storage`); errors
   are `TextError`. `source/`: one `Source` per `TextFormat` (`source::open`), each giving
@@ -514,7 +511,7 @@ the other files in this folder.
   book's file), the one format the core's `Cache`, the LSP, and the bindings share.
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
   label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
-  templates, `width` to `wrap` at, `indents` by USFM marker for poetry, `verse_lines`, `paragraph_gaps`), marked by the markup's kinds (PLAN-CRATES.md E.3; the LSP's
+  templates, `width` to `wrap` at, `indents` by USFM marker for poetry, `verse_lines`, `paragraph_gaps`), marked by the markup's kinds (the LSP's
   `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats, and a ThML book's (`is_thml`: `.xml`, `.thml`): parsed by logoxide-markup, its text nodes joined with `\n` as topos's XML search does (the head left out), searched by `BibleMatcher::search`, each `Citation` with no CFI, spine 0, UTF-16 offsets and line and column in that text, and the innermost titled `divN`'s title as its chapter. `versification::system(name)`:
   SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
   chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's
@@ -524,7 +521,7 @@ the other files in this folder.
   tolerant tree (`Node`, `Element`, `Kind`), `Filter`, `Flattener`/`plain_text`, verses found in a
   book (`verses::verses`, `slice`, `passage_ranges`), references the markup tags, and HTML
   (`HtmlRenderer`, behind the default `html` feature, which nothing here turns on yet). topos's
-  topos-bible-markup until October 2026, moved with its history (PLAN-CRATES.md phase B). A
+  topos-bible-markup until October 2026, moved with its history. A
   clean-room rewrite: change its `docs/spec/` first, then the code; its golden files
   (`tests/golden/`) and `NO_PANIC_ROUNDS=100000 cargo test --release -p logoxide-markup --test
   no_panic` check it; never read libsword or other SWORD readers' code (its `CLEANROOM.md`)
@@ -562,7 +559,7 @@ the other files in this folder.
   document sync, `server/` a module per feature and the tests. Its tests read a copy of topos's
   `crates/topos-lib/tests/cases/complete.txt` (`tests/fixtures/`, copied again when topos's
   changes). The Neovim plugin (`~/Development/nvim-plugins/logoxide.nvim`) runs it
-- `crates/logoxide-app`: what every front end does (PLAN-NEXT.md J, the owner's N1), above
+- `crates/logoxide-app`: what every front end does (the owner's N1), above
   logoxide-import, as lx, the FFI, and logoxide-mcp are callers of it. It prints nothing:
   downloads and plain-HTTP or unencrypted-repository warnings go to a `Notes` callback (`Note`:
   `Downloading`, `Insecure`, `Unencrypted`; `Display` is lx's words, `is_warning`), and what to
@@ -681,8 +678,8 @@ the other files in this folder.
   folders (assert_cmd). On Unix lx restores SIGPIPE's default, so `lx … | head` ends quietly.
   Everything lx prints but JSON goes through `outln!`/`out!`/`errln!` (`main.rs`: `println!`
   through `text::printable`), so catalogs', manifests', and git's text can't drive the terminal
-- `crates/logoxide-mcp` (binary `logoxide-mcp`): the MCP server (PLAN-NEXT.md K.1, `PLAN.md` 6,
-  the owner's D14 and D15) on rmcp 3.5 over stdio, on logoxide-app's `Logoxide` (read, compare,
+- `crates/logoxide-mcp` (binary `logoxide-mcp`): the MCP server (the owner's D14 and
+  D15) on rmcp 3.5 over stdio, on logoxide-app's `Logoxide` (read, compare,
   catalogs, registries, install, import) and the core's `Project`, `Library`, `Cache`, and
   `Summary`, as lx is; the project is chosen as lx chooses it (`--project`, else the current
   folder with a `logoxide.toml`, else the library's own), `--library`/`--cache-dir` too.
@@ -723,11 +720,10 @@ the other files in this folder.
   HTML or text (`BookTextOptions`), `styledText(passage, BookTextStyle, name)` (logoxide-text's
   `passage::text_in`, the text the language server shows, with `TextMark`s by `NodeKind` for a
   host that colors it), and the tree itself: `nodes()` (`BookNode`: the list in document order,
-  each naming its parent, with kind, tag name, attributes, text, milestone; PLAN-NEXT.md M.1,
-  the owner's N6: typed records, not JSON) and `verseNodes()` (each verse's marker, first, and
+  each naming its parent, with kind, tag name, attributes, text, milestone; the owner's N6: typed records, not JSON) and `verseNodes()` (each verse's marker, first, and
   last node by index), so a host renders with its own engine without parsing the formats;
   `LogoxidePackage.book` gives one through `from_tree` (Rust-only). Commentaries,
-  dictionaries, and cross-references (PLAN-NEXT.md I.6): `LogoxidePackage.notes(passage,
+  dictionaries, and cross-references: `LogoxidePackage.notes(passage,
   BookTextOptions, stretch)` (`Note`: chapter, verse, last, lastChapter, part, text, html; logoxide-text's
   `Source::notes` over the cached book), `entry(key, options)` (`Entry`: key, headword, text,
   html; `null` for a key it lacks), `keys()`, and `crossReferences(verse)` (`CrossReference`:

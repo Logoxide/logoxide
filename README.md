@@ -74,7 +74,7 @@ its text, and still point at the same words after the translation is re-edited:
 ### Also: publishing
 
 For someone making or hosting packages. These work and are specified in `doc/`, but nobody hosts
-one yet, so they're kept as they are until someone asks (`PLAN-REVIEW.md` R1):
+one yet, so they're kept as they are until someone asks:
 
 - **Packages**: `lx new` (`--from book.epub` fills `[package]` from the file; `--kind collection`
   for a package of packages), `lx release` (writes the summary, checks the version against what
@@ -179,7 +179,7 @@ cargo install logoxide-lsp    # the language server
 npm install logoxide          # or: pip install logoxide (the bindings, with topos's API)
 ```
 
-Rust 1.89 or later. Until the crates are published (`PLAN-REVIEW.md` R-A), build from this
+Rust 1.89 or later. Until the crates are published, build from this
 repository with topos and sword-modules checked out beside it (see Development).
 
 ## Development

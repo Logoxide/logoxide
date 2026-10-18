@@ -1,4 +1,4 @@
-# CCEL and Door43 research fixtures (saved 2026-10-10, for PLAN-NEXT.md L.2 and L.3)
+# CCEL and Door43 research fixtures (saved 2026-10-10)
 
 Fetched live from ccel.org on 2026-10-10 by the phase L agent. `ccel.rs`'s tests read the genre
 indexes; the commentary tests read logoxide-text's `tests/fixtures/ccel/` (Henry's and Calvin's

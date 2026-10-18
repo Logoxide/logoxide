@@ -2,3 +2,7 @@ target/
 Cargo.lock
 *.swp
 /.cargo/
+
+# The owner's notes and plans, kept local
+CLAUDE.md
+PLAN*.md
