@@ -1,9 +1,8 @@
 name: Release
 
 # Pushing a `v*` tag (matching the workspace's and logoxide-ffi's version) tests and builds
-# everything and publishes logoxide to PyPI and npm. Running it from the Actions tab only tests and
-# builds, so the packages can be checked first. The crates go to crates.io by hand:
-# `cargo publish --workspace`.
+# everything and publishes the crates to crates.io and logoxide to PyPI and npm. Running it from
+# the Actions tab only tests and builds, so the packages can be checked first.
 on:
   push:
     tags: ["v*"]
@@ -209,7 +208,37 @@ jobs:
           name: npm-package
           path: logoxide/crates/logoxide-ffi/dist/wasm/pkg
 
-  # Both publish with trusted publishing (OpenID Connect), so no tokens are stored
+  # All three publish with trusted publishing (OpenID Connect), so no tokens are stored. Each
+  # crate trusts this workflow and the crates-io environment in its settings on crates.io (a crate
+  # new to the workspace is published by hand first, since crates.io trusts a publisher only for a
+  # crate that exists)
+  publish-crates:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: test
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      # Only the crates whose version isn't on crates.io yet, so a version published by hand, or
+      # a release a rate limit stopped partway, is left alone or finished
+      - name: The crates to publish
+        id: crates
+        run: |
+          crates=$(scripts/crates-to-publish.sh | sed 's/^/-p /' | tr '\n' ' ')
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
+          echo "to publish: ${crates:-nothing}"
+      - uses: rust-lang/crates-io-auth-action@v1
+        if: steps.crates.outputs.crates != ''
+        id: auth
+      # cargo publishes them in the order they depend on each other
+      - if: steps.crates.outputs.crates != ''
+        run: cargo publish ${{ steps.crates.outputs.crates }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
   publish-pypi:
     if: startsWith(github.ref, 'refs/tags/')
     needs: [wheels-linux, wheels-other]

@@ -194,11 +194,14 @@ topos's API.
   the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.1.0.
 - **topos**: the topos tag the bindings build against is `v` and topos-bible's version in
   `Cargo.toml` (`scripts/topos-ref.sh`); both workflows read it from there.
-- **Releases**: `cargo publish --workspace` for the crates. Pushing a `v*` tag runs
-  `.github/workflows/release.yml`: it checks the versions against the tag, runs the workspace's and
-  the bindings' tests, builds the wheels and the npm package, installs a wheel in a fresh
-  environment and imports it (`crates/logoxide-ffi/scripts/smoke-test.py`), runs the Node example
-  against the npm package, and then publishes to PyPI and npm.
+- **Releases**: pushing a `v*` tag runs `.github/workflows/release.yml`: it checks the versions
+  against the tag, runs the workspace's and the bindings' tests, builds the wheels and the npm
+  package, installs a wheel in a fresh environment and imports it
+  (`crates/logoxide-ffi/scripts/smoke-test.py`), runs the Node example against the npm package,
+  and then publishes to crates.io, PyPI, and npm with trusted publishing (no stored tokens). Each
+  publishes only a version that isn't up yet (`scripts/crates-to-publish.sh` for the crates), so
+  a version published by hand is left alone; a crate new to the workspace is published by hand
+  once, then trusts the workflow in its settings on crates.io.
 - **Third-party notices**: the wheels and the npm package contain logoxide-ffi compiled with its
   dependencies, so each carries a `THIRD-PARTY-NOTICES` file: every crate linked into it for that
   target, with its license and license files, from `cargo metadata`
