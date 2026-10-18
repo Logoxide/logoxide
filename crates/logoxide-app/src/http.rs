@@ -77,7 +77,7 @@ mod ureq_http {
 
     impl UreqHttp {
         /**
-        An agent sending `user_agent` (`lx/0.2.0 (+https://github.com/Logoxide/logoxide)`), with
+        An agent sending `user_agent` (`lx/0.1.0 (+https://github.com/Logoxide/logoxide)`), with
         the environment's proxy, 20 s to connect, 60 s for a response, and an hour for a body
         (media can be large, however slow the line); each download and plain HTTP URL is said
         through `notes`

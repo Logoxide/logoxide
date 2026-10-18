@@ -12,7 +12,7 @@ the other files in this folder.
   2026-10-10; `PLAN-CRATES.md` has the phases): everything that parses a format is behind the
   `read` feature (on by default; `cargo check -p logoxide --no-default-features --all-targets`
   must build, and CI runs it), and the rest asks a `reader::TextReader` for the facts it needs.
-  Its exports (PLAN-NEXT.md J.3, 0.2.0): the formats, `storage`, `reader`, `error`, and the
+  Its exports (PLAN-NEXT.md J.3): the formats, `storage`, `reader`, `error`, and the
   package manager's modules stay public (each is used by lx, the import, the app, the LSP, or
   the FFI); `archive` is `net::archive`, `registry_build` is `publish::registry_build`, and
   `stamps` and `package::glob` are crate-private. No re-exports under the old paths

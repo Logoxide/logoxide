@@ -191,7 +191,7 @@ topos's API.
 
 - **Versions**: the workspace's version, its `logoxide`, `logoxide-markup`, `logoxide-text`,
   `logoxide-import`, and `logoxide-app` dependencies', and logoxide-ffi's must be
-  the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.2.0.
+  the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.1.0.
 - **topos**: the topos tag the bindings build against is `v` and topos-bible's version in
   `Cargo.toml` (`scripts/topos-ref.sh`); both workflows read it from there.
 - **Unpublished dependencies**: until topos 0.6 and sword-modules 0.1 are on crates.io, CI builds

@@ -15,7 +15,7 @@ exclude = ["crates/logoxide-ffi"]
 resolver = "3"
 
 [workspace.package]
-version = "0.2.0"
+version = "0.1.0"
 edition = "2024"
 # std::fs::File::lock (PLAN-NEXT.md H.4, the owner's D11) needs 1.89 (CI checks it: the msrv job)
 rust-version = "1.89"
@@ -24,15 +24,15 @@ repository = "https://github.com/Logoxide/logoxide"
 homepage = "https://github.com/Logoxide/logoxide"
 
 [workspace.dependencies]
-logoxide = { path = "crates/logoxide", version = "0.2.0" }
+logoxide = { path = "crates/logoxide", version = "0.1.0" }
 # Verse references
 topos-bible = "0.6.0"
 # Bible markup (OSIS, ThML, GBF, TEI, USX) into one tree: logoxide's own clean-room crate, moved
 # from topos; its HTML is a feature nothing here needs yet
-logoxide-markup = { path = "crates/logoxide-markup", version = "0.2.0", default-features = false, features = ["serde"] }
-logoxide-text = { path = "crates/logoxide-text", version = "0.2.0" }
-logoxide-import = { path = "crates/logoxide-import", version = "0.2.0" }
-logoxide-app = { path = "crates/logoxide-app", version = "0.2.0" }
+logoxide-markup = { path = "crates/logoxide-markup", version = "0.1.0", default-features = false, features = ["serde"] }
+logoxide-text = { path = "crates/logoxide-text", version = "0.1.0" }
+logoxide-import = { path = "crates/logoxide-import", version = "0.1.0" }
+logoxide-app = { path = "crates/logoxide-app", version = "0.1.0" }
 topos-bible-index = { version = "0.6.0", default-features = false, features = ["files"] }
 # Finding the references in a book's EPUBs (its pure-Rust reader builds for WebAssembly too)
 topos-bible-formats = { version = "0.6.0", default-features = false, features = ["epub"] }

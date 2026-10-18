@@ -74,8 +74,11 @@ usual checks (`cargo fmt`, `cargo clippy --all-targets -- -D warnings`, `cargo t
 
 The G.1/G.2/G.5 items of `PLAN-NEXT.md`, which every plan since 2026-10-09 has routed around.
 In order, as the `release-0-1-0-prepared` memory records: push topos's `v0.6.0` tag; give
-sword-modules a remote; push logoxide and the KJV and BSB packages to `github.com/Logoxide`;
-`cargo publish` in the order topos → sword-modules → logoxide crates → npm/PyPI; host one
+sword-modules a remote and push its `release-cleanroom` branch as `main` (never its `main`
+or the `pre-cleanroom` tag: they hold the ported GPL code; see its `CLEANROOM.md`); push logoxide and the KJV and BSB packages to `github.com/Logoxide`;
+`cargo publish` in the order topos → sword-modules → logoxide crates → npm/PyPI, logoxide as
+0.1.0 (reset from 0.2.0 on 2026-10-17, since nothing was published; not 0.0.x, which Cargo's
+and npm's carets take every patch of to be breaking); host one
 `catalog.toml` at `github.com/Logoxide/catalog` listing the two packages.
 
 Check, on a machine that has never built logoxide: `cargo install logoxide-cli && lx init && lx
@@ -112,7 +115,7 @@ has to be kept working. Three forks in worktrees, merged into main (`3a3d51c`):
   the reader joins sections and hashes the body as read (`fea5db2`)
 - **A.6** the registry-by-name rule is in `manifest.md` (a value shaped like an id is a name,
   resolved through `[settings.registries]` and the config; refused in a fetched package; the
-  lock keeps the URL); logoxide 0.2 refuses a name with "doesn't resolve yet" so no reader ever
+  lock keeps the URL); logoxide 0.1 refuses a name with "doesn't resolve yet" so no reader ever
   fetches `https://dorean`; resolving is R-F (`7d291da`)
 - **B.7–B.11** the stale sentences (imports by the publisher's date, "three" summary files,
   "is also gaining checks", "as logoxide 0.1 reads it", unknown keys at every catalog level)
