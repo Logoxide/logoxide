@@ -147,6 +147,9 @@ const manifest = logoxide.newCollection({ ...given, name: "My Library", language
 - A package is what its manifest declares, so files a reader adds beside it (annotations) don't
   change its checksum. `installer.install(project, { tag: "Repair" })` hands back the files of
   any installed version whose own files changed, to write over them
+- `logoxide.unzip(bytes)` gives a `.zip`'s files (`{ path, bytes }`, folders left out), so a zip
+  of USFM or USX books someone picks can be read without a zip library: pass a book's bytes to
+  `newPackage`. Bytes that aren't a zip, or more than 200,000 entries or 1 GiB, are an error
 - `examples/node/book.ts` makes a package from a real EPUB and lists what it cites
 
 ## Building

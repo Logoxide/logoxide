@@ -134,6 +134,15 @@ BSB test packages weren't re-tagged: their v1.0.3 is `LXV2`.
    removes the `biblix-*` artifacts. Owner.
 4. **Path packages warned of** (finding 8): `lx info` on a path package says its files aren't
    checksummed in the lock.
+5. **Unzip through the bindings** (asked by scripture-slinger, 2026-10-17):
+   `Logoxide::unzip(bytes) -> Vec<PackageFile>` in the FFI over `logoxide_text::archive::unzip`
+   (its limits on entries and size kept), so a host can read a zip of book files without a zip
+   library of its own. scripture-slinger reads a player's zip of USFM books today by calling
+   `importDownloaded` with a made-up `ebible:` catalog entry, which only works for USFM (eBible's
+   import keeps `.usfm`/`.sfm` and `copr.htm`) and needs a fake abbreviation to pass the
+   manifest's checks. Test in `logoxide-ffi/src/tests.rs` on a small zip, and one that isn't.
+   Done 2026-10-17: `unzip(bytes: Uint8Array): Array<PackageFile>` in the WebAssembly
+   package's `logoxide.d.ts`.
 
 ### R-D: live checks (R4)
 

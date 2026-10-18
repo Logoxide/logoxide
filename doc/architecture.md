@@ -744,6 +744,8 @@ the other files in this folder.
   and one pair of methods imports from every publisher: `Logoxide.importDownloads(entry)` (what
   to fetch) and `importDownloaded(entry, files)` (the package's files), through logoxide-import
   (phase D: `importEbible`, `importFetchBible`, `importCcel`, and `importSword` are gone);
+  `Logoxide.unzip(bytes)` gives a zip's files (logoxide-text's `archive::unzip`, its limits
+  kept), so a host reads a zip of book files without a zip library or a made-up import;
   `importPrefixes` (`ebible`, `fetch`, `ccel`, `sword`), `swordCatalogUrl(name)` (a
   CrossWire-listed repository's `mods.d.tar.gz`), `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from

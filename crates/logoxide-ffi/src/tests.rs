@@ -1690,3 +1690,42 @@ fn reading_and_comparing_passages_natively() {
     );
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn a_zip_unzipped() {
+    use std::io::Write;
+
+    let mut writer = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    writer.add_directory("usfm/", options).unwrap();
+    writer.start_file("usfm/43JHN.usfm", options).unwrap();
+    writer
+        .write_all(b"\\id JHN\n\\c 3\n\\v 16 For God so loved the world.\n")
+        .unwrap();
+    writer.start_file("copr.htm", options).unwrap();
+    writer.write_all(b"<p>Public domain</p>").unwrap();
+    let zip = writer.finish().unwrap().into_inner();
+
+    let files = Logoxide::new().unzip(zip).unwrap();
+    assert_eq!(
+        files,
+        [
+            file(
+                "usfm/43JHN.usfm",
+                "\\id JHN\n\\c 3\n\\v 16 For God so loved the world.\n"
+            ),
+            file("copr.htm", "<p>Public domain</p>"),
+        ]
+    );
+}
+
+#[test]
+fn bytes_that_arent_a_zip_unzipped() {
+    for bytes in [vec![], b"\\id JHN\n\\c 3\n".to_vec()] {
+        let error = Logoxide::new().unzip(bytes).expect_err("not a zip");
+        assert!(
+            matches!(&error, LogoxideError::Invalid { message } if message.contains("not a .zip")),
+            "{error:?}"
+        );
+    }
+}

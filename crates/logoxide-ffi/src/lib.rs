@@ -296,6 +296,17 @@ impl Logoxide {
         create::files_of(&files)
     }
 
+    /// Each file in a `.zip` (folders left out), by its `/`-separated path, so a host can read a
+    /// zip of book files without a zip library of its own. Bytes that aren't a zip are an error,
+    /// and so is one past the limits: 200,000 entries, 1 GiB a file or in all
+    pub fn unzip(&self, bytes: Vec<u8>) -> Result<Vec<PackageFile>, LogoxideError> {
+        let files = logoxide_text::archive::unzip(&bytes)?;
+        Ok(files
+            .into_iter()
+            .map(|(path, bytes)| PackageFile { path, bytes })
+            .collect())
+    }
+
     /// No versification maps yet: add map packages with `withMap` (or `.vrs` text with
     /// `withVrs`), then `map` references between the versifications they connect
     pub fn versifications(&self) -> LogoxideVersifications {
