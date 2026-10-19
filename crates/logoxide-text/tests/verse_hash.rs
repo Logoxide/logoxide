@@ -18,7 +18,7 @@ use logoxide_text::topos_bible::data::books::BookId;
 use logoxide_text::{
     MemoryFiles, Source,
     hash::{HashRule, VerseRecord, book_hashes, verse_text},
-    source::{TextFormat, open, usfm_to_usx, usx_to_usfm},
+    source::{TextFormat, convert, open, usfm_to_usx, usj_to_usx, usx_to_usfm, usx_to_usj},
 };
 
 /// One format's files, read by its source
@@ -153,6 +153,19 @@ fn usx_as_usfm_verses() {
 }
 
 #[test]
+fn usx_as_usj_verses() {
+    // USX into USJ keeps every verse's words, and so does USJ into USX
+    let usj = usx_to_usj(&usx()).unwrap();
+    assert_eq!(hashed(&*package("usj", &[("JHN.json", &usj)])), expected());
+    let usx = usj_to_usx(&usj).unwrap();
+    assert_eq!(hashed(&*package("usx", &[("JHN.usx", &usx)])), expected());
+    // and USFM through USJ
+    let usfm = convert(&usj, TextFormat::Usj, TextFormat::Usfm).unwrap();
+    let usj = convert(&usfm, TextFormat::Usfm, TextFormat::Usj).unwrap();
+    assert_eq!(hashed(&*package("usj", &[("JHN.usj", &usj)])), expected());
+}
+
+#[test]
 fn osis_verses() {
     let osis = format!(
         r#"<?xml version="1.0" encoding="utf-8"?>
@@ -273,6 +286,54 @@ fn real_bibles_through_usx_to_usfm() {
         |text| usx_to_usfm(&usfm_to_usx(text).unwrap()).unwrap(),
     );
     assert_eq!(usfm.len(), 31_102);
+    same(&usfm, &again);
+}
+
+/// The BSB's USX made USJ, read as USJ and made USX and USJ again, and the KJV's USFM made USJ
+/// and USFM again, hash as they did. Reads `LOGOXIDE_PACKAGES` (by default
+/// `~/Development/logoxide-packages`)
+#[test]
+#[ignore]
+fn real_bibles_through_usj() {
+    let root = packages();
+    let (usx, usj) = converted_hashes(
+        &format!("{root}/bsb/usx"),
+        TextFormat::Usx,
+        TextFormat::Usj,
+        |text| usx_to_usj(text).unwrap(),
+    );
+    assert_eq!(usx.len(), 31_086);
+    // But for Psalm 119's acrostic headings, as through USFM (`real_bibles_through_usx_to_usfm`):
+    // USJ has no end milestones, so a heading goes with the verse before it
+    let headings: Vec<u8> = (1..=21u8).flat_map(|k| [8 * k, 8 * k + 1]).collect();
+    let moved =
+        |r: &VerseRecord| r.book == BookId(19) && r.chapter == 119 && headings.contains(&r.verse);
+    let keep = |all: Vec<VerseRecord>| all.into_iter().filter(|r| !moved(r)).collect::<Vec<_>>();
+    let differ = (usx.iter().zip(&usj)).filter(|(a, b)| a != b).count();
+    assert_eq!(differ, headings.len());
+    same(&keep(usx), &keep(usj.clone()));
+    // USJ into USX and back is the same USJ
+    for entry in std::fs::read_dir(format!("{root}/bsb/usx")).unwrap() {
+        let usj = usx_to_usj(&std::fs::read_to_string(entry.unwrap().path()).unwrap()).unwrap();
+        assert_eq!(usx_to_usj(&usj_to_usx(&usj).unwrap()).unwrap(), usj);
+    }
+    let (usfm, again) = converted_hashes(
+        &format!("{root}/kjv/usfm"),
+        TextFormat::Usfm,
+        TextFormat::Usj,
+        |text| convert(text, TextFormat::Usfm, TextFormat::Usj).unwrap(),
+    );
+    assert_eq!(usfm.len(), 31_102);
+    same(&usfm, &again);
+    let (usfm, again) = converted_hashes(
+        &format!("{root}/kjv/usfm"),
+        TextFormat::Usfm,
+        TextFormat::Usfm,
+        |text| {
+            let usj = convert(text, TextFormat::Usfm, TextFormat::Usj).unwrap();
+            convert(&usj, TextFormat::Usj, TextFormat::Usfm).unwrap()
+        },
+    );
     same(&usfm, &again);
 }
 

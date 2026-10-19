@@ -443,7 +443,7 @@ print("".join(n.text for n in words))  # → For God so loved the world that He 
 ```
 
 A book file of your own: `usfmToUsx` turns USFM into USX (`usxToUsfm` the other way, as
-normalized USFM), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
+normalized USFM), `usxToUsj` and `usjToUsx` between USX and USJ (USX as JSON), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
 `InvalidMarkup`<!-- ts: , which is `null` here -->), and `LogoxideBook.usxChapterVerses` counts a USX
 book's verses from its markers alone, fast enough for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
 whose words changed a little since, by byte offsets.
@@ -456,10 +456,13 @@ const thirdJohn = LogoxideBook.parse(topos, "usx", usx)!;
 console.log(thirdJohn.bookId(), [...thirdJohn.chapterVerses()], [...LogoxideBook.usxChapterVerses(usx)]); // → 64 [ 14 ] [ 14 ]
 console.log(LogoxideBook.parse(topos, "rtf", usx)); // → null
 console.log(logoxide.usxToUsfm(usx).startsWith("\\id 3JN")); // → true
+console.log(JSON.parse(logoxide.usxToUsj(usx)).content[0].code); // → 3JN
 console.log(LogoxideBook.findFragment("For God so greatly loved the world", "so loved the world")); // → { start: 8, end: 34 }
 ```
 
 ```python
+import json
+
 from logoxide import LogoxideBook, LogoxideErrorException
 
 usx = logoxide.usfm_to_usx(pathlib.Path("kjv/usfm/3jn.usfm").read_text())
@@ -470,6 +473,7 @@ try:
 except LogoxideErrorException as error:
     print(error.error)  # → LogoxideErrorInvalidMarkup(message='unknown markup "rtf" (usx, osis)')
 print(logoxide.usx_to_usfm(usx).startswith("\\id 3JN"))  # → True
+print(json.loads(logoxide.usx_to_usj(usx))["content"][0]["code"])  # → 3JN
 print(LogoxideBook.find_fragment("For God so greatly loved the world", "so loved the world"))  # → TextRange(start=8, end=34)
 ```
 
@@ -1489,7 +1493,7 @@ topos](#references-with-topos).
 |---|---|
 | `Logoxide.new`, `version` | [Loading](#loading) |
 | `Logoxide.openPackage`, `openPackageDir`, `readPackageInfo` | [Opening a package](#opening-a-package) |
-| `Logoxide.usfmToUsx`, `usxToUsfm` | [A book's text](#a-books-text) |
+| `Logoxide.usfmToUsx`, `usxToUsfm`, `usxToUsj`, `usjToUsx` | [A book's text](#a-books-text) |
 | `Logoxide.parseTimings`, `verifyMedia`, `mediaStorePath` | [Audio and video](#audio-and-video) |
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
 | `Logoxide.parseProject` | [A vault's project](#a-vaults-project) |

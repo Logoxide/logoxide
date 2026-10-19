@@ -56,7 +56,7 @@ its text, and still point at the same words after the translation is re-edited:
 - **Links that survive updates**: every release ships `logoxide.verses.bin`, a hash of each verse's
   words, so a link made against one version (`&ver=1.0.2&vh=9f86d081`) finds its verse again after
   a renumbering and says when the words changed. `lx diff` and `lx verify` read the same hashes
-- **Formats read**: USX, USFM, OSIS, ThML, GBF (a book a file, or a whole Bible in one);
+- **Formats read**: USX, USFM, USJ, OSIS, ThML, GBF (a book a file, or a whole Bible in one);
   dictionaries (`entries/*.xml`) and cross-references (`xref/*.tsv`); books as EPUBs, with the
   references topos finds in them; Paratext `.vrs` versification maps (`lx map "Psalm 51:1" --from
   English --to Original`)

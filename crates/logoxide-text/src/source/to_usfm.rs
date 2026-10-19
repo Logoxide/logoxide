@@ -351,6 +351,25 @@ fn text(open: &mut [Frame], raw: &str) {
     let Some(frame) = open.last_mut() else {
         return;
     };
+    let collapsed = collapse(raw);
+    if collapsed.trim_matches(' ').is_empty() && frame.open.holds_blocks() {
+        return;
+    }
+    match frame.content.last_mut() {
+        // Text cut by an entity is one text
+        Some(Node::Text(before)) => {
+            let joined = match before.ends_with(' ') && collapsed.starts_with(' ') {
+                true => &collapsed[1..],
+                false => &collapsed[..],
+            };
+            before.to_mut().push_str(joined);
+        }
+        _ => frame.content.push(Node::Text(Cow::Owned(collapsed))),
+    }
+}
+
+/// Each run of spaces, tabs, and line breaks one space, as USX's readers take it
+pub(super) fn collapse(raw: &str) -> String {
     let mut collapsed = String::with_capacity(raw.len());
     let mut space = false;
     for c in raw.chars() {
@@ -368,30 +387,17 @@ fn text(open: &mut [Frame], raw: &str) {
     if space {
         collapsed.push(' ');
     }
-    if collapsed.trim_matches(' ').is_empty() && frame.open.holds_blocks() {
-        return;
-    }
-    match frame.content.last_mut() {
-        // Text cut by an entity is one text
-        Some(Node::Text(before)) => {
-            let joined = match before.ends_with(' ') && collapsed.starts_with(' ') {
-                true => &collapsed[1..],
-                false => &collapsed[..],
-            };
-            before.to_mut().push_str(joined);
-        }
-        _ => frame.content.push(Node::Text(Cow::Owned(collapsed))),
-    }
+    collapsed
 }
 
 /// An element's attributes by local name, their entities decoded
-fn attributes(e: &BytesStart) -> Vec<(String, String)> {
+pub(super) fn attributes(e: &BytesStart) -> Vec<(String, String)> {
     (e.attributes().flatten())
         .map(|a| (local(a.key.0), decode_entities(&a.value)))
         .collect()
 }
 
-fn local(name: &str) -> String {
+pub(super) fn local(name: &str) -> String {
     name.rsplit(':').next().unwrap_or_default().to_string()
 }
 

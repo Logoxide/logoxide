@@ -2,8 +2,8 @@
 logoxide: Bibles, commentaries, lexicons, books, and media as versioned packages.
 
 A package is a git repository (or a registry's archive) with a `logoxide.toml` ([`manifest`]) and
-its text in one or more formats. Bibles are read as verses from USX, USFM (through `usfm3`), OSIS,
-and ThML (by the `logoxide-text` crate, behind the `read` feature: a book a file, or a whole Bible
+its text in one or more formats. Bibles are read as verses from USX, USFM (through `usfm3`), USJ,
+OSIS, and ThML (by the `logoxide-text` crate, behind the `read` feature: a book a file, or a whole Bible
 in one file); books are kept as EPUBs, whose Bible references topos finds ([`references`]);
 versification maps are Paratext `.vrs` lines (logoxide-text's `versification`); audio and video
 are listed by URL and hash, never stored ([`media`]).

@@ -251,6 +251,7 @@ mod with_text {
             Some(match self {
                 Format::Usx => TextFormat::Usx,
                 Format::Usfm => TextFormat::Usfm,
+                Format::Usj => TextFormat::Usj,
                 Format::Osis => TextFormat::Osis,
                 Format::Thml => TextFormat::Thml,
                 Format::Gbf => TextFormat::Gbf,

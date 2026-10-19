@@ -402,7 +402,7 @@ impl Format {
         Some(match self {
             Format::Usx => &["usx"],
             Format::Usfm => &["usfm", "sfm"],
-            Format::Usj => &["json"],
+            Format::Usj => &["json", "usj"],
             Format::Osis => &["xml", "osis"],
             Format::Thml => &["xml", "thml"],
             Format::Gbf => &["gbf", "txt"],
@@ -422,6 +422,7 @@ impl Format {
             self,
             Format::Usx
                 | Format::Usfm
+                | Format::Usj
                 | Format::Osis
                 | Format::Thml
                 | Format::Gbf
@@ -434,7 +435,7 @@ impl Format {
     pub fn is_verse_text(self) -> bool {
         matches!(
             self,
-            Format::Usx | Format::Usfm | Format::Osis | Format::Thml | Format::Gbf
+            Format::Usx | Format::Usfm | Format::Usj | Format::Osis | Format::Thml | Format::Gbf
         )
     }
 }

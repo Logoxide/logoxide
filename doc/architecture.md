@@ -470,13 +470,21 @@ specifications of the formats are the other files in this folder.
   another `\+`, a note's `category` a `\cat`. Checked by round trip (`tests/verse_hash.rs`): the
   pinned fixture, and (ignored, on the real packages) the KJV through USX and back and the BSB,
   whose only differences are Psalm 119's 21 acrostic headings (USX's reader gives one after a
-  verse's end to the next verse, USFM's to the verse before it). OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
+  verse's end to the next verse, USFM's to the verse before it). USJ (`usj.rs`) is USX as JSON,
+  so it's read by writing it as USX (`usj_to_usx`: each verse's and chapter's end milestone
+  where the next starts, a missing `sid` made from the book and numbers; usfm3's
+  `attributes: [{key, value}]` read too) and written from USX by our own `usx_to_usj` (usfm3's
+  USJ writer nests attributes that way, not as the node's keys); end milestones are left out.
+  `source::convert(text, from, to)` goes between USFM, USX, and USJ through USX.
+  Checked the same way: the BSB through USJ differs from its USX only in Psalm 119's headings
+  (as through USFM), and back into USX and USJ again is the same USJ; the KJV's USFM through USJ
+  is the same verses. OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
   book; it's scanned for the books its verse markers name, cut into books, and its last parse
   kept). ThML's empty `<scripture parsed=…/>` elements (CCEL's Bibles) and `<scripCom parsed=…/>` (CCEL's commentaries) become verse markers; a chapter's own (`|Gen|1|0|0|0`) is verse 0 (chapter introductions are notes on it), and a `div1`–`div6` whose first marker is in another chapter ends the verse before it (an End milestone naming nothing), or starts that chapter's verse 0 when its first marker is one (`mark_verses`).
   GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM
   code, English name, or GBF's numbers 1–39 and 64–90), `<SC…>`/`<SV…>` become chapter and verse
   markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is
-  one bridge), each book wrapped in a division. Preference: USX, USFM, OSIS, ThML, GBF. A
+  one bridge), each book wrapped in a division. Preference: USX, USFM, USJ, OSIS, ThML, GBF. A
   commentary is any verse source: `Source::notes(passage)` (a default on the trait over `book`
   and `passage_ranges`) gives each span covering the passage as a `Note` with its tree;
   `source::book_notes(book, passage, stretch)` is it over a parsed book (the LSP, lx, the MCP,
@@ -625,7 +633,7 @@ specifications of the formats are the other files in this folder.
   `refresh_catalogs`; the MCP server's catalogs come through it, so they're kept too)
 - `crates/lx` (package `logoxide-cli`, binary `lx`): `new` (`--from <file>`: an EPUB's title, subtitle, authors, language, and
   publisher fill in `[package]` (`create.rs`: `epub_metadata`, `new_from_file`); USX, USFM,
-  OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
+  USJ (`.usj`, or `.json` saying `"type": "USJ"`), OSIS, ThML need `--name` and `--language`; `--kind collection` makes a collection; the folder
   names it, like `cargo new`; then `lx release`), `init`, `add` (`lx add github:owner/repo` or `--git`/`--path`; `--name`,
   `--abbreviation`, `--alias` for forks; refuses a name or abbreviation already used), `remove`, `enable`/`disable` (`enabled = false`), `is-enabled` (prints on or off; exits 0 on, 1 off, 2 on errors), `install` (`--locked`: fail if the lock would change; `--offline`: fetch nothing; `--repair`), `update` (a name neither the manifest nor the lock has is refused), `list` (`(off)`; `--enabled`, `--disabled`), `show` (`--git` reads a
   release's summary through a partial clone; `--notes "<reference>"` a commentary's notes on a

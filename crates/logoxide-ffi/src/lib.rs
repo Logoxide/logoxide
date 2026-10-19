@@ -233,6 +233,16 @@ impl Logoxide {
         Ok(logoxide_text::source::usx_to_usfm(&usx)?)
     }
 
+    /// A USX book as USJ (USX as JSON, indented; end milestones left out, as USJ has none)
+    pub fn usx_to_usj(&self, usx: String) -> Result<String, LogoxideError> {
+        Ok(logoxide_text::source::usx_to_usj(&usx)?)
+    }
+
+    /// A USJ book as USX, for `LogoxideBook.parse(topos, "usx", ...)`
+    pub fn usj_to_usx(&self, usj: String) -> Result<String, LogoxideError> {
+        Ok(logoxide_text::source::usj_to_usx(&usj)?)
+    }
+
     /// eBible.org's list of the translations it publishes (a catalog: `parse_catalog`; one of
     /// `default_catalog_urls`)
     pub fn ebible_catalog_url(&self) -> String {

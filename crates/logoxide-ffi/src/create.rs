@@ -49,7 +49,7 @@ pub struct NewPackage {
     pub description: Option<String>,
     /// A semantic version (`1.0.0`)
     pub version: Option<String>,
-    /// By default from the file: an EPUB is a book, USX and USFM a Bible
+    /// By default from the file: an EPUB is a book, USX, USFM, and USJ a Bible
     pub kind: Option<PackageKind>,
     /// BCP 47 (`en`)
     pub language: Option<String>,

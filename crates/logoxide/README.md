@@ -8,7 +8,7 @@ caches it, resolves and locks a project's packages, and tells
 so references like `John 3:16 KJV` are checked against that translation.
 
 - Bibles are read as verses from USX, USFM (through [`usfm3`](https://crates.io/crates/usfm3)),
-  OSIS, and ThML, a book a file or a whole Bible in one; books are kept as EPUBs, whose Bible
+  USJ, OSIS, and ThML, a book a file or a whole Bible in one; books are kept as EPUBs, whose Bible
   references topos finds
 - Everything reads through a `Storage` (a folder, memory, or a host's files), so the same code
   runs in WebAssembly

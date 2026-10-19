@@ -1,6 +1,6 @@
 /*!
 logoxide-text: what's in a Bible or a book. It knows no packages, only files: a format's files
-read as verses ([`source`]: USX, USFM, OSIS, ThML, and GBF into logoxide-markup's tree; a
+read as verses ([`source`]: USX, USFM, USJ, OSIS, ThML, and GBF into logoxide-markup's tree; a
 commentary's notes by passage), a dictionary's entries by key and cross-references by verse
 ([`source`] too, with [`keys`] for how keys are matched), each verse's or entry's words hashed by
 a rule that never changes ([`hash`]), a file's own title ([`titles`]), a

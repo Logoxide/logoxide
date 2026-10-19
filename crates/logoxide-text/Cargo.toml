@@ -19,6 +19,8 @@ logoxide-markup.workspace = true
 # SWORD's versification systems (KJV, NRSV, …): each chapter's verse count
 sword-modules.workspace = true
 serde.workspace = true
+# USJ (USX as JSON); its keys in order, `type` first
+serde_json = { workspace = true, features = ["preserve_order"] }
 # Cached books (a tree and its verse spans) as bytes
 postcard = { version = "1", features = ["use-std"] }
 sha2 = "0.10"

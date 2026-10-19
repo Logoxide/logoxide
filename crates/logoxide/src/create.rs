@@ -67,6 +67,7 @@ pub fn file_format(name: &str, bytes: &[u8]) -> Option<(&'static str, PackageKin
         "epub" => ("epub", PackageKind::Book),
         "usx" => ("usx", PackageKind::Bible),
         "usfm" | "sfm" => ("usfm", PackageKind::Bible),
+        "usj" => ("usj", PackageKind::Bible),
         "osis" => ("osis", PackageKind::Bible),
         "thml" => ("thml", PackageKind::Bible),
         "xml" => {
@@ -76,6 +77,15 @@ pub fn file_format(name: &str, bytes: &[u8]) -> Option<(&'static str, PackageKin
                 _ if head.contains("<thml") => ("thml", PackageKind::Bible),
                 _ if head.contains("<usx") => ("usx", PackageKind::Bible),
                 _ => return None,
+            }
+        }
+        // USJ: `{"type": "USJ", ...}`
+        "json" => {
+            let head = String::from_utf8_lossy(&bytes[..bytes.len().min(4096)]).to_lowercase();
+            let compact: String = head.split_whitespace().collect();
+            match compact.contains("\"type\":\"usj\"") {
+                true => ("usj", PackageKind::Bible),
+                false => return None,
             }
         }
         _ => return None,
@@ -116,7 +126,7 @@ pub fn new_from_file(
 ) -> Result<Manifest> {
     let (format, kind) = file_format(file_name, bytes).ok_or_else(|| {
         LogoxideError::Import(format!(
-            "{file_name}: not a format logoxide packages (.epub, .usx, .usfm, .osis, .thml, or their .xml)"
+            "{file_name}: not a format logoxide packages (.epub, .usx, .usfm, .usj, .osis, .thml, or their .xml or .json)"
         ))
     })?;
     let metadata = match format {
@@ -298,6 +308,17 @@ mod tests {
         let error = new_from_file("JHN.usfm", b"", &no_language, &dest).unwrap_err();
         assert!(error.to_string().contains("--language"), "{error}");
         assert!(new_from_file("notes.txt", b"", &given, &dest).is_err());
+        // USJ by its extension, or a `.json` saying it's USJ
+        let usj = b"{\n  \"type\": \"USJ\",\n  \"version\": \"3.1\"";
+        assert_eq!(
+            file_format("JHN.json", usj),
+            Some(("usj", PackageKind::Bible))
+        );
+        assert_eq!(
+            file_format("JHN.usj", b""),
+            Some(("usj", PackageKind::Bible))
+        );
+        assert_eq!(file_format("data.json", b"{\"type\": \"x\"}"), None);
 
         let collection = crate::MemoryStorage::new();
         let made = new_collection(&given, &collection).unwrap();

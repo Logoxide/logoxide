@@ -633,7 +633,7 @@ What's missing here is logoxide's side, not topos's:
   Bibles, commentaries, lexicons, and general books into that tree.
 - **topos already finds references** inside all of these, and inside EPUBs (each match located by
   an EPUB CFI) and PDFs, so a ThML commentary or an EPUB in a vault is searched today.
-- **logoxide reads Bibles in USX, USFM, OSIS, and ThML** (a whole Bible in one file works: the
+- **logoxide reads Bibles in USX, USFM, USJ, OSIS, and ThML** (a whole Bible in one file works: the
   KJV from open-bibles' OSIS and from CCEL's ThML both give 31,102 verses in its 66 books).
 - **SWORD commentaries import** (`lx import sword:crosswire/MHCC`): each entry is a span of the
   verses it's on (an entry SWORD links over a range is one bridged span), in OSIS or ThML a book

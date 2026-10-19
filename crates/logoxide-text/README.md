@@ -2,12 +2,13 @@
 
 What's in a Bible or a book: verses, hashes, titles, numbering. It knows no packages.
 
-- **Sources**: USX, USFM (through usfm3), OSIS, and ThML read a book at a time into
+- **Sources**: USX, USFM (through usfm3), USJ, OSIS, ThML, and GBF read a book at a time into
   [logoxide-markup](../logoxide-markup)'s tree (`source::open`, `Source`, `Book`), from any
   `Files` (a folder, memory, or a host's files, so WebAssembly too). Peripherals, books topos
   doesn't know, and lettered chapters are passed over and said (`Skipped`)
-- **Conversion**: a USFM book as USX and a USX book as USFM (`source::usfm_to_usx`,
-  `usx_to_usfm`, both through usfm3; the USFM written is normalized, not the publisher's layout)
+- **Conversion**: a book in USFM, USX, or USJ as any of them (`source::convert`; one way at a
+  time: `usfm_to_usx` and `usx_to_usfm` through usfm3, `usx_to_usj` and `usj_to_usx`; what's
+  written is normalized, not the publisher's layout)
 - **Hashes**: each verse's words hashed by a rule that never changes (`hash::HashRule`,
   `book_hashes`), so a verse can be found again in a later version of its text
 - **Titles**: a file's own title (`\toc2`, `\h`, `\toc1`; an EPUB's `dc:title`)

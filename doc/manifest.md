@@ -191,10 +191,10 @@ Format names (case-insensitive) and the files each is made of:
 |---|---|---|
 | `usx` | `*.usx`, a book a file | yes (preferred first) |
 | `usfm` | `*.usfm`, `*.sfm`, a book a file | yes (second) |
-| `osis` | `*.xml`, `*.osis`: a book a file, or the whole Bible in one | yes (third) |
-| `thml` | `*.xml`, `*.thml`: a book a file, or the whole Bible in one | yes (fourth) |
-| `gbf` | `*.gbf`, `*.txt`: a book a file, or the whole Bible in one, with GBF's sync marks | yes (fifth) |
-| `usj` | `*.json` | not yet |
+| `usj` | `*.json`, `*.usj`, a book a file (USX as JSON) | yes (third) |
+| `osis` | `*.xml`, `*.osis`: a book a file, or the whole Bible in one | yes (fourth) |
+| `thml` | `*.xml`, `*.thml`: a book a file, or the whole Bible in one | yes (fifth) |
+| `gbf` | `*.gbf`, `*.txt`: a book a file, or the whole Bible in one, with GBF's sync marks | yes (sixth) |
 | `zefania` | `*.xml` | not yet |
 | `epub` | `*.epub` | no: kept as files; references are found in them |
 | `vrs` | `*.vrs` | no: a versification map's lines |
@@ -219,7 +219,7 @@ chapter before; when that first marker is the chapter's verse 0, the chapter sta
 division's start, so an introduction written before the marker is part of verse 0's note.
 
 A file a book is named by its book's USFM code (`JHN.usx`, `43-JHNeng-kjv.usfm`), else by the code
-it gives (`\id JHN`, `<book code="JHN">`); a whole file's books are the ones its verses name.
+it gives (`\id JHN`, `<book code="JHN">`, `{"type": "book", "code": "JHN"}`); a whole file's books are the ones its verses name.
 What isn't a book of the Bible is passed over and noted: the peripherals `FRT`, `INT`, `BAK`, `CNC`,
 `GLO`, `TDX`, `NDX`, `OTH`, and `XXA` to `XXG`. A book the reader doesn't know (topos's book data
 lacks it) is passed over with a warning, its verses left out, and so is a file that names no book.

@@ -79,6 +79,10 @@ fn a_package_from_its_files() {
         .usfm_to_usx("\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n".into())
         .unwrap();
     assert!(usx.contains("<verse number=\"16\""), "{usx}");
+    let usj = Logoxide::new().usx_to_usj(usx.clone()).unwrap();
+    assert!(usj.contains("\"type\": \"USJ\""), "{usj}");
+    let again = Logoxide::new().usj_to_usx(usj).unwrap();
+    assert!(again.contains("<verse eid=\"JHN 3:16\"/>"), "{again}");
     let usfm = Logoxide::new().usx_to_usfm(usx).unwrap();
     assert_eq!(
         usfm,

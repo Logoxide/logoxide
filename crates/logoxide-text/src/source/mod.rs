@@ -1,6 +1,6 @@
 /*!
 A package's text in one format, read a book at a time into logoxide-markup's tree, the same
-whatever the format: USX and USFM (a book a file), OSIS, ThML, and GBF (a whole Bible in one
+whatever the format: USX, USFM, and USJ (a book a file), OSIS, ThML, and GBF (a whole Bible in one
 file, or a book a file). A commentary is read the same way, and its notes on a passage are the
 verses covering it ([`Source::notes`]). Two formats hold no verses: a dictionary's entries by key
 ([`Source::entry`], [`DictionarySource`]) and cross-references by verse
@@ -14,6 +14,7 @@ mod osis;
 mod thml;
 mod to_usfm;
 mod usfm;
+mod usj;
 mod usx;
 mod whole;
 mod xref;
@@ -33,6 +34,7 @@ pub use osis::OsisSource;
 pub use thml::ThmlSource;
 pub use to_usfm::usx_to_usfm;
 pub use usfm::{UsfmSource, usfm_to_usx};
+pub use usj::{UsjSource, convert, usj_to_usx, usx_to_usj};
 pub use usx::UsxSource;
 pub use xref::XrefSource;
 
@@ -50,6 +52,8 @@ use crate::{
 pub enum TextFormat {
     Usx,
     Usfm,
+    /// USX as JSON ([`UsjSource`])
+    Usj,
     Osis,
     Thml,
     /// GBF, with its sync marks for books, chapters, and verses ([`GbfSource`])
@@ -66,6 +70,7 @@ impl TextFormat {
         match self {
             TextFormat::Usx => "usx",
             TextFormat::Usfm => "usfm",
+            TextFormat::Usj => "usj",
             TextFormat::Osis => "osis",
             TextFormat::Thml => "thml",
             TextFormat::Gbf => "gbf",
@@ -78,6 +83,7 @@ impl TextFormat {
         Some(match name.to_ascii_lowercase().as_str() {
             "usx" => TextFormat::Usx,
             "usfm" => TextFormat::Usfm,
+            "usj" => TextFormat::Usj,
             "osis" => TextFormat::Osis,
             "thml" => TextFormat::Thml,
             "gbf" => TextFormat::Gbf,
@@ -99,6 +105,7 @@ pub fn open(files: Arc<dyn Files>, format: TextFormat, dir: &str) -> Result<Box<
     Ok(match format {
         TextFormat::Usx => Box::new(UsxSource::open(files, dir)?),
         TextFormat::Usfm => Box::new(UsfmSource::open(files, dir)?),
+        TextFormat::Usj => Box::new(UsjSource::open(files, dir)?),
         TextFormat::Osis => Box::new(OsisSource::open(files, dir)?),
         TextFormat::Thml => Box::new(ThmlSource::open(files, dir)?),
         TextFormat::Gbf => Box::new(GbfSource::open(files, dir)?),
