@@ -33,6 +33,26 @@ pub use versification::*;
 
 use boltffi::*;
 
+/// The formats a book converts between (`Logoxide.convertBook`)
+#[data]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BookFormat {
+    Usfm,
+    Usx,
+    /// USX as JSON
+    Usj,
+}
+
+impl From<BookFormat> for logoxide_text::source::TextFormat {
+    fn from(format: BookFormat) -> Self {
+        match format {
+            BookFormat::Usfm => Self::Usfm,
+            BookFormat::Usx => Self::Usx,
+            BookFormat::Usj => Self::Usj,
+        }
+    }
+}
+
 #[error]
 #[derive(Clone, Debug, PartialEq, Eq)]
 /// What went wrong, by the core's kinds (`logoxide::error::ErrorKind`): hosts branch on the
@@ -231,6 +251,21 @@ impl Logoxide {
     /// USFM
     pub fn usx_to_usfm(&self, usx: String) -> Result<String, LogoxideError> {
         Ok(logoxide_text::source::usx_to_usfm(&usx)?)
+    }
+
+    /// A book in USFM, USX, or USJ written in another of them (or its own, normalized), through
+    /// USX: `convertBook(usfm, BookFormat.Usfm, BookFormat.Usj)`
+    pub fn convert_book(
+        &self,
+        text: String,
+        from_format: BookFormat,
+        to_format: BookFormat,
+    ) -> Result<String, LogoxideError> {
+        Ok(logoxide_text::source::convert(
+            &text,
+            from_format.into(),
+            to_format.into(),
+        )?)
     }
 
     /// A USX book as USJ (USX as JSON, indented; end milestones left out, as USJ has none)

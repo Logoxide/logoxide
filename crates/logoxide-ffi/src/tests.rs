@@ -79,6 +79,17 @@ fn a_package_from_its_files() {
         .usfm_to_usx("\\id JHN\n\\c 3\n\\p\n\\v 16 For God so loved the world.\n".into())
         .unwrap();
     assert!(usx.contains("<verse number=\"16\""), "{usx}");
+    let converted = Logoxide::new()
+        .convert_book(
+            "\\id JHN\n\\c 3\n\\p\n\\v 16 For God.\n".into(),
+            crate::BookFormat::Usfm,
+            crate::BookFormat::Usj,
+        )
+        .unwrap();
+    let again = Logoxide::new()
+        .convert_book(converted, crate::BookFormat::Usj, crate::BookFormat::Usfm)
+        .unwrap();
+    assert_eq!(again, "\\id JHN\n\\c 3\n\\p \\v 16 For God.\n");
     let usj = Logoxide::new().usx_to_usj(usx.clone()).unwrap();
     assert!(usj.contains("\"type\": \"USJ\""), "{usj}");
     let again = Logoxide::new().usj_to_usx(usj).unwrap();

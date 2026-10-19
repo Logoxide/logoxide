@@ -443,13 +443,13 @@ print("".join(n.text for n in words))  # → For God so loved the world that He 
 ```
 
 A book file of your own: `usfmToUsx` turns USFM into USX (`usxToUsfm` the other way, as
-normalized USFM), `usxToUsj` and `usjToUsx` between USX and USJ (USX as JSON), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
+normalized USFM), `usxToUsj` and `usjToUsx` between USX and USJ (USX as JSON), and `convertBook` from any of USFM, USX, and USJ into another (a `BookFormat` each), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
 `InvalidMarkup`<!-- ts: , which is `null` here -->), and `LogoxideBook.usxChapterVerses` counts a USX
 book's verses from its markers alone, fast enough for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
 whose words changed a little since, by byte offsets.
 
 ```ts
-import { LogoxideBook } from "logoxide";
+import { BookFormat, LogoxideBook } from "logoxide";
 
 const usx = logoxide.usfmToUsx(readFileSync("kjv/usfm/3jn.usfm", "utf8"));
 const thirdJohn = LogoxideBook.parse(topos, "usx", usx)!;
@@ -457,13 +457,14 @@ console.log(thirdJohn.bookId(), [...thirdJohn.chapterVerses()], [...LogoxideBook
 console.log(LogoxideBook.parse(topos, "rtf", usx)); // → null
 console.log(logoxide.usxToUsfm(usx).startsWith("\\id 3JN")); // → true
 console.log(JSON.parse(logoxide.usxToUsj(usx)).content[0].code); // → 3JN
+console.log(logoxide.convertBook(logoxide.usxToUsj(usx), BookFormat.Usj, BookFormat.Usfm).startsWith("\\id 3JN")); // → true
 console.log(LogoxideBook.findFragment("For God so greatly loved the world", "so loved the world")); // → { start: 8, end: 34 }
 ```
 
 ```python
 import json
 
-from logoxide import LogoxideBook, LogoxideErrorException
+from logoxide import BookFormat, LogoxideBook, LogoxideErrorException
 
 usx = logoxide.usfm_to_usx(pathlib.Path("kjv/usfm/3jn.usfm").read_text())
 third_john = LogoxideBook.parse(topos, "usx", usx)
@@ -474,6 +475,7 @@ except LogoxideErrorException as error:
     print(error.error)  # → LogoxideErrorInvalidMarkup(message='unknown markup "rtf" (usx, osis)')
 print(logoxide.usx_to_usfm(usx).startswith("\\id 3JN"))  # → True
 print(json.loads(logoxide.usx_to_usj(usx))["content"][0]["code"])  # → 3JN
+print(logoxide.convert_book(logoxide.usx_to_usj(usx), BookFormat.USJ, BookFormat.USFM).startswith("\\id 3JN"))  # → True
 print(LogoxideBook.find_fragment("For God so greatly loved the world", "so loved the world"))  # → TextRange(start=8, end=34)
 ```
 
@@ -1493,7 +1495,7 @@ topos](#references-with-topos).
 |---|---|
 | `Logoxide.new`, `version` | [Loading](#loading) |
 | `Logoxide.openPackage`, `openPackageDir`, `readPackageInfo` | [Opening a package](#opening-a-package) |
-| `Logoxide.usfmToUsx`, `usxToUsfm`, `usxToUsj`, `usjToUsx` | [A book's text](#a-books-text) |
+| `Logoxide.convertBook`, `usfmToUsx`, `usxToUsfm`, `usxToUsj`, `usjToUsx` | [A book's text](#a-books-text) |
 | `Logoxide.parseTimings`, `verifyMedia`, `mediaStorePath` | [Audio and video](#audio-and-video) |
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
 | `Logoxide.parseProject` | [A vault's project](#a-vaults-project) |
@@ -1516,7 +1518,7 @@ topos](#references-with-topos).
 | `LogoxideInstaller.loadCatalogs`, `catalog`, `provideDownload`, `provideDownloadFailed`, `provideRefs`, `provideArchive`, `provideImportEntry`, `provideFiles`, `provideMissing` | [Catalogs](#catalogs) (`answer`) |
 | `LogoxideInstaller.inspect`, `install` | [Installing](#installing) |
 | `PackageFile`, `PackageFeatures`, `PackageInfo`, `PackageKind`, `Rights`, `Derivatives`, `Upstream`, `BookFile`, `TitledFile`, `SkippedFile`, `VerseHashEntry` | [Opening a package](#opening-a-package), [Imports](#imports) (`SkippedFile`, `Upstream`) |
-| `BookTextOptions`, `BookVerse`, `BookTextStyle`, `KindTemplate`, `StyledText`, `TextMark`, `NodeKind`, `BookNode`, `NodeAttribute`, `MilestoneKind`, `VerseNodes`, `TextRange` | [A book's text](#a-books-text) |
+| `BookFormat`, `BookTextOptions`, `BookVerse`, `BookTextStyle`, `KindTemplate`, `StyledText`, `TextMark`, `NodeKind`, `BookNode`, `NodeAttribute`, `MilestoneKind`, `VerseNodes`, `TextRange` | [A book's text](#a-books-text) |
 | `Note`, `Entry`, `CrossReference` | [Commentaries, dictionaries, and cross-references](#commentaries-dictionaries-and-cross-references) |
 | `MediaFile`, `VerseTiming` | [Audio and video](#audio-and-video) |
 | `MappedPassage`, `MappedVerse` | [Versification maps](#versification-maps) |
