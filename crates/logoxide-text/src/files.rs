@@ -25,6 +25,21 @@ pub trait Files: Send + Sync {
     fn read_string(&self, path: &str) -> Result<String> {
         Ok(String::from_utf8_lossy(&self.read(path)?).into_owned())
     }
+
+    /// Lends a file's text (as [`read_string`](Self::read_string) reads it) to `f`: files held
+    /// in memory are lent without a copy
+    fn with_text(&self, path: &str, f: &mut dyn FnMut(&str)) -> Result<()> {
+        f(&self.read_string(path)?);
+        Ok(())
+    }
+}
+
+/// What `f` makes of a file's text, lent by [`Files::with_text`]
+pub fn read_with<T>(files: &dyn Files, path: &str, f: impl FnOnce(&str) -> T) -> Result<T> {
+    let mut f = Some(f);
+    let mut out = None;
+    files.with_text(path, &mut |text| out = f.take().map(|f| f(text)))?;
+    out.ok_or_else(|| TextError::NotFound(path.to_string()))
 }
 
 /// `dir/name` (`name` alone at the root)

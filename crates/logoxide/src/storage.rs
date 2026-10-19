@@ -61,6 +61,23 @@ pub trait Storage: Send + Sync {
         self.read(path).is_ok()
     }
 
+    /// Lends a file's bytes to `f`; a storage that holds them (memory) lends them without a copy
+    fn with_bytes(&self, path: &str, f: &mut dyn FnMut(&[u8])) -> Result<()> {
+        f(&self.read(path)?);
+        Ok(())
+    }
+
+    /// Lends a file's text to `f`, as [`read_string`](Self::read_string) reads it, without a
+    /// copy where [`with_bytes`](Self::with_bytes) makes none
+    fn with_text(&self, path: &str, f: &mut dyn FnMut(&str)) -> Result<()> {
+        let mut result = Ok(());
+        self.with_bytes(path, &mut |bytes| match std::str::from_utf8(bytes) {
+            Ok(text) => f(text.strip_prefix('\u{feff}').unwrap_or(text)),
+            Err(e) => result = Err(LogoxideError::io_message(path, e)),
+        })?;
+        result
+    }
+
     /// A file as text (a byte order mark is dropped)
     fn read_string(&self, path: &str) -> Result<String> {
         let bytes = self.read(path)?;
@@ -344,15 +361,20 @@ impl MemoryStorage {
 
 impl Storage for MemoryStorage {
     fn read(&self, path: &str) -> Result<Vec<u8>> {
+        let mut bytes = None;
+        self.with_bytes(path, &mut |b| bytes = Some(b.to_vec()))?;
+        Ok(bytes.unwrap_or_default())
+    }
+
+    fn with_bytes(&self, path: &str, f: &mut dyn FnMut(&[u8])) -> Result<()> {
         let path = checked(path)?;
         let files = self
             .files
             .read()
             .map_err(|e| LogoxideError::io_message(path, e))?;
-        files
-            .get(path)
-            .cloned()
-            .ok_or_else(|| LogoxideError::NotFound(path.to_string()))
+        let bytes = (files.get(path)).ok_or_else(|| LogoxideError::NotFound(path.to_string()))?;
+        f(bytes);
+        Ok(())
     }
 
     fn list(&self, dir: &str) -> Result<Vec<String>> {

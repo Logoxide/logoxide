@@ -1,15 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{cell::RefCell, collections::BTreeMap, ops::Range, sync::Arc};
 
-use logoxide_markup::{Element, Kind, Markup, Milestone, Node};
+use logoxide_markup::{Element, Kind, Markup, Milestone, Node, parse, verses::verses};
 use topos_bible::data::books::BookId;
 
 use super::{
     Book, Skipped, Source,
-    whole::{Parsed, marker_book, scan_tags, tag_attr, whole_files},
+    whole::{Parsed, marker_book, scan_tags, split_books, tag_attr, whole_files, without_lettered},
 };
 use crate::{
     error::{Result, TextError},
-    files::Files as Storage,
+    files::{Files as Storage, read_with},
     source::TextFormat,
 };
 
@@ -30,12 +30,18 @@ pub struct ThmlSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
     skipped: Vec<Skipped>,
+    /// Where each book's division is in its file, for the books whose part is one (see
+    /// [`book_ranges`]): each is parsed alone, so a whole commentary is never in memory
+    ranges: BTreeMap<BookId, BookRange>,
+    /// The others' files, parsed whole
     parsed: Parsed,
 }
 
 impl ThmlSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
+        let ranges = RefCell::new(BTreeMap::new());
         let (files, skipped) = whole_files(storage.as_ref(), dir, &["xml", "thml"], |text| {
+            ranges.borrow_mut().extend(book_ranges(text));
             // A Bible's markers, then a commentary's
             let mut scanned = scan_tags(text, "scripture", marker_reference);
             let commentary = scan_tags(text, "scripCom", marker_reference);
@@ -60,9 +66,364 @@ impl ThmlSource {
             storage,
             files,
             skipped,
+            ranges: ranges.into_inner(),
             parsed: Parsed::new(),
         })
     }
+
+    /// A book from its whole file's tree
+    fn book_from_whole(&self, path: &str, id: BookId) -> Result<Book> {
+        (self.parsed).book(
+            self.storage.as_ref(),
+            path,
+            id,
+            Markup::Thml,
+            |nodes| mark_verses(nodes, &mut None),
+            marker_book,
+        )
+    }
+
+    /// A book from its part of the file alone, as the whole file's parse would have it; none if
+    /// the part doesn't give it
+    fn book_alone(&self, path: &str, id: BookId, range: &BookRange) -> Result<Option<Book>> {
+        let tree = read_with(self.storage.as_ref(), path, |text| {
+            let body = text.strip_prefix('\u{feff}').unwrap_or(text);
+            let part = body.get(range.bytes.clone())?;
+            Some(match &range.run_of {
+                Some(name) => parse(Markup::Thml, &format!("{part}</{name}>")),
+                None => parse(Markup::Thml, part),
+            })
+        })?;
+        let Some(tree) = tree else {
+            return Ok(None);
+        };
+        // The chapter before, as the whole file's parse has it there
+        let mut chapter = range.chapter_before.clone();
+        let nodes = without_lettered(mark_verses(tree, &mut chapter));
+        let nodes = match range.run_of {
+            // The division's children, which start with the book's
+            Some(_) => match <[Node; 1]>::try_from(nodes) {
+                Ok([Node::Element(e)]) => e.children,
+                _ => return Ok(None),
+            },
+            None => match split_books(nodes, id, &marker_book).remove(&id) {
+                Some(nodes) => nodes,
+                None => return Ok(None),
+            },
+        };
+        let spans = verses(&nodes);
+        Ok(Some(Book { id, nodes, spans }))
+    }
+}
+
+/// A book's part of its file
+#[derive(Clone, Debug, PartialEq)]
+struct BookRange {
+    /// Its element, from its start tag through its end tag; or for a run, the division's start
+    /// tag through the end of the book's last child of it
+    bytes: Range<usize>,
+    /// For a run: the division's name, to close it with
+    run_of: Option<String>,
+    /// The book and chapter of the marker before it
+    chapter_before: Option<(String, u8)>,
+}
+
+/// A verse marker found by [`book_ranges`]
+struct Marker {
+    book: BookId,
+    /// Its open elements, by number
+    ancestors: Vec<usize>,
+    /// Where its tag starts and ends
+    at: usize,
+    end: usize,
+    /// Its book (as named) and chapter
+    here: (String, u8),
+    /// Where [`mark_verses`] puts a division's chapter markers, at the division's start
+    inserted: bool,
+}
+
+/**
+Where each book's part of a ThML file is, found from its tags without building its tree: the
+part [`split_books`] would take of the parsed tree (the largest element holding the book's markers
+and no other book's), as the parser nests elements (quick-xml with the same settings, ThML's void
+elements, an end tag closing what's open inside its element). Books that aren't one element, or
+whose element isn't closed, aren't listed, nor is any book when the file can't be read as XML
+- A division whose first marker is its chapter's verse 0 gets that chapter's markers at its start
+  ([`mark_verses`]), so the first book of a testament's division is a run of that division's
+  children: from its start to the last child with the book's markers
+*/
+fn book_ranges(text: &str) -> BTreeMap<BookId, BookRange> {
+    use quick_xml::{Reader, events::Event};
+
+    struct Open {
+        name: String,
+        /// A division, with the chapter of the marker before it ([`mark_verses`]'s `chapter`)
+        division: Option<Option<(String, u8)>>,
+        seen: bool,
+    }
+    // Every element's start and end, by number; each marker's book, its open elements (by
+    // number), and where it is
+    let mut spans: Vec<(usize, Option<usize>)> = vec![];
+    let mut markers: Vec<Marker> = vec![];
+    // Each division's name, by number, to close a run's part with
+    let mut open_names: BTreeMap<usize, String> = BTreeMap::new();
+    let mut open: Vec<(usize, Open)> = vec![];
+    // A `<scripCom ...>` just opened, a marker if its end tag comes next
+    let mut pending: Option<(Option<(BookId, Place)>, usize)> = None;
+    // The book and chapter of the last marker with a place
+    let mut chapter: Option<(String, u8)> = None;
+    let mut reader = Reader::from_str(text);
+    {
+        let config = reader.config_mut();
+        config.check_end_names = false;
+        config.allow_unmatched_ends = true;
+        config.expand_empty_elements = false;
+        config.trim_text(false);
+        config.check_comments = false;
+        config.allow_dangling_amp = false;
+    }
+    let book_of = |tag: &quick_xml::events::BytesStart| -> Option<(BookId, Place)> {
+        let attrs: Vec<(String, String)> = (tag.attributes().with_checks(false))
+            .filter_map(std::result::Result::ok)
+            .map(|a| {
+                (
+                    a.key.0.to_string(),
+                    logoxide_markup::decode_entities(&a.value),
+                )
+            })
+            .collect();
+        let attr = |name: &str| {
+            attrs
+                .iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.as_str())
+        };
+        let place = tag_place(attr)?;
+        Some((crate::bible_data().books().search_osis(&place.book)?, place))
+    };
+    let is_marker_name = |name: &str| {
+        name.eq_ignore_ascii_case("scripture") || name.eq_ignore_ascii_case("scripcom")
+    };
+    let mut at = 0usize;
+    let add_marker = |found: Option<(BookId, Place)>,
+                      open: &mut Vec<(usize, Open)>,
+                      chapter: &mut Option<(String, u8)>,
+                      (at, end): (usize, usize),
+                      markers: &mut Vec<Marker>| {
+        let Some((book, place)) = found else { return };
+        let here = (place.book.clone(), place.chapter);
+        // A division whose first marker is its chapter's verse 0, in another chapter than the
+        // marker before it, gets its chapter's markers at its start
+        for (depth, (_, element)) in open.iter().enumerate() {
+            if let Some(before) = &element.division
+                && !element.seen
+                && place.verse == 0
+                && before.as_ref() != Some(&here)
+            {
+                let ancestors = open[..=depth].iter().map(|(n, _)| *n).collect();
+                let here = here.clone();
+                markers.push(Marker {
+                    book,
+                    ancestors,
+                    at,
+                    end,
+                    here,
+                    inserted: true,
+                });
+            }
+        }
+        for (_, element) in open.iter_mut() {
+            element.seen = true;
+        }
+        *chapter = Some(here.clone());
+        let ancestors = open.iter().map(|(n, _)| *n).collect();
+        markers.push(Marker {
+            book,
+            ancestors,
+            at,
+            end,
+            here,
+            inserted: false,
+        });
+    };
+    loop {
+        let event = reader.read_event();
+        let end = usize::try_from(reader.buffer_position()).unwrap_or(usize::MAX);
+        let start = at;
+        at = end;
+        let was_pending = pending.take();
+        match event {
+            Err(_) => return BTreeMap::new(),
+            Ok(Event::Eof) => break,
+            Ok(Event::Start(tag)) => {
+                let name = tag.name().0.to_string();
+                if is_void(&name) || open.len() >= 1_000 {
+                    if is_marker_name(&name) {
+                        add_marker(
+                            book_of(&tag),
+                            &mut open,
+                            &mut chapter,
+                            (start, end),
+                            &mut markers,
+                        );
+                    }
+                    continue;
+                }
+                let number = spans.len();
+                spans.push((start, None));
+                let division = matches!(
+                    name.to_ascii_lowercase().as_str(),
+                    "div1" | "div2" | "div3" | "div4" | "div5" | "div6"
+                )
+                .then(|| chapter.clone());
+                if division.is_some() {
+                    open_names.insert(number, name.clone());
+                }
+                if is_marker_name(&name) {
+                    pending = Some((book_of(&tag), start));
+                }
+                open.push((
+                    number,
+                    Open {
+                        name,
+                        division,
+                        seen: false,
+                    },
+                ));
+            }
+            Ok(Event::Empty(tag)) => {
+                if is_marker_name(tag.name().0) {
+                    add_marker(
+                        book_of(&tag),
+                        &mut open,
+                        &mut chapter,
+                        (start, end),
+                        &mut markers,
+                    );
+                }
+            }
+            Ok(Event::End(tag)) => {
+                let content: &str = &tag;
+                let name = content.split([' ', '\t', '\r', '\n']).next().unwrap_or("");
+                if is_void(name) {
+                    continue;
+                }
+                let Some(index) = open
+                    .iter()
+                    .rposition(|(_, e)| e.name.eq_ignore_ascii_case(name))
+                else {
+                    continue;
+                };
+                // An empty marker: its markers' ancestors don't include itself
+                if let Some((book, at)) = was_pending
+                    && index + 1 == open.len()
+                {
+                    open.pop();
+                    add_marker(book, &mut open, &mut chapter, (at, end), &mut markers);
+                    if let Some(span) = spans.last_mut() {
+                        span.1 = Some(end);
+                    }
+                    continue;
+                }
+                for (number, _) in open.drain(index..) {
+                    spans[number].1 = Some(end);
+                }
+            }
+            // Text inside a marker makes it a quotation; comments and the like don't count
+            Ok(Event::Text(t)) if t.is_empty() => pending = was_pending,
+            Ok(Event::Comment(_) | Event::PI(_) | Event::Decl(_) | Event::DocType(_)) => {
+                pending = was_pending
+            }
+            Ok(_) => {}
+        }
+    }
+    let mut order: Vec<BookId> = vec![];
+    for marker in &markers {
+        if !order.contains(&marker.book) {
+            order.push(marker.book);
+        }
+    }
+    let chapter_before = |at: usize| {
+        (markers.iter())
+            .rfind(|m| m.at < at)
+            .map(|m| m.here.clone())
+    };
+    let mut ranges = BTreeMap::new();
+    for book in order {
+        let own: Vec<&Marker> = markers.iter().filter(|m| m.book == book).collect();
+        let Some(mut common) = own.first().map(|m| m.ancestors.clone()) else {
+            continue;
+        };
+        for marker in &own {
+            let same = common
+                .iter()
+                .zip(marker.ancestors.iter())
+                .take_while(|(a, b)| a == b);
+            common.truncate(same.count());
+        }
+        let others = |at: &[usize]| {
+            (markers.iter()).any(|m| {
+                m.book != book && m.ancestors.len() >= at.len() && m.ancestors.starts_with(at)
+            })
+        };
+        if common.is_empty() || others(&common) {
+            // A run: only one starting with the division's own chapter markers
+            let starts_division = own.iter().any(|m| m.inserted && m.ancestors == common);
+            let Some(&division) = common.last().filter(|_| starts_division) else {
+                continue;
+            };
+            let depth = common.len();
+            let child_end = |m: &&Marker| match m.ancestors.get(depth) {
+                Some(&child) => spans[child].1,
+                None => Some(m.end),
+            };
+            let Some(last) = own
+                .iter()
+                .map(child_end)
+                .collect::<Option<Vec<usize>>>()
+                .and_then(|ends| ends.into_iter().max())
+            else {
+                continue;
+            };
+            let start = spans[division].0;
+            let name = open_names.get(&division).cloned();
+            ranges.insert(
+                book,
+                BookRange {
+                    bytes: start..last,
+                    run_of: name,
+                    chapter_before: chapter_before(start),
+                },
+            );
+            continue;
+        }
+        while common.len() > 1 && !others(&common[..common.len() - 1]) {
+            common.pop();
+        }
+        let Some(&element) = common.last() else {
+            continue;
+        };
+        let (start, Some(end)) = spans[element] else {
+            continue;
+        };
+        ranges.insert(
+            book,
+            BookRange {
+                bytes: start..end,
+                run_of: None,
+                chapter_before: chapter_before(start),
+            },
+        );
+    }
+    ranges
+}
+
+/// ThML's elements written without an end tag (logoxide-markup's)
+fn is_void(name: &str) -> bool {
+    const VOID: &[&str] = &[
+        "br", "hr", "img", "sync", "pb", "meta", "link", "col", "area", "input",
+    ];
+    VOID.iter().any(|v| v.eq_ignore_ascii_case(name))
 }
 
 impl Source for ThmlSource {
@@ -83,14 +444,12 @@ impl Source for ThmlSource {
             .files
             .get(&id)
             .ok_or_else(|| TextError::NotFound(format!("book {}", id.0)))?;
-        (self.parsed).book(
-            self.storage.as_ref(),
-            path,
-            id,
-            Markup::Thml,
-            |nodes| mark_verses(nodes, &mut None),
-            marker_book,
-        )
+        if let Some(range) = self.ranges.get(&id)
+            && let Some(book) = self.book_alone(path, id, range)?
+        {
+            return Ok(book);
+        }
+        self.book_from_whole(path, id)
     }
 }
 
@@ -545,6 +904,62 @@ The vision of Obadiah. <scripRef passage="Ruth 1:1">Ruth 1:1</scripRef></p>
                 (1, 1, String::from("On the first.")),
                 (2, 1, String::from("On Ruth 2:1."))
             ]
+        );
+    }
+
+    /// Each book of a file, from its division alone and from the whole file
+    fn alone_and_whole(text: &str) -> Vec<(BookId, Book, Book)> {
+        let files = Arc::new(crate::files::MemoryFiles::with([("thml/a.xml", text)]));
+        let source = ThmlSource::open(files, "thml").unwrap();
+        (source.ranges.iter())
+            .map(|(&id, range)| {
+                let path = &source.files[&id];
+                let alone = source
+                    .book_alone(path, id, range)
+                    .unwrap()
+                    .expect("its division");
+                (id, alone, source.book_from_whole(path, id).unwrap())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_book_read_from_its_division_is_the_same_as_from_the_whole_file() {
+        let ccel = alone_and_whole(CCEL);
+        let ids: Vec<BookId> = ccel.iter().map(|(id, _, _)| *id).collect();
+        assert_eq!(ids, [book("RUT"), book("OBA")]);
+        // A testament's first book starts its division (its chapter's verse 0 marked there), so
+        // it's a run of the division's children
+        let testament = r#"<ThML><ThML.body><div1 title="Old Testament">
+<div2 title="Ruth"><scripCom parsed="|Ruth|1|0|0|0"/><p>On Ruth 1.</p>
+<scripCom parsed="|Ruth|1|1|0|0"/><p>On Ruth 1:1.</p></div2>
+<div2 title="Obadiah"><scripCom parsed="|Obad|1|0|0|0"/><p>On Obadiah.</p>
+<scripCom parsed="|Obad|1|1|0|0"/><p>On Obadiah 1.</p></div2>
+</div1></ThML.body></ThML>"#;
+        let ranges = book_ranges(testament);
+        assert_eq!(ranges[&book("RUT")].run_of.as_deref(), Some("div1"));
+        assert_eq!(ranges[&book("OBA")].run_of, None);
+        for text in [CCEL, HENRY, CALVIN, testament] {
+            let books = alone_and_whole(text);
+            assert!(!books.is_empty());
+            for (id, alone, whole) in books {
+                assert_eq!(alone, whole, "{id:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn books_that_are_not_one_element_are_parsed_with_the_file() {
+        // Ruth's markers, then Obadiah's, then Ruth's again, in one division
+        let mixed = r#"<ThML><ThML.body><div1>
+<scripCom parsed="|Ruth|1|1|0|0"/><p>On Ruth 1:1.</p>
+<scripCom parsed="|Obad|1|1|0|0"/><p>On Obadiah 1.</p>
+<scripCom parsed="|Ruth|2|1|0|0"/><p>On Ruth 2:1.</p>
+</div1></ThML.body></ThML>"#;
+        assert!(book_ranges(mixed).is_empty());
+        assert!(
+            book_ranges("<ThML><div1><scripCom parsed=\"|Ruth|1|1|0|0\"/>").is_empty(),
+            "unclosed"
         );
     }
 }

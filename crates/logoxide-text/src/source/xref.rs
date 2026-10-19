@@ -18,25 +18,40 @@ use crate::{
     files::{Files, join},
 };
 
-/// One line: its passages, each as parsed and in normal OSIS form
+/// One line, by the passages' places in [`XrefSource`]'s tables (a million lines are a few
+/// megabytes)
 struct Line {
-    from: Passage,
-    from_osis: String,
-    to_osis: String,
-    weight: Option<f64>,
+    from: u32,
+    to: u32,
+    /// NaN for none
+    weight: f64,
+}
+
+/// A distinct `from`: as parsed, in normal OSIS form, and its lines in order
+struct From {
+    passage: Passage,
+    osis: String,
+    lines: Vec<u32>,
 }
 
 pub struct XrefSource {
     lines: Vec<Line>,
-    /// Each distinct `from` in normal form, in file and line order
-    froms: Vec<String>,
-    /// The lines of each `from` (normal form), in order
-    by_from: HashMap<String, Vec<usize>>,
-    /// The lines whose `from` is in each book, in order
-    by_book: BTreeMap<BookId, Vec<usize>>,
-    /// Each `from` and `to` pair read, for lines listed twice
-    pairs: HashSet<(String, String)>,
+    /// Each distinct `from`, in file and line order
+    froms: Vec<From>,
+    from_ids: HashMap<String, u32>,
+    /// Each distinct `to`, in normal form
+    tos: Vec<String>,
+    /// The `from`s in each book, in order
+    by_book: BTreeMap<BookId, Vec<u32>>,
     no_books: BTreeMap<BookId, String>,
+}
+
+/// What's needed only while the files are read
+#[derive(Default)]
+struct Reading {
+    to_ids: HashMap<String, u32>,
+    /// Each `from` and `to` pair read, for lines listed twice
+    pairs: HashSet<(u32, u32)>,
 }
 
 impl XrefSource {
@@ -47,11 +62,12 @@ impl XrefSource {
         let mut source = Self {
             lines: vec![],
             froms: vec![],
-            by_from: HashMap::new(),
+            from_ids: HashMap::new(),
+            tos: vec![],
             by_book: BTreeMap::new(),
-            pairs: HashSet::new(),
             no_books: BTreeMap::new(),
         };
+        let mut reading = Reading::default();
         for name in names {
             let wanted =
                 (name.rsplit_once('.')).is_some_and(|(_, e)| e.eq_ignore_ascii_case("tsv"));
@@ -59,12 +75,13 @@ impl XrefSource {
                 continue;
             }
             let path = join(dir, &name);
-            source.read(&path, &storage.read_string(&path)?)?;
+            source.read(&path, &storage.read_string(&path)?, &mut reading)?;
         }
+        source.lines.shrink_to_fit();
         Ok(source)
     }
 
-    fn read(&mut self, path: &str, text: &str) -> Result<()> {
+    fn read(&mut self, path: &str, text: &str, reading: &mut Reading) -> Result<()> {
         for (i, line) in text.lines().enumerate() {
             let line = line.trim_end();
             if line.is_empty() || line.starts_with('#') {
@@ -88,27 +105,46 @@ impl XrefSource {
                 ))
             })?;
             let weight = match fields.next().map(str::trim).filter(|w| !w.is_empty()) {
-                Some(weight) => Some(
-                    (weight.parse::<f64>().ok())
-                        .filter(|w| w.is_finite())
-                        .ok_or_else(|| bad(format!("weight `{weight}` isn't a number")))?,
-                ),
-                None => None,
+                Some(weight) => (weight.parse::<f64>().ok())
+                    .filter(|w| w.is_finite())
+                    .ok_or_else(|| bad(format!("weight `{weight}` isn't a number")))?,
+                None => f64::NAN,
             };
-            if !self.pairs.insert((from_osis.clone(), to_osis.clone())) {
-                return Err(bad(format!("{from_osis} to {to_osis} is listed twice")));
+            let from_id = match self.from_ids.get(&from_osis) {
+                Some(&id) => id,
+                None => {
+                    let id = self.froms.len() as u32;
+                    self.by_book.entry(from.book).or_default().push(id);
+                    self.from_ids.insert(from_osis.clone(), id);
+                    self.froms.push(From {
+                        passage: from,
+                        osis: from_osis,
+                        lines: vec![],
+                    });
+                    id
+                }
+            };
+            let to_id = match reading.to_ids.get(&to_osis) {
+                Some(&id) => id,
+                None => {
+                    let id = self.tos.len() as u32;
+                    reading.to_ids.insert(to_osis.clone(), id);
+                    self.tos.push(to_osis);
+                    id
+                }
+            };
+            if !reading.pairs.insert((from_id, to_id)) {
+                let (from, to) = (
+                    &self.froms[from_id as usize].osis,
+                    &self.tos[to_id as usize],
+                );
+                return Err(bad(format!("{from} to {to} is listed twice")));
             }
-            let index = self.lines.len();
-            let of_from = self.by_from.entry(from_osis.clone()).or_default();
-            if of_from.is_empty() {
-                self.froms.push(from_osis.clone());
-            }
-            of_from.push(index);
-            self.by_book.entry(from.book).or_default().push(index);
+            let index = self.lines.len() as u32;
+            self.froms[from_id as usize].lines.push(index);
             self.lines.push(Line {
-                from,
-                from_osis,
-                to_osis,
+                from: from_id,
+                to: to_id,
                 weight,
             });
         }
@@ -122,6 +158,10 @@ impl XrefSource {
 
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
+    }
+
+    fn weight(line: &Line) -> Option<f64> {
+        (!line.weight.is_nan()).then_some(line.weight)
     }
 }
 
@@ -171,7 +211,7 @@ impl Source for XrefSource {
     }
 
     fn keys(&self) -> Vec<String> {
-        self.froms.clone()
+        self.froms.iter().map(|f| f.osis.clone()).collect()
     }
 
     /// A passage's targets as one text: each `to` with `=` and its weight when it has one,
@@ -180,16 +220,17 @@ impl Source for XrefSource {
         let Some((_, from)) = parse_reference(key) else {
             return Ok(None);
         };
-        let lines = self
-            .by_from
-            .get(&from)
-            .map(Vec::as_slice)
+        let lines = (self.from_ids.get(&from))
+            .map(|&id| self.froms[id as usize].lines.as_slice())
             .unwrap_or_default();
         let targets: Vec<String> = (lines.iter())
-            .map(|&i| &self.lines[i])
-            .map(|l| match l.weight {
-                Some(weight) => format!("{}={weight}", l.to_osis),
-                None => l.to_osis.clone(),
+            .map(|&i| &self.lines[i as usize])
+            .map(|l| {
+                let to = &self.tos[l.to as usize];
+                match Self::weight(l) {
+                    Some(weight) => format!("{to}={weight}"),
+                    None => to.clone(),
+                }
             })
             .collect();
         if targets.is_empty() {
@@ -206,18 +247,22 @@ impl Source for XrefSource {
         let Some((passage, _)) = parse_reference(verse) else {
             return Ok(vec![]);
         };
-        let lines = self
-            .by_book
-            .get(&passage.book)
+        let froms = (self.by_book.get(&passage.book))
             .map(Vec::as_slice)
             .unwrap_or_default();
+        // In line order, as the files have them
+        let mut lines: Vec<u32> = (froms.iter())
+            .map(|&id| &self.froms[id as usize])
+            .filter(|f| overlap(&f.passage, &passage))
+            .flat_map(|f| f.lines.iter().copied())
+            .collect();
+        lines.sort_unstable();
         Ok((lines.iter())
-            .map(|&i| &self.lines[i])
-            .filter(|l| overlap(&l.from, &passage))
+            .map(|&i| &self.lines[i as usize])
             .map(|l| CrossReference {
-                from: l.from_osis.clone(),
-                to: l.to_osis.clone(),
-                weight: l.weight,
+                from: self.froms[l.from as usize].osis.clone(),
+                to: self.tos[l.to as usize].clone(),
+                weight: Self::weight(l),
             })
             .collect())
     }

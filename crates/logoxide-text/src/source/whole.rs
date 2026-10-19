@@ -15,7 +15,7 @@ use topos_bible::data::books::BookId;
 use super::{Book, SkipReason, Skipped};
 use crate::{
     error::{Result, TextError},
-    files::{Files as Storage, join},
+    files::{Files as Storage, join, read_with},
 };
 
 /**
@@ -46,7 +46,7 @@ pub(crate) fn whole_files(
             mut books,
             unknown,
             lettered,
-        } = books_in(&storage.read_string(&path)?);
+        } = read_with(storage, &path, &books_in)?;
         for book in lettered {
             let (path, reason) = (path.clone(), SkipReason::LetteredChapter);
             skipped.push(Skipped { path, book, reason });
@@ -248,7 +248,7 @@ impl Parsed {
     ) -> Result<Book> {
         let mut last = self.last.lock().unwrap_or_else(|e| e.into_inner());
         if last.as_ref().is_none_or(|(p, _)| p != path) {
-            let nodes = prepare(parse(markup, &storage.read_string(path)?));
+            let nodes = prepare(read_with(storage, path, |text| parse(markup, text))?);
             let nodes = without_lettered(nodes);
             *last = Some((path.to_string(), split_books(nodes, id, &book_of)));
         }

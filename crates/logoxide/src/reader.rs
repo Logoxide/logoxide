@@ -188,6 +188,10 @@ mod with_text {
         fn read_string(&self, path: &str) -> logoxide_text::Result<String> {
             self.0.read_string(path).map_err(files_error)
         }
+
+        fn with_text(&self, path: &str, f: &mut dyn FnMut(&str)) -> logoxide_text::Result<()> {
+            self.0.with_text(path, f).map_err(files_error)
+        }
     }
 
     /// A cache's storage as the store logoxide-text's book cache writes to

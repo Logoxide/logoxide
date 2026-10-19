@@ -305,11 +305,13 @@ pub fn other_files(storage: &dyn Storage) -> Result<Vec<String>> {
 pub fn checksum_of(storage: &dyn Storage, paths: &[String]) -> Result<String> {
     let mut hasher = Sha256::new();
     for path in paths {
-        let bytes = storage.read(path)?;
-        hasher.update(path.as_bytes());
-        hasher.update([0]);
-        hasher.update((bytes.len() as u64).to_le_bytes());
-        hasher.update(&bytes);
+        // Lent, not copied: a package's files can be tens of megabytes
+        storage.with_bytes(path, &mut |bytes| {
+            hasher.update(path.as_bytes());
+            hasher.update([0]);
+            hasher.update((bytes.len() as u64).to_le_bytes());
+            hasher.update(bytes);
+        })?;
     }
     let hex: String = hasher
         .finalize()
