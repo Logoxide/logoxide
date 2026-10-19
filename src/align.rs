@@ -14,9 +14,9 @@ const ADDED: i32 = -1;
 
 /// A near-miss word counts this much of a word said exactly
 const NEAR_WEIGHT: f32 = 0.8;
-/// A word the speaker added counts this much against accuracy (a skipped or changed verse word
-/// counts fully)
-const ADDED_WEIGHT: f32 = 0.5;
+/// A skipped or changed verse word counts as one word against accuracy, and each place the
+/// speaker added words counts this much, however many: a comment mid-verse is one interruption
+const INTERRUPTION: f32 = 0.5;
 
 /// The transcript, as the aligner sees it
 pub(crate) struct Prepared {
@@ -97,6 +97,7 @@ impl Aligner {
         to: usize,
         band: Option<(isize, isize)>,
         min_accuracy: f32,
+        min_partial_accuracy: f32,
     ) -> Option<Reading> {
         let verse = engine.text_tokens(text);
         let (m, n) = (verse.len(), to.saturating_sub(from));
@@ -231,14 +232,20 @@ impl Aligner {
         }
         self.path.reverse();
 
-        let (a, b) = accurate_part(&self.path, min_accuracy)?;
+        let (mut a, mut b) = accurate_part(&self.path, min_accuracy)?;
+        // Partial quotations must be more accurate: if this is one, its part that is
+        let (matched, accuracy) = weigh(&self.path[a..=b]);
+        if matched < crate::search::WHOLE * m as f32 && accuracy < min_partial_accuracy {
+            (a, b) = accurate_part(&self.path, min_partial_accuracy)?;
+        }
         let path = &self.path[a..=b];
         let mut heard = vec![false; m];
         let mut matched = 0.0f32;
         let mut verse_ops = 0usize;
-        let mut added = 0usize;
+        let mut interruptions = 0usize;
         let mut aligned = 0usize;
         let mut information = 0.0f32;
+        let mut previous = Op::Exact;
         for &(op, vi, _) in path {
             match op {
                 Op::Exact | Op::Near => {
@@ -249,13 +256,14 @@ impl Aligner {
                     verse_ops += 1;
                 }
                 Op::Changed | Op::Skipped => verse_ops += 1,
-                Op::Added => added += 1,
+                Op::Added => interruptions += usize::from(previous != Op::Added),
             }
+            previous = op;
         }
         let tok_start = from + path[0].2 as usize;
         let tok_end = from + path[path.len() - 1].2 as usize + 1;
         let span = tok_end - tok_start;
-        let accuracy = matched / (verse_ops as f32 + ADDED_WEIGHT * added as f32);
+        let accuracy = matched / (verse_ops as f32 + INTERRUPTION * interruptions as f32);
         let coverage = matched / m as f32;
         let precision = aligned as f32 / span.max(1) as f32;
         let mut extra = Vec::with_capacity(span - aligned);
@@ -288,21 +296,43 @@ impl Aligner {
     }
 }
 
+/// Words matched (near misses counting less) and accuracy of part of an alignment
+fn weigh(path: &[(Op, u32, u32)]) -> (f32, f32) {
+    let (mut matched, mut verse_ops, mut interruptions) = (0.0f32, 0usize, 0usize);
+    let mut previous = Op::Exact;
+    for &(op, ..) in path {
+        match op {
+            Op::Exact => matched += 1.0,
+            Op::Near => matched += NEAR_WEIGHT,
+            _ => {}
+        }
+        match op {
+            Op::Exact | Op::Near | Op::Changed | Op::Skipped => verse_ops += 1,
+            Op::Added => interruptions += usize::from(previous != Op::Added),
+        }
+        previous = op;
+    }
+    (
+        matched,
+        matched / (verse_ops as f32 + INTERRUPTION * interruptions as f32).max(1.0),
+    )
+}
+
 /// The longest part of an alignment (by words matched) that is at least `min` accurate, from a
 /// matched word to a matched word: a verse read with a few words left out in the middle is the
 /// longer of its accurate halves, unless the whole of it is accurate enough
 fn accurate_part(path: &[(Op, u32, u32)], min: f32) -> Option<(usize, usize)> {
     let len = path.len();
-    // Prefix sums: matched weight, verse words, added words
+    // Prefix sums: matched weight, verse words, interruptions
     let mut sums = Vec::with_capacity(len + 1);
     sums.push((0.0f32, 0u32, 0u32));
-    for &(op, ..) in path {
+    for (k, &(op, ..)) in path.iter().enumerate() {
         let &(w, v, a) = sums.last()?;
         sums.push(match op {
             Op::Exact => (w + 1.0, v + 1, a),
             Op::Near => (w + NEAR_WEIGHT, v + 1, a),
             Op::Changed | Op::Skipped => (w, v + 1, a),
-            Op::Added => (w, v, a + 1),
+            Op::Added => (w, v, a + u32::from(k == 0 || path[k - 1].0 != Op::Added)),
         });
     }
     let accuracy = |a: usize, b: usize| {
@@ -311,7 +341,7 @@ fn accurate_part(path: &[(Op, u32, u32)], min: f32) -> Option<(usize, usize)> {
             sums[b + 1].1 - sums[a].1,
             sums[b + 1].2 - sums[a].2,
         );
-        (w, w / (v as f32 + ADDED_WEIGHT * x as f32).max(1.0))
+        (w, w / (v as f32 + INTERRUPTION * x as f32).max(1.0))
     };
     let is_match = |k: usize| matches!(path[k].0, Op::Exact | Op::Near);
     let first = (0..len).find(|&k| is_match(k))?;

@@ -35,12 +35,16 @@ use crate::{
 #[serde(rename_all = "camelCase", default)]
 pub struct Options {
     /**
-    How accurately the verse's words must be said, 0–1 (default 0.9). Of the verse's words from
+    How accurately the verse's words must be said, 0–1 (default 0.85). Of the verse's words from
     the first quoted to the last, the share said right; a near miss ("thee" for "the") counts
-    0.8, and a word the speaker added counts half a word against it. A quotation that is only
-    accurate in part is that part
+    0.8, and each place the speaker added words (a comment mid-verse, however long) counts half a
+    word against it. A quotation that is only accurate in part is that part
     */
     pub min_accuracy: f32,
+    /// How accurately a quotation of less than three quarters of a verse must be said, when that
+    /// is more than `min_accuracy` (default 0.9): a short stretch with a word wrong is more often
+    /// an everyday phrase than a quotation
+    pub min_partial_accuracy: f32,
     /// How much of the verse must be quoted, 0–1 (default 0: any part)
     pub min_coverage: f32,
     /// Fewest of the verse's words a quotation of part of it must have (default 6), so everyday
@@ -56,7 +60,8 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            min_accuracy: 0.9,
+            min_accuracy: 0.85,
+            min_partial_accuracy: 0.9,
             min_coverage: 0.0,
             min_words: 6,
             min_words_in_context: 3,
@@ -189,6 +194,9 @@ struct Search<'a, 'e> {
     aligner: Aligner,
 }
 
+/// Quotations of less than this much of a verse are partial
+pub(crate) const WHOLE: f32 = 0.75;
+
 /// Short quotations must be of words rare enough not to be anyone's ("and we are")
 const SHORT_BITS: f32 = 14.0;
 
@@ -257,7 +265,12 @@ impl<'a, 'e> Search<'a, 'e> {
     fn acceptable(&self, r: &Reading) -> Option<bool> {
         let m = self.engine.text_tokens(r.text).len();
         let o = self.options;
-        if r.accuracy < o.min_accuracy || r.coverage < o.min_coverage {
+        let min_accuracy = if r.coverage < WHOLE {
+            o.min_accuracy.max(o.min_partial_accuracy)
+        } else {
+            o.min_accuracy
+        };
+        if r.accuracy < min_accuracy || r.coverage < o.min_coverage {
             return None;
         }
         if r.heard_count >= o.min_words.min(m) {
@@ -283,6 +296,9 @@ impl<'a, 'e> Search<'a, 'e> {
             to,
             band,
             self.options.min_accuracy,
+            self.options
+                .min_accuracy
+                .max(self.options.min_partial_accuracy),
         )?;
         r.alone = self.acceptable(&r)?;
         Some(r)
@@ -508,12 +524,26 @@ impl<'a, 'e> Search<'a, 'e> {
             }
         }
 
-        // A passage that fits one verse far better than another is only the better one; parallel
-        // passages with the same words score the same, and are both kept
+        // Words that fit one verse clearly better than another are only the better one's. Better
+        // is explaining as many of the words more accurately ("Then Satan answered the Lord" is
+        // Job 1:9, not "Then Job answered the Lord"), or as many as accurately and much more of
+        // the verse, or clearly more words and no worse otherwise. Parallel passages and verses
+        // that quote each other (the commandments in Exodus 20 and Romans 13:9) fit alike, and
+        // are both kept
+        let matched = |r: &Reading| r.coverage * engine.text_tokens(r.text).len() as f32;
+        let better = |a: &Reading, b: &Reading| {
+            let (ma, mb) = (matched(a), matched(b));
+            let as_many = ma >= mb - 0.5;
+            let as_accurate = a.accuracy >= b.accuracy - 0.02;
+            (as_many && a.accuracy >= b.accuracy + 0.05)
+                || (as_many && as_accurate && a.score > b.score + 0.04)
+                || (ma > mb + 0.5 && as_accurate && a.score >= b.score - 0.04)
+        };
         drafts.sort_by(|a, b| {
-            readings[b.reading]
-                .score
-                .total_cmp(&readings[a.reading].score)
+            let (a, b) = (&readings[a.reading], &readings[b.reading]);
+            matched(b)
+                .total_cmp(&matched(a))
+                .then(b.score.total_cmp(&a.score))
         });
         let mut kept: Vec<Draft> = vec![];
         for d in drafts {
@@ -521,7 +551,7 @@ impl<'a, 'e> Search<'a, 'e> {
             let span = r.tok_start..r.tok_end;
             let beaten = kept.iter().any(|k| {
                 let kr = &readings[k.reading];
-                overlap(&(kr.tok_start..kr.tok_end), &span) > 0.5 && kr.score - r.score > 0.04
+                overlap(&(kr.tok_start..kr.tok_end), &span) > 0.5 && better(kr, r)
             });
             if !beaten {
                 kept.push(d);
@@ -572,7 +602,7 @@ impl<'a, 'e> Search<'a, 'e> {
                 extra.dedup();
                 let kind = if r.coverage >= 0.97 && r.precision >= 0.9 {
                     Kind::Exact
-                } else if r.coverage >= 0.75 {
+                } else if r.coverage >= WHOLE {
                     Kind::Close
                 } else {
                     Kind::Partial

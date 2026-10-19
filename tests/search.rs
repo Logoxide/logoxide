@@ -192,11 +192,22 @@ fn short_quotations_need_their_chapter() {
             }
         }
         let filler = format!("{} filler{i} words{i}", words.join(" "));
-        t.verse(VerseRef::new(1, (i / 50 + 1) as u8, (i % 50 + 1) as u8), filler);
+        t.verse(
+            VerseRef::new(1, (i / 50 + 1) as u8, (i % 50 + 1) as u8),
+            filler,
+        );
     }
     let engine = Engine::new([t]);
-    let alone = Transcript::from_text("some people would tell you we have no sin at all but the scripture disagrees");
-    assert!(engine.searcher().search(&alone, &Options::default()).quotations.is_empty());
+    let alone = Transcript::from_text(
+        "some people would tell you we have no sin at all but the scripture disagrees",
+    );
+    assert!(
+        engine
+            .searcher()
+            .search(&alone, &Options::default())
+            .quotations
+            .is_empty()
+    );
 
     let with_chapter = Transcript::from_text(
         "if we confess our sins he is faithful and just to forgive us our sins and to cleanse us from all unrighteousness. \
@@ -204,7 +215,13 @@ fn short_quotations_need_their_chapter() {
     );
     let found = engine.searcher().search(&with_chapter, &Options::default());
     let r = refs(&engine, &found);
-    assert_eq!(r, [("1 John 1:9".to_string(), Kind::Exact), ("1 John 1:8".to_string(), Kind::Partial)]);
+    assert_eq!(
+        r,
+        [
+            ("1 John 1:9".to_string(), Kind::Exact),
+            ("1 John 1:8".to_string(), Kind::Partial)
+        ]
+    );
     // Function words alone are no one's, even in context
     let common = Transcript::from_text(
         "if we confess our sins he is faithful and just to forgive us our sins and to cleanse us from all unrighteousness. and the truth is",
@@ -228,4 +245,29 @@ fn runs_across_chapters() {
     );
     assert_eq!(found.runs.len(), 1);
     assert_eq!(engine.format(&found.runs[0].passage()), "John 3:36-4:1");
+}
+
+#[test]
+fn a_comment_mid_verse_is_one_interruption() {
+    let mut t = Translation::new("NASB");
+    t.verse(VerseRef::new(52, 2, 7), "But we proved to be gentle among you, as a nursing mother tenderly cares for her own children.");
+    let engine = Engine::new([t]);
+    let said = Transcript::from_text(
+        "but we prove to be gentle among you. same phrase in the greek. as a nursing mother tenderly cares for her own children",
+    );
+    let found = engine.searcher().search(&said, &Options::default());
+    let q = &found.quotations[0];
+    assert_eq!(q.words, 0..said.word_count());
+    assert!(q.accuracy > 0.9 && q.kind == Kind::Close, "{q:?}");
+    assert_eq!(q.extra_words, [8, 9, 10, 11, 12]);
+    // Words scattered through it are each an interruption
+    let scattered = Transcript::from_text(
+        "but we um proved uh to be like gentle you know among you as a uh nursing mother",
+    );
+    let found = engine.searcher().search(&scattered, &Options::default());
+    assert!(
+        found.quotations.iter().all(|q| q.words.len() < 8),
+        "{:?}",
+        found.quotations
+    );
 }

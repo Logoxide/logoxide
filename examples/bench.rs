@@ -81,7 +81,10 @@ fn main() {
         })
         .unzip();
     let words: usize = transcripts.iter().map(|t| t.word_count()).sum();
-    let options = Options::default();
+    let mut options = Options::default();
+    if let Some(a) = std::env::var("ACCURACY").ok().and_then(|a| a.parse().ok()) {
+        options.min_accuracy = a;
+    }
     let t = Instant::now();
     let found: Vec<_> = transcripts
         .iter()

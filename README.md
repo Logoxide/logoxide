@@ -30,11 +30,18 @@ assert_eq!(engine.format(&found.runs[0].passage()), "John 11:35-36");
 
 ## Accuracy
 
-`Options::min_accuracy` (default **0.9**) is how faithfully a verse's words must be said: of its
+`Options::min_accuracy` (default **0.85**) is how faithfully a verse's words must be said: of its
 words from the first quoted to the last, the share said right. A near miss ("saith"/"sayeth")
-counts 0.8 of a word, and each word the speaker added counts half a word against it. When only
-part of a reading is accurate enough (a verse read with a stretch left out or paraphrased), the
-quotation is the longest part that is.
+counts 0.8 of a word, and each place the speaker added words (a comment in the middle of a
+verse, however long) counts half a word against it. Quotations of less than
+three quarters of a verse must also meet `min_partial_accuracy` (default **0.9**): a short stretch
+with a word wrong is more often an everyday phrase than a quotation. When only part of a reading
+is accurate enough (a verse read with a stretch left out or paraphrased), the quotation is the
+longest part that is.
+
+The defaults were chosen by reading what each threshold adds on 120 real sermons: from 90% down to
+80%, the whole verses it adds are nearly all real (read from another translation, or with a word
+misheard or changed), while the partial ones it adds are mostly everyday phrases.
 
 Quoting part of a verse takes `min_words` of it (default 6), so everyday phrases ("at the end
 of") aren't taken for verses; a whole verse always counts. When the transcript also quotes the
@@ -52,7 +59,11 @@ what was said is the verse), `information` (how rare its words are, in bits), a 
 
 An engine holds every translation you give it, and `engine.searcher()` looks for every verse of
 every one. A quotation is reported once, in the translation it fits best, with the others that
-fit as well as asked in `also_in`. Verses worded the same in several translations are stored and
+fit as well as asked in `also_in`. When words fit several verses, a verse is left out only when
+another clearly fits them better: as many words more accurately, as many and much more of its
+verse, or clearly more words and no worse otherwise. So a verse read in full inside a run (the
+commandments in Romans 13:9) isn't also reported as the verses it quotes, while parallel passages
+worded alike are all kept. Verses worded the same in several translations are stored and
 aligned once.
 
 To look for less, build a scoped searcher (books take a few milliseconds) and keep it for as
@@ -84,8 +95,8 @@ assert_eq!(found.quotations.len(), 1);
 ## Performance
 
 On one core of an i7-10750H, with 200 real sermons (WhisperX, 817,000 words): the whole ESV is
-normalized and indexed in about 0.2 seconds, and each sermon is searched in **2.8 ms** (1.4
-million words a second); with the ESV and NASB together, 4.4 ms. An engine and its searchers are
+normalized and indexed in about 0.2 seconds, and each sermon is searched in **3.1 ms** (1.3
+million words a second); with the ESV and NASB together, 4.6 ms. An engine and its searchers are
 `Sync`, so transcripts can be searched in parallel.
 
 ## How it works
