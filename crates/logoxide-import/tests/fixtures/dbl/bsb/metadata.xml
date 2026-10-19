@@ -1,0 +1,112 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<DBLMetadata version="2.2.1" id="317e03834065a236" revision="1">
+  <identification>
+    <name>Berean Standard Bible</name>
+    <nameLocal>Berean Standard Bible</nameLocal>
+    <description>English: Berean Standard Bible (Bible)</description>
+    <abbreviation>BSB</abbreviation>
+    <abbreviationLocal>BSB</abbreviationLocal>
+    <scope>Bible</scope>
+    <dateCompleted>2025-11-01</dateCompleted>
+    <bundleProducer>Paratext/9.5.110.1</bundleProducer>
+    <systemId type="paratext">
+      <id>317e03834065a236096d30ffbf00441bcf2bd7e4</id>
+      <csetId>fae553bfc1c0d78647f3f5724b8d66aa2ec7e6bf+</csetId>
+      <name>BSB</name>
+      <fullName>Berean Standard Bible</fullName>
+    </systemId>
+    <systemId type="ptreg">
+      <id>uG79x4DQ7MR67HsNQ</id>
+    </systemId>
+  </identification>
+  <type>
+    <medium>text</medium>
+    <isConfidential>false</isConfidential>
+    <hasCharacters>true</hasCharacters>
+    <isTranslation>true</isTranslation>
+    <isExpression>true</isExpression>
+    <translationType>New</translationType>
+    <audience>Common</audience>
+    <projectType>Standard</projectType>
+  </type>
+  <relationships />
+  <agencies>
+    <rightsHolder>
+      <abbr>Bible Hub</abbr>
+      <url>https://berean.bible/</url>
+      <nameLocal>BSB Publishing, LLC</nameLocal>
+      <uid>de310d332eb7f02f3b1aaa3d</uid>
+      <name>BSB Publishing, LLC</name>
+    </rightsHolder>
+    <contributor>
+      <content>true</content>
+      <publication>true</publication>
+      <management>true</management>
+      <qa>true</qa>
+      <uid>de310d332eb7f02f3b1aaa3d</uid>
+      <name>BSB Publishing, LLC</name>
+    </contributor>
+  </agencies>
+  <language>
+    <iso>eng</iso>
+    <name>English</name>
+    <nameLocal>English</nameLocal>
+    <script>Latin</script>
+    <scriptCode>Latn</scriptCode>
+    <scriptDirection>LTR</scriptDirection>
+    <ldml>en</ldml>
+  </language>
+  <countries>
+    <country>
+      <iso>US</iso>
+      <name>United States of America</name>
+    </country>
+  </countries>
+  <format>
+    <usxVersion>3.0</usxVersion>
+    <versedParagraphs>false</versedParagraphs>
+  </format>
+  <names>
+    <name id="book-tit">
+      <abbr>Tit</abbr>
+      <short>Titus</short>
+      <long>The Letter to Titus</long>
+    </name>
+  </names>
+  <manifest>
+    <resource checksum="a0c73854f3caa460ab904d80922e2cc8" mimeType="application/xml" size="11199" uri="release/USX_1/TIT.usx" />
+    <resource checksum="1b87eb004ee365cf9d2b3a083eaf47c1" mimeType="application/xml" size="104268" uri="release/styles.xml" />
+  </manifest>
+  <source>
+    <canonicalContent>
+      <book code="TIT" />
+    </canonicalContent>
+    <structure>
+      <content src="source/paratext-resource.zip" role="sourceZip" />
+    </structure>
+  </source>
+  <publications>
+    <publication id="p1" default="true">
+      <canonicalContent>
+        <book code="TIT" />
+      </canonicalContent>
+      <structure>
+        <content name="book-tit" src="release/USX_1/TIT.usx" role="TIT" />
+      </structure>
+    </publication>
+  </publications>
+  <copyright>
+    <fullStatement>
+      <statementContent type="xhtml">
+        <p>Public Domain</p>
+      </statementContent>
+    </fullStatement>
+  </copyright>
+  <promotion />
+  <archiveStatus>
+    <archivistName>Lars Gunnarsson</archivistName>
+    <dateArchived>2026-02-13T21:31:30.6078920+00:00</dateArchived>
+    <dateUpdated>2026-02-13T21:31:30.6078920+00:00</dateUpdated>
+    <comments>Update to V 5.1</comments>
+  </archiveStatus>
+</DBLMetadata>

@@ -305,7 +305,8 @@ A vault's choices (also allowed in a package, where they mean nothing to its use
 | `registries` | table of strings | Registries by name: `dorean-local = "~/logoxide-packages"` lets `dorean-local:kjv` name a package, and a dependency's `registry = "dorean-local"` name the registry. Each is a catalog's URL or path, or a folder of package repositories |
 
 Registry names are `a`-`z`, `0`-`9`, `-`, and `_`, and can't be `github`, `gitlab`, `codeberg`,
-`ebible`, `fetch`, `ccel`, `sword`, `door43`, `http`, `https`, `file`, `ssh`, or `git`. A
+`ebible`, `fetch`, `ccel`, `sword`, `door43`, `burrito`, `dbl`, `http`, `https`, `file`, `ssh`,
+or `git`. A
 machine's config (`~/.config/logoxide/config.toml`, `[registries]`) names registries for every
 project the same way; a project's name wins over the config's.
 
@@ -452,12 +453,13 @@ version = "2026-10-08"
 | Key | Type | Required | Meaning |
 |---|---|---|---|
 | `url` | string | no | The download it was made from (a SWORD module's zip, CCEL's ThML, fetch.bible's folder of books). Every import writes it; a package made by hand from a source with no URL says where in `note` |
-| `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `ccel:henry/mhc1`, `sword:crosswire/KJV`, `door43:Door43-Catalog/hi_irv`) |
-| `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year) |
-| `note` | string | no | Where the text came from, in words, when `url` and `import` can't name it (`Digital Bible Library text release bundle 317e03834065a236, revision 1`) |
+| `import` | string | no | What `lx import` takes for it (`ebible:eng-kjv2006`, `fetch:eng_kjv`, `ccel:kjv`, `ccel:henry/mhc1`, `sword:crosswire/KJV`, `door43:Door43-Catalog/hi_irv`), or a bundle by where it is: a Scripture Burrito's (`burrito:https://example.org/web.zip`) or a DBL bundle's (`dbl:file:///home/me/bsb`), the URL's `%`-escapes as a URL has them. A bundle's `file://` import has no `url` |
+| `version` | string | no | The publisher's version of what was downloaded, as the publisher gives it (eBible.org's update date `2026-10-08`, a SWORD module's `Version` `3.1`, CCEL's edition `1.0` or its file's date, fetch.bible's year, a bundle's revision) |
+| `note` | string | no | Where the text came from, in words, when `url` and `import` can't name it (`Digital Bible Library text release bundle 317e03834065a236, revision 1`); a bundle's import writes its identity, revision, and what made it this way |
 | `converted` | boolean | no | The import rewrote the publisher's markup, its words unchanged (a SWORD module's entries made into OSIS or ThML files). Not a derivative to logoxide, but `lx publish` says so when the license allows no derivatives. Default `false` |
 
-An update finds the catalog entry again by `import`, else by `url`. The package's own `version`
+An update finds the catalog entry again by `import`, else by `url` (a bundle's by `import` alone,
+which says where it is). The package's own `version`
 follows the rules above like any package's: a new import is `1.0.0`, and each update raises it by
 what changed (a reworded verse is minor, a removed one major, a new copyright notice or a new
 publisher's version with the same text a patch), whatever the publisher numbers its releases,

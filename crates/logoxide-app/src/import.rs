@@ -33,18 +33,101 @@ use crate::{
     importer::{self, Importing},
 };
 
-/// Whether `source` names an import by a prefix this knows (`ebible:<id>`), else an error saying
-/// what to give
+/// Whether `source` names an import by a prefix this knows (`ebible:<id>`, `burrito:<URL>`),
+/// else an error saying what to give
 pub fn check_source(source: &str) -> Result<()> {
     let known = (source.split_once(':'))
         .is_some_and(|(prefix, _)| logoxide_import::PREFIXES.contains(&prefix));
     if known {
         return Ok(());
     }
-    let prefixes = (logoxide_import::PREFIXES.map(|p| format!("{p}:<id>"))).join(" or ");
+    let prefixes = (logoxide_import::PREFIXES.iter())
+        .filter(|p| !logoxide_import::burrito::PREFIXES.contains(p))
+        .map(|p| format!("{p}:<id>"))
+        .collect::<Vec<_>>()
+        .join(", ");
     Err(LogoxideError::Import(format!(
-        "{source}: give {prefixes} (see lx search)"
+        "{source}: give {prefixes} (see lx search), or a Scripture Burrito's or DBL bundle's URL \
+         or path"
     )))
+}
+
+/**
+The import of a bundle (a Scripture Burrito, a DBL bundle) `source` names, if it names one: a URL
+(`https://example.org/web.zip`), or a file or folder that's there (relative ones in `dir`), as
+`burrito:<URL>` (`burrito:file:///…` for a file or folder; which kind it is is said by its
+metadata once it's read, [`bundle`]). None for anything else (`ebible:eng-asv`)
+*/
+pub fn bundle_source(source: &str, dir: &Path) -> Option<String> {
+    if source.starts_with("https://") || source.starts_with("http://") {
+        return Some(format!("burrito:{source}"));
+    }
+    let path = dir.join(source);
+    let path = path.canonicalize().ok()?;
+    Some(format!("burrito:{}", file_url(&path)))
+}
+
+/// A local file or folder as a `file://` URL: `/home/me/My Bibles` is
+/// `file:///home/me/My%20Bibles`
+pub fn file_url(path: &Path) -> String {
+    let text = path.to_string_lossy().replace('\\', "/");
+    let mut url = String::from("file://");
+    if !text.starts_with('/') {
+        url.push('/');
+    }
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':' => {
+                url.push(byte as char)
+            }
+            _ => url.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    url
+}
+
+/// The local file or folder a `file://` URL names, if it is one
+pub fn local_path(url: &str) -> Option<PathBuf> {
+    let rest = url.strip_prefix("file://")?;
+    let bytes = rest.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = (bytes[i] == b'%').then(|| rest.get(i + 1..i + 3)).flatten();
+        match hex.and_then(|h| u8::from_str_radix(h, 16).ok()) {
+            Some(byte) => {
+                decoded.push(byte);
+                i += 3;
+            }
+            None => {
+                decoded.push(bytes[i]);
+                i += 1;
+            }
+        }
+    }
+    let path = String::from_utf8(decoded).ok()?;
+    // `/C:/Bibles` on Windows is `C:/Bibles`
+    let windows = path.get(1..3).is_some_and(|d| d.ends_with(':')) && path.starts_with('/');
+    Some(PathBuf::from(if windows { &path[1..] } else { &path[..] }))
+}
+
+/**
+A bundle's import (`burrito:<URL>`, as [`bundle_source`] gives it) downloaded, or read where it
+is, and its entry as its metadata describes it: named and versioned by it, `dbl:` for a DBL
+bundle's
+*/
+pub fn bundle(
+    http: &dyn Http,
+    entry: &CatalogEntry,
+) -> Result<(CatalogEntry, Vec<importer::Downloaded>)> {
+    let location = (entry.source.import_id())
+        .ok_or_else(|| LogoxideError::Import(format!("{} isn't imported", entry.id)))?;
+    let files = importer::download(http, entry)?;
+    let named: Vec<(String, Vec<u8>)> = (files.iter())
+        .map(|f| (f.name.clone(), f.bytes.clone()))
+        .collect();
+    let entry = logoxide_import::burrito::bundle_entry(location, &named)?;
+    Ok((entry, files))
 }
 
 /**
@@ -75,6 +158,14 @@ pub(crate) fn find_in(
     warn: Warn,
 ) -> Result<CatalogEntry> {
     check_source(source)?;
+    // A bundle is where its name says: no catalog lists it
+    if logoxide_import::burrito::is_bundle(source) {
+        return (logoxide_import::named_catalog(source))
+            .and_then(|c| c.entries.into_iter().next())
+            .ok_or_else(|| {
+                LogoxideError::Import(format!("{source}: give a bundle's https:// or file:// URL"))
+            });
+    }
     let not_found = || {
         LogoxideError::Import(format!(
             "{source}: in none of this project's catalogs (lx catalog list)"
@@ -111,9 +202,10 @@ fn find_in_catalogs(
         catalog.warnings.iter().cloned().for_each(&mut *warn);
         catalogs.push(catalog);
     }
-    // A CCEL work by its author and name (`ccel:henry/mhc1`) needs no catalog
+    // A CCEL work by its author and name (`ccel:henry/mhc1`), or a bundle by where it is, needs
+    // no catalog
     if !catalogs.iter().any(|c| c.find_import(source).is_some())
-        && let Some(catalog) = logoxide_import::ccel::named_catalog(source)
+        && let Some(catalog) = logoxide_import::named_catalog(source)
     {
         catalogs.push(catalog);
     }
@@ -206,17 +298,17 @@ pub fn run(
 }
 
 /**
-Makes `entry`'s package in the project's `imports/<id>/` and adds it as a path package, installed
-and locked: vendored, for a project that carries its texts or a text to edit by hand. It's made
-in a folder beside it and moved into place whole, so a download that fails partway leaves nothing
-behind; if it can't be added and installed, the project is left as it was: no folder, and the
-manifest it had
+Makes `entry`'s package from its downloads (`files`, [`importer::download`]) in the project's
+`imports/<id>/` and adds it as a path package, installed and locked: vendored, for a project that
+carries its texts or a text to edit by hand. It's made in a folder beside it and moved into place
+whole, so a package that can't be made leaves nothing behind; if it can't be added and installed,
+the project is left as it was: no folder, and the manifest it had
 */
 pub fn run_vendored(
     project: &mut Project,
     library: &Library,
     entry: &CatalogEntry,
-    http: &dyn Http,
+    files: &[importer::Downloaded],
     fetcher: &dyn Fetcher,
 ) -> Result<Imported> {
     let relative = format!("imports/{}", entry.id);
@@ -233,7 +325,10 @@ pub fn run_vendored(
         std::process::id()
     ));
     let _ = std::fs::remove_dir_all(&staging);
-    let made = files(http, entry, &FsStorage::new(&staging)).and_then(|()| {
+    let named: Vec<(String, Vec<u8>)> = (files.iter())
+        .map(|f| (f.name.clone(), f.bytes.clone()))
+        .collect();
+    let made = logoxide_import::build(entry, &named, &FsStorage::new(&staging)).and_then(|()| {
         std::fs::rename(&staging, &dir)
             .map_err(|e| LogoxideError::io(&dir.display().to_string(), e))
     });
@@ -409,12 +504,12 @@ pub fn plan_updates(
                 Err(e) => warn(format!("{dep}: {e}")),
             }
         }
-        // A CCEL work imported by its name
+        // A CCEL work imported by its name, or a bundle by where it is
         if !catalogs
             .iter()
             .any(|c| c.find_upstream(&upstream).is_some())
             && let Some(catalog) =
-                (upstream.import.as_deref()).and_then(logoxide_import::ccel::named_catalog)
+                (upstream.import.as_deref()).and_then(logoxide_import::named_catalog)
         {
             catalogs.push(catalog);
         }

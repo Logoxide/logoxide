@@ -1,0 +1,103 @@
+{
+  "format": "scripture burrito",
+  "meta": {
+    "version": "1.0.0",
+    "category": "source",
+    "generator": {
+      "softwareName": "MVAH Clicking Alot",
+      "softwareVersion": "0.0.0",
+      "userName": "Mark Howe"
+    },
+    "defaultLocale": "ar",
+    "dateCreated": "2018-02-15T22:33:50.875547+00:00",
+    "normalization": "NFC"
+  },
+  "idAuthorities": {
+    "xen": {
+      "id": "https://xenizo.fr",
+      "name": {
+        "en": "Xenizo"
+      }
+    }
+  },
+  "identification": {
+    "primary": {
+      "xen": {
+        "1234": {
+          "revision": "11",
+          "timestamp": "2018-02-15T22:33:50.875547+00:00"
+        }
+      }
+    },
+    "name": {
+      "en": "Van Dyck Test Version"
+    },
+    "description": {
+      "en": "Arabic: Titus from Van Dyck to test Graphite"
+    },
+    "abbreviation": {
+      "en": "VDAT"
+    }
+  },
+  "languages": [
+    {
+      "tag": "en",
+      "name": {
+        "en": "English"
+      }
+    }
+  ],
+  "type": {
+    "flavorType": {
+      "name": "scripture",
+      "flavor": {
+        "name": "textTranslation",
+        "usfmVersion": "3.0",
+        "translationType": "revision",
+        "audience": "common",
+        "projectType": "standard"
+      },
+      "currentScope": {
+        "TIT": []
+      }
+    }
+  },
+  "confidential": true,
+  "localizedNames": {
+    "book-tit": {
+      "abbr": {
+        "en": "Titus"
+      },
+      "short": {
+        "en": "Titus"
+      },
+      "long": {
+        "en": "Paul's Letter to Titus"
+      }
+    }
+  },
+  "ingredients": {
+"LICENSE.md": {
+    "checksum": {
+      "md5": "976cd9d5dfe0f556e3793bbd954dc7f4"
+    },
+    "mimeType": "text/markdown",
+    "size": 14,
+    "scope": {}
+  },
+  "TIT.usfm": {
+    "checksum": {
+      "md5": "1f00210514f39bea3331ae6c1c2ccb38"
+    },
+    "size": 12162,
+    "scope": {}
+  }
+  },
+  "copyright": {
+    "shortStatements": [{
+      "statement": "Public Domain",
+      "mimetype": "text/plain",
+      "lang": "en"
+    }]
+  }
+}

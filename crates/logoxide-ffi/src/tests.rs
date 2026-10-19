@@ -948,6 +948,37 @@ fn ccel_catalog_and_import() {
 }
 
 #[test]
+fn bundle_import() {
+    let logoxide = Logoxide::new();
+    let zip = include_bytes!("../examples/fixtures/vandyke-burrito.zip").to_vec();
+    let bundle = vec![crate::PackageFile {
+        path: "bundle".into(),
+        bytes: zip,
+    }];
+    let location = "https://example.org/vandyke-burrito.zip";
+    let entry = logoxide
+        .import_bundle_entry(location.into(), bundle.clone())
+        .unwrap();
+    assert_eq!(
+        (entry.id.as_str(), entry.name.as_str()),
+        ("vdat", "Van Dyck Test Version")
+    );
+    let crate::CatalogSource::External { import, .. } = &entry.source else {
+        panic!("not an import")
+    };
+    assert_eq!(import, &format!("burrito:{location}"));
+    let files = logoxide.import_downloaded(entry, bundle).unwrap();
+    let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+    assert_eq!(paths, ["COPYRIGHT.txt", "logoxide.toml", "usfm/TIT.usfm"]);
+    let package = logoxide.open_package(files, defaults(), vec![]).unwrap();
+    assert_eq!(package.books(), vec![56]);
+    assert!(logoxide.import_prefixes().contains(&String::from("dbl")));
+    // Not a bundle
+    let junk = vec![file("bundle", "<html></html>")];
+    assert!(logoxide.import_bundle_entry(location.into(), junk).is_err());
+}
+
+#[test]
 fn sword_catalog_and_import() {
     use std::io::Write;
     use sword_modules::{Testament, VerseKey, Versification};

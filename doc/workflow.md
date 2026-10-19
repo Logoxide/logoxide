@@ -145,6 +145,22 @@ the catalog still lists the version the library has. `--vendor` puts it in the p
 `imports/<id>/` instead, as a path package: to edit it by hand, or to carry it with the project
 (a phone's vault that syncs only its own folder).
 
+A Scripture Burrito (what Paratext, Scribe, and Autographa export) or a Digital Bible Library text
+release bundle someone hands you has no catalog: give its URL or its path instead.
+
+```sh
+lx import ~/Downloads/text-317e03834065a236-307906   # a DBL bundle's folder: bsb, from metadata.xml
+lx import ./web-burrito.zip                          # a burrito's zip: named by its metadata.json
+lx import https://example.org/bibles/web-burrito.zip # one online, kept in the library like any import
+```
+
+Its metadata names it (the dependency is its abbreviation, `bsb`, `engweb14`), and its text files
+(USX, else USFM, else USJ) are checked against the sizes and MD5s it lists, a file whose line
+endings alone differ (a burrito kept in git) taken as it is. One on this machine is always put in
+the project's `imports/<id>/`, since no other device could make it again; its import
+(`dbl:file:///…`, `burrito:https://…`) says where it was, which `lx import --update` reads again.
+Only a Bible's text is imported: an audio, video, typeset, or braille bundle is refused.
+
 Each import's version is logoxide's own: 1.0.0 when it's imported, then raised by what each update
 changes, like any package's, so a dependency on `^1` is safe across the publisher's years. The
 publisher's version, as it gives it (eBible.org's update date `2026-10-08`, CCEL's edition `1.0`

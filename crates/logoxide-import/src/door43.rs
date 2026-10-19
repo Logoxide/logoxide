@@ -299,9 +299,11 @@ pub fn import(entry: &CatalogEntry, archive: &[u8], dest: &dyn Storage) -> Resul
         format: "usfm",
         license_file,
         publisher: "Door43",
+        publisher_name: None,
         homepage: format!("https://git.door43.org/{repository}"),
         versification: None,
         keys: None,
+        note: None,
     };
     finish(&entry, made, staged, dest)
 }

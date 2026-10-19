@@ -268,7 +268,9 @@ impl Logoxide {
     /**
     An import (`ebible:eng-kjv2006`) found in the project's catalogs, added, and installed: kept
     in the library ([`import::run`]), or, `vendored`, made in the project's `imports/<id>/`
-    ([`import::run_vendored`])
+    ([`import::run_vendored`]). A bundle (`burrito:<URL>`, [`import::bundle_source`]) is read
+    first, so the dependency is named as its metadata names it; one on this machine
+    (`burrito:file:///…`) is always vendored, since no other machine could make it again
     */
     pub fn import(
         &self,
@@ -279,15 +281,31 @@ impl Logoxide {
     ) -> Result<import::Imported> {
         let fetch = self.catalog_fetch(catalog_cache::Freshness::Fresh);
         let entry = import::find_entry(fetch, &self.config, project, source, &mut *warn)?;
-        if vendored {
-            let importing = self.importing(project);
-            let imported =
-                import::run_vendored(project, &self.library, &entry, self.http(), &importing);
-            importing.warnings().into_iter().for_each(&mut *warn);
-            return imported;
-        }
+        let bundle = (entry.source.import_name()).is_some_and(logoxide_import::burrito::is_bundle);
+        let (entry, downloaded) = match bundle {
+            true => import::bundle(self.http(), &entry).map(|(e, files)| (e, Some(files)))?,
+            false => (entry, None),
+        };
+        let local = (entry.source.import_id()).is_some_and(|l| l.starts_with("file://"));
         let importing = self.importing(project);
-        let imported = import::run(project, &self.library, &entry, &importing);
+        let imported = match (vendored || local, downloaded) {
+            (true, downloaded) => {
+                let files = match downloaded {
+                    Some(files) => files,
+                    None => importer::download(self.http(), &entry)?,
+                };
+                import::run_vendored(project, &self.library, &entry, &files, &importing)
+            }
+            (false, downloaded) => {
+                // What was read to name it is what's installed
+                if let (Some(files), Some(name)) = (downloaded, entry.source.import_name()) {
+                    let fresh = logoxide::resolve::ImportKind::Fresh { current: None };
+                    let (build, _) = importer::make(&entry, &files, &fresh, self.reader())?;
+                    importing.prepare(name, build);
+                }
+                import::run(project, &self.library, &entry, &importing)
+            }
+        };
         importing.warnings().into_iter().for_each(&mut *warn);
         imported
     }

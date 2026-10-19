@@ -388,10 +388,12 @@ pub fn import(entry: &CatalogEntry, zip: &[u8], dest: &dyn Storage) -> Result<()
         format,
         license_file: Some(String::from("COPYRIGHT.txt")),
         publisher: "SWORD",
+        publisher_name: None,
         homepage: (conf.get("TextSource").filter(|t| t.contains("://")))
             .map_or_else(|| repository.clone(), String::from),
         versification,
         keys,
+        note: None,
     };
     finish(&entry, made, staged, dest)
 }

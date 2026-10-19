@@ -16,10 +16,14 @@ package (or which can be pushed anywhere as a git repository).
   memory: a Bible's or commentary's entries in their own markup (OSIS, ThML, or GBF), a file per
   book, or a dictionary's as `entries/<module>.xml`, with its conf's copyright and license in
   `COPYRIGHT.txt`
+- **Bundles** ([`burrito`]): a Scripture Burrito (`metadata.json`) or a Digital Bible Library
+  text release bundle (`metadata.xml`) a translator or publisher hands over, by URL or as a local
+  file or folder, its USX, USFM, or USJ checked by the MD5s its metadata lists
 
 Each publisher's list is read into a logoxide [`Catalog`](logoxide::catalog::Catalog) ([`catalog::parse`]), every entry a
 [`CatalogSource::External`] naming its import (`ebible:eng-asv`), the download it's made from,
-and what to fetch ([`downloads`]); [`build`] makes the package from the bytes. The package
+and what to fetch ([`downloads`]); [`build`] makes the package from the bytes. A bundle has no
+list: its import names where it is, and [`named_catalog`] makes its entry from that. The package
 manager keeps only that, and knows no publisher.
 
 A new import is version 1.0.0 ([`IMPORT_VERSION`]), logoxide's own: the publisher's version (an
@@ -28,6 +32,7 @@ package's version by what it changes ([`update::compare_import`]), so `lx add` c
 and updates cross the publisher's years.
 */
 
+pub mod burrito;
 pub mod catalog;
 pub mod ccel;
 pub mod door43;
@@ -39,7 +44,7 @@ pub mod update;
 
 use logoxide::{
     LogoxideError, Result,
-    catalog::{CatalogEntry, CatalogSource, Download},
+    catalog::{Catalog, CatalogEntry, CatalogSource, Download},
     manifest::{Format, FormatEntry, Keys, MANIFEST, Manifest, Package as Info, Upstream},
     package::{Features, Package},
     storage::{MemoryStorage, Storage},
@@ -51,7 +56,9 @@ pub use update::{
 };
 
 /// Every publisher's import prefix: what `ebible:<id>` and `fetch:<id>` start with
-pub const PREFIXES: [&str; 5] = ["ebible", "fetch", "ccel", "sword", "door43"];
+pub const PREFIXES: [&str; 7] = [
+    "ebible", "fetch", "ccel", "sword", "door43", "burrito", "dbl",
+];
 
 /// The version a new import has: logoxide's own, which updates raise by what they change
 pub const IMPORT_VERSION: semver::Version = semver::Version::new(1, 0, 0);
@@ -90,6 +97,7 @@ pub fn build(entry: &CatalogEntry, files: &[(String, Vec<u8>)], dest: &dyn Stora
         Some("ccel") => ccel::import(entry, named("thml")?, dest),
         Some("sword") => sword::import(entry, named("zip")?, dest),
         Some("door43") => door43::import(entry, named("archive")?, dest),
+        Some("burrito" | "dbl") => burrito::import(entry, files, dest),
         Some(other) => Err(LogoxideError::Import(format!(
             "{}: no import reads `{other}:` downloads",
             entry.id
@@ -123,6 +131,15 @@ pub fn upstream(entry: &CatalogEntry) -> Option<Upstream> {
         converted: entry.source.prefix() == Some("sword"),
         note: None,
     })
+}
+
+/**
+A catalog of the one entry an import names when no publisher's list is needed to find it: a CCEL
+work by its author and name (`ccel:henry/mhc1`), or a bundle by where it is
+(`burrito:https://example.org/web.zip`); none for another
+*/
+pub fn named_catalog(import: &str) -> Option<Catalog> {
+    ccel::named_catalog(import).or_else(|| burrito::named_catalog(import))
 }
 
 /// The entry's [`CatalogSource::External`] fields for an import of `prefix:id`, with its
@@ -177,12 +194,18 @@ pub(crate) struct Made {
     /// The format its books are in, in a folder of that name
     pub(crate) format: &'static str,
     pub(crate) license_file: Option<String>,
+    /// Where it came from (`eBible.org`): the package's publisher, unless `publisher_name` says
     pub(crate) publisher: &'static str,
+    /// The package's publisher, when the download names it (a bundle's rights holder)
+    pub(crate) publisher_name: Option<String>,
+    /// None when empty
     pub(crate) homepage: String,
     /// The versification the publisher names (SWORD's conf), else the package's `own`
     pub(crate) versification: Option<String>,
     /// For a dictionary, what its entries are keyed by
     pub(crate) keys: Option<Keys>,
+    /// Where the text came from, in words (`[package.upstream] note`)
+    pub(crate) note: Option<String>,
 }
 
 /// Writes the package's `logoxide.toml`, checks it opens with books (a Bible's or a commentary's)
@@ -219,8 +242,11 @@ pub(crate) fn finish(
         }),
         rights: (!entry.rights.is_empty()).then_some(entry.rights),
         license_file: made.license_file,
-        publisher: Some(made.publisher.to_string()),
-        homepage: Some(made.homepage),
+        publisher: Some(
+            made.publisher_name
+                .unwrap_or_else(|| made.publisher.to_string()),
+        ),
+        homepage: (!made.homepage.is_empty()).then_some(made.homepage),
         repository: None,
         documentation: None,
         readme: None,
@@ -231,7 +257,10 @@ pub(crate) fn finish(
         work: (entry.work.clone()).or_else(|| logoxide::works::of_source(&entry.source)),
         edition: entry.edition.clone(),
         edition_year: entry.edition_year,
-        upstream: upstream(entry),
+        upstream: upstream(entry).map(|u| Upstream {
+            note: made.note,
+            ..u
+        }),
         versification: made.versification.unwrap_or_else(|| String::from("own")),
         maps_to: None,
         keys: made.keys,

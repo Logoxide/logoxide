@@ -13,6 +13,11 @@ package (or which can be pushed anywhere as a git repository).
   package from the bytes, whichever publisher it comes from (`ebible`, `fetch`, `ccel`, `sword`,
   `door43`: a SWORD module's entries become OSIS or ThML files, a book each; CCEL's works are
   Bibles, commentaries, or books, as their ThML's head says)
+- **Bundles** (`burrito`): a Scripture Burrito (`metadata.json`) or a Digital Bible Library text
+  release bundle (`metadata.xml`) has no publisher's list: its import names where it is
+  (`burrito:https://…/web.zip`, `dbl:file:///…`), `named_catalog` makes its entry from that, and
+  `bundle_entry` names it from its metadata before it's added. Its USX, USFM, or USJ files are
+  checked by the sizes and MD5s the metadata lists; only a Bible's text is imported
 - **Updates**: an import made again from a newer download is compared with the one a project has
   (`update::compare_import`), and its version raised by what changed, whatever the publisher
   numbers it

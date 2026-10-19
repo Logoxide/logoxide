@@ -348,12 +348,17 @@ pub(crate) enum Command {
     /// catalogs (and for SWORD, the repositories CrossWire lists). `--vendor` puts it in the
     /// project's `imports/` as a path package instead
     ///
+    /// A Scripture Burrito or a Digital Bible Library text release bundle is imported from its URL
+    /// (a `.zip` or `.tar.gz`) or its path (a file or folder), named by its metadata; one on this
+    /// machine is always vendored
+    ///
     /// `--update` makes the project's imports again from their publishers' downloads and replaces
     /// the ones that changed (a new version in the library; a vendored one in place, a reader's
     /// files beside it kept), saying what changed
     Import {
-        /// `ebible:eng-asv`, `fetch:eng_bsb`, `ccel:kjv`, `sword:crosswire/KJV`; with `--update`,
-        /// one import (its dependency's name, or this), else all of them
+        /// `ebible:eng-asv`, `fetch:eng_bsb`, `ccel:kjv`, `sword:crosswire/KJV`, or a bundle's
+        /// URL or path (`./web-burrito.zip`); with `--update`, one import (its dependency's name,
+        /// or this), else all of them
         #[arg(required_unless_present = "update")]
         source: Option<String>,
         /// Update imports: download each again, and replace it if it changed

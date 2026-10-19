@@ -14,11 +14,18 @@ use crate::{
 };
 
 pub(crate) fn import(cli: &Cli, source: &str, vendored: bool) -> logoxide::Result<()> {
-    logoxide_app::import::check_source(source)?;
+    // A publisher's import, else a bundle's URL or path
+    let source = match logoxide_app::import::check_source(source) {
+        Ok(()) => source.to_string(),
+        Err(error) => {
+            let dir = std::env::current_dir().map_err(|e| logoxide::LogoxideError::io(".", e))?;
+            logoxide_app::import::bundle_source(source, &dir).ok_or(error)?
+        }
+    };
     let library = cli.library();
     let mut project = cli.project(&library)?;
     // The project's catalogs, in order: the first that lists it is the one used
-    let imported = app().import(&mut project, source, vendored, &mut warn())?;
+    let imported = app().import(&mut project, &source, vendored, &mut warn())?;
     print_skipped(&imported.skipped);
     outln!(
         "imported {} {} ({}) into {}",

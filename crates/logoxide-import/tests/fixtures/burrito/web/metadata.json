@@ -1,0 +1,124 @@
+{
+  "format": "scripture burrito",
+  "meta": {
+    "version": "1.0.0",
+    "category": "source",
+    "generator": {
+      "softwareName": "Paratext",
+      "softwareVersion": "9.1.0.0",
+      "userName": "Tim Steenwyk"
+    },
+    "defaultLocale": "en",
+    "dateCreated": "2023-02-21T00:00:00.00-04:00",
+    "normalization": "NFC"
+  },
+  "idAuthorities": {
+    "ptx": {
+      "id": "http://www.paratext.org",
+      "name": {
+        "en": "Paratext application"
+      }
+    }
+  },
+  "identification": {
+    "primary": {
+      "ptx": {
+        "b01d38db1c30059b892c8cbbc65b70271743d32d": {
+          "revision": "c772aae2277babbe71dce9e3e061656b6909f5e2",
+          "timestamp": "2020-06-22T16:07:29.435082-04:00"
+        }
+      }
+    },
+    "name": {
+      "en": "World English Bible (American Edition)"
+    },
+    "abbreviation": {
+      "en": "engWEB14"
+    }
+  },
+  "confidential": false,
+  "languages": [
+    {
+      "tag": "en",
+      "name": {
+        "en": "English (eng)"
+      }
+    }
+  ],
+  "type": {
+    "flavorType": {
+      "name": "scripture",
+      "flavor": {
+        "name": "textTranslation",
+        "projectType": "standard",
+        "translationType": "firstTranslation",
+        "audience": "common",
+        "usfmVersion": "2.6"
+      },
+      "currentScope": {
+        "TIT": [],
+        "JUD": []
+      }
+    }
+  },
+  "copyright": {
+    "publicDomain": true
+  },
+  "localizedNames": {
+    "TIT": {
+      "short": {
+        "en": "Titus"
+      },
+      "abbr": {
+        "en": "Titus"
+      },
+      "long": {
+        "en": "Paul’s Letter to Titus"
+      }
+    },
+    "JUD": {
+      "short": {
+        "en": "Jude"
+      },
+      "abbr": {
+        "en": "Jude"
+      },
+      "long": {
+        "en": "The Letter from Jude"
+      }
+    },
+    "FRT": {
+      "short": {
+        "en": "Preface"
+      },
+      "abbr": {
+        "en": "Pre"
+      },
+      "long": {
+        "en": "Preface"
+      }
+    }
+  },
+  "ingredients": {
+    "ingredients/57TITengWEB14.SFM": {
+      "checksum": {
+        "md5": "c7b4a22b9414babdb78eb7a558ceee9c"
+      },
+      "mimeType": "text/x-usfm",
+      "size": 5799,
+      "scope": {
+        "TIT": []
+      }
+    },
+    "ingredients/66JUDengWEB14.SFM": {
+      "checksum": {
+        "md5": "0ca11c87f0c438a68b2832d02284bda9"
+      },
+      "mimeType": "text/x-usfm",
+      "size": 4140,
+      "scope": {
+        "JUD": []
+      }
+    }
+  }
+}

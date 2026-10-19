@@ -299,7 +299,8 @@ impl Logoxide {
     }
 
     /// The publishers packages can be imported from, as import names prefix them (`ebible`,
-    /// `fetch`, `ccel`, `sword`, `door43`: `ebible:eng-asv`)
+    /// `fetch`, `ccel`, `sword`, `door43`: `ebible:eng-asv`; `burrito` and `dbl`, a bundle by
+    /// where it is: `importBundleEntry`)
     pub fn import_prefixes(&self) -> Vec<String> {
         logoxide_import::PREFIXES
             .iter()
@@ -326,6 +327,25 @@ impl Logoxide {
             .iter()
             .map(ImportDownload::from)
             .collect())
+    }
+
+    /**
+    The entry for a Scripture Burrito or DBL bundle at `location` (`https://…`, or a `file://` URL
+    for one the host read where it is), from its bytes (`downloads`: its `.zip` or `.tar.gz` as
+    `bundle`, or a folder's files as `files/<path>`): `burrito:<location>` or `dbl:<location>` by
+    the metadata it has, named, languaged, and licensed as that says. Give it and the same
+    downloads to `import_downloaded`. A bundle that isn't a Bible's text, or whose files aren't as
+    its metadata lists them, is an error
+    */
+    pub fn import_bundle_entry(
+        &self,
+        location: String,
+        downloads: Vec<PackageFile>,
+    ) -> Result<CatalogEntry, LogoxideError> {
+        let downloads: Vec<(String, Vec<u8>)> =
+            downloads.into_iter().map(|d| (d.path, d.bytes)).collect();
+        let entry = logoxide_import::burrito::bundle_entry(&location, &downloads)?;
+        Ok(CatalogEntry::from(&entry))
     }
 
     /// The package `entry`'s import makes from its downloads (`import_downloads`; each file's

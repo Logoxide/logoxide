@@ -1031,7 +1031,7 @@ publishers imports come from, and the categories a package can be in (at most
 console.log(logoxide.defaultCatalogUrls().length, logoxide.ebibleCatalogUrl()); // → 5 https://ebible.org/Scriptures/translations.csv
 console.log(logoxide.isInsecureUrl("http://ftp.xiphos.org/"), logoxide.isInsecureUrl("https://example.org/kjv")); // → true false
 console.log(logoxide.swordCatalogUrl("crosswire"), logoxide.swordCatalogUrl("nowhere")); // → https://crosswire.org/ftpmirror/pub/sword/raw/mods.d.tar.gz null
-console.log(logoxide.importPrefixes()); // → [ 'ebible', 'fetch', 'ccel', 'sword', 'door43' ]
+console.log(logoxide.importPrefixes()); // → [ 'ebible', 'fetch', 'ccel', 'sword', 'door43', 'burrito', 'dbl' ]
 console.log(logoxide.categories()[0], logoxide.maxCategories()); // → { name: 'biblical-theology', description: 'Themes traced through Scripture (covenant, kingdom)' } 5
 ```
 
@@ -1039,7 +1039,7 @@ console.log(logoxide.categories()[0], logoxide.maxCategories()); // → { name: 
 print(len(logoxide.default_catalog_urls()), logoxide.ebible_catalog_url())  # → 5 https://ebible.org/Scriptures/translations.csv
 print(logoxide.is_insecure_url("http://ftp.xiphos.org/"), logoxide.is_insecure_url("https://example.org/kjv"))  # → True False
 print(logoxide.sword_catalog_url("crosswire"), logoxide.sword_catalog_url("nowhere"))  # → https://crosswire.org/ftpmirror/pub/sword/raw/mods.d.tar.gz None
-print(logoxide.import_prefixes())  # → ['ebible', 'fetch', 'ccel', 'sword', 'door43']
+print(logoxide.import_prefixes())  # → ['ebible', 'fetch', 'ccel', 'sword', 'door43', 'burrito', 'dbl']
 print(logoxide.categories()[0], logoxide.max_categories())  # → Category(name='biblical-theology', description='Themes traced through Scripture (covenant, kingdom)') 5
 ```
 
@@ -1255,6 +1255,28 @@ imported = logoxide.import_downloaded(asv, fetched)
 print([f.path for f in imported])  # → ['copr.htm', 'logoxide.toml', 'usfm/00-FRTeng-asv.usfm', 'usfm/73-JHNeng-asv.usfm', 'usfm/95-3JNeng-asv.usfm']
 asv_package = logoxide.open_package(imported, features, [])
 print(asv_package.info().abbreviation, list(asv_package.books()), asv_package.skipped()[0].reason)  # → ASV [43, 64] peripheral
+```
+
+A Scripture Burrito or a Digital Bible Library text release bundle someone hands over has no
+catalog: `importBundleEntry(location, files)` makes its entry from its bytes (a `.zip` or
+`.tar.gz` as `bundle`, or a folder's files as `files/<path>`), named as its metadata says, and
+`importDownloaded` makes it like any import. `location` is where it came from (a URL, or a
+`file://` one), which its import name keeps.
+
+```ts
+const bundle: PackageFile[] = [{ path: "bundle", bytes: new Uint8Array(readFileSync("vandyke-burrito.zip")) }];
+const vandyke = logoxide.importBundleEntry("https://example.org/vandyke-burrito.zip", bundle);
+if (vandyke.source.tag !== "External") throw new Error("not an import");
+console.log(vandyke.id, vandyke.name, vandyke.source._import); // → vdat Van Dyck Test Version burrito:https://example.org/vandyke-burrito.zip
+console.log(logoxide.importDownloaded(vandyke, bundle).map((f) => f.path)); // → [ 'COPYRIGHT.txt', 'logoxide.toml', 'usfm/TIT.usfm' ]
+```
+
+```python
+bundle = [PackageFile(path="bundle", bytes=pathlib.Path("vandyke-burrito.zip").read_bytes())]
+vandyke = logoxide.import_bundle_entry("https://example.org/vandyke-burrito.zip", bundle)
+assert isinstance(vandyke.source, CatalogSourceExternal)
+print(vandyke.id, vandyke.name, vandyke.source.import_)  # → vdat Van Dyck Test Version burrito:https://example.org/vandyke-burrito.zip
+print([f.path for f in logoxide.import_downloaded(vandyke, bundle)])  # → ['COPYRIGHT.txt', 'logoxide.toml', 'usfm/TIT.usfm']
 ```
 
 Updating an import: `findUpstream` finds its entry by `info().upstream`; `importIsCurrent` says
@@ -1500,7 +1522,7 @@ topos](#references-with-topos).
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
 | `Logoxide.parseProject` | [A vault's project](#a-vaults-project) |
 | `Logoxide.parseCatalog`, `parseCatalogBytes`, `installer`, `defaultCatalogUrls`, `ebibleCatalogUrl`, `isInsecureUrl`, `swordCatalogUrl`, `importPrefixes`, `categories`, `maxCategories` | [Catalogs](#catalogs) |
-| `Logoxide.importDownloads`, `importDownloaded`, `importIsCurrent`, `updateImport` | [Imports](#imports) |
+| `Logoxide.importDownloads`, `importDownloaded`, `importBundleEntry`, `importIsCurrent`, `updateImport` | [Imports](#imports) |
 | `Logoxide.fileMetadata`, `newPackage`, `newCollection`, `parseReferences`, `unzip` | [Making packages](#making-packages) |
 | `Logoxide.readPassage`, `comparePassage` | [Reading natively](#reading-natively) |
 | `LogoxidePackage.info`, `checksum`, `format`, `books`, `chapterVerses`, `cacheWrites`, `bookFiles`, `titles`, `skipped`, `verseHashes` | [Opening a package](#opening-a-package) |

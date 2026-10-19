@@ -24,12 +24,17 @@ When a dependency is first resolved, logoxide takes what its source says:
 - **registry**: the catalog at that URL names a release, its archive URL, and the archive's
   SHA-256 and files' checksum. Whoever controls the catalog controls which archive is accepted:
   the archive is checked against the catalog, and the catalog against nothing.
-- **imports** (`lx import ebible:…`, `fetch:…`, `ccel:…`, `sword:…`, `door43:…`): the publisher's download
+- **imports** (`lx import ebible:…`, `fetch:…`, `ccel:…`, `sword:…`, `door43:…`; a bundle's
+  `burrito:…`, `dbl:…`): the publisher's download
   (from its URL as the catalog gives it), made into a package and kept in the library. The lock
   pins each download's SHA-256 and the package's checksum, so making it again on another device
   gives the same text or fails; the first download is checked against nothing, as a catalog is.
   The import is found in the project's own catalogs, so a fetched package's `import` dependency
-  can only name what the user's catalogs list. `lx import --vendor` makes it a path package in
+  can only name what the user's catalogs list, but for a bundle's (`burrito:https://…`), whose
+  name is its URL: like a `git` dependency, it names where the text is, and a fetched package's
+  can name any URL. A bundle's MD5s check its files against its own metadata, not against
+  anyone else. A bundle on the user's machine (`file://`) is only ever a path package in the
+  project, which no other device makes again. `lx import --vendor` makes it a path package in
   the project's folder instead, which the project holds itself.
 
 Catalogs and archives fetched over **plain HTTP** (any `http://` URL, including one SWORD

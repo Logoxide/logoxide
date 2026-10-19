@@ -422,9 +422,11 @@ pub fn import(entry: &CatalogEntry, xml: &[u8], dest: &dyn Storage) -> Result<()
         format: "thml",
         license_file: Some(String::from("COPYRIGHT.txt")),
         publisher: "CCEL",
+        publisher_name: None,
         homepage: homepage(id),
         versification: None,
         keys: None,
+        note: None,
     };
     finish(&entry, made, staged, dest)
 }

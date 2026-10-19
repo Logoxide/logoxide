@@ -78,17 +78,64 @@ pub(crate) fn copy(storage: &dyn Storage) -> Result<MemoryStorage> {
     Ok(copy)
 }
 
+/// The largest local bundle read, in all
+const LOCAL_LIMIT: u64 = 1 << 30;
+
+/// A URL's bytes: a `file://` one's read where it is, any other downloaded
+fn get(http: &dyn Http, url: &str) -> Result<Vec<u8>> {
+    let Some(path) = crate::import::local_path(url) else {
+        return http.get(url);
+    };
+    let (dir, name) = match (path.parent(), path.file_name()) {
+        (Some(dir), Some(name)) => (dir, name.to_string_lossy().into_owned()),
+        _ => return Err(LogoxideError::Import(format!("{url}: not a file"))),
+    };
+    FsStorage::new(dir).no_symlinks().read(&name)
+}
+
+/// A local folder's files (a bundle's), each named `files/<path>` (a `.git` folder's left out)
+fn folder(dir: &std::path::Path, url: &str) -> Result<Vec<Downloaded>> {
+    let storage = FsStorage::new(dir).no_symlinks();
+    let (mut files, mut total) = (vec![], 0u64);
+    for path in storage.walk("")? {
+        if path.split('/').any(|part| part == ".git") {
+            continue;
+        }
+        let bytes = storage.read(&path)?;
+        total += bytes.len() as u64;
+        if total > LOCAL_LIMIT {
+            return Err(LogoxideError::Import(format!(
+                "{}: more than {LOCAL_LIMIT} bytes",
+                dir.display()
+            )));
+        }
+        files.push(Downloaded {
+            name: format!("files/{path}"),
+            url: url.to_string(),
+            bytes,
+        });
+    }
+    Ok(files)
+}
+
 /// What `entry`'s import downloads as its publisher has it now: each file from the first of its
-/// URLs that answers
+/// URLs that answers (a bundle in a local folder: the folder's files)
 pub fn download(http: &dyn Http, entry: &CatalogEntry) -> Result<Vec<Downloaded>> {
     let mut files = vec![];
     for download in logoxide_import::downloads(entry)? {
+        let local = (download.urls.first())
+            .and_then(|url| Some((url, crate::import::local_path(url)?)))
+            .filter(|(_, path)| path.is_dir());
+        if let Some((url, dir)) = local {
+            files.extend(folder(&dir, url)?);
+            continue;
+        }
         let mut got = Err(LogoxideError::Import(format!(
             "{}: no URL for {}",
             entry.id, download.name
         )));
         for url in &download.urls {
-            got = http.get(url).map(|bytes| (url.clone(), bytes));
+            got = get(http, url).map(|bytes| (url.clone(), bytes));
             if got.is_ok() {
                 break;
             }
@@ -124,7 +171,7 @@ pub fn download_pinned(
         let mut failures = vec![];
         let mut found = None;
         for url in &urls {
-            match http.get(url) {
+            match get(http, url) {
                 Ok(bytes)
                     if (pinned.sha256.as_ref())
                         .is_none_or(|s| *s == logoxide::publish::sha256(&bytes)) =>

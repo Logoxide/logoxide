@@ -1014,9 +1014,9 @@ pub fn relative_url(base: &str, url: &str) -> String {
 }
 
 /// Names a registry can't have: what URLs and other names already start with
-pub const RESERVED_REGISTRY_NAMES: [&str; 13] = [
-    "github", "gitlab", "codeberg", "ebible", "fetch", "ccel", "sword", "door43", "http", "https",
-    "file", "ssh", "git",
+pub const RESERVED_REGISTRY_NAMES: [&str; 15] = [
+    "github", "gitlab", "codeberg", "ebible", "fetch", "ccel", "sword", "door43", "burrito", "dbl",
+    "http", "https", "file", "ssh", "git",
 ];
 
 /// Whether `name` can name a registry: lowercase letters, digits, `-`, and `_`, not reserved

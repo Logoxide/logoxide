@@ -441,6 +441,35 @@ specifications of the formats are the other files in this folder.
   the title, description, language and direction, license (`rights`, `CC BY-SA 4.0` as SPDX), and
   upstream version (`version`, else the tag); every `.usfm` into `usfm/`, `LICENSE.md` the
   license file when present; versification `own`).
+  `burrito` (R-I, 2026-10-19: Scripture Burrito 1.x and DBL text release bundles; no catalog:
+  `burrito:<location>` and `dbl:<location>`, `https://`, `http://`, or `file://` (`%`-escaped,
+  import names have no spaces); `entry(import)` and `named_catalog` from the name alone, the
+  download `bundle`, its id and name the location's last part, `tracks_versions` false, a
+  `file://` one with no `upstream` URL; `bundle_entry(location, files)` the entry named by the
+  metadata, `dbl:` when it has `metadata.xml`; the files a `.zip` or `.tar.gz` (`bundle`) or a
+  folder's (`files/<path>`); the root the shallowest folder with `metadata.json`, else
+  `metadata.xml`; `metadata.json` read as `serde_json::Value`, loosely: `meta.version` 1.x,
+  category `source`/`derived`, flavor `scripture/textTranslation` only, `identification` (name,
+  abbreviation, description, localized by `meta.defaultLocale`, else `en`, else the first;
+  `primary`'s first authority, id, and `revision`), `languages[0]`, `copyright` (`publicDomain`,
+  `licenses[].url` through `license_from_text`, `licenses[].ingredient` the license file,
+  `shortStatements` without tags into `COPYRIGHT.txt`), the `rightsHolder` agency else
+  `publication` (`Made.publisher_name`, its `url` the homepage); `metadata.xml` with roxmltree:
+  `type/medium` `text` only, `identification`, `language` (`ldml`, else `iso`), the rights
+  holder, `copyright`'s `statementContent`, `manifest/resource`, and the default publication's
+  `structure` (its books, so the other publications' and `source/` files stay out);
+  ingredients' text by extension and MIME type (`usx`, `usfm`/`sfm`/`text/x-usfm`, `usj` or JSON
+  starting `"type":"USJ"`), the first of USX, USFM, USJ it has into `<format>/<file name>` (two of
+  one name an error), each checked by `size` and `md5` (md-5), a file whose line endings alone
+  differ taken as it is (the spec's own example burrito has git's LFs for Paratext's CRLFs), a
+  path with `..`, `\`, or a leading `/` never read, one listed but missing an error, else at
+  `ingredients/<path>` (Proskomma's); `described` sets every field from the metadata whatever the
+  entry said, so a pinned build from `entry(import)` is the bytes `bundle_entry`'s made; the id
+  the abbreviation's (`package_id`), the upstream version the revision, `Made.note` the
+  bundle's identity (`Scripture Burrito ptx b01d…, revision c772… (Paratext 9.1.0.0)`)).
+  `Made` also has `publisher_name` (the package's publisher when the download names it; else
+  `publisher`, which is also the header's "Imported from") and `note`; an empty `homepage` is
+  none. `named_catalog(import)` is CCEL's or a bundle's.
   `license.rs`: `license_from_text`, `says_public_domain` (refuses negations). A vault uses any
   import as a path package in `imports/<id>/`. Versions (the owner's D1): a new import is
   `IMPORT_VERSION` (1.0.0), logoxide's own; the publisher's version as it gives it
@@ -605,12 +634,18 @@ specifications of the formats are the other files in this folder.
   first takes a library copy of the version the catalog lists, for publishers whose versions
   track updates, so a second project downloads nothing); `make(entry, downloads, kind, reader)`
   (shared with the FFI), `download`, `download_pinned` (each locked download by its SHA-256,
-  else `Mismatch` saying the publisher changed it). Builds are deterministic (logoxide-import's
+  else `Mismatch` saying the publisher changed it); both read a `file://` URL where it is
+  (through `FsStorage`), and `download` a `file://` folder as its files (`files/<path>`, `.git`
+  left out, 1 GiB at most). Builds are deterministic (logoxide-import's
   tests build each publisher's twice: `build_twice`).
   `import.rs`: `check_source`, `find_entry` (the project's catalogs, a CrossWire-listed SWORD
-  repository's too), `files` (each download from the first URL that has it, then `build`),
+  repository's too; a bundle's from its name alone, no catalog read), `bundle_source(source,
+  dir)` (`https://…`, or a path that's there, as `burrito:<URL>`; `file_url`, `local_path`),
+  `bundle(http, entry)` (the bundle read and its entry named by its metadata: `Logoxide::import`
+  does it first, vendors a `file://` one always, and `prepare`s the build for a library one so
+  it isn't downloaded twice), `files` (each download from the first URL that has it, then `build`),
   `run` (adds `{ import = … }` and installs through an `Importing`: `Imported` with `version`,
-  the library `dir`, `skipped`), `run_vendored` (the old path package in `imports/<id>/`:
+  the library `dir`, `skipped`), `run_vendored` (from downloads already made; the old path package in `imports/<id>/`:
   staged, renamed into place, added, installed, else rolled back), `plan_updates` (both kinds:
   `UpdatePlan { dependency, import, dir, in_library, from, upstream_from, outcome: Current |
   Changed(Box<Change { update, fresh, removed, downloads, upstream_version }>) | Failed }`) and
@@ -648,7 +683,7 @@ specifications of the formats are the other files in this folder.
   `--refresh` downloads URL catalogs again, `--offline` only what's kept; `cmd/catalog.rs`'s
   `gather` reads the registries and catalogs both it and `works` use), `works [query]
   [--registry|--catalog] [--packages]` (every work: logoxide's table, the catalogs', then ids
-  only packages claim, with how many packages claim each), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), or `sword:<repository>/<module>` (an `import` dependency kept in the library; `--vendor`: a path package in `imports/<id>/`, built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
+  only packages claim, with how many packages claim each), `import ebible:<id>`, `fetch:<id>`, `ccel:<id>` (a Bible; `ccel:<author>/<work>` any other work, found without a catalog), `door43:<owner>/<repo>` (from Door43's catalog, added), a bundle's URL or path (`bundle_source`: anything `check_source` refuses that's `https://` or a path that's there), or `sword:<repository>/<module>` (an `import` dependency kept in the library; `--vendor`: a path package in `imports/<id>/`, built in a temporary folder, renamed into place, removed if adding fails; `--update [name]`,
   `--dry-run`, `--yes`: make imports again, replace changed ones (a new library version, or a
   vendored one's files), re-lock them; one failing doesn't stop the rest, and removing a vendored
   one's files is asked about in a terminal, else needs `--yes`; `lx update <import>` takes the
@@ -760,7 +795,8 @@ specifications of the formats are the other files in this folder.
   (phase D: `importEbible`, `importFetchBible`, `importCcel`, and `importSword` are gone);
   `Logoxide.unzip(bytes)` gives a zip's files (logoxide-text's `archive::unzip`, its limits
   kept), so a host reads a zip of book files without a zip library or a made-up import;
-  `importPrefixes` (`ebible`, `fetch`, `ccel`, `sword`, `door43`), `swordCatalogUrl(name)` (a
+  `importPrefixes` (`ebible`, `fetch`, `ccel`, `sword`, `door43`, `burrito`, `dbl`),
+  `importBundleEntry(location, files)` (a bundle's entry from its bytes, `bundle_entry`), `swordCatalogUrl(name)` (a
   CrossWire-listed repository's `mods.d.tar.gz`), `defaultCatalogUrls`, `isInsecureUrl`. Errors keep
   `Network` (`Fetch`), `Integrity` (`Mismatch`, `Checksum`, `Changed`), and `Resolve` apart from
   `Files`; `PackageInfo` and `CatalogEntry` carry `rights` (said and derived),

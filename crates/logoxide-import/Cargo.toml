@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Packages from other publishers' downloads: eBible.org, fetch.bible, CCEL, Door43, and SWORD repositories (Bibles, commentaries, dictionaries, and books), as logoxide catalogs and imports"
+description = "Packages from other publishers' downloads: eBible.org, fetch.bible, CCEL, Door43, SWORD repositories, Scripture Burritos, and DBL bundles (Bibles, commentaries, dictionaries, and books), as logoxide catalogs and imports"
 homepage.workspace = true
 readme = "README.md"
 keywords = ["bible", "usfm", "usx", "sword", "import"]
@@ -29,6 +29,10 @@ serde.workspace = true
 # A Door43 resource container's `manifest.yaml` (deprecated upstream, but frozen and complete
 # for reading)
 serde_yaml = "0.9.34"
+# A Scripture Burrito's or DBL bundle's files are checked by MD5, the one checksum both list
+md-5 = "0.10"
+# A DBL bundle's `metadata.xml`
+roxmltree = "0.21"
 
 [dev-dependencies]
 # Building the downloads the tests read
