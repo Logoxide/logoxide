@@ -59,7 +59,8 @@ its text, and still point at the same words after the translation is re-edited:
 - **Formats read**: USX, USFM, USJ, OSIS, ThML, GBF (a book a file, or a whole Bible in one);
   dictionaries (`entries/*.xml`) and cross-references (`xref/*.tsv`); books as EPUBs, with the
   references topos finds in them; Paratext `.vrs` versification maps (`lx map "Psalm 51:1" --from
-  English --to Original`)
+  English --to Original`); `lx convert` writes a book (or a folder of them) from USFM, USX, or
+  USJ into another of them
 - **Front ends on the same code**: `logoxide-lsp` (hover, completion, references, and whole books
   in any editor; `crates/logoxide-lsp/README.md`), `logoxide-mcp` (an MCP server: catalogs,
   passages with their licenses, notes, entries; read-only unless `--allow-writes`;
@@ -91,7 +92,7 @@ one yet, so they're kept as they are until someone asks:
   timings per recording name where each verse is; `lx media add`, `lx media check`
 - Every command: `init`, `new`, `add`, `remove`, `enable`, `disable`, `install`, `update`,
   `list`, `show`, `check`, `release`, `diff`, `verify`, `info`, `clean`, `search`, `works`,
-  `import`, `catalog`, `registry`, `publish`, `yank`, `media`, `map`, `read`, `compare`, with
+  `import`, `catalog`, `registry`, `publish`, `yank`, `media`, `map`, `convert`, `read`, `compare`, with
   completion (`source <(COMPLETE=bash lx)`)
 
 ## Specifications

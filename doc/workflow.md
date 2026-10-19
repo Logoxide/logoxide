@@ -265,8 +265,15 @@ same text a patch), so one version never names two texts.
 ## Publishing: a package of your own
 
 A package is a git repository with a `logoxide.toml` and its text, released by tags (`v1.0.0`).
-Start from a folder of USX or USFM books, or from an import (`lx import --vendor ebible:eng-asv`
-makes `imports/ebible-eng-asv`, already one):
+Start from a folder of USX, USFM, or USJ books, or from an import (`lx import --vendor
+ebible:eng-asv` makes `imports/ebible-eng-asv`, already one). `lx convert` writes books from one
+of the three into another (normalized, not the publisher's layout):
+
+```sh
+lx convert usfm/ --to usj --output usj/   # each book: usj/1ch.json, …
+lx convert usx/JHN.usx --to usfm          # one book, to stdout (or --output JHN.usfm)
+```
+
 
 ```toml
 [package]

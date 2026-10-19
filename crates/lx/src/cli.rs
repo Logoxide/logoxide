@@ -414,6 +414,24 @@ pub(crate) enum Command {
     /// A package's audio and video, listed by URL and hash
     #[command(subcommand)]
     Media(MediaCommand),
+    /// A book's text in USFM, USX, or USJ (USX as JSON) written in another of them: a file (to
+    /// stdout, or --output), or each book file in a folder into another folder (--output),
+    /// named as it was (USJ as `.json`). What's written is normalized, not the publisher's layout
+    Convert {
+        /// A book file (`JHN.usfm`, `JHN.usx`, `JHN.json`; `-` reads stdin), or a folder of them
+        #[arg(value_hint = clap::ValueHint::AnyPath)]
+        input: PathBuf,
+        /// The format to write
+        #[arg(long, value_parser = crate::cmd::convert::FORMATS)]
+        to: String,
+        /// The format read (by default each file's: from its extension, else how it starts); in
+        /// a folder, only its files in this format are converted
+        #[arg(long, value_parser = crate::cmd::convert::FORMATS)]
+        from: Option<String>,
+        /// Where to write: a file, or a folder to write it in (a folder's books need one)
+        #[arg(long, short, value_hint = clap::ValueHint::AnyPath)]
+        output: Option<PathBuf>,
+    },
     /// Where a reference numbered one way is in another numbering, through the project's
     /// versification maps: `lx map "Psalm 51:1" --from English --to Original`. --from and --to
     /// name Bibles here (by name, abbreviation, or alias: their `versification`) or

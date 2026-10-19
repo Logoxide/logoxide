@@ -475,7 +475,7 @@ specifications of the formats are the other files in this folder.
   where the next starts, a missing `sid` made from the book and numbers; usfm3's
   `attributes: [{key, value}]` read too) and written from USX by our own `usx_to_usj` (usfm3's
   USJ writer nests attributes that way, not as the node's keys); end milestones are left out.
-  `source::convert(text, from, to)` goes between USFM, USX, and USJ through USX.
+  `source::convert(text, from, to)` goes between USFM, USX, and USJ through USX (`lx convert`).
   Checked the same way: the BSB through USJ differs from its USX only in Psalm 119's headings
   (as through USFM), and back into USX and USJ again is the same USJ; the KJV's USFM through USJ
   is the same verses. OSIS and ThML Bibles through logoxide-markup (`whole.rs`: a file can hold every
@@ -664,7 +664,11 @@ specifications of the formats are the other files in this folder.
   versification> --to …` (`--with <map package>` adds one not in the project), `read
   "<reference>"` (the passage from the Bible named after it, else the first: `John 3:16 KJV`;
   `--width`, `--no-labels`), `compare "<reference>" [--bibles KJV,BSB]` (each Bible's text in its
-  own numbering, mapped, with what it lacks; `cmd/read.rs`). Completion
+  own numbering, mapped, with what it lacks; `cmd/read.rs`), `convert <file or folder> --to
+  usfm|usx|usj` (logoxide-text's `source::convert`; `cmd/convert.rs`: a file to stdout, made
+  printable only on a terminal, or `--output`; `-` is stdin; a folder's book files into the
+  folder `--output`, USJ as `.json`; the format read is each file's extension, else how it
+  starts, or `--from`, which in a folder chooses the files). Completion
   (`complete.rs`, clap_complete's dynamic engine: `source <(COMPLETE=bash lx)`) gives registries'
   packages, dependencies, and registries; bash needs `:` out of `COMP_WORDBREAKS`. `lx add`
   installs and locks what it adds (`--path` is written relative to the manifest; an absolute path

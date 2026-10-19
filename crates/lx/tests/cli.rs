@@ -1579,3 +1579,39 @@ fn works_are_listed_with_registries_own() {
     let built = std::fs::read_to_string(world.path("reg/catalog.toml")).unwrap();
     assert!(built.contains("[works.gill]"), "{built}");
 }
+
+#[test]
+fn books_convert_between_usfm_usx_and_usj() {
+    let world = World::new("convert");
+    let usx = world.path("usx");
+    std::fs::create_dir_all(&usx).unwrap();
+    std::fs::write(usx.join("JHN.usx"), JHN).unwrap();
+    std::fs::write(usx.join("notes.txt"), "not a book").unwrap();
+    let usx = usx.to_string_lossy().to_string();
+    let usj = world.path("usj").to_string_lossy().to_string();
+    let said = world.ok(&["convert", &usx, "--to", "usj", "--output", &usj]);
+    assert!(said.contains("1 book written in USJ"), "{said}");
+    let json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(world.path("usj/JHN.json")).unwrap())
+            .unwrap();
+    assert_eq!(json["type"], "USJ");
+    assert_eq!(json["content"][0]["code"], "JHN");
+    // USJ to stdout as USFM; the format from how the file starts, whatever its name
+    let book = world.path("book.txt");
+    std::fs::copy(world.path("usj/JHN.json"), &book).unwrap();
+    let usfm = world.ok(&["convert", &book.to_string_lossy(), "--to", "usfm"]);
+    assert_eq!(
+        usfm,
+        "\\id JHN\n\\c 3\n\\p \\v 16 For God so loved \\v 17 For God sent\n"
+    );
+    // A folder's books need a folder to go in; what isn't a book is said to be
+    assert!(
+        !world
+            .lx(&["convert", &usx, "--to", "usfm"])
+            .status
+            .success()
+    );
+    let notes = world.path("usx/notes.txt").to_string_lossy().to_string();
+    let out = world.lx(&["convert", &notes, "--to", "usj"]);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("--from"));
+}

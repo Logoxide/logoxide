@@ -38,6 +38,7 @@ use cmd::{
         Filters, Shown, catalog_add, catalog_build, catalog_entry, catalog_list, catalog_refresh,
         catalog_remove, package_url, search, search_freshness, works,
     },
+    convert::convert,
     import::{import, import_update},
     map::map,
     media::{media_add, media_check},
@@ -349,6 +350,12 @@ fn main() -> ExitCode {
         Command::Media(MediaCommand::Check { package, offline }) => {
             media_check(package, *offline, &cli.library())
         }
+        Command::Convert {
+            input,
+            to,
+            from,
+            output,
+        } => convert(input, to, from.as_deref(), output.as_deref()),
         Command::Map {
             reference,
             from,
