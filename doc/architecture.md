@@ -551,7 +551,7 @@ specifications of the formats are the other files in this folder.
   `timings`: WebVTT cues by verse (`parse_timings`, `check_timings`, `book_verses`).
   `cache`: parsed books kept between runs (`BookCache::book(source, id)`: memory, else the
   `BookStore`'s `<key>/<CODE>.postcard`, else parsed and written; `MemoryBookStore`; each file
-  starts with `book_header`'s line naming `CACHE_FORMAT` (4) and the crate's version, else
+  starts with `book_header`'s line naming `text_version` (`CACHE_FORMAT`, 4, and the crate's version: what text read from a file depends on, the FFI's `Logoxide.textVersion`, which hosts key what they keep by), else
   it's parsed again, since postcard can't tell a stale layout; `decode` also refuses another
   book's file), the one format the core's `Cache`, the LSP, and the bindings share.
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter

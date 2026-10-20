@@ -77,10 +77,16 @@ impl BookStore for MemoryBookStore {
 
 /// What a cached book's file starts with: the cache format and the logoxide-text that wrote it
 pub fn book_header() -> String {
-    format!(
-        "logoxide-book {CACHE_FORMAT} {}\n",
-        env!("CARGO_PKG_VERSION")
-    )
+    format!("logoxide-book {}\n", text_version())
+}
+
+/**
+What text read from a file depends on: the cache format and this crate's version (logoxide-markup
+is released with it). A host keeping what it read (a book's verses, its parsed tree) keys it by
+this, so a release that reads files differently is read again
+*/
+pub fn text_version() -> String {
+    format!("{CACHE_FORMAT} {}", env!("CARGO_PKG_VERSION"))
 }
 
 /// A book's file under its key: `<key>/JHN.postcard` (a book without a USFM code, by its number)

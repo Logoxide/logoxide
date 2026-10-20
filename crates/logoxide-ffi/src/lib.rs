@@ -193,6 +193,13 @@ impl Logoxide {
         env!("CARGO_PKG_VERSION").to_owned()
     }
 
+    /// What text read from a file depends on (the parsed-book cache's format and logoxide-text's
+    /// version): a host keeping what it read (`verseTexts`, a book's text) keys it by this, so a
+    /// release that reads files differently has them read again
+    pub fn text_version(&self) -> String {
+        logoxide_text::cache::text_version()
+    }
+
     /// A package from its files (paths relative to its folder, every file but git's), and the
     /// cache files saved from `LogoxidePackage::cache_writes` before (paths relative to the
     /// cache's folder)
