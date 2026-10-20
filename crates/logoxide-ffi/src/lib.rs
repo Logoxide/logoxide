@@ -113,6 +113,17 @@ impl From<logoxide_core::LogoxideError> for LogoxideError {
     }
 }
 
+/// A book an import downloads a file of its own for (`Logoxide.bookDownloads`): its file's
+/// `name` (fetch.bible's lowercase code, `jhn`) and where it is
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BookDownload {
+    pub book_id: u8,
+    pub name: String,
+    /// Tried in order: the first that answers has it
+    pub urls: Vec<String>,
+}
+
 /// A file an import needs (`CatalogSource::External`'s `downloads`, `Logoxide.importDownloads`):
 /// `name` is what to give its bytes as
 #[data]
@@ -344,6 +355,26 @@ impl Logoxide {
         Ok(logoxide_import::downloads(&entry.into())?
             .iter()
             .map(ImportDownload::from)
+            .collect())
+    }
+
+    /**
+    The books `entry` downloads one a file (fetch.bible's USX, a book each), by book: so a
+    reader fetches only the books it shows, parsing each with `LogoxideBook.parse`. Empty for an
+    import downloaded whole (eBible.org's `.zip`, a SWORD module), which only `import_downloaded`
+    reads
+    */
+    pub fn book_downloads(&self, entry: CatalogEntry) -> Result<Vec<BookDownload>, LogoxideError> {
+        let books = logoxide_text::bible_data().books();
+        Ok((logoxide_import::downloads(&entry.into())?.iter())
+            .filter_map(|d| {
+                let id = books.search_usfm(&d.name.to_ascii_uppercase())?;
+                Some(BookDownload {
+                    book_id: id.0,
+                    name: d.name.clone(),
+                    urls: d.urls.clone(),
+                })
+            })
             .collect())
     }
 

@@ -1267,6 +1267,9 @@ Another publisher's download is made into a package the same way for every publi
 and `importDownloaded(entry, files)` makes the package's files from their bytes, by name. Write
 them into a folder in the vault and add it as a path package, or add <!-- source -->`{ _import }`<!-- /source --><!-- ts: `{ _import }` --><!-- python: a `Dependency` with `import_` --> and let
 installing make it (kept in the library by its checksum, as `lx import` does).
+`bookDownloads(entry)` says which books an import downloads a file of its own for (fetch.bible's
+USX, a book each), so a reader can fetch only the books it shows and parse each with
+`LogoxideBook.parse`; it's empty for an import downloaded whole (eBible.org's `.zip`).
 
 ```ts
 const asv = catalog.findImport("ebible:eng-asv")!;
@@ -1564,7 +1567,7 @@ topos](#references-with-topos).
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
 | `Logoxide.parseProject` | [A vault's project](#a-vaults-project) |
 | `Logoxide.parseCatalog`, `parseCatalogBytes`, `installer`, `defaultCatalogUrls`, `ebibleCatalogUrl`, `isInsecureUrl`, `swordCatalogUrl`, `importPrefixes`, `categories`, `maxCategories` | [Catalogs](#catalogs) |
-| `Logoxide.importDownloads`, `importDownloaded`, `importBundleEntry`, `importIsCurrent`, `updateImport` | [Imports](#imports) |
+| `Logoxide.importDownloads`, `bookDownloads`, `importDownloaded`, `importBundleEntry`, `importIsCurrent`, `updateImport` | [Imports](#imports) |
 | `Logoxide.fileMetadata`, `newPackage`, `newCollection`, `parseReferences`, `unzip` | [Making packages](#making-packages) |
 | `Logoxide.readPassage`, `comparePassage` | [Reading natively](#reading-natively) |
 | `LogoxidePackage.info`, `checksum`, `format`, `books`, `chapterVerses`, `cacheWrites`, `bookFiles`, `titles`, `skipped`, `verseHashes` | [Opening a package](#opening-a-package) |

@@ -1780,3 +1780,31 @@ fn bytes_that_arent_a_zip_unzipped() {
         );
     }
 }
+
+#[test]
+fn a_translation_a_book_at_a_time() {
+    let logoxide = Logoxide::new();
+    let json = r#"{"bibles": {"spa_x": {"name": {"english": "A Bible", "english_abbrev": "AB"},
+        "year": 2020, "copyright": {"licenses": [{"license": "public", "url": ""}]},
+        "books_ot": [], "books_nt": ["jhn", "rom"]}}, "books_ordered": []}"#;
+    let fetch = logoxide
+        .parse_catalog("https://v1.fetch.bible/manifest.json".into(), json.into())
+        .unwrap();
+    let entry = fetch.find_import("fetch:spa_x".into()).unwrap();
+    let books = logoxide.book_downloads(entry).unwrap();
+    let found: Vec<(u8, &str, &str)> = (books.iter())
+        .map(|b| (b.book_id, b.name.as_str(), b.urls[0].as_str()))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (43, "jhn", "https://v1.fetch.bible/bibles/spa_x/usx/jhn.usx"),
+            (45, "rom", "https://v1.fetch.bible/bibles/spa_x/usx/rom.usx"),
+        ]
+    );
+    // eBible.org's translations come whole, in a .zip
+    let csv = "\"languageCode\",\"translationId\",\"languageNameInEnglish\",\"title\",\"description\",\"Redistributable\",\"Copyright\",\"UpdateDate\",\"textDirection\",\"downloadable\",\"shortTitle\"\n\"eng\",\"eng-asv\",\"English\",\"American Standard Version (1901)\",\"\",\"True\",\"public domain\",\"2026-10-08\",\"ltr\",\"True\",\"ASV\"\n";
+    let ebible = (logoxide.parse_catalog(logoxide.ebible_catalog_url(), csv.into())).unwrap();
+    let asv = ebible.find_import("ebible:eng-asv".into()).unwrap();
+    assert!(logoxide.book_downloads(asv).unwrap().is_empty());
+}
