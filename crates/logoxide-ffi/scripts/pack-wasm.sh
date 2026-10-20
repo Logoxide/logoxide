@@ -15,6 +15,26 @@ if ! grep -q 'export declare const initialized' "$types"; then
     '/** Resolves once the WebAssembly module is loaded: await it before the first call in a browser (in Node and Bun it already has) */' \
     'export declare const initialized: Promise<void>;' >> "$types"
 fi
+# BoltFFI's exceptions say only their type (`super("LogoxideError")`), so `error.message` and
+# `${error}` lose what went wrong: each takes its value's message instead
+node -e '
+const fs = require("fs");
+let found = 0;
+for (const name of fs.readdirSync("dist/wasm/pkg")) {
+  if (!/\.(js|ts)$/.test(name) || name.endsWith(".d.ts")) continue;
+  const path = "dist/wasm/pkg/" + name;
+  const text = fs.readFileSync(path, "utf8");
+  const fixed = text.replace(/super\("(ToposError|LogoxideError)"\);/g, (_, type) => {
+    found++;
+    return `super(value.message ?? "${type}");`;
+  });
+  if (fixed !== text) fs.writeFileSync(path, fixed);
+}
+if (found === 0) {
+  console.error("pack-wasm.sh: no exception constructors found to give their messages");
+  process.exit(1);
+}
+'
 "$python" scripts/third-party-notices.py --target wasm32-unknown-unknown -o dist/wasm/pkg/THIRD-PARTY-NOTICES
 # The generated package.json lists its files, and npm adds only README and LICENSE on its own
 node -e '

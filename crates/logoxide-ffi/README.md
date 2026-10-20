@@ -1473,12 +1473,13 @@ for c in logoxide.compare_passage("vault", "library", "cache", "John 3:16", ["KJ
 ## Errors
 
 <!-- source -->
-Errors are thrown as `LogoxideErrorException` in TypeScript (`error.value` is `{ tag, message }`)
-and raised as `LogoxideErrorException` in Python (`error.error` is a `LogoxideErrorNotFound`,
+Errors are thrown as `LogoxideErrorException` in TypeScript (`error.value` is `{ tag, message }`,
+and `error.message` is the message too; topos's `ToposErrorException` likewise) and raised as `LogoxideErrorException` in Python (`error.error` is a `LogoxideErrorNotFound`,
 `LogoxideErrorIo`, and so on, with its `message`).
 <!-- /source -->
 <!-- ts:
-Errors are thrown as `LogoxideErrorException` (`error.value` is `{ tag, message }`).
+Errors are thrown as `LogoxideErrorException` (`error.value` is `{ tag, message }`, and
+`error.message` is the message too; topos's `ToposErrorException` likewise).
 -->
 <!-- python:
 Errors are raised as `LogoxideErrorException` (`error.error` is a `LogoxideErrorNotFound`,
