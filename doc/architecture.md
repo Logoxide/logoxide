@@ -533,7 +533,8 @@ specifications of the formats are the other files in this folder.
   by topos's `parse_osis`; `Source::cross_references(verse)` is every line whose `from` covers
   it; `keys()` the distinct `from`s and `entry(from)` their targets as one text, which is what
   the summary hashes). `keys.rs`: `normalize_key` (Strong's `G0025` → `G25`), `fold` (the
-  catalog's, copied: case, combining marks, final sigma), `key_hash` (8 bytes of SHA-256 of the
+  catalog's, copied: case, combining marks, final sigma), `words` (a text's words folded, kept to
+  letters and digits: the FFI's `Logoxide.words` and `fold`), `key_hash` (8 bytes of SHA-256 of the
   normal form). `hash::entry_hashes(source, rule)` gives an `EntryRecord` a key. `Source::skipped` says what was passed over (`Skipped`,
   `SkipReason`): peripherals (`PERIPHERALS`: FRT, INT, … XXG) noted, books topos doesn't know
   (JUB until it does) and files naming no book warned of (the owner's D4); a book in two files is

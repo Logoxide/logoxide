@@ -304,6 +304,19 @@ impl Logoxide {
         logoxide_text::TextFormat::detect(&name, &head).map(|f| f.name().to_string())
     }
 
+    /// Text as matched loosely: lowercase, without accents or other combining marks, final
+    /// sigma as sigma (logoxide-text's `keys::fold`, as catalog search and dictionaries match)
+    pub fn fold(&self, text: String) -> String {
+        logoxide_text::keys::fold(&text)
+    }
+
+    /// A text's words as matched loosely: split at whitespace, dashes, and slashes, each folded
+    /// (`fold`) and kept to its letters and digits, so a typed answer or a heard quotation is
+    /// compared whatever the translation's punctuation
+    pub fn words(&self, text: String) -> Vec<String> {
+        logoxide_text::keys::words(&text)
+    }
+
     /// A USX book as USJ (USX as JSON, indented; end milestones left out, as USJ has none)
     pub fn usx_to_usj(&self, usx: String) -> Result<String, LogoxideError> {
         Ok(logoxide_text::source::usx_to_usj(&usx)?)

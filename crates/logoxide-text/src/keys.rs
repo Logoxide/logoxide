@@ -48,6 +48,23 @@ pub fn fold(text: &str) -> String {
         .collect()
 }
 
+/**
+A text's words as matched loosely: split at whitespace, dashes, and slashes, each [`fold`]ed and
+kept to its letters and digits (`Éphraïm's` is `ephraims`), empty ones left out. What a typed
+answer or a heard quotation is compared by, whatever the translation's punctuation
+*/
+pub fn words(text: &str) -> Vec<String> {
+    (text.split(|c: char| c.is_whitespace() || matches!(c, '-' | '‐' | '–' | '—' | '/')))
+        .map(|word| {
+            fold(word)
+                .chars()
+                .filter(|c| c.is_alphanumeric())
+                .collect::<String>()
+        })
+        .filter(|word| !word.is_empty())
+        .collect()
+}
+
 /// The first [`KEY_HASH_BYTES`] bytes of SHA-256 of a key's normal form: what a summary records
 /// an entry by
 pub fn key_hash(normal_key: &str) -> [u8; KEY_HASH_BYTES] {
@@ -78,5 +95,16 @@ mod tests {
         assert_eq!(fold("AARON"), "aaron");
         assert_eq!(key_hash("G25").len(), KEY_HASH_BYTES);
         assert_ne!(key_hash("G25"), key_hash("G26"));
+    }
+
+    #[test]
+    fn loose_words() {
+        assert_eq!(
+            words("For God so loved—the world, “Éphraïm’s” x/y 3:16"),
+            [
+                "for", "god", "so", "loved", "the", "world", "ephraims", "x", "y", "316"
+            ]
+        );
+        assert!(words(" — , ").is_empty());
     }
 }
