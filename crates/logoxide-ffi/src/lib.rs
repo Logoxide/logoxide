@@ -10,6 +10,7 @@ and the cache files it writes are handed back ([`LogoxidePackage::cache_writes`]
 `logoxide.toml` and `logoxide.lock` ask for, and where each one's files are.
 */
 
+mod bible;
 mod book;
 mod catalog;
 mod create;
@@ -21,6 +22,7 @@ mod read;
 mod tests;
 mod versification;
 
+pub use bible::*;
 pub use book::*;
 pub use catalog::*;
 pub use create::*;
@@ -190,6 +192,14 @@ impl Logoxide {
         cache: Vec<PackageFile>,
     ) -> Result<LogoxidePackage, LogoxideError> {
         LogoxidePackage::open(files, features, cache)
+    }
+
+    /// A Bible from loose files, with no manifest: each file's format found from its name and
+    /// how it starts, `.zip`s opened, whole-Bible OSIS and ThML files cut into books, each book
+    /// read from its best format, and what was passed over said (`LogoxideBible.skipped`). A
+    /// `NotFound` error when no file is a book of the Bible
+    pub fn open_bible(&self, files: Vec<PackageFile>) -> Result<LogoxideBible, LogoxideError> {
+        LogoxideBible::open(files)
     }
 
     /// A package in a folder, with its cache in `cache_dir` (written there as books are read).

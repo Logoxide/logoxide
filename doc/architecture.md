@@ -516,7 +516,7 @@ specifications of the formats are the other files in this folder.
   GBF (`gbf.rs`, decision N4) the same way: its `<SB…>` marks name a file's books (OSIS id, USFM
   code, English name, or GBF's numbers 1–39 and 64–90), `<SC…>`/`<SV…>` become chapter and verse
   markers (a mark without a number is the last plus one; `<SV16><SV17>` with nothing between is
-  one bridge), each book wrapped in a division. Preference: USX, USFM, USJ, OSIS, ThML, GBF. A
+  one bridge), each book wrapped in a division. Preference: USX, USFM, USJ, OSIS, ThML, GBF. `loose.rs`: a Bible from loose files with no manifest (`open_loose`, `LooseSource`; the FFI's `Logoxide.openBible` and `LogoxideBible`): each file's format by `TextFormat::detect`, `.zip`s opened (`__MACOSX` and dotfiles left out), each format's files copied into a `MemoryFiles` folder of its own under the extension its source reads and opened as that format, and each book read from its best format; files of no format (`SkipReason::NotText`) and books another file has (`SkipReason::Duplicate`, a note, not a warning) passed over and said, by the paths they were given as (a zip's file as `kjv.zip/usfm/JHN.usfm`). A
   commentary is any verse source: `Source::notes(passage)` (a default on the trait over `book`
   and `passage_ranges`) gives each span covering the passage as a `Note` with its tree;
   `source::book_notes(book, passage, stretch)` is it over a parsed book (the LSP, lx, the MCP,

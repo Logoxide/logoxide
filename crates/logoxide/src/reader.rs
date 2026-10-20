@@ -243,6 +243,10 @@ mod with_text {
                     logoxide_text::SkipReason::Unknown => SkipReason::Unknown,
                     logoxide_text::SkipReason::NoBook => SkipReason::NoBook,
                     logoxide_text::SkipReason::LetteredChapter => SkipReason::LetteredChapter,
+                    // Only loose files are read so, never a package's format
+                    logoxide_text::SkipReason::NotText | logoxide_text::SkipReason::Duplicate => {
+                        SkipReason::NoBook
+                    }
                 },
             }
         }

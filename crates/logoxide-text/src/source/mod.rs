@@ -10,6 +10,7 @@ verses covering it ([`Source::notes`]). Two formats hold no verses: a dictionary
 
 mod dictionary;
 mod gbf;
+mod loose;
 mod osis;
 mod thml;
 mod to_usfm;
@@ -30,6 +31,7 @@ use topos_bible::{data::books::BookId, segments::Passage};
 
 pub use dictionary::DictionarySource;
 pub use gbf::GbfSource;
+pub use loose::{LooseSource, open_loose};
 pub use osis::OsisSource;
 pub use thml::ThmlSource;
 pub use to_usfm::usx_to_usfm;

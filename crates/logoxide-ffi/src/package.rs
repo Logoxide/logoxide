@@ -380,6 +380,26 @@ impl From<MediaFile> for logoxide_core::media::MediaFile {
     }
 }
 
+/// What a source passed over, as the bindings give it
+pub(crate) fn skipped_file(skipped: &logoxide_text::Skipped) -> SkippedFile {
+    use logoxide_text::SkipReason as R;
+    let reason = match skipped.reason {
+        R::Peripheral => "peripheral",
+        R::Unknown => "unknown",
+        R::NoBook => "no-book",
+        R::LetteredChapter => "lettered-chapter",
+        R::NotText => "not-text",
+        R::Duplicate => "duplicate",
+    };
+    SkippedFile {
+        path: skipped.path.clone(),
+        book: skipped.book.clone(),
+        reason: reason.to_string(),
+        message: skipped.to_string(),
+        warning: skipped.is_warning(),
+    }
+}
+
 /// A book and its file in a package
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -424,7 +444,8 @@ pub struct SkippedFile {
     /// Its book's code or name as the file gives it (`FRT`, `JUB`); empty when it names none
     pub book: String,
     /// `peripheral` (front matter, a glossary, …), `unknown` (a book logoxide doesn't know),
-    /// `no-book`, or `lettered-chapter` (Esther's chapters A to F)
+    /// `no-book`, or `lettered-chapter` (Esther's chapters A to F); among loose files
+    /// (`Logoxide.openBible`), `not-text` (no format read) or `duplicate` (another file is read)
     pub reason: String,
     /// What `lx check` says of it (`usx/FRT.usx: FRT isn't a book of the Bible, passed over`)
     pub message: String,
@@ -697,20 +718,8 @@ impl LogoxidePackage {
     /// The files, or books in them, its format passed over: peripherals, and books logoxide
     /// doesn't know (whose verses are left out)
     pub fn skipped(&self) -> Vec<SkippedFile> {
-        let reason = |r: logoxide_text::SkipReason| match r {
-            logoxide_text::SkipReason::Peripheral => "peripheral",
-            logoxide_text::SkipReason::Unknown => "unknown",
-            logoxide_text::SkipReason::NoBook => "no-book",
-            logoxide_text::SkipReason::LetteredChapter => "lettered-chapter",
-        };
         (self.cached.package().source().skipped().iter())
-            .map(|s| SkippedFile {
-                path: s.path.clone(),
-                book: s.book.clone(),
-                reason: reason(s.reason).to_string(),
-                message: s.to_string(),
-                warning: s.is_warning(),
-            })
+            .map(skipped_file)
             .collect()
     }
 

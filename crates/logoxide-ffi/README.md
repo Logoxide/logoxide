@@ -390,7 +390,7 @@ print(verses[5].heading, verses[5].paragraph, verses[6].paragraph)  # → The Wi
 its own line where a chapter starts inside the passage, words of Jesus and the like in
 templates, lines wrapped at `width`, and cut at `limit` bytes. Its `marks`
 say what each run of it is (a verse number, a heading), by offsets in the `OffsetUnit` asked for
-(`Utf16` for JavaScript's strings, `Char` for Python's, `Byte` for UTF-8).
+(UTF-16 code units for JavaScript's strings, characters for Python's, or UTF-8 bytes).
 
 ```ts
 import { NodeKind, OffsetUnit, type BookTextStyle } from "logoxide";
@@ -497,6 +497,26 @@ print(json.loads(logoxide.usx_to_usj(usx))["content"][0]["code"])  # → 3JN
 print(logoxide.convert_book(logoxide.usx_to_usj(usx), BookFormat.USJ, BookFormat.USFM).startswith("\\id 3JN"))  # → True
 print(LogoxideBook.find_fragment("For God so greatly loved the world", "so loved the world"))  # → TextRange(start=8, end=34)
 print(logoxide.detect_format("JHN.xml", usx), logoxide.detect_format("notes.md", "# Notes"))  # → usx None
+```
+
+A Bible of your own as loose files, with no manifest: `openBible` finds each file's format (as
+`detectFormat` does), opens `.zip`s, cuts a whole-Bible OSIS or ThML file into its books, and
+reads each book from its best format (USX, USFM, USJ, OSIS, ThML, GBF). `skipped` says what it
+passed over: files of no format (`not-text`), a book another file has in a better format
+(`duplicate`), peripherals.
+
+```ts
+const asvZip = new Uint8Array(readFileSync("eng-asv_usfm.zip"));
+const loose = logoxide.openBible([{ path: "asv.zip", bytes: asvZip }, file("3JN.xml", usx)]);
+console.log([...loose.books()], loose.bookFormat(64), loose.book(43).verseTexts().length); // → [ 43, 64 ] usx 2
+console.log(loose.skipped().map((s) => `${s.reason} ${s.path}`)); // → [ 'not-text asv.zip/copr.htm', 'peripheral asv.zip/00-FRTeng-asv.usfm', 'duplicate asv.zip/95-3JNeng-asv.usfm' ]
+```
+
+```python
+asv_zip = pathlib.Path("eng-asv_usfm.zip").read_bytes()
+loose = logoxide.open_bible([PackageFile(path="asv.zip", bytes=asv_zip), file("3JN.xml", usx)])
+print(list(loose.books()), loose.book_format(64), len(loose.book(43).verse_texts()))  # → [43, 64] usx 2
+print([f"{s.reason} {s.path}" for s in loose.skipped()])  # → ['not-text asv.zip/copr.htm', 'peripheral asv.zip/00-FRTeng-asv.usfm', 'duplicate asv.zip/95-3JNeng-asv.usfm']
 ```
 
 ## Commentaries, dictionaries, and cross-references
@@ -1538,6 +1558,7 @@ topos](#references-with-topos).
 |---|---|
 | `Logoxide.new`, `version` | [Loading](#loading) |
 | `Logoxide.openPackage`, `openPackageDir`, `readPackageInfo` | [Opening a package](#opening-a-package) |
+| `Logoxide.openBible`, `LogoxideBible` | [A book's text](#a-books-text) |
 | `Logoxide.convertBook`, `detectFormat`, `usfmToUsx`, `usxToUsfm`, `usxToUsj`, `usjToUsx` | [A book's text](#a-books-text) |
 | `Logoxide.parseTimings`, `verifyMedia`, `mediaStorePath` | [Audio and video](#audio-and-video) |
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
