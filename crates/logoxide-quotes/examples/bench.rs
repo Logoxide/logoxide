@@ -5,7 +5,7 @@
 
 use std::time::Instant;
 
-use scripture_quotes::{Engine, Options, Transcript, Translation, VerseRef};
+use logoxide_quotes::{Engine, Options, Transcript, Translation, VerseRef};
 use serde_json::Value;
 
 fn main() {

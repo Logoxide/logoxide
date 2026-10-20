@@ -1,4 +1,4 @@
-# scripture-quotes
+# logoxide-quotes
 
 Find every quotation of Scripture in a transcript: any verse of any book, in any of the
 translations you give it, and which translation it was quoted from. Built for sermons
@@ -10,7 +10,7 @@ of the transcript it is (and which segments, for transcripts without word times)
 those to whatever you have.
 
 ```rust
-use scripture_quotes::{Engine, Options, Transcript, Translation, VerseRef};
+use logoxide_quotes::{Engine, Options, Transcript, Translation, VerseRef};
 
 let mut kjv = Translation::new("KJV");
 let john = 43; // topos's book numbers
@@ -27,6 +27,22 @@ assert_eq!(refs, ["John 11:35", "John 11:36"]);
 // Read one after another, they're a run
 assert_eq!(engine.format(&found.runs[0].passage()), "John 11:35-36");
 ```
+
+## From logoxide's books
+
+With the `text` feature, a translation is read from logoxide-text's books: a package's
+(`Package::source()`), or loose files' (`logoxide_text::source::open_loose`). Each verse is its
+reading text (notes and headings left out), and the engine numbers and names books as
+logoxide-text does, the deuterocanon's too.
+
+```rust,ignore
+let source = logoxide_text::source::open_loose(&files, "")?;
+let engine = Engine::new([Translation::from_source("KJV", &source)?]);
+```
+
+The crate began in extract-audio-bible as `scripture-quotes`, which finds what a sermon read
+aloud; it's here so lx, the language server, and the bindings can find quotations a note
+doesn't mark.
 
 ## Accuracy
 
@@ -81,14 +97,14 @@ many transcripts as you like. Passages are parsed and enumerated by
 verse counts:
 
 ```rust
-# use scripture_quotes::{Engine, Options, Scope, Transcript, Translation, VerseRef};
+# use logoxide_quotes::{Engine, Options, Scope, Transcript, Translation, VerseRef};
 # let mut kjv = Translation::new("KJV");
 # kjv.verse(VerseRef::new(43, 3, 16), "For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.");
 # let engine = Engine::new([kjv]);
 let searcher = engine.scoped(&Scope::default().translation("kjv").passages("John 3:16-18; Rom 8"))?;
 let found = searcher.search(&Transcript::from_text("for god so loved the world that he gave his only begotten son"), &Options::default());
 assert_eq!(found.quotations.len(), 1);
-# Ok::<(), scripture_quotes::ScopeError>(())
+# Ok::<(), logoxide_quotes::ScopeError>(())
 ```
 
 `Scope::book` and a bare book name (`passages("Jude")`) search a whole book.

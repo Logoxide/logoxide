@@ -1,2 +1,0 @@
-# This crate keeps rustfmt's default width (the workspace's is wider)
-max_width = 100

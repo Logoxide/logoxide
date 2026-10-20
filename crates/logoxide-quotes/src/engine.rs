@@ -82,6 +82,42 @@ impl Translation {
         &self.name
     }
 
+    /// A translation of every book a logoxide-text source has (a package's, or loose files':
+    /// `logoxide_text::source::open_loose`), named `name`
+    #[cfg(feature = "text")]
+    pub fn from_source(
+        name: impl Into<String>,
+        source: &dyn logoxide_text::Source,
+    ) -> logoxide_text::Result<Self> {
+        let mut translation = Self::new(name);
+        for id in source.books() {
+            translation.add_book(&source.book(id)?);
+        }
+        Ok(translation)
+    }
+
+    /**
+    Adds a logoxide-text book's verses, as its reading text (`passage::verse_texts`: notes and
+    headings left out). A bridge's words are its first verse's, the verses after it added empty;
+    a verse in parts (`20a`, `20b`) is one verse; a span into a later chapter (a commentary's
+    note) is its first verse
+    */
+    #[cfg(feature = "text")]
+    pub fn add_book(&mut self, book: &logoxide_text::Book) -> &mut Self {
+        for verse in logoxide_text::passage::verse_texts(book) {
+            self.verse(
+                VerseRef::new(book.id, verse.chapter, verse.verse),
+                &verse.text,
+            );
+            if verse.last_chapter == verse.chapter {
+                for later in verse.verse.saturating_add(1)..=verse.last {
+                    self.verse(VerseRef::new(book.id, verse.chapter, later), "");
+                }
+            }
+        }
+        self
+    }
+
     pub fn len(&self) -> usize {
         self.verses.len()
     }
@@ -195,7 +231,8 @@ pub struct EngineBuilder {
 }
 
 impl EngineBuilder {
-    /// The book names and numbering references are parsed with (topos's defaults otherwise; use
+    /// The book names and numbering references are parsed with (topos's defaults otherwise, or
+    /// with the `text` feature logoxide-text's, which has the deuterocanon; else use
     /// `BibleData::with_deuterocanon()` for the deuterocanonical books)
     pub fn data(mut self, data: BibleData) -> Self {
         self.data = Some(data);
@@ -212,8 +249,14 @@ impl EngineBuilder {
         self
     }
 
+    /// The engine (with the `text` feature, its book numbers are logoxide-text's, the
+    /// deuterocanon's too, unless `data` gave others)
     pub fn build(self) -> Engine {
-        Engine::build(self.data.unwrap_or_default(), self.translations)
+        #[cfg(feature = "text")]
+        let data = (self.data).unwrap_or_else(|| logoxide_text::bible_data().clone());
+        #[cfg(not(feature = "text"))]
+        let data = self.data.unwrap_or_default();
+        Engine::build(data, self.translations)
     }
 }
 
@@ -223,7 +266,11 @@ impl Engine {
     }
 
     pub fn new(translations: impl IntoIterator<Item = Translation>) -> Self {
-        Self::build(BibleData::default(), translations.into_iter().collect())
+        EngineBuilder {
+            data: None,
+            translations: translations.into_iter().collect(),
+        }
+        .build()
     }
 
     fn build(data: BibleData, translations: Vec<Translation>) -> Self {

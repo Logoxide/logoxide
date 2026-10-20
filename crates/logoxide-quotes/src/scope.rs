@@ -8,7 +8,7 @@ use crate::engine::Engine;
 Which verses to look for. Empty lists mean all of them:
 
 ```
-# use scripture_quotes::Scope;
+# use logoxide_quotes::Scope;
 let scope = Scope::default().translation("KJV").passages("John 3; Rom 8:28-39");
 ```
 */

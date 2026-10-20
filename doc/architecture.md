@@ -487,6 +487,18 @@ specifications of the formats are the other files in this folder.
   `import_is_current(entry, upstream.version)` (compares the publisher's versions,
   `compare_publisher_versions`, never the package's, and only where `tracks_versions`, so `lx`
   can skip downloading)
+- `crates/logoxide-quotes`: every quotation of Scripture in a text or a transcript, in any of the
+  translations given (October 2026: extract-audio-bible's `scripture-quotes`, moved with its
+  history; that app keeps its copy until this one is on crates.io). On topos-bible alone: an
+  `Engine` of `Translation`s (verse texts by `VerseRef`), each word folded and indexed
+  (`text.rs`: numbers spelled, near misses like `saith`/`sayeth`), searched by alignment
+  (`align.rs`) for verses said in order with words added or misheard; `Quotation`s and the
+  `Run`s they make (only verses read one after another, or with only verses the translation
+  lacks between), each with its accuracy, coverage, and the other verses and translations it
+  fits; `Scope` narrows a searcher to passages, books, and translations. Its `text` feature
+  reads logoxide-text's books (`Translation::from_source`, `add_book`, over `verse_texts`) and
+  numbers books as logoxide-text does, the deuterocanon's too. Nothing else depends on it yet:
+  it's for lx, the LSP, and the bindings to find quotations a note doesn't mark.
 - `crates/logoxide-text`: what's in a Bible or a book, knowing no packages (October
   2026; logoxide's `source/`, `versification.rs`, and the parsing halves of `summary`,
   `titles`, `media`, `references`, `create`, and `language` until then). Files come through its

@@ -1,4 +1,4 @@
-use scripture_quotes::{Engine, Kind, Options, Scope, Transcript, Translation, VerseRef};
+use logoxide_quotes::{Engine, Kind, Options, Scope, Transcript, Translation, VerseRef};
 
 const JOHN: u8 = 43;
 const ROMANS: u8 = 45;
@@ -23,7 +23,7 @@ fn esv() -> Translation {
     t
 }
 
-fn refs(engine: &Engine, found: &scripture_quotes::Found) -> Vec<(String, Kind)> {
+fn refs(engine: &Engine, found: &logoxide_quotes::Found) -> Vec<(String, Kind)> {
     found
         .quotations
         .iter()
@@ -339,7 +339,7 @@ fn words_several_verses_share_are_one_verse_or_none() {
             .searcher()
             .search(&Transcript::from_text(text), &Options::default())
     };
-    let verses = |found: &scripture_quotes::Found| {
+    let verses = |found: &logoxide_quotes::Found| {
         refs(&engine, found)
             .into_iter()
             .map(|(r, _)| r)

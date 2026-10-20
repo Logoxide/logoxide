@@ -1,17 +1,27 @@
 [package]
-name = "scripture-quotes"
-version = "0.1.0"
-edition = "2024"
-description = "Find every quotation of Scripture in a transcript: any verse, any translation"
-license = "CC0-1.0"
+name = "logoxide-quotes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Find every quotation of Scripture in a text or a transcript: any verse, any translation"
+readme = "README.md"
 keywords = ["bible", "scripture", "quotation", "transcript", "sermon"]
 categories = ["text-processing"]
 
+[features]
+## Translations from logoxide-text's books (`Translation::from_source`, `add_book`), and its
+## book numbering (with the deuterocanon) as the engine's default
+text = ["dep:logoxide-text"]
+
 [dependencies]
-topos-bible = "0.6"
+topos-bible.workspace = true
+logoxide-text = { workspace = true, optional = true }
 unicode-normalization = "0.1.26"
 rustc-hash = "2.1"
-serde = { version = "1", features = ["derive"] }
+serde.workspace = true
 
 [dev-dependencies]
-serde_json = "1"
+serde_json.workspace = true
