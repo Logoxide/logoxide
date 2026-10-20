@@ -97,6 +97,38 @@ impl TextFormat {
     pub fn is_verse_text(self) -> bool {
         !matches!(self, TextFormat::Dictionary | TextFormat::Xref)
     }
+
+    /**
+    The format of a book's or a Bible's file, from its name's extension (`.usx`, `.usfm`, `.sfm`,
+    `.usj`, `.osis`, `.thml`, `.gbf`), else from how its text starts (`head`, its first few
+    thousand bytes are enough): `\id` is USFM, and `<usx`, `<osis`, `<ThML`, and
+    `{"type": "USJ"` name theirs, so a `.xml`, `.json`, or `.txt` file is found too. None for
+    anything else (a dictionary's or cross-references' files are never guessed)
+    */
+    pub fn detect(name: &str, head: &str) -> Option<TextFormat> {
+        let extension =
+            (name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase())).unwrap_or_default();
+        match extension.as_str() {
+            "usx" => return Some(TextFormat::Usx),
+            "usfm" | "sfm" => return Some(TextFormat::Usfm),
+            "usj" => return Some(TextFormat::Usj),
+            "osis" => return Some(TextFormat::Osis),
+            "thml" => return Some(TextFormat::Thml),
+            "gbf" => return Some(TextFormat::Gbf),
+            _ => {}
+        }
+        let head = head.trim_start_matches('\u{feff}').trim_start();
+        let head = (head.char_indices().nth(4096)).map_or(head, |(i, _)| &head[..i]);
+        let compact: String = (head.split_whitespace().collect::<String>()).to_lowercase();
+        match head.chars().next()? {
+            '\\' if head.starts_with("\\id") => Some(TextFormat::Usfm),
+            '<' if compact.contains("<usx") => Some(TextFormat::Usx),
+            '<' if compact.contains("<osis") => Some(TextFormat::Osis),
+            '<' if compact.contains("<thml") => Some(TextFormat::Thml),
+            '{' if compact.contains("\"type\":\"usj\"") => Some(TextFormat::Usj),
+            _ => None,
+        }
+    }
 }
 
 /// The source reading `format`'s files in the folder `dir` of `files`
@@ -523,5 +555,41 @@ mod tests {
             .expect("refused")
             .to_string();
         assert!(error.contains("osis/a.xml and osis/b.xml"), "{error}");
+    }
+
+    #[test]
+    fn formats_detected() {
+        let detect = TextFormat::detect;
+        assert_eq!(detect("JHN.usx", ""), Some(TextFormat::Usx));
+        assert_eq!(detect("43JHN.SFM", ""), Some(TextFormat::Usfm));
+        assert_eq!(detect("kjv.osis", ""), Some(TextFormat::Osis));
+        // By how the text starts, when the name doesn't say
+        let usx = "\u{feff}<?xml version=\"1.0\"?>\n<usx version=\"3.0\">";
+        assert_eq!(detect("JHN.xml", usx), Some(TextFormat::Usx));
+        assert_eq!(detect("JHN.txt", "\\id JHN"), Some(TextFormat::Usfm));
+        assert_eq!(
+            detect("kjv.xml", "<?xml?><osis xmlns=\"x\">"),
+            Some(TextFormat::Osis)
+        );
+        assert_eq!(detect("book.xml", "<ThML><head>"), Some(TextFormat::Thml));
+        assert_eq!(
+            detect("JHN.json", "{ \"type\" : \"USJ\" }"),
+            Some(TextFormat::Usj)
+        );
+        assert_eq!(detect("data.json", "{\"type\": \"x\"}"), None);
+        assert_eq!(detect("notes.md", "# Notes"), None);
+        assert_eq!(detect("", ""), None);
+    }
+
+    #[test]
+    fn usx_named_xml_is_read() {
+        let usx = r#"<usx version="3.0"><book code="JHN" style="id"/><chapter number="1" style="c"/><para style="p"><verse number="1" style="v"/>In the beginning</para></usx>"#;
+        let storage = MemoryStorage::with([("usx/John.xml", usx)]);
+        let source = UsxSource::open(Arc::new(storage), "usx").expect("opens");
+        let john = crate::bible_data()
+            .books()
+            .search_usfm("JHN")
+            .expect("known");
+        assert_eq!(source.books(), [john]);
     }
 }

@@ -123,27 +123,9 @@ fn format(name: &str) -> logoxide::Result<TextFormat> {
 }
 
 /// A file's format, from its extension (`.usfm`, `.sfm`, `.usx`, `.usj`), else from how it
-/// starts: `\id` is USFM, `<usx` USX, and `{"type": "USJ"` USJ (a `.json` or `.xml` file)
+/// starts (`TextFormat::detect`): one of the formats converted between, or none
 fn format_of(path: &Path, text: &str) -> Option<TextFormat> {
-    let extension = (path.extension())
-        .map(|e| e.to_string_lossy().to_ascii_lowercase())
-        .unwrap_or_default();
-    match extension.as_str() {
-        "usfm" | "sfm" => return Some(TextFormat::Usfm),
-        "usx" => return Some(TextFormat::Usx),
-        "usj" => return Some(TextFormat::Usj),
-        _ => {}
-    }
-    let head: String = (text.trim_start_matches('\u{feff}').trim_start().chars())
-        .take(4096)
-        .collect();
-    let compact: String = head.split_whitespace().collect::<String>().to_lowercase();
-    match head.chars().next() {
-        Some('\\') if head.starts_with("\\id") => Some(TextFormat::Usfm),
-        Some('<') if compact.contains("<usx") => Some(TextFormat::Usx),
-        Some('{') if compact.contains("\"type\":\"usj\"") => Some(TextFormat::Usj),
-        _ => None,
-    }
+    TextFormat::detect(&path.to_string_lossy(), text).filter(|f| FORMATS.contains(&f.name()))
 }
 
 /// The book in `path`, read as `from`, written as `to` (an error names the file)

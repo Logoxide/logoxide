@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// A folder of USX files, one book each, as Paratext, the Digital Bible Library, eBible.org, and
-/// fetch.bible publish them
+/// fetch.bible publish them (`.usx`, or `.xml` as some name them)
 pub struct UsxSource {
     storage: Arc<dyn Storage>,
     files: BTreeMap<BookId, String>,
@@ -23,7 +23,7 @@ pub struct UsxSource {
 
 impl UsxSource {
     pub fn open(storage: Arc<dyn Storage>, dir: &str) -> Result<Self> {
-        let (files, skipped) = book_files(storage.as_ref(), dir, &["usx"], |head| {
+        let (files, skipped) = book_files(storage.as_ref(), dir, &["usx", "xml"], |head| {
             // `<book code="JHN" ...>`
             let rest = &head[head.find("<book")?..];
             Some(rest.split("code=\"").nth(1)?.split('"').next()?.to_string())

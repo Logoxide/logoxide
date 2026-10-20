@@ -492,7 +492,10 @@ specifications of the formats are the other files in this folder.
   `titles`, `media`, `references`, `create`, and `language` until then). Files come through its
   read-only `Files` (`MemoryFiles`; the core's `reader::StorageFiles` wraps a `Storage`); errors
   are `TextError`. `source/`: one `Source` per `TextFormat` (`source::open`), each giving
-  logoxide-markup's tree (`Book`: nodes and verse spans). USX, and USFM through `usfm3` (chosen
+  logoxide-markup's tree (`Book`: nodes and verse spans); `TextFormat::detect(name, head)` names
+  a file's format from its extension, else from how it starts (`\id`, `<usx`, `<osis`, `<ThML`,
+  `"type": "USJ"`: lx convert's and the FFI's `detectFormat`). USX (`.usx`, or `.xml` as some
+  publishers name it), and USFM through `usfm3` (chosen
   over usfm-onion, whose USX drops the space between adjacent `\w` words; both gave the KJV's
   31,102 verses). The other way, `usx_to_usfm` (`to_usfm.rs`) reads USX into usfm3's document and has
   usfm3 write it: whitespace runs one space, end milestones left out, a character style inside

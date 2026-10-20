@@ -443,7 +443,7 @@ print("".join(n.text for n in words))  # → For God so loved the world that He 
 ```
 
 A book file of your own: `usfmToUsx` turns USFM into USX (`usxToUsfm` the other way, as
-normalized USFM), `usxToUsj` and `usjToUsx` between USX and USJ (USX as JSON), and `convertBook` from any of USFM, USX, and USJ into another (a `BookFormat` each), `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
+normalized USFM), `usxToUsj` and `usjToUsx` between USX and USJ (USX as JSON), and `convertBook` from any of USFM, USX, and USJ into another (a `BookFormat` each); `detectFormat` names a file's format from its name, else from how its text starts (`usx`, `usfm`, `usj`, `osis`, `thml`, `gbf`). `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
 `InvalidMarkup`<!-- ts: , which is `null` here -->), and `LogoxideBook.usxChapterVerses` counts a USX
 book's verses from its markers alone, fast enough for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
 whose words changed a little since, by byte offsets.
@@ -459,6 +459,7 @@ console.log(logoxide.usxToUsfm(usx).startsWith("\\id 3JN")); // → true
 console.log(JSON.parse(logoxide.usxToUsj(usx)).content[0].code); // → 3JN
 console.log(logoxide.convertBook(logoxide.usxToUsj(usx), BookFormat.Usj, BookFormat.Usfm).startsWith("\\id 3JN")); // → true
 console.log(LogoxideBook.findFragment("For God so greatly loved the world", "so loved the world")); // → { start: 8, end: 34 }
+console.log(logoxide.detectFormat("JHN.xml", usx), logoxide.detectFormat("notes.md", "# Notes")); // → usx null
 ```
 
 ```python
@@ -477,6 +478,7 @@ print(logoxide.usx_to_usfm(usx).startswith("\\id 3JN"))  # → True
 print(json.loads(logoxide.usx_to_usj(usx))["content"][0]["code"])  # → 3JN
 print(logoxide.convert_book(logoxide.usx_to_usj(usx), BookFormat.USJ, BookFormat.USFM).startswith("\\id 3JN"))  # → True
 print(LogoxideBook.find_fragment("For God so greatly loved the world", "so loved the world"))  # → TextRange(start=8, end=34)
+print(logoxide.detect_format("JHN.xml", usx), logoxide.detect_format("notes.md", "# Notes"))  # → usx None
 ```
 
 ## Commentaries, dictionaries, and cross-references
@@ -1518,7 +1520,7 @@ topos](#references-with-topos).
 |---|---|
 | `Logoxide.new`, `version` | [Loading](#loading) |
 | `Logoxide.openPackage`, `openPackageDir`, `readPackageInfo` | [Opening a package](#opening-a-package) |
-| `Logoxide.convertBook`, `usfmToUsx`, `usxToUsfm`, `usxToUsj`, `usjToUsx` | [A book's text](#a-books-text) |
+| `Logoxide.convertBook`, `detectFormat`, `usfmToUsx`, `usxToUsfm`, `usxToUsj`, `usjToUsx` | [A book's text](#a-books-text) |
 | `Logoxide.parseTimings`, `verifyMedia`, `mediaStorePath` | [Audio and video](#audio-and-video) |
 | `Logoxide.versifications` | [Versification maps](#versification-maps) |
 | `Logoxide.parseProject` | [A vault's project](#a-vaults-project) |

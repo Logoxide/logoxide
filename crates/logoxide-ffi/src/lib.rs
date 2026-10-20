@@ -268,6 +268,14 @@ impl Logoxide {
         )?)
     }
 
+    /// A book's or a Bible's file's format (`usx`, `usfm`, `usj`, `osis`, `thml`, `gbf`), from its
+    /// name's extension, else from how its text starts (`head`, its first few thousand
+    /// characters): a `.xml`, `.json`, or `.txt` file is found by what it holds. None for
+    /// anything else
+    pub fn detect_format(&self, name: String, head: String) -> Option<String> {
+        logoxide_text::TextFormat::detect(&name, &head).map(|f| f.name().to_string())
+    }
+
     /// A USX book as USJ (USX as JSON, indented; end milestones left out, as USJ has none)
     pub fn usx_to_usj(&self, usx: String) -> Result<String, LogoxideError> {
         Ok(logoxide_text::source::usx_to_usj(&usx)?)
