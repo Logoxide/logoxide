@@ -367,6 +367,25 @@ print(html[html.index("<span") : html.index("</span>") + 7])  # → <span class=
 print(len(bsb.book(43).chapter_html(3, options)) > 0)  # → True
 ```
 
+`verseTexts` gives every verse of a book as reading text in one call: its words (notes and
+headings left out, normalized as verse-hash rule 1 says, so its `hash` is the one
+`verseHashes` gives and links keep), the `heading` before it, and whether it starts a
+`paragraph` (or stanza) or a `line` of poetry, for a reader, a drill, or a search of its own.
+
+```ts
+const verses = bsb.book(43).verseTexts();
+const v316 = verses.find((v) => v.chapter === 3 && v.verse === 16)!;
+console.log(v316.text.slice(0, 26), v316.hash === bsb.verseHashes(43).find((h) => h.chapter === 3 && h.verse === 16)!.hash); // → For God so loved the world true
+console.log(verses[5].heading, verses[5].paragraph, verses[6].paragraph); // → The Witness of John true false
+```
+
+```python
+verses = bsb.book(43).verse_texts()
+v316 = next(v for v in verses if (v.chapter, v.verse) == (3, 16))
+print(v316.text[:26], v316.hash == next(h for h in bsb.verse_hashes(43) if (h.chapter, h.verse) == (3, 16)).hash)  # → For God so loved the world True
+print(verses[5].heading, verses[5].paragraph, verses[6].paragraph)  # → The Witness of John True False
+```
+
 `styledText` writes a passage as the language server shows it: verse labels, a chapter label on
 its own line where a chapter starts inside the passage, words of Jesus and the like in
 templates, lines wrapped at `width`, and cut at `limit` bytes. Its `marks`
@@ -1534,7 +1553,7 @@ topos](#references-with-topos).
 | `LogoxidePackage.notes`, `entry`, `keys`, `crossReferences` | [Commentaries, dictionaries, and cross-references](#commentaries-dictionaries-and-cross-references) |
 | `LogoxidePackage.media`, `mediaText`, `mediaVersification`, `timings` | [Audio and video](#audio-and-video) |
 | `LogoxidePackage.licenseConcerns`, `references`, `epubFiles` | [Making packages](#making-packages) |
-| `LogoxideBook.bookId`, `verses`, `chapters`, `chapterVerses`, `text`, `html`, `chapterHtml`, `styledText`, `nodes`, `verseNodes`, `parse`, `usxChapterVerses`, `findFragment` | [A book's text](#a-books-text) |
+| `LogoxideBook.bookId`, `verses`, `verseTexts`, `chapters`, `chapterVerses`, `text`, `html`, `chapterHtml`, `styledText`, `nodes`, `verseNodes`, `parse`, `usxChapterVerses`, `findFragment` | [A book's text](#a-books-text) |
 | `LogoxideVersifications.withMap`, `withVrs`, `names`, `map` | [Versification maps](#versification-maps) |
 | `LogoxideProject.manifestText`, `dependencies`, `unlocked`, `defaultBible`, `compare`, `catalogs`, `isDefaultCatalog`, `addCatalog`, `removeCatalog`, `registries`, `addRegistry`, `removeRegistry`, `addDependency`, `removeDependency` | [A vault's project](#a-vaults-project) |
 | `LogoxideProject.packages`, `setEnabled`, `isEnabled`, `enabledDependencies`, `disabledDependencies`, `commentaries`, `dictionaries`, `crossReferences`, `nameClashes` | [The vault's packages](#the-vaults-packages) |

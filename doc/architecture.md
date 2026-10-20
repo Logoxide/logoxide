@@ -557,7 +557,10 @@ specifications of the formats are the other files in this folder.
   `passage`: a passage (`text`) or a whole book (`render`: `Rendered`, each verse's and chapter
   label's range, `part_at`, `passage_ranges`) as plain text in a `Style` (labels, hidden kinds,
   templates, `width` to `wrap` at, `indents` by USFM marker for poetry, `verse_lines`, `paragraph_gaps`), marked by the markup's kinds (the LSP's
-  `bible.rs` until then). `citations::find`: an EPUB's references through topos-formats, and a ThML book's (`is_thml`: `.xml`, `.thml`): parsed by logoxide-markup, its text nodes joined with `\n` as topos's XML search does (the head left out), searched by `BibleMatcher::search`, each `Citation` with no CFI, spine 0, UTF-16 offsets and line and column in that text, and the innermost titled `divN`'s title as its chapter. `versification::system(name)`:
+  `bible.rs` until then). `verse_texts`: every verse of a book as reading text in one call
+  (`VerseText`: rule 1's text, so its hash is the summary's; the headings before it; whether it
+  starts a paragraph or stanza, or a line of poetry, from the layout `paragraph_gaps` writes:
+  the FFI's `LogoxideBook.verseTexts`). `citations::find`: an EPUB's references through topos-formats, and a ThML book's (`is_thml`: `.xml`, `.thml`): parsed by logoxide-markup, its text nodes joined with `\n` as topos's XML search does (the head left out), searched by `BibleMatcher::search`, each `Citation` with no CFI, spine 0, UTF-16 offsets and line and column in that text, and the innermost titled `divN`'s title as its chapter. `versification::system(name)`:
   SWORD's versification systems (sword-modules' `Versification`, as `System`) with each
   chapter's verse count, for a recording numbered by one. `metadata`: an EPUB's
   `FileMetadata` (`epub_metadata`, `opf_metadata`, `elements`); `archive::unzip` (limits);

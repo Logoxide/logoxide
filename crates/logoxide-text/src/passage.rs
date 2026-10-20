@@ -258,6 +258,108 @@ fn text_ranges(
     Some(text)
 }
 
+/**
+One verse of a book as reading text ([`verse_texts`]): its words as [`crate::hash`]'s rule 1
+gives them (notes and headings left out, NFC, whitespace collapsed), the same text its hash is
+of, and where it stands in the book's layout
+*/
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerseText {
+    pub chapter: u8,
+    pub verse: u8,
+    /// The last verse of a bridge (else `verse`), in `last_chapter`
+    pub last: u8,
+    pub last_chapter: u8,
+    /// Which part of `verse` this is: 0 for the whole verse, 1 for `20a`, 2 for `20b`
+    pub part: u8,
+    pub text: String,
+    /// The headings just before it, a line each, when there are any
+    pub heading: Option<String>,
+    /// It starts a paragraph or a stanza (the book's first verse does)
+    pub paragraph: bool,
+    /// It starts a line of its own (a paragraph, or a line of poetry)
+    pub line: bool,
+}
+
+/// Every verse of a book as reading text, in order ([`VerseText`])
+pub fn verse_texts(book: &Book) -> Vec<VerseText> {
+    verse_texts_in(&book.nodes, &book.spans)
+}
+
+/// [`verse_texts`] for a tree and its verses held apart from a [`Book`] (the bindings' books)
+pub fn verse_texts_in(nodes: &[Node], spans: &[VerseSpan]) -> Vec<VerseText> {
+    // The layout: paragraphs a blank line apart, lines of poetry a line, headings kept
+    let style = Style {
+        hidden: vec![Kind::Note],
+        paragraph_gaps: true,
+        ..Style::default()
+    };
+    let flat = flatten(nodes, &style.options(""));
+    let markers: HashMap<&NodePath, usize> = spans
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (&s.marker, i))
+        .collect();
+    // Where each verse starts in the layout, and each heading
+    let mut starts: Vec<Option<usize>> = vec![None; spans.len()];
+    let mut headings: Vec<Range<usize>> = vec![];
+    for span in &flat.spans {
+        match span.kind {
+            Kind::Verse => {
+                if let Some(&i) = markers.get(&span.path) {
+                    starts[i].get_or_insert(span.range.start);
+                }
+            }
+            Kind::Title if !span.range.is_empty() => headings.push(span.range.clone()),
+            _ => {}
+        }
+    }
+    let mut before = 0;
+    (spans.iter().zip(starts))
+        .map(|(span, start)| {
+            let text = crate::hash::verse_text(
+                &slice(nodes, &span.start, Some(&span.end)),
+                crate::hash::HashRule::One,
+            );
+            let mut verse = VerseText {
+                chapter: span.chapter,
+                verse: span.verse,
+                last: span.last,
+                last_chapter: span.last_chapter,
+                part: span.part,
+                text,
+                heading: None,
+                paragraph: false,
+                line: false,
+            };
+            if let Some(start) = start.filter(|&s| s >= before) {
+                // The whitespace around its start (a marker can come before the break it's
+                // after is written)
+                let gap = &flat.text[before..start];
+                let after = &flat.text[start..];
+                let space = format!(
+                    "{}{}",
+                    &gap[gap.trim_end().len()..],
+                    &after[..after.len() - after.trim_start().len()]
+                );
+                verse.paragraph = before == 0 && gap.trim().is_empty() || space.contains("\n\n");
+                verse.line = verse.paragraph || space.contains('\n');
+                let titles: Vec<&str> = (headings.iter())
+                    .filter(|h| before <= h.start && h.end <= start)
+                    .map(|h| flat.text[h.clone()].trim())
+                    .collect();
+                if !titles.is_empty() {
+                    verse.heading = Some(titles.join("\n"));
+                    verse.paragraph = true;
+                    verse.line = true;
+                }
+                before = start;
+            }
+            verse
+        })
+        .collect()
+}
+
 /// What a part of a rendered book is
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Part {
@@ -533,6 +635,60 @@ mod tests {
 
     fn passage(reference: &str) -> Passage {
         crate::bible_data().parse(reference).unwrap()
+    }
+
+    #[test]
+    fn each_verse_as_reading_text() {
+        let verses = verse_texts(&john());
+        let found: Vec<_> = (verses.iter())
+            .map(|v| {
+                (
+                    v.chapter,
+                    v.verse,
+                    v.text.as_str(),
+                    v.heading.as_deref(),
+                    v.paragraph,
+                )
+            })
+            .collect();
+        assert_eq!(
+            found,
+            [
+                (
+                    3,
+                    16,
+                    "For God so loved the world, that he gave.",
+                    Some("Nicodemus"),
+                    true
+                ),
+                (3, 17, "For God sent not his Son.", None, false),
+                (4, 1, "When therefore the Lord knew.", None, true),
+            ]
+        );
+        // Lines of poetry start lines, a stanza a paragraph; the text is the hashed text
+        let psalm = r#"<usx version="3.0"><book code="PSA" style="id"/><chapter number="1" style="c"/>
+<para style="q1"><verse number="1" style="v"/>Blessed is the man</para><para style="q2">who walks not</para>
+<para style="q1"><verse number="2" style="v"/>But his delight</para>
+<para style="b"/>
+<para style="q1"><verse number="3" style="v"/>He is like a tree</para></usx>"#;
+        let files = Arc::new(MemoryFiles::with([("PSA.usx", psalm)]));
+        let source = open(files, TextFormat::Usx, "").unwrap();
+        let id = crate::bible_data().books().search_usfm("PSA").unwrap();
+        let book = source.book(id).unwrap();
+        let verses = verse_texts(&book);
+        let layout: Vec<_> = (verses.iter())
+            .map(|v| (v.verse, v.text.as_str(), v.paragraph, v.line))
+            .collect();
+        assert_eq!(
+            layout,
+            [
+                (1, "Blessed is the man who walks not", true, true),
+                (2, "But his delight", false, true),
+                (3, "He is like a tree", true, true),
+            ]
+        );
+        let hashed = crate::hash::book_hashes(&book, crate::hash::HashRule::One);
+        assert_eq!(hashed[0].hash, crate::hash::verse_hash(&verses[0].text));
     }
 
     #[test]

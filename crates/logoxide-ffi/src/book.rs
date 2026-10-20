@@ -238,6 +238,30 @@ pub struct BookVerse {
     pub part: u8,
 }
 
+/// One verse of a [`LogoxideBook`] as reading text ([`LogoxideBook::verse_texts`])
+#[data]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BookVerseText {
+    pub chapter: u8,
+    pub verse: u8,
+    /// The last verse of a bridge (else `verse`), in `last_chapter`
+    pub last: u8,
+    pub last_chapter: u8,
+    /// Which part of `verse` this is: 0 for the whole verse, 1 for `20a`, 2 for `20b`
+    pub part: u8,
+    /// Its words: notes and headings left out, NFC, whitespace collapsed (what its hash is of)
+    pub text: String,
+    /// The first 7 bytes of the SHA-256 of `text` (verse-hash rule 1), as 14 hex digits, as
+    /// `LogoxidePackage.verseHashes` gives them
+    pub hash: String,
+    /// The headings just before it, a line each
+    pub heading: Option<String>,
+    /// It starts a paragraph or a stanza (the book's first verse does)
+    pub paragraph: bool,
+    /// It starts a line of its own (a paragraph, or a line of poetry)
+    pub line: bool,
+}
+
 /// How [`LogoxideBook::html`] and [`LogoxideBook::text`] write a passage
 #[data]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -399,6 +423,30 @@ impl LogoxideBook {
                 last: s.last,
                 last_chapter: s.last_chapter,
                 part: s.part,
+            })
+            .collect()
+    }
+
+    /**
+    Every verse as reading text, in order, in one call: its words (notes and headings left
+    out, normalized as verse-hash rule 1 says, so its `hash` is the one links keep), the headings
+    before it, and whether it starts a paragraph or a line of poetry
+    */
+    pub fn verse_texts(&self) -> Vec<BookVerseText> {
+        (logoxide_text::passage::verse_texts_in(&self.nodes, &self.spans).into_iter())
+            .map(|v| BookVerseText {
+                hash: (logoxide_text::hash::verse_hash(&v.text).iter())
+                    .map(|b| format!("{b:02x}"))
+                    .collect(),
+                chapter: v.chapter,
+                verse: v.verse,
+                last: v.last,
+                last_chapter: v.last_chapter,
+                part: v.part,
+                text: v.text,
+                heading: v.heading,
+                paragraph: v.paragraph,
+                line: v.line,
             })
             .collect()
     }
@@ -649,6 +697,18 @@ mod tests {
         assert_eq!(nodes[verses[1].start as usize].name, "para");
         assert!(verses[1].start < verses[1].marker && verses[1].marker < verses[1].end);
         assert!(verses[0].end <= verses[1].start);
+    }
+
+    #[test]
+    fn verses_as_reading_text() {
+        let topos = Topos::new();
+        let book = LogoxideBook::parse(&topos, "usx".into(), USX.into()).unwrap();
+        let verses = book.verse_texts();
+        assert_eq!(verses.len(), 3);
+        assert_eq!(verses[0].text, "For God so loved the world.");
+        assert_eq!(verses[0].heading.as_deref(), Some("Jesus and Nicodemus"));
+        assert!(verses[0].paragraph && !verses[1].paragraph && verses[2].paragraph);
+        assert_eq!(verses[0].hash.len(), 14);
     }
 
     #[test]
