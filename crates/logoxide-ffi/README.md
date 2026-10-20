@@ -389,21 +389,21 @@ print(verses[5].heading, verses[5].paragraph, verses[6].paragraph)  # → The Wi
 `styledText` writes a passage as the language server shows it: verse labels, a chapter label on
 its own line where a chapter starts inside the passage, words of Jesus and the like in
 templates, lines wrapped at `width`, and cut at `limit` bytes. Its `marks`
-say what each run of it is (a verse number, a heading), by byte offsets into the UTF-8 text.
+say what each run of it is (a verse number, a heading), by offsets in the `OffsetUnit` asked for
+(`Utf16` for JavaScript's strings, `Char` for Python's, `Byte` for UTF-8).
 
 ```ts
-import { NodeKind, type BookTextStyle } from "logoxide";
+import { NodeKind, OffsetUnit, type BookTextStyle } from "logoxide";
 
 const style: BookTextStyle = {
   verseLabel: "[{verse}]", chapterLabel: "{name} {chapter}", notes: false, headings: false,
   templates: [{ kind: NodeKind.WordsOfJesus, template: "*{text}*" }], width: null, limit: null,
 };
-const styled = kjvJohn.styledText(topos.parse("John 3:2-3", BookStyle.Name)!, style, "John")!;
+const styled = kjvJohn.styledText(topos.parse("John 3:2-3", BookStyle.Name)!, style, "John", OffsetUnit.Utf16)!;
 console.log(styled.text); // → [2] The same came to Jesus by night, … [3] Jesus answered and said unto him, *Verily, verily, … kingdom of God.*
-const utf8 = new TextEncoder().encode(styled.text);
-const runs = (kind: NodeKind) => styled.marks.filter((m) => m.kind === kind).map((m) => new TextDecoder().decode(utf8.slice(m.start, m.end)));
+const runs = (kind: NodeKind) => styled.marks.filter((m) => m.kind === kind).map((m) => styled.text.slice(m.start, m.end));
 console.log(runs(NodeKind.Verse), runs(NodeKind.WordsOfJesus)); // → [ '[2]', '[3]' ] [ '*Verily, verily, I say unto thee, Except a man be born again, he cannot see the kingdom of God.*' ]
-console.log(kjvJohn.styledText(topos.parse("John 2:25-3:1", BookStyle.Name)!, { ...style, width: 40, limit: 120 }, "John")!.text);
+console.log(kjvJohn.styledText(topos.parse("John 2:25-3:1", BookStyle.Name)!, { ...style, width: 40, limit: 120 }, "John", OffsetUnit.Utf16)!.text);
 // → [25] And needed not that any should
 // → testify of man: for he knew what was in
 // → man.
@@ -412,18 +412,17 @@ console.log(kjvJohn.styledText(topos.parse("John 2:25-3:1", BookStyle.Name)!, { 
 ```
 
 ```python
-from logoxide import BookTextStyle, KindTemplate, NodeKind
+from logoxide import BookTextStyle, KindTemplate, NodeKind, OffsetUnit
 
 style = BookTextStyle(
     verse_label="[{verse}]", chapter_label="{name} {chapter}", notes=False, headings=False,
     templates=[KindTemplate(kind=NodeKind.WORDS_OF_JESUS, template="*{text}*")], width=None, limit=None,
 )
-styled = kjv_john.styled_text(topos.parse("John 3:2-3", BookStyle.NAME), style, "John")
+styled = kjv_john.styled_text(topos.parse("John 3:2-3", BookStyle.NAME), style, "John", OffsetUnit.CHAR)
 print(styled.text)  # → [2] The same came to Jesus by night, … [3] Jesus answered and said unto him, *Verily, verily, … kingdom of God.*
-utf8 = styled.text.encode()
-runs = lambda kind: [utf8[m.start : m.end].decode() for m in styled.marks if m.kind == kind]
+runs = lambda kind: [styled.text[m.start : m.end] for m in styled.marks if m.kind == kind]
 print(runs(NodeKind.VERSE), runs(NodeKind.WORDS_OF_JESUS))  # → ['[2]', '[3]'] ['*Verily, verily, I say unto thee, Except a man be born again, he cannot see the kingdom of God.*']
-print(kjv_john.styled_text(topos.parse("John 2:25-3:1", BookStyle.NAME), dataclasses.replace(style, width=40, limit=120), "John").text)
+print(kjv_john.styled_text(topos.parse("John 2:25-3:1", BookStyle.NAME), dataclasses.replace(style, width=40, limit=120), "John", OffsetUnit.CHAR).text)
 # → [25] And needed not that any should
 # → testify of man: for he knew what was in
 # → man.

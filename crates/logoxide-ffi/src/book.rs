@@ -12,7 +12,7 @@ use logoxide_markup::{
     verses::{VerseSpan, chapter_verses, passage_ranges, slice, usx_chapter_verses, verses},
 };
 use logoxide_text::passage::{Style, text_in};
-use topos_bible::{Passage, Topos};
+use topos_bible::{OffsetUnit, Passage, Topos};
 
 use crate::LogoxideError;
 
@@ -164,7 +164,7 @@ pub struct KindTemplate {
 }
 
 /// A run of a passage's text and what it is (a verse number, a heading, words of Jesus), by
-/// byte offsets into [`StyledText::text`], for a host that colors it
+/// offsets into [`StyledText::text`] in the unit asked for, for a host that colors it
 #[data]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct TextMark {
@@ -495,13 +495,15 @@ impl LogoxideBook {
     }
 
     /// A passage as text in `style` (`name` is the book's name for the labels, like `John`),
-    /// its parts a blank line apart, with what marks each run of it; nothing for a passage the
-    /// book doesn't have. The same text the language server shows
+    /// its parts a blank line apart, with what marks each run of it, by offsets in `unit`
+    /// (`Utf16` for JavaScript's strings, `Char` for Python's); nothing for a passage the book
+    /// doesn't have. The same text the language server shows
     pub fn styled_text(
         &self,
         passage: Passage,
         style: BookTextStyle,
         name: String,
+        unit: OffsetUnit,
     ) -> Option<StyledText> {
         if self.book_id != Some(passage.book_id) {
             return None;
@@ -516,14 +518,16 @@ impl LogoxideBook {
             &name,
             limit,
         )?;
+        let at = offsets(&text.text, unit);
+        let marks = (text.marks.iter())
+            .map(|(r, kind)| TextMark {
+                start: at(r.start),
+                end: at(r.end),
+                kind: NodeKind::from(*kind),
+            })
+            .collect();
         Some(StyledText {
-            marks: (text.marks.iter())
-                .map(|(r, kind)| TextMark {
-                    start: r.start as u32,
-                    end: r.end as u32,
-                    kind: NodeKind::from(*kind),
-                })
-                .collect(),
+            marks,
             text: text.text,
         })
     }
@@ -573,6 +577,29 @@ impl LogoxideBook {
             filter: filter(&options),
         })
         .render(&nodes)
+    }
+}
+
+/// A byte offset into `text` (a character's boundary) as an offset in `unit`
+fn offsets(text: &str, unit: OffsetUnit) -> impl Fn(usize) -> u32 + use<> {
+    // Each character's byte and its offset in the unit, and the end
+    let mut table: Vec<(usize, u32)> = Vec::new();
+    if unit != OffsetUnit::Byte {
+        let mut at = 0u32;
+        for (byte, c) in text.char_indices() {
+            table.push((byte, at));
+            at += match unit {
+                OffsetUnit::Utf16 => c.len_utf16() as u32,
+                _ => 1,
+            };
+        }
+        table.push((text.len(), at));
+    }
+    move |byte| match table.binary_search_by_key(&byte, |(b, _)| *b) {
+        _ if table.is_empty() => byte as u32,
+        Ok(i) => table[i].1,
+        // Inside a character: where it starts
+        Err(i) => table[i.saturating_sub(1)].1,
     }
 }
 
@@ -700,6 +727,19 @@ mod tests {
     }
 
     #[test]
+    fn offsets_in_each_unit() {
+        // `—` is 3 bytes, 1 UTF-16 unit, 1 character; `𝔊` 4 bytes, 2 units, 1 character
+        let text = "a—𝔊b";
+        let at = |unit| {
+            let at = offsets(text, unit);
+            [at(0), at(1), at(4), at(8), at(9)]
+        };
+        assert_eq!(at(OffsetUnit::Byte), [0, 1, 4, 8, 9]);
+        assert_eq!(at(OffsetUnit::Utf16), [0, 1, 2, 4, 5]);
+        assert_eq!(at(OffsetUnit::Char), [0, 1, 2, 3, 4]);
+    }
+
+    #[test]
     fn verses_as_reading_text() {
         let topos = Topos::new();
         let book = LogoxideBook::parse(&topos, "usx".into(), USX.into()).unwrap();
@@ -803,7 +843,12 @@ mod tests {
             limit: None,
         };
         let text = book
-            .styled_text(parse("John 3:16-17"), style.clone(), "John".into())
+            .styled_text(
+                parse("John 3:16-17"),
+                style.clone(),
+                "John".into(),
+                OffsetUnit::Byte,
+            )
             .unwrap();
         assert_eq!(
             text.text,
@@ -821,7 +866,7 @@ mod tests {
             ..style
         };
         let short = book
-            .styled_text(parse("John 3:16-17"), cut, "John".into())
+            .styled_text(parse("John 3:16-17"), cut, "John".into(), OffsetUnit::Byte)
             .unwrap();
         assert!(short.text.ends_with(" …"), "{}", short.text);
         assert_eq!(
@@ -843,7 +888,8 @@ mod tests {
                     width: None,
                     limit: None,
                 },
-                "Romans".into()
+                "Romans".into(),
+                OffsetUnit::Byte
             )
             .is_none()
         );
