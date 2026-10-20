@@ -462,7 +462,7 @@ print("".join(n.text for n in words))  # → For God so loved the world that He 
 
 A book file of your own: `usfmToUsx` turns USFM into USX (`usxToUsfm` the other way, as
 normalized USFM), `usxToUsj` and `usjToUsx` between USX and USJ (USX as JSON), and `convertBook` from any of USFM, USX, and USJ into another (a `BookFormat` each); `detectFormat` names a file's format from its name, else from how its text starts (`usx`, `usfm`, `usj`, `osis`, `thml`, `gbf`). `LogoxideBook.parse` reads `usx` or `osis` (an unknown markup is
-`InvalidMarkup`<!-- ts: , which is `null` here -->), and `LogoxideBook.usxChapterVerses` counts a USX
+`InvalidMarkup`, and text with no verses, which isn't a book, `Invalid`<!-- ts: ; both are `null` here -->), and `LogoxideBook.usxChapterVerses` counts a USX
 book's verses from its markers alone, fast enough for a whole Bible. `LogoxideBook.findFragment` finds a link's words (`:~:text=…`) in a verse
 whose words changed a little since, by byte offsets.
 
@@ -472,7 +472,7 @@ import { BookFormat, LogoxideBook } from "logoxide";
 const usx = logoxide.usfmToUsx(readFileSync("kjv/usfm/3jn.usfm", "utf8"));
 const thirdJohn = LogoxideBook.parse(topos, "usx", usx)!;
 console.log(thirdJohn.bookId(), [...thirdJohn.chapterVerses()], [...LogoxideBook.usxChapterVerses(usx)]); // → 64 [ 14 ] [ 14 ]
-console.log(LogoxideBook.parse(topos, "rtf", usx)); // → null
+console.log(LogoxideBook.parse(topos, "rtf", usx), LogoxideBook.parse(topos, "usx", "<html>")); // → null null
 console.log(logoxide.usxToUsfm(usx).startsWith("\\id 3JN")); // → true
 console.log(JSON.parse(logoxide.usxToUsj(usx)).content[0].code); // → 3JN
 console.log(logoxide.convertBook(logoxide.usxToUsj(usx), BookFormat.Usj, BookFormat.Usfm).startsWith("\\id 3JN")); // → true

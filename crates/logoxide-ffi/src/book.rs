@@ -356,8 +356,9 @@ fn filter(options: &BookTextOptions) -> Filter {
 
 #[export]
 impl LogoxideBook {
-    /// Parses a whole book (this never fails on odd markup; only an unknown `markup` is an error,
-    /// which is `null` in JavaScript)
+    /// Parses a whole book: an unknown `markup` is an error, and so is text with no verses (not
+    /// a book: an empty file, or another format); both are `null` in JavaScript. Odd markup
+    /// otherwise reads as well as it can
     pub fn parse(topos: &Topos, markup: String, text: String) -> Result<Self, LogoxideError> {
         let format = Markup::from_name(&markup).ok_or_else(|| LogoxideError::InvalidMarkup {
             message: format!("unknown markup {markup:?} (usx, osis)"),
@@ -384,6 +385,11 @@ impl LogoxideBook {
             })
             .map(|book| book.id);
         let spans = verses(&nodes);
+        if spans.is_empty() {
+            return Err(LogoxideError::Invalid {
+                message: format!("no verses in this {markup} text: not a book"),
+            });
+        }
         Ok(Self {
             nodes,
             spans,
@@ -798,6 +804,9 @@ mod tests {
                 .contains("Nicodemus")
         );
         assert!(LogoxideBook::parse(&topos, "rtf".into(), String::new()).is_err());
+        // Text with no verses isn't a book
+        assert!(LogoxideBook::parse(&topos, "usx".into(), "garbage <<<".into()).is_err());
+        assert!(LogoxideBook::parse(&topos, "osis".into(), String::new()).is_err());
     }
 
     #[test]
