@@ -309,6 +309,7 @@ fn respond(server: &Server, request: Request) -> Response {
         }
         server::BOOK_REQUEST => params(request).and_then(|p| server.book(p).map(json)),
         server::FILE_TEXT_REQUEST => params(request).and_then(|p| server.file_text(p).map(json)),
+        server::FILE_LINES_REQUEST => params(request).map(|p| json(server.file_lines(p))),
         server::BIBLES_REQUEST => Ok(json(server.bibles())),
         server::TEMPLATES_REQUEST => params(request).map(|p| json(server.templates(p))),
         server::SAME_VERSE_REQUEST => params(request).and_then(|p| server.same_verse(p).map(json)),

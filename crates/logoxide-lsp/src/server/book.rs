@@ -92,6 +92,23 @@ impl Server {
         })
     }
 
+    /// [`FILE_LINES_REQUEST`]: the lines each book's references are on (none for a URI that
+    /// isn't a book's)
+    pub fn file_lines(&self, params: FileLinesParams) -> Vec<Vec<FileLine>> {
+        let disk = self.books.as_ref().and_then(|b| b.disk.as_ref());
+        (params.uris.iter())
+            .map(|uri| {
+                let Some(path) = workspace::book_path(uri) else {
+                    return vec![];
+                };
+                workspace::book_lines(&self.matcher, disk, &path)
+                    .into_iter()
+                    .map(|(line, text)| FileLine { line, text })
+                    .collect()
+            })
+            .collect()
+    }
+
     /// [`SAME_VERSE_REQUEST`]: where the verse at a position in a whole book is in another
     /// Bible's book (its verse with that number, else its chapter's label, else the next chapter
     /// it has, else the book's start): from its number to its end, so the editor can mark it

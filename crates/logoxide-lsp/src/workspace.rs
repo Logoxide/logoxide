@@ -10,7 +10,7 @@
 //! reference is at its line and column.
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     path::{Path, PathBuf},
     str::FromStr,
     sync::{
@@ -120,11 +120,11 @@ fn book_found(hit: &Hit) -> Option<Found> {
 }
 
 /**
-A book's references: from topos's cache on disk while the book is unchanged, else read (and
-cached). A book that can't be read has none, and isn't cached, so it's tried again
+A book's hits: from topos's cache on disk while the book is unchanged, else read (and cached). A
+book that can't be read has none, and isn't cached, so it's tried again
 */
-fn book_references(matcher: &BibleMatcher, disk: Option<&files::Cache>, path: &Path) -> Vec<Found> {
-    let hits = match disk.and_then(|cache| cache.get(path, None)) {
+fn book_hits(matcher: &BibleMatcher, disk: Option<&files::Cache>, path: &Path) -> Vec<Hit> {
+    match disk.and_then(|cache| cache.get(path, None)) {
         Some(files::Cached::Hits(hits)) => hits,
         _ => match files::search_file(matcher, path, false, CfiOptions::default()) {
             Ok(found) => {
@@ -136,8 +136,36 @@ fn book_references(matcher: &BibleMatcher, disk: Option<&files::Cache>, path: &P
             }
             Err(_) => vec![],
         },
-    };
-    hits.iter().filter_map(book_found).collect()
+    }
+}
+
+/// A book's references (see [`book_hits`])
+fn book_references(matcher: &BibleMatcher, disk: Option<&files::Cache>, path: &Path) -> Vec<Found> {
+    book_hits(matcher, disk, path)
+        .iter()
+        .filter_map(book_found)
+        .collect()
+}
+
+/**
+The lines of a book's text that its references are on, by their 0-based numbers: from its hits
+(see [`book_hits`]), which keep each one's line, so an editor can list its references without
+reading the whole book's text
+*/
+pub fn book_lines(
+    matcher: &BibleMatcher,
+    disk: Option<&files::Cache>,
+    path: &Path,
+) -> BTreeMap<u32, String> {
+    book_hits(matcher, disk, path)
+        .into_iter()
+        .filter_map(|hit| match (hit.epub, hit.pdf) {
+            (Some(e), _) => Some((e.line, e.line_text)),
+            (_, Some(p)) => Some((p.line, p.line_text)),
+            _ => None,
+        })
+        .map(|(line, text)| (line.saturating_sub(1) as u32, text))
+        .collect()
 }
 
 /// When a workspace search gives up, checked between files: at a deadline (hover's count), or

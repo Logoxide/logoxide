@@ -72,6 +72,26 @@ which the `epub` and `pdf` settings' references are in: gives [`BookText`] (its 
 */
 pub const FILE_TEXT_REQUEST: &str = "logoxide/fileText";
 
+/**
+The request for the lines books' references are on (`{ "uris": ["logoxide-file:///…/Gill.epub"] }`),
+from topos's cache rather than each book's whole text, so an editor can list a search's
+references without opening their books: gives a list of [`FileLine`]s for each URI, in order
+*/
+pub const FILE_LINES_REQUEST: &str = "logoxide/fileLines";
+
+#[derive(Debug, Deserialize)]
+pub struct FileLinesParams {
+    pub uris: Vec<String>,
+}
+
+/// A line of a book's text (an EPUB's or PDF's) that a reference is on
+#[derive(Debug, Serialize)]
+pub struct FileLine {
+    /// 0-based, as LSP positions count them
+    pub line: u32,
+    pub text: String,
+}
+
 /// The request for the Bibles: no parameters, gives [`BiblesList`]
 pub const BIBLES_REQUEST: &str = "logoxide/bibles";
 

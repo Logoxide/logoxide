@@ -347,6 +347,16 @@ fn books_are_searched_when_asked() {
     let (start, end) = (range.start.character as usize, range.end.character as usize);
     assert_eq!(String::from_utf16(&line[start..end]).unwrap(), "Rom 8:28");
 
+    // Its line, without the book's text (and none for a URI that isn't a book's)
+    let lines = server.file_lines(FileLinesParams {
+        uris: vec![uri.into(), "file:///notes.md".into()],
+    });
+    assert_eq!(lines.len(), 2);
+    assert_eq!(lines[0].len(), 1);
+    assert_eq!(lines[0][0].line, range.start.line);
+    assert_eq!(lines[0][0].text, String::from_utf16(&line).unwrap());
+    assert!(lines[1].is_empty());
+
     // Kept in topos's cache, and found again from it
     server.cache = Default::default();
     let entries = std::fs::read_dir(&cache_dir).unwrap().flatten();
