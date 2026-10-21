@@ -594,10 +594,15 @@ impl GitCli {
     }
 }
 
-fn unique() -> u128 {
-    std::time::SystemTime::now()
+/// A number no other call in this process gives: the time, and a count, since two fetches can
+/// start in the same tick of the clock (parallel tests did, and shared a folder)
+fn unique() -> String {
+    static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let count = COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_nanos())
+        .map_or(0, |d| d.as_nanos());
+    format!("{nanos}-{count}")
 }
 
 /// Copies a folder's files into `to` under `prefix`, leaving out `.git`
