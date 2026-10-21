@@ -314,6 +314,11 @@ pub fn verse_texts_in(nodes: &[Node], spans: &[VerseSpan]) -> Vec<VerseText> {
             _ => {}
         }
     }
+    // A heading goes with the first verse starting where it starts or after, or with nothing but
+    // whitespace between (a superscription's paragraph can hold its psalm's first marker: BSB's
+    // Psalm 3)
+    headings.sort_by_key(|h| h.start);
+    let mut headings = headings.into_iter().peekable();
     let mut before = 0;
     (spans.iter().zip(starts))
         .map(|(span, start)| {
@@ -344,10 +349,14 @@ pub fn verse_texts_in(nodes: &[Node], spans: &[VerseSpan]) -> Vec<VerseText> {
                 );
                 verse.paragraph = before == 0 && gap.trim().is_empty() || space.contains("\n\n");
                 verse.line = verse.paragraph || space.contains('\n');
-                let titles: Vec<&str> = (headings.iter())
-                    .filter(|h| before <= h.start && h.end <= start)
-                    .map(|h| flat.text[h.clone()].trim())
-                    .collect();
+                let mut titles: Vec<&str> = vec![];
+                let starts_it = |h: &Range<usize>| {
+                    h.start <= start
+                        || (flat.text.get(start..h.start)).is_some_and(|t| t.trim().is_empty())
+                };
+                while let Some(h) = headings.next_if(starts_it) {
+                    titles.push(flat.text[h].trim());
+                }
                 if !titles.is_empty() {
                     verse.heading = Some(titles.join("\n"));
                     verse.paragraph = true;
@@ -689,6 +698,33 @@ mod tests {
         );
         let hashed = crate::hash::book_hashes(&book, crate::hash::HashRule::One);
         assert_eq!(hashed[0].hash, crate::hash::verse_hash(&verses[0].text));
+    }
+
+    #[test]
+    fn a_heading_holding_its_verses_marker_goes_with_that_verse() {
+        // BSB's Psalm 3: the superscription's paragraph holds verse 1's marker
+        let psalm = r#"<usx version="3.0"><book code="PSA" style="id"/><chapter number="3" style="c"/>
+<para style="s1">Deliver Me, O LORD!</para>
+<para style="d"><verse number="1" style="v" sid="PSA 3:1"/>A Psalm of David.</para>
+<para style="q1" vid="PSA 3:1">O LORD, how my foes have increased!<verse eid="PSA 3:1"/></para>
+<para style="q1"><verse number="2" style="v" sid="PSA 3:2"/>Many say of me,<verse eid="PSA 3:2"/></para>
+<para style="s1">A Mid-Verse Heading</para>
+<para style="q1"><verse number="3" style="v" sid="PSA 3:3"/>But You, O LORD<verse eid="PSA 3:3"/></para></usx>"#;
+        let files = Arc::new(MemoryFiles::with([("PSA.usx", psalm)]));
+        let source = open(files, TextFormat::Usx, "").unwrap();
+        let id = crate::bible_data().books().search_usfm("PSA").unwrap();
+        let verses = verse_texts(&source.book(id).unwrap());
+        let headings: Vec<_> = (verses.iter())
+            .map(|v| (v.verse, v.heading.as_deref()))
+            .collect();
+        assert_eq!(
+            headings,
+            [
+                (1, Some("Deliver Me, O LORD!\nA Psalm of David.")),
+                (2, None),
+                (3, Some("A Mid-Verse Heading")),
+            ]
+        );
     }
 
     #[test]
