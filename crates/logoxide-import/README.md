@@ -26,3 +26,6 @@ package (or which can be pushed anywhere as a git repository).
 [logoxide](../logoxide), the package manager, knows no publisher: it keeps only what an entry
 says of itself (its import name, the download it came from, whether the publisher's versions
 track its updates, and the downloads). This crate sits above it, as lx and the bindings do.
+
+[Bibles in your app](https://github.com/Logoxide/logoxide/blob/main/doc/apps.md) shows an app
+reading publishers' lists and downloading from them with this crate and logoxide-text.

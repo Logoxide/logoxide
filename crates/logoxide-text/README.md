@@ -5,7 +5,9 @@ What's in a Bible or a book: verses, hashes, titles, numbering. It knows no pack
 - **Sources**: USX, USFM (through usfm3), USJ, OSIS, ThML, and GBF read a book at a time into
   [logoxide-markup](../logoxide-markup)'s tree (`source::open`, `Source`, `Book`), from any
   `Files` (a folder, memory, or a host's files, so WebAssembly too). Peripherals, books topos
-  doesn't know, and lettered chapters are passed over and said (`Skipped`)
+  doesn't know, and lettered chapters are passed over and said (`Skipped`). Loose files with no
+  manifest, in any of those formats or `.zip`s of them, as a user drops them in
+  (`source::open_loose`); each book's verses as reading text (`passage::verse_texts`)
 - **Conversion**: a book in USFM, USX, or USJ as any of them (`source::convert`; one way at a
   time: `usfm_to_usx` and `usx_to_usfm` through usfm3, `usx_to_usj` and `usj_to_usx`; what's
   written is normalized, not the publisher's layout)
@@ -26,3 +28,6 @@ What's in a Bible or a book: verses, hashes, titles, numbering. It knows no pack
 [logoxide](../logoxide), the package manager, never depends on this crate: whoever runs both
 (lx, the bindings, the language server) hands it the facts this crate finds, through
 `logoxide::reader::TextReader`. With logoxide's default `read` feature, that reader is built in.
+
+[Bibles in your app](https://github.com/Logoxide/logoxide/blob/main/doc/apps.md) shows this crate
+and logoxide-import downloading and reading Bibles in an app of your own.

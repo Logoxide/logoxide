@@ -23,6 +23,11 @@ or plain text. It was topos's `ToposBook`, with the same methods; its `BookVerse
 The host reads and writes the files: an app's file API is often asynchronous (Obsidian's vault),
 and WebAssembly has none. logoxide reads the text from the bytes it's given, and hands back the
 cache files it wrote for the host to save.
+
+To put Bibles in an app (found in a publisher's list, downloaded a book at a time or whole, or
+brought by its user, then read into verses and kept), start with the guide,
+[Bibles in your app](https://github.com/Logoxide/logoxide/blob/main/doc/apps.md); what follows is
+every feature, in order.
 <!-- source -->
 Only the Python (and Swift and Kotlin) packages are native, so only they have `openPackageDir`,
 `readPassage`, and `comparePassage`, which read folders themselves; the npm package is
