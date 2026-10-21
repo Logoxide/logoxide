@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 description = "lx, logoxide's command line: Bibles, commentaries, lexicons, books, and media as versioned packages"
 homepage.workspace = true
-readme = "../../README.md"
+readme = "README.md"
 keywords = ["bible", "package-manager", "cli", "usx", "sword"]
 categories = ["command-line-utilities", "text-processing"]
 

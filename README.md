@@ -25,7 +25,8 @@ lx install                          # on another device: exactly what logoxide.l
 
 `logoxide.toml` says which packages a vault uses and `logoxide.lock` pins their exact text; commit
 or sync both with your notes. [doc/workflow.md](doc/workflow.md) walks through a vault and a
-package of your own, start to finish.
+package of your own, start to finish; [crates/lx/README.md](crates/lx/README.md) is `lx` by
+task.
 
 **Licenses are shown, never enforced.** `lx search` and `lx show` print each text's license as
 its publisher states it, but logoxide installs and reads a text whatever it says. Before you
