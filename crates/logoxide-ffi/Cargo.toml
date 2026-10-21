@@ -1,7 +1,7 @@
 [package]
 name = "logoxide-ffi"
 # The workspace's version (a workspace of its own, so it can't inherit it): scripts/check-versions.sh
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "CC0-1.0"
 repository = "https://github.com/Logoxide/logoxide"

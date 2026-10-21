@@ -142,7 +142,7 @@ async function getFirst(urls: string[]): Promise<Uint8Array> {
 
 const logoxide = Logoxide.new();
 const topos = Topos.new();
-console.log(logoxide.version()); // → 0.1.0
+console.log(logoxide.version()); // → 0.1.1
 ```
 
 ```python
@@ -194,7 +194,7 @@ def get_first(urls: list[str]) -> bytes:
 
 logoxide = Logoxide()
 topos = Topos()
-print(logoxide.version())  # → 0.1.0
+print(logoxide.version())  # → 0.1.1
 ```
 
 ## Opening a package
