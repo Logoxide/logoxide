@@ -1,6 +1,9 @@
 [package]
 name = "logoxide-quotes"
 version.workspace = true
+# Not on crates.io yet (the owner's call, 2026-10-20): trusted publishing can't create a crate,
+# so its first release is by hand
+publish = false
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

@@ -489,8 +489,9 @@ specifications of the formats are the other files in this folder.
   can skip downloading)
 - `crates/logoxide-quotes`: every quotation of Scripture in a text or a transcript, in any of the
   translations given (October 2026: extract-audio-bible's `scripture-quotes`, moved with its
-  history; that app keeps its copy until this one is on crates.io). On topos-bible alone: an
-  `Engine` of `Translation`s (verse texts by `VerseRef`), each word folded and indexed
+  history; that app keeps its copy until this one is on crates.io; `publish = false` until its
+  first release, by hand). On topos-bible alone: an `Engine` of `Translation`s (verse texts by
+  `VerseRef`), each word folded and indexed
   (`text.rs`: numbers spelled, near misses like `saith`/`sayeth`), searched by alignment
   (`align.rs`) for verses said in order with words added or misheard; `Quotation`s and the
   `Run`s they make (only verses read one after another, or with only verses the translation

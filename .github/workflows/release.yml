@@ -252,7 +252,10 @@ jobs:
           pattern: wheels-*
           path: dist
           merge-multiple: true
+      # Files already on PyPI are left alone, so a release published partway can be finished
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
   publish-npm:
     if: startsWith(github.ref, 'refs/tags/')
