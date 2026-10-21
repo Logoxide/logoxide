@@ -1,0 +1,17 @@
+{
+  "name": "logoxide",
+  "owner": {
+    "name": "Logoxide",
+    "url": "https://github.com/Logoxide"
+  },
+  "description": "Skills for putting Bibles in your apps and notes with logoxide",
+  "plugins": [
+    {
+      "name": "logoxide",
+      "source": "./plugins/logoxide",
+      "description": "Add Bible text to an app (TypeScript, Python, Rust), and set up lx, a vault of Bibles, and its editor and assistant integrations",
+      "category": "development",
+      "tags": ["bible", "scripture", "usfm", "usx", "osis"]
+    }
+  ]
+}

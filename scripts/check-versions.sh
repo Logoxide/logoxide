@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks that the versions that must agree do: the workspace's (the crates'), the `logoxide`,
 # `logoxide-markup`, `logoxide-text`, `logoxide-import`, and `logoxide-app` workspace dependencies', and logoxide-ffi's (the npm and PyPI packages'; a workspace of its own,
-# so it can't inherit the version), and BoltFFI's in the two workflows. With a tag (`v0.1.0`), it must be `v` and that version.
+# so it can't inherit the version), the Claude Code plugin's (its skills describe this release),
+# and BoltFFI's in the two workflows. With a tag (`v0.1.0`), it must be `v` and that version.
 #   scripts/check-versions.sh            # in CI
 #   scripts/check-versions.sh v0.1.0     # before releasing
 set -euo pipefail
@@ -14,6 +15,7 @@ text=$(sed -n 's/^logoxide-text = {.*version = "\([^"]*\)".*/\1/p' "$root/Cargo.
 import=$(sed -n 's/^logoxide-import = {.*version = "\([^"]*\)".*/\1/p' "$root/Cargo.toml")
 app=$(sed -n 's/^logoxide-app = {.*version = "\([^"]*\)".*/\1/p' "$root/Cargo.toml")
 ffi=$(sed -n '/^\[package\]/,/^\[/s/^version = "\(.*\)"/\1/p' "$root/crates/logoxide-ffi/Cargo.toml")
+plugin=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' "$root/plugins/logoxide/.claude-plugin/plugin.json")
 if [[ -z "$workspace" ]]; then
   echo "Cargo.toml: no [workspace.package] version" >&2
   exit 1
@@ -32,6 +34,10 @@ for crate in markup text import app; do
 done
 if [[ "$ffi" != "$workspace" ]]; then
   echo "crates/logoxide-ffi/Cargo.toml: version ${ffi:-missing}, the workspace $workspace" >&2
+  status=1
+fi
+if [[ "$plugin" != "$workspace" ]]; then
+  echo "plugins/logoxide/.claude-plugin/plugin.json: version ${plugin:-missing}, the workspace $workspace" >&2
   status=1
 fi
 # BoltFFI's, which CI generates the bindings with and the release builds the packages with

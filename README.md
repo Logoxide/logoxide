@@ -30,6 +30,11 @@ TypeScript, Python, and Rust: a book at a time from fetch.bible, a whole Bible f
 the files your user brings. [doc/recipes/](doc/recipes/README.md) goes on from there: passages as
 HTML, references in text, parallel translations, search, commentaries, audio, a passage server.
 
+An AI coding assistant can do the setting up: install the logoxide skills (an app's Bibles, or
+`lx` and a vault with its editor and Claude integrations) in Claude Code with
+`/plugin install logoxide --marketplace Logoxide/logoxide`, or copy them into another
+assistant's skills folder ([plugins/logoxide](plugins/logoxide/README.md)).
+
 **Licenses are shown, never enforced.** Each text's license is printed as its publisher states
 it, but logoxide installs and reads a text whatever it says. Before you redistribute a text, check
 that you have the right to: many translations are under copyright and allow only personal use.

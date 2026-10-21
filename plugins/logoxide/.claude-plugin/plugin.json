@@ -1,0 +1,13 @@
+{
+  "name": "logoxide",
+  "version": "0.1.1",
+  "description": "Add Bible text to an app with logoxide (TypeScript, Python, Rust), and set up lx, a vault of Bibles, and its language server, MCP server, and editor plugins",
+  "author": {
+    "name": "Logoxide",
+    "url": "https://github.com/Logoxide"
+  },
+  "homepage": "https://github.com/Logoxide/logoxide",
+  "repository": "https://github.com/Logoxide/logoxide",
+  "license": "CC0-1.0",
+  "keywords": ["bible", "scripture", "logoxide", "usfm", "usx", "osis", "topos"]
+}

@@ -25,4 +25,5 @@ drift. CI doesn't run these, since they download.
 
 Every method is in the [bindings' README](../../crates/logoxide-ffi/README.md); `lx`, the
 command line, is in [its own README](../../crates/lx/README.md) and the
-[walk-through](../workflow.md).
+[walk-through](../workflow.md). An AI coding assistant can set these up too: see
+[the logoxide skills](../../plugins/logoxide/README.md).
