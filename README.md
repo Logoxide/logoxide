@@ -27,7 +27,8 @@ or sync both with your notes. [crates/lx/README.md](crates/lx/README.md) is `lx`
 
 Building an app? [doc/apps.md](doc/apps.md) shows how to find, download, and read Bibles in
 TypeScript, Python, and Rust: a book at a time from fetch.bible, a whole Bible from eBible.org, or
-the files your user brings.
+the files your user brings. [doc/recipes/](doc/recipes/README.md) goes on from there: passages as
+HTML, references in text, parallel translations, search, commentaries, audio, a passage server.
 
 **Licenses are shown, never enforced.** Each text's license is printed as its publisher states
 it, but logoxide installs and reads a text whatever it says. Before you redistribute a text, check

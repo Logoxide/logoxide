@@ -24,6 +24,11 @@ makes) is another way, at the end.
 - [References that name your translations](#references-that-name-your-translations)
 - [Packages and vaults](#packages-and-vaults)
 
+Once the text is in, the [recipes](recipes/README.md) build on this guide: showing passages,
+references in text, comparing translations, searching, links that survive corrections,
+commentaries and dictionaries, audio with timings, a passage server, reading a vault, and
+converting formats.
+
 ## Which way
 
 | | What it is | Where it works |
@@ -108,14 +113,15 @@ topos = Topos()
 
 def get(urls: list[str]) -> bytes:
     """The first of a download's URLs that answers"""
-    for url in urls[:-1]:
+    failure = OSError("no URLs")
+    for url in urls:
+        request = urllib.request.Request(url, headers={"User-Agent": "my-bible-app/1.0"})
         try:
-            return get([url])
-        except OSError:
-            pass
-    request = urllib.request.Request(urls[-1], headers={"User-Agent": "my-bible-app/1.0"})
-    with urllib.request.urlopen(request) as response:
-        return response.read()
+            with urllib.request.urlopen(request) as response:
+                return response.read()
+        except OSError as error:
+            failure = error
+    raise failure
 ```
 
 ```rust
@@ -142,7 +148,8 @@ fn get(urls: &[String]) -> Result<Vec<u8>> {
 Each publisher's own list is read as a catalog: fetch.bible's `manifest.json` (750 KB) and
 eBible.org's `translations.csv` (730 KB). Download one when your user browses for a translation,
 not on every start, and keep it a day or so. `search` finds entries by name, abbreviation, or
-language (the second argument is the kind: `PackageKind.Bible`); `findImport` finds one by its
+language, best first (the second argument is how many, 0 for all; keep `kind === PackageKind.Bible`
+for translations, since lists have commentaries and books too); `findImport` finds one by its
 import name, `fetch:<id>` or `ebible:<id>`, which is what to save to remember a choice. Catalogs
 `merge`, so one search covers both.
 
@@ -153,7 +160,7 @@ const FETCH_BIBLE = "https://v1.fetch.bible/manifest.json";
 const fetchBible = lx.parseCatalogBytes(FETCH_BIBLE, await get([FETCH_BIBLE]));
 const ebible = lx.parseCatalogBytes(lx.ebibleCatalogUrl(), await get([lx.ebibleCatalogUrl()]));
 console.log(fetchBible.count(), ebible.count()); // → 1400 1294
-for (const entry of fetchBible.merge(ebible).search("world english", PackageKind.Bible).slice(0, 2)) {
+for (const entry of fetchBible.merge(ebible).search("world english", 0).filter((e) => e.kind === PackageKind.Bible).slice(0, 2)) {
   console.log(entry.abbreviation, entry.name, entry.language, entry.source.tag === "External" && entry.source._import);
 }
 // → WEB World English Bible en fetch:eng_webu
@@ -170,7 +177,8 @@ FETCH_BIBLE = "https://v1.fetch.bible/manifest.json"
 fetch_bible = lx.parse_catalog_bytes(FETCH_BIBLE, get([FETCH_BIBLE]))
 ebible = lx.parse_catalog_bytes(lx.ebible_catalog_url(), get([lx.ebible_catalog_url()]))
 print(fetch_bible.count(), ebible.count())  # → 1400 1294
-for entry in fetch_bible.merge(ebible).search("world english", PackageKind.BIBLE)[:2]:
+bibles = [e for e in fetch_bible.merge(ebible).search("world english", 0) if e.kind == PackageKind.BIBLE]  # 0: no limit
+for entry in bibles[:2]:
     print(entry.abbreviation, entry.name, entry.language, entry.source.import_)
 # → WEB World English Bible en fetch:eng_webu
 # → WEBP World English Bible en ebible:engwebp
