@@ -12,6 +12,10 @@ From the tree:
 - **HTML** (the `html` feature, on by default) with prefixed classes (`topos-woj`, `topos-note topos-crossref`) and data attributes
   (`data-strong`, `data-osis-ref`), never inline styles ([`HtmlRenderer`]), and `<mark>`s for
   search matches ([`HtmlRenderer::mark`])
+- **Typst** (the `typst` feature, off by default): every element a call of a function a template
+  defines (`#lx-verse(n: "16");`, `#lx-note(note-type: "crossReference")[…];`), escaped so text
+  is never read as markup, with plain definitions of every function to start a template from
+  ([`TypstRenderer`])
 - **Filters** that keep, unwrap, or drop elements by kind, note type, or a custom rule
   ([`Filter`])
 - **Verses in a whole book** (USX, or OSIS with milestones), and the tree between two places, so

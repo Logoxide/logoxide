@@ -18,6 +18,8 @@ pub mod refs;
 mod strongs;
 pub mod text;
 mod tree;
+#[cfg(feature = "typst")]
+pub mod typst;
 pub mod verses;
 mod xml;
 
@@ -29,6 +31,8 @@ pub use html::{HtmlOptions, HtmlRenderer};
 pub use path::NodePath;
 pub use strongs::{Strongs, StrongsLang};
 pub use text::{TextOptions, plain_text};
+#[cfg(feature = "typst")]
+pub use typst::{TypstOptions, TypstRenderer};
 
 /// The markup a text is written in
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

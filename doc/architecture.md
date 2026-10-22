@@ -582,7 +582,9 @@ specifications of the formats are the other files in this folder.
 - `crates/logoxide-markup`: Bible markup (OSIS, ThML, GBF, TEI, USX, plain text) parsed into one
   tolerant tree (`Node`, `Element`, `Kind`), `Filter`, `Flattener`/`plain_text`, verses found in a
   book (`verses::verses`, `slice`, `passage_ranges`), references the markup tags, and HTML
-  (`HtmlRenderer`, behind the default `html` feature, which nothing here turns on yet). topos's
+  (`HtmlRenderer`, behind the default `html` feature, which nothing here turns on yet), and Typst
+  (`TypstRenderer`, behind the `typst` feature, off by default: each element a call of an
+  `lx-` function a template defines, for logoxide-typst). topos's
   topos-bible-markup until October 2026, moved with its history. A
   clean-room rewrite: change its `docs/spec/` first, then the code; its golden files
   (`tests/golden/`) and `NO_PANIC_ROUNDS=100000 cargo test --release -p logoxide-markup --test

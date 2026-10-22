@@ -10,6 +10,8 @@ use logoxide_markup::{
 };
 #[cfg(feature = "html")]
 use logoxide_markup::{HtmlOptions, HtmlRenderer};
+#[cfg(feature = "typst")]
+use logoxide_markup::{TypstOptions, TypstRenderer};
 use topos_bible::data::BibleData;
 
 const PIECES: &[&str] = &[
@@ -215,6 +217,23 @@ fn exercise(input: &str, data: &BibleData) {
                 let _ = bare.render(&nodes);
                 let _ = bare.wrap(input);
             }
+            #[cfg(feature = "typst")]
+            {
+                let mut typst = TypstRenderer::new();
+                for _ in 0..2 {
+                    let out = typst.render(&nodes);
+                    assert!(
+                        !out.contains('\n'),
+                        "a line break in {out:?} from {input:?}"
+                    );
+                }
+                let mut bare = TypstRenderer::with_options(TypstOptions {
+                    prefix: "".into(),
+                    filter: Filter::all(),
+                    smart_quotes: true,
+                });
+                let _ = bare.render(&nodes);
+            }
         }
         let _ = tagged_references(&nodes, data);
         let spans = verses(&nodes);
@@ -224,6 +243,8 @@ fn exercise(input: &str, data: &BibleData) {
             let part = slice(&nodes, &verse.start, Some(&verse.end));
             #[cfg(feature = "html")]
             let _ = HtmlRenderer::new().render(&part);
+            #[cfg(feature = "typst")]
+            let _ = TypstRenderer::new().render(&part);
             #[cfg(not(feature = "html"))]
             let _ = part;
             let _ = slice(&nodes, &verse.end, Some(&verse.start));

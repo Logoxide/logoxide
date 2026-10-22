@@ -14,6 +14,7 @@ standard it is cited; everything else is the behaviour of version 0.5.0, recorde
 | [plain-text.md](plain-text.md) | `TextOptions` and `plain_text`: how the tree becomes text |
 | [flatten.md](flatten.md) | `Flat`, `Flattener`, `Span`, `Point`: the text with a map back to the tree, across entries |
 | [html.md](html.md) | `HtmlRenderer`, `HtmlOptions`: tags, class names (API), data attributes, marks |
+| [typst.md](typst.md) | `TypstRenderer`, `TypstOptions` (the `typst` feature): function names and arguments (API), escaping, `definitions` |
 | [filters.md](filters.md) | `Filter` and `Action` |
 | [verses.md](verses.md) | `verses`, `VerseSpan`, `slice`, `passage_ranges`, `chapter_verses`, `usx_chapter_verses` |
 | [node-paths.md](node-paths.md) | `NodePath` |

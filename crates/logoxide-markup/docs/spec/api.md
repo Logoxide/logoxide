@@ -15,17 +15,19 @@ logoxide_markup
 ├── (root)    Markup, Node, Kind, Milestone, Element, StrongsLang, Strongs,
 │             parse, walk, find_all, strongs_numbers
 │             re-exports: decode_entities, Action, Filter, Flat, Flattener, Point, Span,
-│                         HtmlOptions, HtmlRenderer, NodePath, TextOptions, plain_text
+│                         HtmlOptions, HtmlRenderer, NodePath, TextOptions, plain_text,
+│                         TypstOptions, TypstRenderer (the `typst` feature)
 ├── filter    Action, Filter
 ├── flatten   Point, Span, Flat, Flattener, flatten
 ├── html      HtmlOptions, HtmlRenderer
+├── typst     TypstOptions, TypstRenderer (the `typst` feature)
 ├── path      NodePath
 ├── refs      TaggedReference, tagged_references, passages
 ├── text      TextOptions, plain_text
 └── verses    VerseSpan, verses, slice, passage_ranges, chapter_verses, usx_chapter_verses
 ```
 
-The modules `filter`, `flatten`, `html`, `path`, `refs`, `text`, and `verses` are public. There is
+The modules `filter`, `flatten`, `html`, `path`, `refs`, `text`, `typst` (with its feature), and `verses` are public. There is
 no public `entities` module: `decode_entities` is reachable only at the root. The crate-level
 documentation is the README (`#![doc = include_str!("../README.md")]`, with the `html`
 feature, since its example renders HTML), so the README's example is a doc test.
@@ -43,7 +45,7 @@ Checked in October 2026; nothing here may be removed or changed in type.
 | sword-modules-cleanroom | re-exports the crate as `markup` and `Filter`, `HtmlRenderer`, `Kind`, `Node`, `Strongs`, `TextOptions`, `Markup`; `parse`, `plain_text`, `strongs_numbers`, `HtmlRenderer::new/render`, `Markup::from_name`, `Markup::{Gbf, Plaintext}` |
 | topos `topos-index`, `topos-cli` | none |
 
-`Filter`, `TextOptions`, `HtmlOptions`, `HtmlRenderer`, `Flattener`, `Flat`, and every tree type
+`Filter`, `TextOptions`, `HtmlOptions`, `HtmlRenderer`, `TypstOptions`, `TypstRenderer`, `Flattener`, `Flat`, and every tree type
 must be `Send + Sync` (dependents keep them in shared state).
 
 ## The `serde` feature
@@ -68,6 +70,12 @@ interface (logoxide caches parsed books this way).
 `HtmlRenderer` exist only with it; without it nothing else changes (the tree, text, flattening,
 filters, verses, and references are the same). The `html` and `html-bare` sections of the golden
 files are checked only with it.
+
+## The `typst` feature
+
+`typst = []`, off by default. The `typst` module and the root's re-export of `TypstOptions` and
+`TypstRenderer` exist only with it (typst.md); without it nothing else changes. It needs no
+dependency: the renderer writes Typst's markup as text, and compiling it is the caller's.
 
 ## Root
 
@@ -557,6 +565,81 @@ impl HtmlRenderer {
 
     /// Wraps rendered HTML in a `div` whose class is the prefix without its trailing `-` or `_`
     pub fn wrap(&self, html: &str) -> String;
+}
+```
+
+## `typst`
+
+```rust
+//! Typst markup in which every element is a call of a function a template defines.
+
+/// Options for [`TypstRenderer`]
+#[derive(Debug, Clone)]
+pub struct TypstOptions {
+    /// Put before every function's name; default: `lx-` (`lx-verse`, `lx-woj`)
+    pub prefix: Cow<'static, str>,
+    /// Which elements are rendered; default: [`Filter::all`] except metadata
+    pub filter: Filter,
+    /// Write `'` and `"` bare, so Typst makes them curly; default: false (escaped, printed as
+    /// they are)
+    pub smart_quotes: bool,
+}
+
+impl Default for TypstOptions;
+
+/**
+Renders Typst markup in which every element is a call of a function named for its kind, never
+saying how anything looks: a template defines the functions, as a stylesheet styles
+[`HtmlRenderer`](crate::HtmlRenderer)'s classes
+
+Functions (with the prefix, `lx-` by default), and their named arguments, every one a string:
+
+| Element | Function | Arguments |
+|---|---|---|
+| word | `w` | `strong` (`H7225 H853`), `lemma`, `morph` |
+| note | `note` | `note-type`, `n`, `osis-ref` |
+| reference | `ref` | `osis-ref` |
+| title | `title` | `title-type` |
+| words of Jesus, quote, translator addition, divine name, foreign | `woj`, `quote`, `added`, `divine-name`, `foreign` | |
+| highlight | `hi` | `hi-style` (`italic`, `small-caps`) |
+| line break | `lb` | |
+| paragraph, an empty one or its start milestone | `p`, `pb` | |
+| line group, line, a line's end milestone | `lg`, `l`, `le` | |
+| verse, chapter (milestones) | `verse`, `chapter` | `osis-id`, `n`; a verse's `para-start` |
+| dictionary entry | `entry` | |
+| USX `sidebar`; any other USX `char`, table `cell`, or `para` | `div`; `char`, `cell`, `para` | |
+
+Every USX `para`, `char`, `note`, `cell`, and `sidebar` also passes its `style` (`style: "q2"`).
+A verse that is the first thing in its paragraph or line passes `para-start`: that element's USX
+style, else `p` or `l`. Each call ends in `;`, and the output holds no line breaks.
+[`TypstRenderer::definitions`] defines every function plainly, so it and the rendered entries
+make a document that compiles.
+
+```
+use logoxide_markup::{Markup, TypstRenderer, parse};
+
+let mut typst = TypstRenderer::new();
+let verse = typst.render(&parse(Markup::Osis, r#"<w lemma="strong:G2424">Jesus</w> said, <q who="Jesus">Follow me</q>"#));
+assert_eq!(verse, r#"#lx-w(strong: "G2424", lemma: "strong:G2424")[Jesus]; said, #lx-woj[Follow me];"#);
+assert!(typst.definitions().contains("#let lx-woj("));
+```
+*/
+#[derive(Debug, Default, Clone)]
+pub struct TypstRenderer {
+    pub opts: TypstOptions,
+    /* private fields */
+}
+
+impl TypstRenderer {
+    pub fn new() -> Self;
+
+    pub fn with_options(opts: TypstOptions) -> Self;
+
+    /// One entry's nodes; each call is the next entry, as in [`HtmlRenderer::render`](crate::HtmlRenderer::render)
+    pub fn render(&mut self, nodes: &[Node]) -> String;
+
+    /// A Typst file defining every function the renderer calls, with this prefix, plainly
+    pub fn definitions(&self) -> String;
 }
 ```
 

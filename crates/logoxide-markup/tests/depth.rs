@@ -3,6 +3,8 @@
 
 #[cfg(feature = "html")]
 use logoxide_markup::HtmlRenderer;
+#[cfg(feature = "typst")]
+use logoxide_markup::TypstRenderer;
 use logoxide_markup::{Markup, Node, TextOptions, flatten::flatten, parse, plain_text};
 
 const LIMIT: usize = 1_000;
@@ -73,6 +75,8 @@ fn deep_xml_is_cut_at_the_limit() {
             let _ = flatten(&nodes, &TextOptions::default());
             #[cfg(feature = "html")]
             let _ = HtmlRenderer::new().render(&nodes);
+            #[cfg(feature = "typst")]
+            let _ = TypstRenderer::new().render(&nodes);
         }
     });
 }
@@ -84,6 +88,8 @@ fn deep_gbf_is_cut_at_the_limit() {
         assert_eq!(depth(&nodes), LEVELS);
         #[cfg(feature = "html")]
         let _ = HtmlRenderer::new().render(&nodes);
+        #[cfg(feature = "typst")]
+        let _ = TypstRenderer::new().render(&nodes);
     });
 }
 

@@ -153,3 +153,10 @@ tests.
   specification first, then the code and its tests, and never libsword or any other SWORD
   reader's code. Done by Claude (Opus 5.5, Anthropic) in a Claude Code session for the owner that
   read this crate and topos's notes on it, not libsword or any other SWORD reader's code.
+- Typst (October 22, 2026): `TypstRenderer` and `TypstOptions` behind a `typst` feature, off by
+  default (`docs/spec/typst.md`, `docs/spec/api.md`), written spec first, then the code and
+  `tests/typst.rs`; the no-panic and depth tests run it too. It mirrors the HTML renderer's
+  element table, writing a function call where HTML writes a tag, and adds a verse's
+  `para-start`. Its escaping rules come from Typst's own public lexer (`typst-syntax` 0.15.1).
+  Done by Claude (Opus 5.5, Anthropic) in a Claude Code session for the owner that read this
+  crate's code, not libsword or any other SWORD reader's code.
