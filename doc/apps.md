@@ -24,7 +24,8 @@ makes) is another way, at the end.
 - [References that name your translations](#references-that-name-your-translations)
 - [Packages and vaults](#packages-and-vaults)
 
-Once the text is in, the [recipes](recipes/README.md) build on this guide: showing passages,
+Once the text is in, the [recipes](recipes/README.md) build on this guide: uploads renamed and
+added to, showing passages,
 references in text, comparing translations, searching, links that survive corrections,
 commentaries and dictionaries, audio with timings, a passage server, reading a vault, and
 converting formats.
@@ -411,6 +412,9 @@ fn uploads(paths: &[std::path::PathBuf]) -> Result<()> {
 
 USFM can also be converted to USX (`lx.usfmToUsx`), and `lx.unzip(bytes)` lists a zip's files,
 for an app that keeps books as USX itself.
+
+To let your user rename an upload, add books to it, or replace one, keep it under an id of its
+own and keep its files: the recipe [Translations your user uploads](recipes/uploaded-translations.md).
 
 ## From a book to verses
 

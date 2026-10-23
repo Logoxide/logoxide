@@ -63,6 +63,9 @@ Names are camelCase in TypeScript, snake_case in Python (`verseTexts` / `verse_t
   in two formats, the better one is read and the other is `skipped` as `duplicate`.
 - `openBible` with no book at all is a `NotFound` error; `LogoxideBook.parse` of text without
   verses is `null` in TypeScript and raises `LogoxideErrorInvalid` in Python.
+- Key an uploaded translation's books by an **id of its own**, not its abbreviation, so it can be
+  renamed; to add books, `openBible` only the new files (with the old ones, a book in both in one
+  format is an `Invalid` error). Keep the files, or a newer `textVersion()` can't read it again.
 - Only tell users about `skipped()` files they gave directly, not a zip's extras (copyright
   pages, glossaries, front matter, signatures).
 - The KJV's text keeps its paragraph marks (`¶`); strip them for typing or matching, or compare
@@ -78,7 +81,8 @@ Names are camelCase in TypeScript, snake_case in Python (`verseTexts` / `verse_t
 - [references/api.md](references/api.md): the patterns, in TypeScript, Python, and Rust
 - [references/sources.md](references/sources.md): fetch.bible, eBible.org, uploads, and the
   other publishers (CCEL, CrossWire's SWORD, Door43, Scripture Burritos)
-- [references/recipes.md](references/recipes.md): where the full recipes are (showing passages,
+- [references/recipes.md](references/recipes.md): where the full recipes are (uploads the user
+  renames and adds to, showing passages,
   references in text, comparing translations, search, stable links, commentaries and
   dictionaries, audio with timings, a passage server, reading a vault)
 - The full guide: https://github.com/Logoxide/logoxide/blob/main/doc/apps.md; every method:

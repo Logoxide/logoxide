@@ -12,6 +12,7 @@ drift. CI doesn't run these, since they download.
 | Recipe | For |
 |---|---|
 | [Bibles in your app](../apps.md) | finding translations, downloading a book at a time or a whole Bible, files a user brings, verses, caching |
+| [Translations your user uploads](uploaded-translations.md) | keeping uploads so they can be renamed, added to, corrected a book at a time, and read again by a newer logoxide |
 | [Showing passages](showing-passages.md) | a reader view: what someone typed, as HTML with a stylesheet or as text with its citation; chapters; a verse for the day |
 | [References in text](references-in-text.md) | finding references in notes or posts, linking them, showing their verses on hover, storing them, completing them as they're typed |
 | [Comparing translations](comparing-translations.md) | a parallel view, what one translation lacks, and translations numbered differently (`.vrs` maps) |

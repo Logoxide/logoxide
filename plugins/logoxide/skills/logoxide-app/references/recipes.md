@@ -9,6 +9,7 @@ Base: `https://github.com/Logoxide/logoxide/blob/main/doc/` (raw text:
 | Task | File | What to take from it |
 |---|---|---|
 | Get text into the app | `apps.md` | sources, catalogs, `bookDownloads`, `openBible`, uploads, verses, caching |
+| Uploads the user edits | `recipes/uploaded-translations.md` | a stable id apart from name/abbreviation; keep each upload's files with the books read from them; rename (old abbreviation kept as a topos alias); add books by reading only the new files (same book replaces); remove a book; read again when `textVersion()` changes |
 | A reader view | `recipes/showing-passages.md` | `html`/`chapterHtml` with `classPrefix`, a stylesheet numbering verses from `data-n`, `styledText` and `formatPassage` for copying with a citation, next/previous chapter, a verse of the day |
 | References in user text | `recipes/references-in-text.md` | `search`/`parts` with the right `OffsetUnit`, rewriting Markdown from the end, hover text, storing as OSIS, `complete`, `overlaps` |
 | Parallel translations | `recipes/comparing-translations.md` | verse-by-verse alignment, missing verses (BSB lacks Acts 8:37), `.vrs` maps (`versifications().withVrs`, `map`) |

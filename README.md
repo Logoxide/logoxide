@@ -28,7 +28,7 @@ or sync both with your notes. [crates/lx/README.md](crates/lx/README.md) is `lx`
 Building an app? [doc/apps.md](doc/apps.md) shows how to find, download, and read Bibles in
 TypeScript, Python, and Rust: a book at a time from fetch.bible, a whole Bible from eBible.org, or
 the files your user brings. [doc/recipes/](doc/recipes/README.md) goes on from there: passages as
-HTML, references in text, parallel translations, search, commentaries, audio, a passage server.
+HTML, uploads your user renames and adds to, references in text, parallel translations, search, commentaries, audio, a passage server.
 
 An AI coding assistant can do the setting up: install the logoxide skills (an app's Bibles, or
 `lx` and a vault with its editor and Claude integrations) in Claude Code with

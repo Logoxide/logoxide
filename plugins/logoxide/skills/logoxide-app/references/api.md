@@ -197,6 +197,8 @@ function readUploads(uploads: PackageFile[]) {
 
 In the browser, read `File`s as `{ path: file.name, bytes: new Uint8Array(await file.arrayBuffer()) }`.
 Keep the uploaded bytes if verses may need reading again later (a new `textVersion()`).
+To let the user rename an upload or add books to it, keep it under an id of its own and its files
+by upload: `recipes/uploaded-translations.md`.
 
 ## Verses: bridges and parts
 
