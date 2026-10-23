@@ -508,16 +508,16 @@ Download each book or zip once. Two things can be kept:
   again unless you kept its file, so keep uploads' files too.
 
 ```ts
-console.log(lx.textVersion()); // → 4 0.1.1
+console.log(lx.textVersion()); // → 4 0.1.2
 ```
 
 ```python
-print(lx.text_version())  # → 4 0.1.1
+print(lx.text_version())  # → 4 0.1.2
 ```
 
 ```rust
 fn text_version() {
-    println!("{}", logoxide_text::cache::text_version()); // 4 0.1.1
+    println!("{}", logoxide_text::cache::text_version()); // 4 0.1.2
 }
 ```
 

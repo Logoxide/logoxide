@@ -227,7 +227,7 @@ and leave the others empty.
 
 - Raw files (USX books, zips) keyed by URL or import name + book: never stale. Browser: Cache
   Storage (`caches.open`, https or localhost only) or IndexedDB.
-- Parsed verses keyed by import name + book, stored with `lx.textVersion()` (`"4 0.1.1"`); read
+- Parsed verses keyed by import name + book, stored with `lx.textVersion()` (`"4 0.1.2"`); read
   again from the file when it differs; offline, old verses beat none.
 - Key by import name, not abbreviation: two publishers' copies can share an abbreviation.
 - eBible.org entries' `version` is the date of the last update; fetch.bible's copies don't

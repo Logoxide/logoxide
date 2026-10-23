@@ -154,7 +154,7 @@ exports the items of path dependencies, and they re-export topos's API.
 
 - **Versions**: the workspace's version, its `logoxide`, `logoxide-markup`, `logoxide-text`,
   `logoxide-import`, and `logoxide-app` dependencies', and logoxide-ffi's must be
-  the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.1.1.
+  the same (`scripts/check-versions.sh`, run by CI, and by the release with its tag), now 0.1.2.
 - **topos**: the topos tag the bindings build against is `v` and topos-bible's version in
   `Cargo.toml` (`scripts/topos-ref.sh`); both workflows read it from there.
 - **Releases**: pushing a `v*` tag runs `.github/workflows/release.yml`: it checks the versions
